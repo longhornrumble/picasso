@@ -32,7 +32,7 @@ export function ConfigProvider({ children }) {
   const fetchConfigWithCacheCheck = async (tenantId, force = false) => {
     try {
       // FIXED: Point to your actual S3 bucket structure
-      const configUrl = `https://kgvc8xnewf.execute-api.us-east-1.amazonaws.com/primary/Master_Function?tenant_id=${tenantId}`;
+      const configUrl = `https://chat.myrecruiter.ai/Master_Function?tenant_id=${tenantId}`;
       
       // Prepare cache headers
       const headers = {};

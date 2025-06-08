@@ -14,7 +14,7 @@ export async function fetchTenantConfig(tenantId) {
   }
 
   // Use your Lambda API for config instead of S3
-  const url = `https://kgvc8xnewf.execute-api.us-east-1.amazonaws.com/primary/Master_Function/tenants/${tenantId}`;
+  const url = `https://chat.myrecruiter.ai/Master_Function/tenants/${tenantId}`;
 
   const response = await fetch(url);
   if (!response.ok) {

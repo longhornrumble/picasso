@@ -49,8 +49,9 @@ export function useCSSVariables(config) {
       
       /* === INTERFACE COLORS (Enhanced) === */
       '--header-background-color': branding.header_background_color || branding.title_bar_color || '#2db8be',
-      '--header-text-color': determineHeaderTextColor(branding),
-      '--widget-icon-color': branding.widget_icon_color || '#ffffff',
+      '--header-text-color': branding.header_text_color || determineHeaderTextColor(branding),
+      '--header-close-color': branding.header_close_color || branding.header_text_color || determineHeaderTextColor(branding),
+      '--widget-icon-color': branding.widget_icon_color || determineContrastColor(branding.widget_background_color || branding.primary_color),
       '--widget-background-color': branding.widget_background_color || branding.primary_color || '#2db8be',
       '--link-color': branding.link_color || branding.markdown_link_color || '#3B82F6',
       '--link-hover-color': branding.link_hover_color || darkenColor(branding.link_color || '#3B82F6', 15),
@@ -447,7 +448,6 @@ function determineHeaderTextColor(branding) {
   if (branding.header_text_color) {
     return branding.header_text_color;
   }
-
   // 2. Otherwise, fall back to brightness calculation or forceWhite flag
   const headerBg = branding.header_background_color || branding.title_bar_color || '#2db8be';
   const forceWhite = branding.enable_white_title || branding.white_title;
@@ -455,6 +455,10 @@ function determineHeaderTextColor(branding) {
     return '#ffffff';
   }
   return isLightColor(headerBg) ? '#1f2937' : '#ffffff';
+}
+
+function determineContrastColor(backgroundColor) {
+   return isLightColor(backgroundColor) ? '#1f2937' : '#ffffff';
 }
 
 function generateFocusRing(color) {
