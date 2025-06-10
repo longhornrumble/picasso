@@ -282,7 +282,7 @@ export default function ChatWidget() {
           {showCallout && (
             <div className={`chat-callout ${showCallout ? 'visible' : ''}`}>
               <div className="chat-callout-header">
-                <div className="chat-callout-text">{calloutText}</div>
+              <div className="chat-callout-text" dangerouslySetInnerHTML={{ __html: calloutText }}/>
                 <button onClick={handleCalloutClose} className="chat-callout-close">
                   <X size={14} />
                 </button>

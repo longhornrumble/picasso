@@ -22,10 +22,26 @@ export function ConfigProvider({ children }) {
   
   const updateIntervalRef = useRef(null);
 
-  // Get tenant ID from URL params or use default
-  const getTenantId = () => {
-    const urlParams = new URLSearchParams(window.location.search);
-    return urlParams.get('tenant') || 'FOS402334'; // Default for development
+  // Get tenant ID from script data-tenant hash and resolve it
+  const getTenantId = async () => {
+    try {
+      // Read hash from script tag data-tenant attribute
+      const script = document.querySelector('script[src*="widget.js"]');
+      const tenantHash = script?.getAttribute('data-tenant');
+      
+      if (tenantHash) {
+        // Resolve hash to tenant ID via Master Lambda
+        const response = await fetch(`https://chat.myrecruiter.ai/Master_Function?t=${tenantHash}`);
+        if (response.ok) {
+          const { tenant_id } = await response.json();
+          return tenant_id;
+        }
+      }
+    } catch (error) {
+      console.warn('Hash resolution failed:', error);
+    }
+    
+    return 'FOS402334'; // Fallback for development
   };
 
   // Enhanced config fetcher with cache headers
@@ -113,7 +129,7 @@ export function ConfigProvider({ children }) {
 
   // Periodic config update checker
   const checkForConfigUpdates = async () => {
-    const tenantId = getTenantId();
+    const tenantId = await getTenantId();
     
     // Skip if different tenant (shouldn't happen, but safety check)
     if (configMetadata.current.tenantId && configMetadata.current.tenantId !== tenantId) {
@@ -157,17 +173,21 @@ export function ConfigProvider({ children }) {
   // Manual refresh function (can be called by components)
   const refreshConfig = async () => {
     console.log('🔄 Manual config refresh requested');
-    const tenantId = getTenantId();
+    const tenantId = await getTenantId();
     await loadTenantConfig(tenantId);
   };
 
   // Initialize on mount
   useEffect(() => {
-    const tenantId = getTenantId();
-    console.log('🏁 ConfigProvider initializing for tenant:', tenantId);
+    const initializeConfig = async () => {
+      const tenantId = await getTenantId();
+      console.log('🏁 ConfigProvider initializing for tenant:', tenantId);
+      
+      await loadTenantConfig(tenantId);
+      startConfigWatcher();
+    };
     
-    loadTenantConfig(tenantId);
-    startConfigWatcher();
+    initializeConfig();
 
     // Cleanup on unmount
     return () => {
