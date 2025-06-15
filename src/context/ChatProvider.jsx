@@ -81,7 +81,7 @@ export const ChatProvider = ({ children }) => {
               'x-api-key': 'a650f1b1661d6871df06237d7d2b8ab8'
             },
             body: JSON.stringify({
-              tenant_id: tenantConfig?.tenant_id || "FOS402334", // FIXED: Use dynamic tenant ID
+              tenant_id: tenantConfig?.tenant_id || "",
               user_input: message.content,
               context: {
                 session_id: `session_${Date.now()}`,

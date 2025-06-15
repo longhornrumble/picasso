@@ -27,11 +27,13 @@ export function ConfigProvider({ children }) {
     try {
       // Read hash from script tag data-tenant attribute
       const script = document.querySelector('script[src*="widget.js"]');
-      const tenantHash = script?.getAttribute('data-tenant');
+      const rawHash = script?.getAttribute('data-tenant') || '';
+      const tenantHash = rawHash.replace(/\.js$/, '');
       
       if (tenantHash) {
         // Resolve hash to tenant ID via Master Lambda
-        const response = await fetch(`https://chat.myrecruiter.ai/Master_Function?t=${tenantHash}`);
+        const endpoint = `https://chat.myrecruiter.ai/Master_Function?t=${encodeURIComponent(tenantHash)}`;
+        const response = await fetch(endpoint);
         if (response.ok) {
           const { tenant_id } = await response.json();
           return tenant_id;
@@ -47,8 +49,8 @@ export function ConfigProvider({ children }) {
   // Enhanced config fetcher with cache headers
   const fetchConfigWithCacheCheck = async (tenantId, force = false) => {
     try {
-      // FIXED: Point to your actual S3 bucket structure
-      const configUrl = `https://chat.myrecruiter.ai/Master_Function?tenant_id=${tenantId}`;
+      // Build the URL for fetching tenant-specific config JSON directly from S3-hosted API
+      const configUrl = `https://chat.myrecruiter.ai/tenants/${tenantId}/${tenantId}-config.json`;
       
       // Prepare cache headers
       const headers = {};

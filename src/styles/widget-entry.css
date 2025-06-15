@@ -1,0 +1,45 @@
+/**
+ * Picasso Widget CSS Entry Point
+ * This file imports theme.css and is built into widget.css
+ */
+
+/* Import your main theme.css file */
+@import './theme.css';
+
+/* Production CSS optimizations */
+* {
+  box-sizing: border-box;
+}
+
+/* Ensure widget container isolation */
+#picasso-widget-root,
+#picasso-fullpage-root {
+  all: initial;
+  position: fixed !important;
+  z-index: 999999 !important;
+  pointer-events: none !important;
+  font-family: var(--font-family, 'Inter, system-ui, sans-serif') !important;
+}
+
+#picasso-widget-root *,
+#picasso-fullpage-root * {
+  pointer-events: auto !important;
+  box-sizing: border-box !important;
+}
+
+/* Production-specific performance optimizations */
+.chat-container,
+.fullpage-chat-container,
+.message-content,
+.action-chip {
+  will-change: transform;
+  backface-visibility: hidden;
+}
+
+/* Print styles */
+@media print {
+  #picasso-widget-root,
+  #picasso-fullpage-root {
+    display: none !important;
+  }
+}
