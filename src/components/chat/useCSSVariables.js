@@ -1,49 +1,61 @@
-// src/hooks/useCSSVariables.js - Platform-Neutral Multi-Tenant CSS System (COMPLETE)
+// src/hooks/useCSSVariables.js - Generic Multi-Tenant CSS System
 import { useEffect } from 'react';
 import { useConfig } from '../../context/ConfigProvider';
 
 export function useCSSVariables(config) {
   useEffect(() => {
+    // Validate config before proceeding
     if (!config) {
-      // Detect if we're in full-page mode
-      const isFullPage = window.PicassoConfig?.mode === 'fullpage';
       console.log('⏳ Waiting for config to load...');
       return;
     }
 
-    // Detect if we're in full-page mode
+    // Validate config structure
+    if (!config.branding && !config.features && !config.tenant_hash) {
+      console.warn('⚠️ Invalid or incomplete config structure received:', config);
+      return;
+    }
+
     const isFullPage = window.PicassoConfig?.mode === 'fullpage';
-    console.log(`🎨 Injecting ${isFullPage ? 'FULL-PAGE' : 'WIDGET'} CSS variables:`, config.tenant_id);
-    console.log('📊 Config structure:', {
+    console.log(`🎨 Injecting ${isFullPage ? 'FULL-PAGE' : 'WIDGET'} CSS variables:`, config.tenant_hash || 'no-hash');
+    
+    console.log('📊 Config structure validation:', {
       hasBranding: !!config.branding,
       hasFeatures: !!config.features,
-      primaryColor: config.branding?.primary_color || config.primary_color || 'using-default',
-      tenantId: config.tenant_id
+      primaryColor: config.branding?.primary_color || 'using-default',
+      tenantHash: config.tenant_hash || 'missing',
+      configSource: config.metadata?.source || 'unknown'
     });
 
     const root = document.documentElement;
-    const branding = config.branding || config;
+    
+    // Safe config access with fallbacks
+    const branding = config.branding || {};
     const features = config.features || {};
 
-    // Clean feature detection with new config structure
-    const quickHelpEnabled = config?.quick_help?.enabled !== false;
-    const actionChipsEnabled = config?.action_chips?.enabled !== false;
-    const calloutEnabled = features.callout !== false;
+    // Feature configuration access
+    const calloutConfig = features.callout || {};
+    const quickHelpConfig = config?.quick_help || {};
+    const actionChipsConfig = config?.action_chips || {};
+    
+    const quickHelpEnabled = quickHelpConfig.enabled !== false;
+    const actionChipsEnabled = actionChipsConfig.enabled !== false;
+    const calloutEnabled = calloutConfig.enabled !== false;
 
-    // COMPLETE CSS Variables Mapping - All Features + Platform Neutral Defaults
+    // COMPLETE CSS Variables Mapping - Generic & Tenant-Agnostic
     const cssVariables = {
       
       /* === CORE COLORS === */
       '--primary-color': branding.primary_color || '#3b82f6',
-      '--primary-light': branding.primary_light || '#60a5fa',
-      '--primary-dark': branding.primary_dark || '#2563eb',
+      '--primary-light': branding.primary_light || lightenColor(branding.primary_color || '#3b82f6', 20),
+      '--primary-dark': branding.primary_dark || darkenColor(branding.primary_color || '#3b82f6', 15),
       '--secondary-color': branding.secondary_color || '#6b7280',
       '--font-color': branding.font_color || '#374151',
       '--background-color': branding.background_color || '#ffffff',
       '--border-color': branding.border_color || 'rgba(59, 130, 246, 0.1)',
       
       /* === CHAT BUBBLE COLORS === */
-      '--user-bubble-color': branding.user_bubble_color || '#3b82f6',
+      '--user-bubble-color': branding.user_bubble_color || branding.primary_color || '#3b82f6',
       '--user-bubble-text-color': branding.user_bubble_text_color || '#ffffff',
       '--user-bubble-margin': branding.user_bubble_margin || '20px',
       '--bot-bubble-color': branding.bot_bubble_color || '#f8fafc',
@@ -52,13 +64,23 @@ export function useCSSVariables(config) {
       '--bot-bubble-margin': branding.bot_bubble_margin || '20px',
       
       /* === INTERFACE COLORS === */
-      '--header-background-color': branding.header_background_color || branding.title_bar_color || '#3b82f6',
-      '--header-text-color': branding.header_text_color || determineHeaderTextColor(branding),
-      '--header-close-color': branding.header_close_color || branding.header_text_color || determineHeaderTextColor(branding),
-      '--widget-icon-color': branding.widget_icon_color || determineContrastColor(branding.widget_background_color || branding.primary_color),
-      '--widget-background-color': branding.widget_background_color || branding.primary_color || '#3b82f6',
-      '--link-color': branding.link_color || branding.markdown_link_color || '#3b82f6',
-      '--link-hover-color': branding.link_hover_color || darkenColor(branding.link_color || '#3b82f6', 15),
+      '--header-background-color': branding.header_background_color || branding.title_bar_color || branding.primary_color || '#3b82f6',
+      '--header-text-color': branding.header_text_color || 
+                             branding.chat_title_color || 
+                             branding.title_color || 
+                             determineHeaderTextColor(branding),
+      '--header-close-color': branding.header_close_color || 
+                             branding.header_text_color || 
+                             branding.chat_title_color || 
+                             determineHeaderTextColor(branding),
+      '--widget-icon-color': branding.widget_icon_color || 
+                            branding.chat_toggle_icon_color ||
+                            determineContrastColor(branding.widget_background_color || branding.primary_color || '#3b82f6'),
+      '--widget-background-color': branding.widget_background_color || 
+                                  branding.chat_toggle_background_color || 
+                                  branding.primary_color || '#3b82f6',
+      '--link-color': branding.link_color || branding.markdown_link_color || branding.primary_color || '#3b82f6',
+      '--link-hover-color': branding.link_hover_color || darkenColor(branding.link_color || branding.primary_color || '#3b82f6', 15),
       
       /* === INPUT FIELD STYLING === */
       '--input-background-color': branding.input_background_color || '#ffffff',
@@ -131,7 +153,13 @@ export function useCSSVariables(config) {
       '--avatar-border': branding.avatar_border || '2px solid rgba(59, 130, 246, 0.15)',
       '--avatar-shadow': branding.avatar_shadow || '0 2px 8px rgba(59, 130, 246, 0.1), 0 1px 3px rgba(0, 0, 0, 0.05)',
       
-      /* === ACTION CHIP SYSTEM (Complete & Optimized) === */
+      /* === LOGO/AVATAR BACKGROUND COLORS === */
+      '--logo-background-color': branding.logo_background_color || branding.avatar_background_color || 'transparent',
+      '--avatar-background-color': branding.avatar_background_color || branding.logo_background_color || 'transparent',
+      '--chat-header-logo-bg': branding.logo_background_color || branding.avatar_background_color || 'transparent',
+      '--bot-avatar-bg': branding.avatar_background_color || branding.logo_background_color || 'transparent',
+      
+      /* === ACTION CHIP SYSTEM === */
       '--action-chip-bg': branding.action_chip_bg || 'rgba(59, 130, 246, 0.08)',
       '--action-chip-border': branding.action_chip_border || '2px solid rgba(59, 130, 246, 0.2)',
       '--action-chip-color': branding.action_chip_color || branding.primary_color || '#3b82f6',
@@ -151,14 +179,14 @@ export function useCSSVariables(config) {
       /* === ENHANCED SHADOW SYSTEM === */
       '--bubble-shadow': branding.bubble_shadow || '0 1px 3px rgba(0, 0, 0, 0.1)',
       '--bubble-shadow-hover': branding.bubble_shadow_hover || '0 2px 8px rgba(0, 0, 0, 0.15)',
-      '--primary-shadow': branding.primary_shadow || '0 4px 12px rgba(59, 130, 246, 0.25)',
-      '--primary-shadow-light': branding.primary_shadow_light || '0 2px 8px rgba(59, 130, 246, 0.15)',
-      '--primary-shadow-hover': branding.primary_shadow_hover || '0 6px 16px rgba(59, 130, 246, 0.3)',
+      '--primary-shadow': branding.primary_shadow || generatePrimaryShadow(branding.primary_color),
+      '--primary-shadow-light': branding.primary_shadow_light || generatePrimaryShadowLight(branding.primary_color),
+      '--primary-shadow-hover': branding.primary_shadow_hover || generatePrimaryShadowHover(branding.primary_color),
       '--container-shadow': branding.container_shadow || '0 10px 25px rgba(0, 0, 0, 0.1)',
-      '--header-shadow': branding.header_shadow || '0 2px 8px rgba(59, 130, 246, 0.15)',
-      '--input-shadow': branding.input_shadow || '0 2px 8px rgba(59, 130, 246, 0.08)',
-      '--input-focus-shadow': branding.input_focus_shadow || '0 0 0 3px rgba(59, 130, 246, 0.1), 0 4px 12px rgba(59, 130, 246, 0.15)',
-      '--send-button-shadow': branding.send_button_shadow || '0 2px 8px rgba(59, 130, 246, 0.25)',
+      '--header-shadow': branding.header_shadow || generatePrimaryShadowLight(branding.primary_color),
+      '--input-shadow': branding.input_shadow || generateInputShadow(branding.primary_color),
+      '--input-focus-shadow': branding.input_focus_shadow || generateInputFocusShadow(branding.primary_color),
+      '--send-button-shadow': branding.send_button_shadow || generatePrimaryShadow(branding.primary_color),
       '--shadow-light': branding.shadow_light || '0 1px 3px rgba(0, 0, 0, 0.08)',
       '--shadow-medium': branding.shadow_medium || '0 4px 12px rgba(0, 0, 0, 0.1)',
       '--shadow-heavy': branding.shadow_heavy || '0 20px 25px rgba(0, 0, 0, 0.1)',
@@ -231,52 +259,23 @@ export function useCSSVariables(config) {
       '--upload-warning-bg': branding.upload_warning_bg || 'rgba(245, 158, 11, 0.1)',
     };
 
-    // Apply CSS variables with comprehensive logging
+    // Apply CSS variables with error handling
     const appliedVariables = [];
     const failedVariables = [];
     
     Object.entries(cssVariables).forEach(([property, value]) => {
-      if (value && typeof value === 'string' && value !== 'undefined') {
+      if (value && typeof value === 'string' && value !== 'undefined' && value !== 'null') {
         try {
           root.style.setProperty(property, value);
           appliedVariables.push(property);
-          console.log(`  ✅ ${property}: ${value}`);
         } catch (error) {
-          console.warn(`  ⚠️ Failed to set ${property}:`, error);
+          console.warn(`⚠️ Failed to set ${property}:`, error);
           failedVariables.push({ property, value, error: error.message });
         }
-      } else {
-        console.log(`  ⏭️ Skipping ${property}: invalid value (${value})`);
       }
     });
 
-    // === Ensure compatibility with all CSS variables used in theme.css ===
-    // Set additional variables not covered by cssVariables above
-    function setVariable(key, value) {
-      if (typeof value !== 'undefined' && value !== null) {
-        root.style.setProperty(key, value);
-        appliedVariables.push(key);
-        console.log(`  ✅ ${key}: ${value}`);
-      }
-    }
-    setVariable('--hover-color', config.hover_color || '#e0e0e0');
-    setVariable('--link-color', config.link_color || '#007BFF');
-    setVariable('--avatar-background-color', config.avatar_background_color || '#f2f2f2');
-    setVariable('--logo-background-color', config.logo_background_color || '#ffffff');
-    setVariable('--widget-icon-color', config.widget_icon_color || '#ffffff');
-    setVariable('--widget-bg-color', config.widget_bg_color || '#000000');
-    setVariable('--chat-position', config.chat_position || 'bottom-right');
-    setVariable('--font-size-base', ensurePixelUnit(config.font_size_base || '16'));
-    setVariable('--font-family', config.font_family || 'Inter, sans-serif');
-    setVariable('--title-bar-color', config.title_bar_color || '#f9f9f9');
-    setVariable('--title-color', config.title_color || '#333333');
-    setVariable('--bot-bubble-text-color', config.bot_bubble_text_color || '#000000');
-    setVariable('--user-bubble-text-color', config.user_bubble_text_color || '#ffffff');
-    setVariable('--border-radius-main', ensurePixelUnit(config.border_radius_main || '16'));
-    setVariable('--border-radius-small', calculateSmallRadius(config.border_radius_main));
-    setVariable('--border-radius-large', calculateLargeRadius(config.border_radius_main));
-
-    // Apply feature-based styles with new config structure
+    // Apply enhanced feature styles
     applyEnhancedFeatureStyles(features, root, config, quickHelpEnabled, actionChipsEnabled, calloutEnabled);
     
     // Apply chat positioning
@@ -285,15 +284,7 @@ export function useCSSVariables(config) {
     // Apply advanced computed styles
     applyComputedStyles(cssVariables, root);
 
-    console.log(`🎨 Applied ${appliedVariables.length} CSS variables`);
-    console.log(`🎯 Key configuration applied:`, {
-      primaryColor: cssVariables['--primary-color'],
-      spacing: cssVariables['--message-spacing'],
-      radius: cssVariables['--border-radius'],
-      gradients: 'enabled',
-      avatars: 'enhanced system',
-      dimensions: `${cssVariables['--chat-width']} × ${cssVariables['--chat-height']}`
-    });
+    console.log(`🎨 Applied ${appliedVariables.length} CSS variables for tenant: ${config.tenant_hash}`);
     
     if (failedVariables.length > 0) {
       console.warn(`⚠️ ${failedVariables.length} variables failed:`, failedVariables);
@@ -305,10 +296,9 @@ export function useCSSVariables(config) {
     window.picassoDebug = {
       config,
       appliedVariables: cssVariables,
-      tenant_id: config?.tenant_id,
+      tenant_hash: config?.tenant_hash,
       enhancementsApplied: true,
-      logoSystem: 'Enhanced',
-      configStructure: 'Updated for Action Chips & Quick Help'
+      configSource: config.metadata?.source
     };
 
     // Cleanup function
@@ -348,12 +338,13 @@ function calculateTransformOrigin(chatPosition) {
   return transformOrigins[position.replace(' ', '-')] || 'bottom right';
 }
 
+// Generic avatar URL generation for multi-tenant system
 function generateAvatarUrl(config) {
-  const { tenant_id, branding, _cloudfront } = config || {};
+  const { tenant_hash, branding, _cloudfront } = config || {};
   
-  console.log('🖼️ Generating avatar URL for:', tenant_id);
+  console.log('🖼️ Generating avatar URL for tenant hash:', tenant_hash || 'no-hash');
   
-  // Priority order for avatar sources
+  // Priority order for avatar sources - generic multi-tenant system
   const avatarSources = [
     // Direct URLs from config (highest priority)
     branding?.avatar_url,
@@ -366,18 +357,17 @@ function generateAvatarUrl(config) {
     _cloudfront?.urls?.avatar,
     _cloudfront?.urls?.logo,
     
-    // Generic CloudFront paths
-    `https://chat.myrecruiter.ai/tenants/${tenant_id}/avatar.png`,
-    `https://chat.myrecruiter.ai/tenants/${tenant_id}/logo.png`,
-    `https://chat.myrecruiter.ai/tenants/${tenant_id}/avatar.svg`,
-    `https://chat.myrecruiter.ai/tenants/${tenant_id}/logo.svg`,
+    // Hash-based generic paths (tenant agnostic)
+    tenant_hash ? `https://chat.myrecruiter.ai/tenants/hash-${tenant_hash}/avatar.png` : null,
+    tenant_hash ? `https://chat.myrecruiter.ai/tenants/hash-${tenant_hash}/logo.png` : null,
+    tenant_hash ? `https://chat.myrecruiter.ai/tenants/hash-${tenant_hash}/avatar.svg` : null,
+    tenant_hash ? `https://chat.myrecruiter.ai/tenants/hash-${tenant_hash}/logo.svg` : null,
     
-    // Generic fallback
-    'https://chat.myrecruiter.ai/tenants/default-avatar.png',
-    '/default-avatar.png'
+    // Generic fallbacks
+    'https://chat.myrecruiter.ai/collateral/default-avatar.png'
   ];
   
-  const finalUrl = avatarSources.find(url => url && url.trim() && url !== 'undefined') || '/default-avatar.png';
+  const finalUrl = avatarSources.find(url => url && url.trim() && url !== 'undefined') || 'https://chat.myrecruiter.ai/collateral/default-avatar.png';
   
   console.log('✅ Selected avatar URL:', finalUrl);
   
@@ -425,6 +415,36 @@ function generateActionChipShadow(primaryColor) {
   return `0 4px 12px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.25), 0 1px 3px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.1)`;
 }
 
+function generatePrimaryShadow(color) {
+  const rgb = hexToRgb(color || '#3b82f6');
+  if (!rgb) return '0 4px 12px rgba(59, 130, 246, 0.25)';
+  return `0 4px 12px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.25)`;
+}
+
+function generatePrimaryShadowLight(color) {
+  const rgb = hexToRgb(color || '#3b82f6');
+  if (!rgb) return '0 2px 8px rgba(59, 130, 246, 0.15)';
+  return `0 2px 8px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.15)`;
+}
+
+function generatePrimaryShadowHover(color) {
+  const rgb = hexToRgb(color || '#3b82f6');
+  if (!rgb) return '0 6px 16px rgba(59, 130, 246, 0.3)';
+  return `0 6px 16px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.3)`;
+}
+
+function generateInputShadow(color) {
+  const rgb = hexToRgb(color || '#3b82f6');
+  if (!rgb) return '0 2px 8px rgba(59, 130, 246, 0.08)';
+  return `0 2px 8px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.08)`;
+}
+
+function generateInputFocusShadow(color) {
+  const rgb = hexToRgb(color || '#3b82f6');
+  if (!rgb) return '0 0 0 3px rgba(59, 130, 246, 0.1), 0 4px 12px rgba(59, 130, 246, 0.15)';
+  return `0 0 0 3px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.1), 0 4px 12px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.15)`;
+}
+
 function generateCloseButtonHoverBg(branding) {
   const headerBg = branding.header_background_color || branding.title_bar_color || '#3b82f6';
   return isLightColor(headerBg) ? 'rgba(0, 0, 0, 0.1)' : 'rgba(255, 255, 255, 0.25)';
@@ -440,7 +460,15 @@ function determineHeaderTextColor(branding) {
   if (branding.header_text_color) {
     return branding.header_text_color;
   }
-  // 2. Otherwise, fall back to brightness calculation or forceWhite flag
+  // 2. Check for chat_title_color
+  if (branding.chat_title_color) {
+    return branding.chat_title_color;
+  }
+  // 3. Check for title_color (legacy)
+  if (branding.title_color) {
+    return branding.title_color;
+  }
+  // 4. Otherwise, fall back to brightness calculation or forceWhite flag
   const headerBg = branding.header_background_color || branding.title_bar_color || '#3b82f6';
   const forceWhite = branding.enable_white_title || branding.white_title;
   if (forceWhite) {
@@ -471,7 +499,7 @@ function generateInputDividerFocusColor(color) {
   return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.1)`;
 }
 
-// Enhanced feature styles with new config structure
+// Enhanced feature styles
 function applyEnhancedFeatureStyles(features, root, config, quickHelpEnabled, actionChipsEnabled, calloutEnabled) {
   console.log('🎛️ Applying enhanced feature styles');
   
@@ -518,7 +546,7 @@ function applyChatPositioning(chatPosition, root) {
   };
   
   root.style.setProperty('--chat-transform-origin', transformOrigins[positionClass] || 'bottom right');
-  console.log(`  ✅ Chat position: ${position}`);
+  console.log(`✅ Chat position: ${position}`);
 }
 
 function applyComputedStyles(variables, root) {
@@ -621,6 +649,13 @@ function calculateLargeRadius(mainRadius) {
   return isNaN(numValue) ? '16px' : `${Math.round(numValue * 1.5)}px`;
 }
 
+function ensurePixelUnit(value) {
+  if (!value) return value;
+  if (typeof value === 'number') return `${value}px`;
+  const parsed = parseInt(value, 10);
+  return isNaN(parsed) ? value : `${parsed}px`;
+}
+
 // Component wrapper to inject CSS variables
 export function CSSVariablesProvider({ children }) {
   const { config } = useConfig();
@@ -633,10 +668,9 @@ export function CSSVariablesProvider({ children }) {
     window.picassoDebug = {
       config,
       appliedVariables: window.appliedCSSVariables,
-      tenant_id: config?.tenant_id,
+      tenant_hash: config?.tenant_hash,
       enhancementsApplied: true,
-      logoSystem: 'Enhanced',
-      configStructure: 'Updated for Action Chips & Quick Help'
+      configSource: config?.metadata?.source || 'unknown'
     };
     console.log('🎨 CSS variables provider ready');
   }, [config]);
@@ -652,70 +686,36 @@ if (typeof window !== 'undefined') {
     document.documentElement.style.setProperty(property, value);
   };
   
-  // Test themes
-  window.applyTheme = (theme = 'default') => {
-    const themes = {
-      default: { 
-        '--primary-color': '#3b82f6', 
-        '--message-spacing': '16px',
-        '--border-radius': '12px',
-        '--bubble-padding': '12px 16px',
-        '--chat-width': '360px',
-        '--chat-height': '540px',
-        '--action-chips-display': 'flex',
-        '--quick-help-container-display': 'block'
-      },
-      compact: { 
-        '--primary-color': '#6b7280', 
-        '--message-spacing': '12px',
-        '--border-radius': '8px',
-        '--bubble-padding': '8px 12px',
-        '--chat-width': '320px',
-        '--chat-height': '480px',
-        '--action-chips-display': 'flex',
-        '--quick-help-container-display': 'block'
-      },
-      spacious: { 
-        '--primary-color': '#059669', 
-        '--message-spacing': '20px',
-        '--border-radius': '16px',
-        '--bubble-padding': '16px 20px',
-        '--chat-width': '400px',
-        '--chat-height': '600px',
-        '--action-chips-display': 'flex',
-        '--quick-help-container-display': 'block'
-      }
-    };
-    
-    const selectedTheme = themes[theme] || themes.default;
-    Object.entries(selectedTheme).forEach(([prop, val]) => {
-      document.documentElement.style.setProperty(prop, val);
-    });
-    
-    console.log(`🎨 Applied ${theme} theme:`, selectedTheme);
-  };
-  
-  // Export function
-  window.exportConfig = () => {
+  // Debug any tenant's logo background
+  window.debugLogoBackground = () => {
     const config = window.currentTenantConfig;
-    const variables = window.appliedCSSVariables;
+    const root = document.documentElement;
     
-    console.log('📊 Current Configuration:', {
-      config,
-      variables,
-      tenant_id: config?.tenant_id,
-      primary_color: config?.branding?.primary_color,
-      quick_help_enabled: config?.quick_help?.enabled,
-      action_chips_enabled: config?.action_chips?.enabled,
-      enhancements_applied: true,
-      logo_system: 'Enhanced',
-      architecture: 'Separated Action Chips & Quick Help'
+    console.log('🔍 Logo Background Debug:', {
+      configLogoBackground: config?.branding?.logo_background_color,
+      configAvatarBackground: config?.branding?.avatar_background_color,
+      cssLogoBackground: root.style.getPropertyValue('--logo-background-color'),
+      cssAvatarBackground: root.style.getPropertyValue('--avatar-background-color'),
+      cssChatHeaderLogoBg: root.style.getPropertyValue('--chat-header-logo-bg'),
+      cssBotAvatarBg: root.style.getPropertyValue('--bot-avatar-bg')
     });
     
-    return { config, variables };
+    // Test if logo element exists
+    const logoElement = document.querySelector('.chat-header-logo');
+    if (logoElement) {
+      const computedStyle = window.getComputedStyle(logoElement);
+      console.log('🎨 Logo Element Computed Styles:', {
+        backgroundColor: computedStyle.backgroundColor,
+        backgroundImage: computedStyle.backgroundImage,
+        backgroundSize: computedStyle.backgroundSize,
+        backgroundPosition: computedStyle.backgroundPosition
+      });
+    } else {
+      console.log('❌ Logo element not found (.chat-header-logo)');
+    }
   };
 
-  // Test functions for new config structure
+  // Test functions for generic system
   window.testQuickHelpToggle = () => {
     const currentDisplay = document.documentElement.style.getPropertyValue('--quick-help-container-display');
     const newDisplay = currentDisplay === 'none' ? 'block' : 'none';
@@ -730,7 +730,7 @@ if (typeof window !== 'undefined') {
     console.log(`🧪 Action Chips toggled: ${newDisplay}`);
   };
 
-  // Avatar testing functions
+  // Avatar testing functions - Updated for multi-tenant system
   window.testAvatarUrl = async (url) => {
     return new Promise((resolve) => {
       const img = new Image();
@@ -747,7 +747,7 @@ if (typeof window !== 'undefined') {
   };
 
   window.debugAvatar = async (config) => {
-    console.log('🔍 Avatar Debug:');
+    console.log('🔍 Avatar Debug - Multi-Tenant System:');
     const currentConfig = config || window.currentTenantConfig;
     
     if (!currentConfig) {
@@ -755,17 +755,18 @@ if (typeof window !== 'undefined') {
       return;
     }
 
-    const { tenant_id, branding } = currentConfig;
+    const { tenant_hash, branding } = currentConfig;
     
     const candidateUrls = [
       branding?.avatar_url,
       branding?.logo_url,
-      `https://chat.myrecruiter.ai/tenants/${tenant_id}/avatar.png`,
-      `https://chat.myrecruiter.ai/tenants/${tenant_id}/logo.png`,
-      '/default-avatar.png'
+      tenant_hash ? `https://chat.myrecruiter.ai/tenants/hash-${tenant_hash}/avatar.png` : null,
+      tenant_hash ? `https://chat.myrecruiter.ai/tenants/hash-${tenant_hash}/logo.png` : null,
+      tenant_hash ? `https://chat.myrecruiter.ai/tenants/hash-${tenant_hash}/avatar.svg` : null,
+      'https://chat.myrecruiter.ai/collateral/default-avatar.png'
     ].filter(url => url && url.trim());
     
-    console.log('🧪 Testing avatar URLs:');
+    console.log('🧪 Testing avatar URLs for hash:', tenant_hash);
     
     for (const url of candidateUrls) {
       const works = await window.testAvatarUrl(url);
@@ -777,8 +778,8 @@ if (typeof window !== 'undefined') {
     }
     
     console.log('⚠️ No working avatar URLs found, using default');
-    document.documentElement.style.setProperty('--avatar-url', 'url(/default-avatar.png)');
-    return 'url(/default-avatar.png)';
+    document.documentElement.style.setProperty('--avatar-url', 'url(https://chat.myrecruiter.ai/collateral/default-avatar.png)');
+    return 'url(https://chat.myrecruiter.ai/collateral/default-avatar.png)';
   };
 
   window.applyTestLogo = (url) => {
@@ -791,26 +792,72 @@ if (typeof window !== 'undefined') {
     img.src = url;
   };
 
+  // Generic theme testing
+  window.applyGenericTheme = (theme = 'default') => {
+    const themes = {
+      default: { 
+        '--primary-color': '#3b82f6', 
+        '--message-spacing': '16px',
+        '--border-radius': '12px',
+        '--bubble-padding': '12px 16px',
+        '--chat-width': '360px',
+        '--chat-height': '540px'
+      },
+      modern: { 
+        '--primary-color': '#6366f1', 
+        '--message-spacing': '20px',
+        '--border-radius': '16px',
+        '--bubble-padding': '16px 20px',
+        '--chat-width': '380px',
+        '--chat-height': '580px'
+      },
+      compact: { 
+        '--primary-color': '#10b981', 
+        '--message-spacing': '12px',
+        '--border-radius': '8px',
+        '--bubble-padding': '8px 12px',
+        '--chat-width': '320px',
+        '--chat-height': '480px'
+      }
+    };
+    
+    const selectedTheme = themes[theme] || themes.default;
+    Object.entries(selectedTheme).forEach(([prop, val]) => {
+      document.documentElement.style.setProperty(prop, val);
+    });
+    
+    console.log(`🎨 Applied ${theme} theme:`, selectedTheme);
+  };
+
   console.log(`
-🛠️  PICASSO DEVELOPMENT COMMANDS:
-   debugAvatar()                  - Test all avatar URLs
-   applyTestLogo('url')          - Test any custom URL
-   testCSS(prop, value)          - Test CSS variables
-   applyTheme('default')         - Apply theme variants
-   exportConfig()                - Export current config
+🛠️  PICASSO MULTI-TENANT CSS COMMANDS:
+   debugLogoBackground()         - Debug current logo background settings
+   testCSS('--property', 'value') - Test any CSS variable directly
    
-   FEATURE COMMANDS:
+🧪 FEATURE COMMANDS:
    testQuickHelpToggle()         - Toggle quick help display
    testActionChipsToggle()       - Toggle action chips display
+   debugAvatar()                 - Test all avatar URLs for current tenant
+   applyTestLogo('url')          - Test any custom logo URL
+   
+🎨 THEME TESTING:
+   applyGenericTheme('default')  - Apply generic theme variants
+   Available themes: 'default', 'modern', 'compact'
+   
+📋 SYSTEM STATUS:
+   All CSS variables are tenant-agnostic with generic defaults
+   No hard-coded tenant-specific references
+   Ready for multi-tenant deployment
   `);
   
   // Prevent tree-shaking of utility functions
-  window.picassoUtilities = { isLightColor, determineContrastColor, determineHeaderTextColor };
-}
-
-function ensurePixelUnit(value) {
-  if (!value) return value;
-  if (typeof value === 'number') return `${value}px`;
-  const parsed = parseInt(value, 10);
-  return isNaN(parsed) ? value : `${parsed}px`;
+  window.picassoUtilities = { 
+    isLightColor, 
+    determineContrastColor, 
+    determineHeaderTextColor,
+    generateAvatarUrl,
+    hexToRgb,
+    darkenColor,
+    lightenColor
+  };
 }

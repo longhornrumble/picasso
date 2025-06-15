@@ -22,10 +22,10 @@ const getAvatarUrl = (config) => {
     `https://myrecruiter-picasso.s3.us-east-1.amazonaws.com/tenants/${tenant_id}/FVC_logo.png`,
     `https://myrecruiter-picasso.s3.us-east-1.amazonaws.com/tenants/${tenant_id}/avatar.png`,
     `https://myrecruiter-picasso.s3.us-east-1.amazonaws.com/tenants/${tenant_id}/logo.png`,
-    '/default-avatar.png'
+    'https://chat.myrecruiter.ai/collateral/default-avatar.png'
   ];
   
-  return avatarSources.find(url => url && url.trim()) || '/default-avatar.png';
+  return avatarSources.find(url => url && url.trim()) || 'https://chat.myrecruiter.ai/collateral/default-avatar.png';
 };
 
 export default function MessageBubble({ role, content, files = [], actions = [], uploadState, onCancel }) {
@@ -62,7 +62,7 @@ export default function MessageBubble({ role, content, files = [], actions = [],
           <div 
             className="bot-avatar"
             style={{ 
-              backgroundImage: avatarError ? 'url(/default-avatar.png)' : `url(${avatarSrc})`,
+              backgroundImage: avatarError ? 'url(https://chat.myrecruiter.ai/collateral/default-avatar.png)' : `url(${avatarSrc})`,
               backgroundSize: 'cover',
               backgroundPosition: 'center',
               backgroundRepeat: 'no-repeat'

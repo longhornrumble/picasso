@@ -1,4 +1,4 @@
-/* Picasso Multi-Tenant Chat Theme - Platform Neutral */
+/* Picasso Multi-Tenant Chat Theme - Generic & Tenant Agnostic */
 
 /* CSS Variables for Multi-Tenant Support */
 :root {
@@ -8,7 +8,7 @@
   --spacing-md: 1rem;
   --spacing-lg: 1.5rem;
   
-  /* PLATFORM NEUTRAL DEFAULT VALUES */
+  /* GENERIC DEFAULT VALUES - NO TENANT SPECIFICS */
   --primary-color: #3b82f6;
   --primary-light: #60a5fa;
   --primary-dark: #2563eb;
@@ -22,8 +22,6 @@
   --user-bubble-text-color: #ffffff;
   --bot-bubble-color: #f8fafc;
   --bot-bubble-text-color: #374151;
-
-
   
   /* Interface Colors */
   --header-background-color: #3b82f6;
@@ -58,11 +56,21 @@
   --widget-bottom: 24px;
   --widget-right: 24px;
   
-  /* Feature Display Defaults */
+  /* Feature Display Defaults - Multi-Tenant Ready */
   --action-chips-display: flex;
   --quick-help-display: block;
   --quick-help-container-display: block;
   --callout-display: block;
+  --upload-button-display: flex;
+  --voice-button-display: none;
+  --photo-button-display: flex;
+  
+  /* Avatar System - Generic Multi-Tenant */
+  --avatar-url: url('https://chat.myrecruiter.ai/collateral/default-avatar.png');
+  --avatar-border-radius: 50%;
+  --avatar-display: block;
+  --avatar-background-color: transparent;
+  --logo-background-color: transparent;
 }
 
 /* === CHAT CONTAINER === */
@@ -80,7 +88,8 @@
   border: none;
   border-radius: var(--border-radius-large, 16px);
   box-shadow: var(--container-shadow);
-  z-index: var(--widget-z-index, 1000);
+  z-index: 99998 !important;
+  pointer-events: auto !important;
   overflow: hidden;
   backdrop-filter: blur(16px);
   transition: all var(--transition-slow, 0.3s) cubic-bezier(0.4, 0, 0.2, 1);
@@ -125,20 +134,45 @@
   position: relative;
 }
 
-/* Avatar background adapts to logo tone (light/dark) */
+/* Enhanced Logo System with Proper Background Color Support */
 .chat-header-logo {
   width: 32px;
   height: 32px;
   background-image: var(--avatar-url);
   background-size: cover;
   background-position: center;
+  background-repeat: no-repeat;
   border-radius: var(--avatar-border-radius, 50%);
   border: var(--avatar-border, 2px solid rgba(255, 255, 255, 0.3));
   box-shadow: var(--avatar-shadow, 0 2px 8px rgba(0, 0, 0, 0.1));
   margin-right: 10px;
   flex-shrink: 0;
   display: var(--avatar-display, block);
-  background-color: var(--avatar-background-color);
+  
+  /* Proper logo background color application */
+  background-color: var(--logo-background-color, var(--avatar-background-color, transparent)) !important;
+  
+  object-fit: cover;
+  position: relative;
+  transition: background-color var(--transition-normal, 0.2s ease);
+}
+
+/* Enhanced fallback support for logo loading */
+.chat-header-logo::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-color: var(--logo-background-color, var(--avatar-background-color, transparent));
+  border-radius: inherit;
+  z-index: -1;
+  opacity: 1;
+}
+
+/* Handle logo loading states */
+.chat-header-logo:empty,
+.chat-header-logo[src=""],
+.chat-header-logo[style*="background-image: none"] {
+  background-color: var(--logo-background-color, var(--avatar-background-color, #f3f4f6)) !important;
 }
 
 .chat-header button {
@@ -191,7 +225,7 @@
   margin: 0;
   font-family: var(--font-family);
   letter-spacing: 0.01em;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  text-shadow: var(--title-text-shadow, 0 1px 2px rgba(0, 0, 0, 0.1));
 }
 
 /* === CHAT WINDOW === */
@@ -306,6 +340,7 @@
   text-decoration: underline;
 }
 
+/* === AVATAR WRAPPER - Multi-Tenant Ready === */
 .avatar-wrapper {
   width: var(--avatar-size);
   height: var(--avatar-size);
@@ -318,8 +353,10 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  background-color: var(--avatar-background-color, transparent);
 }
 
+/* Enhanced Bot Avatar with Proper Background Support */
 .bot-avatar {
   width: 100%;
   height: 100%;
@@ -334,7 +371,23 @@
   display: var(--avatar-display, block);
   aspect-ratio: 1 / 1;
   position: relative;
-  background-color: var(--avatar-background-color);
+  
+  /* Proper avatar background color application */
+  background-color: var(--avatar-background-color, var(--logo-background-color, transparent)) !important;
+  
+  object-fit: cover;
+  transition: background-color var(--transition-normal, 0.2s ease);
+}
+
+/* Enhanced background support for bot avatars */
+.bot-avatar::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-color: var(--avatar-background-color, var(--logo-background-color, transparent));
+  border-radius: inherit;
+  z-index: -1;
+  opacity: 1;
 }
 
 .bot-avatar::after {
@@ -343,9 +396,22 @@
   inset: -2px;
   border-radius: 50%;
   background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(59, 130, 246, 0.05));
-  z-index: -1;
+  z-index: -2;
 }
 
+/* Typing Indicator Avatar with Background Support */
+.typing-indicator-wrapper .bot-avatar {
+  background-color: var(--avatar-background-color, var(--logo-background-color, transparent)) !important;
+}
+
+/* Handle avatar loading states */
+.bot-avatar:empty,
+.bot-avatar[src=""],
+.bot-avatar[style*="background-image: none"] {
+  background-color: var(--avatar-background-color, var(--logo-background-color, #f3f4f6)) !important;
+}
+
+/* Enhanced file attachment support */
 .file-attachments {
   margin-top: 8px;
 }
@@ -369,7 +435,39 @@
   margin-left: 4px;
 }
 
-/* === TOOL BUTTONS === */
+.chat-footer-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-family: var(--font-family);
+}
+
+.chat-footer-logo {
+  height: 16px;
+  max-width: 80px;
+  object-fit: contain;
+  margin-left: 4px;
+  transition: opacity var(--transition-normal, 0.2s ease);
+}
+
+.chat-footer-logo:hover {
+  opacity: 0.8;
+}
+
+.chat-footer-brand-text {
+  background-color: #000000;
+  color: #ffffff;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 500;
+  margin-left: 4px;
+  font-family: var(--font-family);
+  letter-spacing: 0.02em;
+}
+
+/* === TOOL BUTTONS - Multi-Tenant Ready === */
 .chat-upload-button,
 .chat-help-button,
 .input-tool-button {
@@ -395,12 +493,12 @@
   transition: all var(--transition-normal, 0.2s ease);
 }
 
-/* Voice input button */
+/* Voice input button - Controlled by config */
 .input-tool-button[data-voice] {
-  display: var(--voice-button-display, flex);
+  display: var(--voice-button-display, none);
 }
 
-/* Photo upload button */
+/* Photo upload button - Controlled by config */
 .input-tool-button[data-photo] {
   display: var(--photo-button-display, flex);
 }
@@ -449,7 +547,8 @@
   position: fixed;
   bottom: var(--widget-bottom);
   right: var(--widget-right);
-  z-index: calc(var(--widget-z-index, 1000) + 1);
+  z-index: 99999 !important;
+  pointer-events: auto !important;
 }
 
 .chat-toggle-wrapper[data-position="top-left"] {
@@ -494,7 +593,7 @@
   background: var(--button-hover-color, var(--widget-background-color));
 }
 
-/* === CALLOUT === */
+/* === CALLOUT - Multi-Tenant Ready === */
 .chat-callout {
   position: absolute;
   top: 4px;
@@ -603,7 +702,7 @@
   }
 }
 
-/* === QUICK HELP TOGGLE === */
+/* === QUICK HELP SYSTEM - Multi-Tenant Ready === */
 .quick-help-toggle {
   background: rgba(59, 130, 246, 0.12);
   border: var(--border-width, 1px) solid rgba(59, 130, 246, 0.25);
@@ -701,7 +800,7 @@
   box-sizing: border-box;
 }
 
-/* === ACTION CHIPS === */
+/* === ACTION CHIPS - Multi-Tenant Ready === */
 .action-chips {
   display: var(--action-chips-display, flex);
   flex-wrap: wrap;
@@ -880,8 +979,8 @@
 
 .input-textarea {
   width: 100%;
-  border: none ;
-  outline: none ;
+  border: none;
+  outline: none;
   background-color: transparent;
   font-size: var(--input-font-size, 14px);
   color: var(--font-color);
@@ -903,9 +1002,9 @@
 }
 
 .input-textarea:focus {
-  box-shadow: none ;
-  border: none ;
-  outline: none ;
+  box-shadow: none;
+  border: none;
+  outline: none;
 }
 
 .input-controls-row {
@@ -970,9 +1069,11 @@
   scrollbar-width: none;
   scroll-behavior: smooth;
 }
+
 .message-list-container::-webkit-scrollbar {
   display: none;
 }
+
 .message-wrapper {
   margin-bottom: var(--message-spacing, 16px);
 }
@@ -981,7 +1082,7 @@
   margin-bottom: var(--message-spacing, 16px);
 }
 
-/* === QUICK HELP STYLES === */
+/* === QUICK HELP STYLES - Multi-Tenant Ready === */
 .quick-help-container {
   padding: 16px;
   background-color: var(--quick-help-bg, #fafbfc);
@@ -1051,6 +1152,7 @@
   .chat-container {
     bottom: 100px !important;
   }
+  
   body.chat-open .chat-container {
     width: calc(100vw - 20px);
     right: 10px;
@@ -1122,7 +1224,7 @@
   }
   
   .chat-callout {
-    display: none ;
+    display: none;
   }
 }
 
@@ -1189,9 +1291,9 @@
 /* === REDUCED MOTION SUPPORT === */
 @media (prefers-reduced-motion: reduce) {
   * {
-    animation-duration: 0.01ms ;
-    animation-iteration-count: 1 ;
-    transition-duration: 0.01ms ;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
   
   .typing-dot {
@@ -1204,7 +1306,7 @@
   }
 }
 
-/* === DARK MODE SUPPORT === */
+/* === DARK MODE SUPPORT - Multi-Tenant Ready === */
 @media (prefers-color-scheme: dark) {
   .chat-container[data-theme="auto"] {
     --background-color: #1f2937;
@@ -1219,6 +1321,7 @@
   }
 }
 
+/* === SCROLLBAR CUSTOMIZATION === */
 .chat-window::-webkit-scrollbar-track,
 .message-list-container::-webkit-scrollbar-track {
   background: var(--border-color);
@@ -1236,7 +1339,7 @@
   background: var(--primary-color);
 }
 
-/* Hide scrollbars entirely in WebKit so that no handle/track is ever visible */
+/* Hide scrollbars entirely in WebKit */
 .chat-window::-webkit-scrollbar,
 .message-list-container::-webkit-scrollbar {
   display: none;
@@ -1255,15 +1358,18 @@
   will-change: opacity, transform;
 }
 
+/* === LOGO TONE ADAPTATIONS - Generic Multi-Tenant === */
 :root[data-logo-tone='light'] {
   --avatar-background-color: #000000;
+  --logo-background-color: #000000;
 }
 
 :root[data-logo-tone='dark'] {
   --avatar-background-color: #ffffff;
+  --logo-background-color: #ffffff;
 }
 
-/* === FULL-PAGE CHAT MODE === */
+/* === FULL-PAGE CHAT MODE - Multi-Tenant Ready === */
 .fullpage-chat-container {
   display: flex;
   flex-direction: column;
@@ -1291,7 +1397,7 @@
   flex: 1;
   overflow: hidden;
   background: linear-gradient(to bottom, 
-    rgba(45, 184, 190, 0.02) 0%, 
+    var(--primary-color, #3b82f6) + '08' 0%, 
     transparent 100%);
 }
 
@@ -1335,29 +1441,12 @@
   }
   
   .fullpage-branding {
-    display: none; /* Hide on mobile for more space */
+    display: none;
   }
 }
 
-/* iPad/tablet specific optimizations */
-@media (max-width: 1024px) and (orientation: landscape) {
-  .fullpage-header .chat-header {
-    padding: 12px 20px; /* Slightly smaller on tablets */
-  }
-  
-  .fullpage-input-area {
-    padding: 16px 20px;
-  }
-}
-
-/* Large screen optimizations (events, kiosks) */
+/* Large screen optimizations */
 @media (min-width: 1200px) {
-  .fullpage-messages {
-    background: radial-gradient(circle at center top, 
-      rgba(45, 184, 190, 0.03) 0%, 
-      transparent 50%);
-  }
-  
   .fullpage-messages .message-list-container {
     max-width: 900px;
     margin: 0 auto;
@@ -1369,11 +1458,11 @@
   }
   
   .fullpage-header .chat-title {
-    font-size: 24px; /* Larger title for big screens */
+    font-size: 24px;
   }
 }
 
-/* Prevent text selection on touch devices (good for kiosks) */
+/* Prevent text selection on touch devices */
 .fullpage-chat-container {
   -webkit-user-select: none;
   -moz-user-select: none;
@@ -1381,10 +1470,90 @@
   user-select: none;
 }
 
-/* But allow text selection in messages */
+/* Allow text selection in messages */
 .fullpage-messages .message-content {
   -webkit-user-select: text;
   -moz-user-select: text;
   -ms-user-select: text;
   user-select: text;
+}
+
+/* === MULTI-TENANT SYSTEM: DEVELOPMENT AND DEBUG HELPERS === */
+.config-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: var(--secondary-color);
+  font-family: var(--font-family);
+  font-size: var(--font-size-small);
+}
+
+.config-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: var(--error-color);
+  font-family: var(--font-family);
+  font-size: var(--font-size-small);
+  text-align: center;
+  padding: 20px;
+}
+
+.config-fallback {
+  border: 2px dashed var(--border-color);
+  background: rgba(59, 130, 246, 0.05);
+  border-radius: var(--border-radius);
+  padding: 8px 12px;
+  font-size: var(--font-size-small);
+  color: var(--secondary-color);
+  font-family: var(--font-family);
+  text-align: center;
+  margin: 4px 0;
+}
+
+.debug-tenant-info {
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  padding: 8px 12px;
+  border-radius: var(--border-radius-small);
+  font-size: 11px;
+  font-family: monospace;
+  z-index: 99999;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.debug-tenant-info.visible {
+  opacity: 1;
+}
+
+/* Multi-tenant feature toggles */
+.feature-disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.config-source-indicator {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--success-color);
+}
+
+.config-source-indicator.fallback {
+  background: var(--warning-color);
+}
+
+.config-source-indicator.error {
+  background: var(--error-color);
 }

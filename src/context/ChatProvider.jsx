@@ -1,4 +1,4 @@
-// src/context/ChatProvider.jsx - Cleaned up with new architecture
+// src/context/ChatProvider.jsx - Updated for Actions API Response Format
 import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
 import { useConfig } from "./ConfigProvider";
 
@@ -18,7 +18,7 @@ export const ChatProvider = ({ children }) => {
   const [messages, setMessages] = useState([]);
   const [isTyping, setIsTyping] = useState(false);
 
-  // FIXED: Consolidate action chips logic into single function
+  // Generate welcome actions from config
   const generateWelcomeActions = useCallback((config) => {
     if (!config) return [];
     
@@ -35,7 +35,7 @@ export const ChatProvider = ({ children }) => {
     return chips.slice(0, maxDisplay);
   }, []);
 
-  // UPDATED: Generate welcome message with proper action chips logic
+  // Generate welcome message with proper action chips
   useEffect(() => {
     if (tenantConfig) {
       const welcomeActions = generateWelcomeActions(tenantConfig);
@@ -48,6 +48,14 @@ export const ChatProvider = ({ children }) => {
       }]);
     }
   }, [tenantConfig, generateWelcomeActions]);
+
+  // Get tenant hash for API calls
+  const getTenantHash = () => {
+    return tenantConfig?.tenant_hash || 
+           tenantConfig?.metadata?.tenantHash || 
+           window.PicassoConfig?.tenant ||
+           'fo85e6a06dcdf4'; // Fallback
+  };
 
   const addMessage = useCallback((message) => {
     const messageWithId = {
@@ -65,65 +73,75 @@ export const ChatProvider = ({ children }) => {
       return [...prev, messageWithId];
     });
     
-    // Call API for user messages (excluding uploads and system messages)
+    // ✅ ACTIONS ONLY: Call chat API for user messages
     if (message.role === "user" && !message.skipBotResponse && !message.uploadState) {
-      console.log('✅ Should call API, setting typing and calling...');
+      console.log('✅ Making chat request via actions API');
       setIsTyping(true);
       
       const makeAPICall = async () => {
         try {
-          console.log('🚀 Making API call...');
+          const tenantHash = getTenantHash();
+          console.log('🚀 Making chat API call with hash:', tenantHash.slice(0, 8) + '...');
           
-          const response = await fetch('https://chat.myrecruiter.ai/Master_Function', {
+          // ✅ SINGLE PATH: Use actions-only chat API
+          const response = await fetch('https://chat.myrecruiter.ai/Master_Function?action=chat&t=' + encodeURIComponent(tenantHash), {
             method: 'POST',
             headers: {
-              'Content-Type': 'application/json',
-              'x-api-key': 'a650f1b1661d6871df06237d7d2b8ab8'
+              'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-              tenant_id: tenantConfig?.tenant_id || "",
+              tenant_hash: tenantHash, // Include hash in body for redundancy
               user_input: message.content,
-              context: {
-                session_id: `session_${Date.now()}`,
-                files: message.files || []
-              }
+              session_id: `session_${Date.now()}`,
+              files: message.files || []
             })
           });
           
-          console.log('📡 Response status:', response.status);
+          console.log('📡 Chat response status:', response.status);
           
           if (!response.ok) {
+            const errorText = await response.text();
+            console.error('❌ Chat API error:', errorText);
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
           }
           
           const rawText = await response.text();
-          console.log('📥 RAW RESPONSE TEXT:', rawText);
+          console.log('📥 RAW CHAT RESPONSE:', rawText);
           
           let data;
           try {
             data = JSON.parse(rawText);
-            console.log('📥 PARSED RESPONSE:', data);
+            console.log('📥 PARSED CHAT RESPONSE:', data);
           } catch (e) {
             console.error('❌ Failed to parse JSON:', e);
             throw new Error('Invalid JSON response from server');
           }
           
-          // IMPROVED: Parse response with better error handling
+          // 🔧 FIXED: Parse new Lambda response format
           let botContent = "I apologize, but I'm having trouble processing that request right now.";
           let botActions = [];
           
           try {
-            // Parse Lex response format
-            if (data.messages && data.messages[0] && data.messages[0].content) {
+            // ✅ NEW: Handle direct actions API response format
+            if (data.content) {
+              // Direct response from new Lambda format
+              botContent = data.content;
+              
+              // Extract actions if available
+              if (data.actions && Array.isArray(data.actions)) {
+                botActions = data.actions;
+              }
+            }
+            // Legacy Lex response format support
+            else if (data.messages && data.messages[0] && data.messages[0].content) {
               const messageContent = JSON.parse(data.messages[0].content);
               botContent = messageContent.message || messageContent.content || botContent;
               
-              // Extract action chips from response if available
               if (messageContent.actions && Array.isArray(messageContent.actions)) {
                 botActions = messageContent.actions;
               }
             }
-            // Fallback for HTTP format
+            // HTTP wrapper format
             else if (data.body) {
               const bodyData = JSON.parse(data.body);
               botContent = bodyData.content || bodyData.message || botContent;
@@ -132,40 +150,62 @@ export const ChatProvider = ({ children }) => {
                 botActions = bodyData.actions;
               }
             }
-            // Direct response formats
+            // Other response formats
             else if (data.response) {
               botContent = data.response;
-            } else if (data.content) {
-              botContent = data.content;
             }
             
-            // Extract actions from top-level if available
-            if (data.actions && Array.isArray(data.actions)) {
-              botActions = data.actions;
+            // Check for error fallback message
+            if (data.fallback_message) {
+              botContent = data.fallback_message;
+            }
+            
+            // Handle file acknowledgment
+            if (data.file_acknowledgment) {
+              botContent += "\n\n" + data.file_acknowledgment;
             }
             
           } catch (parseError) {
             console.error('❌ Error parsing response content:', parseError);
-            // Keep the default error message
+            
+            // If parsing fails, try to use the raw response
+            if (typeof data === 'string') {
+              botContent = data;
+            }
           }
           
+          // ✅ Add response message to chat
           setMessages(prev => [...prev, {
             id: `bot_${Date.now()}_${Math.random()}`,
-            role: "assistant",
+            role: "assistant", 
             content: botContent,
             actions: botActions,
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
+            metadata: {
+              session_id: data.session_id,
+              api_version: data.api_version || 'actions-complete'
+            }
           }]);
           
-        } catch (error) {
-          console.error('❌ API Error:', error);
+          console.log('✅ Chat response processed successfully', {
+            contentLength: botContent.length,
+            actionsCount: botActions.length,
+            sessionId: data.session_id
+          });
           
-          // Add error message to chat
+        } catch (error) {
+          console.error('❌ Chat API Error:', error);
+          
+          // Add error message to chat with helpful info
           setMessages(prev => [...prev, {
             id: `error_${Date.now()}_${Math.random()}`,
             role: "assistant",
             content: "I'm sorry, I'm having trouble connecting right now. Please try again in a moment.",
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
+            metadata: {
+              error: error.message,
+              api_type: 'actions-chat'
+            }
           }]);
         } finally {
           setIsTyping(false);
@@ -185,7 +225,7 @@ export const ChatProvider = ({ children }) => {
   }, []);
 
   const clearMessages = useCallback(() => {
-    // FIXED: Use same logic as initial welcome message
+    // Reset to welcome message
     if (tenantConfig) {
       const welcomeActions = generateWelcomeActions(tenantConfig);
 
@@ -212,7 +252,14 @@ export const ChatProvider = ({ children }) => {
     tenantConfig,
     addMessage,
     updateMessage,
-    clearMessages
+    clearMessages,
+    // Debug info
+    _debug: {
+      tenantHash: getTenantHash(),
+      apiType: 'actions-only',
+      configLoaded: !!tenantConfig,
+      chatEndpoint: `https://chat.myrecruiter.ai/Master_Function?action=chat&t=${getTenantHash()}`
+    }
   };
 
   return (
@@ -221,3 +268,58 @@ export const ChatProvider = ({ children }) => {
     </ChatContext.Provider>
   );
 };
+
+// Global debugging functions
+if (typeof window !== 'undefined') {
+  // Test chat API directly
+  window.testChatAPI = async (message, tenantHash) => {
+    const hash = tenantHash || 'fo85e6a06dcdf4';
+    console.log('🧪 Testing chat API...');
+    
+    try {
+      const response = await fetch(`https://chat.myrecruiter.ai/Master_Function?action=chat&t=${hash}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          tenant_hash: hash,
+          user_input: message || "Hello, this is a test message",
+          session_id: `test_${Date.now()}`
+        })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('✅ Chat API Test Response:', data);
+        console.log('📝 Bot said:', data.content);
+        if (data.actions && data.actions.length > 0) {
+          console.log('🎯 Available actions:', data.actions.map(a => a.label));
+        }
+        return data;
+      } else {
+        const errorText = await response.text();
+        console.error('❌ Chat API Test Failed:', response.status, errorText);
+        return null;
+      }
+    } catch (error) {
+      console.error('❌ Chat API Test Error:', error);
+      return null;
+    }
+  };
+
+  // Quick test with different messages
+  window.testVolunteer = () => window.testChatAPI("I want to volunteer");
+  window.testDonate = () => window.testChatAPI("How can I donate?");
+  window.testContact = () => window.testChatAPI("How do I contact you?");
+  window.testServices = () => window.testChatAPI("What services do you offer?");
+
+  console.log(`
+🛠️  CHAT API TEST COMMANDS:
+   testChatAPI("your message")     - Test any message
+   testVolunteer()                 - Test volunteer response
+   testDonate()                    - Test donation response  
+   testContact()                   - Test contact response
+   testServices()                  - Test services response
+  `);
+}

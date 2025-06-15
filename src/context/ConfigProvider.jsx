@@ -1,4 +1,4 @@
-// src/context/ConfigProvider.jsx
+// src/context/ConfigProvider.jsx - FIXED Pure Hash + Action System
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 
 const ConfigContext = createContext();
@@ -17,43 +17,60 @@ export function ConfigProvider({ children }) {
     etag: null,
     lastModified: null,
     lastCheck: null,
-    tenantId: null
+    tenantHash: null
   });
   
   const updateIntervalRef = useRef(null);
 
-  // Get tenant ID from script data-tenant hash and resolve it
-  const getTenantId = async () => {
+  // Get tenant hash from script data-tenant attribute
+  const getTenantHash = () => {
     try {
-      // Read hash from script tag data-tenant attribute
+      // Priority 1: Script tag data-tenant attribute
       const script = document.querySelector('script[src*="widget.js"]');
       const rawHash = script?.getAttribute('data-tenant') || '';
       const tenantHash = rawHash.replace(/\.js$/, '');
       
-      if (tenantHash) {
-        // Resolve hash to tenant ID via Master Lambda
-        const endpoint = `https://chat.myrecruiter.ai/Master_Function?t=${encodeURIComponent(tenantHash)}`;
-        const response = await fetch(endpoint);
-        if (response.ok) {
-          const { tenant_id } = await response.json();
-          return tenant_id;
-        }
+      if (tenantHash && tenantHash !== 'undefined' && tenantHash.length >= 8) {
+        console.log('✅ Found tenant hash from script:', tenantHash.slice(0, 8) + '...');
+        return tenantHash;
       }
+
+      // Priority 2: From URL parameter
+      const urlParams = new URLSearchParams(window.location.search);
+      const urlTenant = urlParams.get('t');
+      
+      if (urlTenant && urlTenant !== 'undefined' && urlTenant.length >= 8) {
+        console.log('✅ Found tenant hash from URL:', urlTenant.slice(0, 8) + '...');
+        return urlTenant;
+      }
+
+      // Priority 3: From global config
+      if (window.PicassoConfig?.tenant && window.PicassoConfig.tenant !== 'undefined') {
+        console.log('✅ Found tenant hash from PicassoConfig:', window.PicassoConfig.tenant.slice(0, 8) + '...');
+        return window.PicassoConfig.tenant;
+      }
+
+      console.warn('⚠️ No valid tenant hash found, using development fallback');
+      return 'fo85e6a06dcdf4'; // Development fallback
+      
     } catch (error) {
-      console.warn('Hash resolution failed:', error);
+      console.warn('Hash extraction failed:', error);
+      return 'fo85e6a06dcdf4'; // Development fallback
     }
-    
-    return 'FOS402334'; // Fallback for development
   };
 
-  // Enhanced config fetcher with cache headers
-  const fetchConfigWithCacheCheck = async (tenantId, force = false) => {
+  // FIXED: Pure hash + action config fetch
+  const fetchConfigWithCacheCheck = async (tenantHash, force = false) => {
     try {
-      // Build the URL for fetching tenant-specific config JSON directly from S3-hosted API
-      const configUrl = `https://chat.myrecruiter.ai/tenants/${tenantId}/${tenantId}-config.json`;
+      // NEW: Pure hash + action system URL
+      const configUrl = `https://chat.myrecruiter.ai/Master_Function?action=get_config&t=${encodeURIComponent(tenantHash)}`;
       
-      // Prepare cache headers
-      const headers = {};
+      // Prepare headers
+      const headers = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      };
+      
       if (!force && configMetadata.current.etag) {
         headers['If-None-Match'] = configMetadata.current.etag;
       }
@@ -61,30 +78,35 @@ export function ConfigProvider({ children }) {
         headers['If-Modified-Since'] = configMetadata.current.lastModified;
       }
 
-      console.log(`🔄 Checking config for ${tenantId}...`, {
+      console.log(`🔄 Fetching config via NEW hash + action system`, {
+        hash: tenantHash.slice(0, 8) + '...',
         force,
         hasETag: !!configMetadata.current.etag,
-        lastCheck: configMetadata.current.lastCheck,
         url: configUrl
       });
 
       const response = await fetch(configUrl, {
         method: 'GET',
         headers,
-        cache: 'no-cache' // Always check with server
+        mode: 'cors',
+        credentials: 'omit',
+        cache: 'no-cache'
       });
 
       // Update last check time
       configMetadata.current.lastCheck = new Date().toISOString();
 
+      console.log('📡 Response status:', response.status);
+
       if (response.status === 304) {
-        // Not modified - no changes
         console.log('✅ Config unchanged (304 Not Modified)');
         return { unchanged: true };
       }
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        const errorText = await response.text();
+        console.error('❌ Response error:', errorText);
+        throw new Error(`HTTP ${response.status}: ${response.statusText} - ${errorText}`);
       }
 
       // Get new config data
@@ -93,12 +115,14 @@ export function ConfigProvider({ children }) {
       // Update metadata
       configMetadata.current.etag = response.headers.get('etag');
       configMetadata.current.lastModified = response.headers.get('last-modified');
-      configMetadata.current.tenantId = tenantId;
+      configMetadata.current.tenantHash = tenantHash;
 
-      console.log('✅ Config updated successfully', {
-        tenantId: newConfig.tenant_id,
-        etag: configMetadata.current.etag,
-        lastModified: configMetadata.current.lastModified
+      console.log('✅ Config loaded successfully via NEW hash + action system', {
+        hash: tenantHash.slice(0, 8) + '...',
+        chatTitle: newConfig.chat_title,
+        hasBranding: !!newConfig.branding,
+        hasFeatures: !!newConfig.features,
+        responseTime: 'immediate'
       });
 
       return { config: newConfig, changed: true };
@@ -109,21 +133,33 @@ export function ConfigProvider({ children }) {
     }
   };
 
-  // Initial config load
-  const loadTenantConfig = async (tenantId) => {
+  // Load tenant config using NEW hash + action system
+  const loadTenantConfig = async (tenantHash) => {
     setLoading(true);
     setError(null);
     
     try {
-      const result = await fetchConfigWithCacheCheck(tenantId, true); // Force initial load
+      console.log(`🔍 Loading config for hash: ${tenantHash.slice(0, 8)}... via NEW hash + action system`);
+      
+      // Load config using pure hash + action API
+      const result = await fetchConfigWithCacheCheck(tenantHash, true);
       
       if (result.config) {
         setConfig(result.config);
-        console.log('🎉 Initial config loaded for tenant:', result.config.tenant_id);
+        configMetadata.current.tenantHash = tenantHash;
+        console.log('🎉 Config loaded successfully:', {
+          chatTitle: result.config.chat_title,
+          hash: tenantHash.slice(0, 8) + '...',
+          apiType: 'hash-action-NEW'
+        });
       }
     } catch (error) {
-      console.error('❌ Failed to load initial config:', error);
+      console.error('❌ Failed to load config:', error);
       setError(error.message);
+      
+      // Use fallback config
+      console.log('🔧 Using fallback config');
+      setConfig(getFallbackConfig(tenantHash));
     } finally {
       setLoading(false);
     }
@@ -131,17 +167,15 @@ export function ConfigProvider({ children }) {
 
   // Periodic config update checker
   const checkForConfigUpdates = async () => {
-    const tenantId = await getTenantId();
+    const tenantHash = configMetadata.current.tenantHash;
     
-    // Skip if different tenant (shouldn't happen, but safety check)
-    if (configMetadata.current.tenantId && configMetadata.current.tenantId !== tenantId) {
-      console.log('🔄 Tenant changed, reloading config...');
-      await loadTenantConfig(tenantId);
+    if (!tenantHash) {
+      console.warn('⚠️ No tenant hash available for update check');
       return;
     }
 
     try {
-      const result = await fetchConfigWithCacheCheck(tenantId);
+      const result = await fetchConfigWithCacheCheck(tenantHash);
       
       if (result.changed && result.config) {
         setConfig(result.config);
@@ -154,7 +188,6 @@ export function ConfigProvider({ children }) {
       }
     } catch (error) {
       console.warn('⚠️ Config update check failed:', error.message);
-      // Don't show error to user for background updates
     }
   };
 
@@ -166,26 +199,65 @@ export function ConfigProvider({ children }) {
     }
 
     // Check for updates every 5 minutes
-    const checkInterval = 5 * 60 * 1000; // 5 minutes
+    const checkInterval = 5 * 60 * 1000;
     updateIntervalRef.current = setInterval(checkForConfigUpdates, checkInterval);
     
     console.log(`🕐 Config update checker started (every ${checkInterval / 1000}s)`);
   };
 
-  // Manual refresh function (can be called by components)
+  // Manual refresh function
   const refreshConfig = async () => {
     console.log('🔄 Manual config refresh requested');
-    const tenantId = await getTenantId();
-    await loadTenantConfig(tenantId);
+    const tenantHash = getTenantHash();
+    await loadTenantConfig(tenantHash);
+  };
+
+  // Fallback config - generic, no hardcoded customer names
+  const getFallbackConfig = (tenantHash) => {
+    console.log('🔧 Generating fallback config');
+    
+    return {
+      tenant_hash: tenantHash,
+      chat_title: "Chat",
+      welcome_message: "Hello! How can I help you today?",
+      
+      branding: {
+        primary_color: "#3b82f6",
+        font_family: "Inter, sans-serif",
+        chat_title: "Chat",
+        border_radius: "12px"
+      },
+      
+      features: {
+        uploads: false,
+        photo_uploads: false,
+        callout: false
+      },
+      
+      quick_help: {
+        enabled: false
+      },
+      
+      action_chips: {
+        enabled: false
+      },
+      
+      metadata: {
+        source: "fallback",
+        generated_at: Date.now(),
+        apiType: "hash-action-NEW"
+      }
+    };
   };
 
   // Initialize on mount
   useEffect(() => {
     const initializeConfig = async () => {
-      const tenantId = await getTenantId();
-      console.log('🏁 ConfigProvider initializing for tenant:', tenantId);
+      const tenantHash = getTenantHash();
+      console.log('🏁 ConfigProvider initializing with NEW PURE hash + action system');
+      console.log('🔑 Tenant hash:', tenantHash.slice(0, 8) + '...');
       
-      await loadTenantConfig(tenantId);
+      await loadTenantConfig(tenantHash);
       startConfigWatcher();
     };
     
@@ -198,14 +270,13 @@ export function ConfigProvider({ children }) {
         console.log('🛑 Config update checker stopped');
       }
     };
-  }, []); // Only run once on mount
+  }, []);
 
   // Handle visibility change (check config when user returns to tab)
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (!document.hidden && config) {
-        // User returned to tab, check for updates
-        setTimeout(checkForConfigUpdates, 1000); // Small delay
+        setTimeout(checkForConfigUpdates, 1000);
       }
     };
 
@@ -222,8 +293,9 @@ export function ConfigProvider({ children }) {
     lastCheck: configMetadata.current.lastCheck,
     metadata: {
       etag: configMetadata.current.etag,
-      tenantId: configMetadata.current.tenantId,
-      lastModified: configMetadata.current.lastModified
+      tenantHash: configMetadata.current.tenantHash,
+      lastModified: configMetadata.current.lastModified,
+      apiType: 'hash-action-NEW'
     }
   };
 
@@ -234,14 +306,123 @@ export function ConfigProvider({ children }) {
   );
 }
 
-// Optional: Global function to force config refresh
-window.refreshPicassoConfig = () => {
-  if (window.configProvider) {
-    window.configProvider.refreshConfig();
-  }
-};
+// Global functions for debugging - NEW hash + action system
+if (typeof window !== 'undefined') {
+  // Manual config refresh
+  window.refreshPicassoConfig = () => {
+    if (window.configProvider) {
+      window.configProvider.refreshConfig();
+    }
+  };
 
-// Optional: Hook for manual config refresh in components
+  // Test health check action
+  window.testHealthCheck = async (tenantHash) => {
+    const hash = tenantHash || 'fo85e6a06dcdf4';
+    console.log('🧪 Testing NEW health check action...');
+    
+    try {
+      const response = await fetch(`https://chat.myrecruiter.ai/Master_Function?action=health_check&t=${hash}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        mode: 'cors'
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('✅ NEW Health Check Action:', data);
+        return data;
+      } else {
+        console.error('❌ Health Check Failed:', response.status);
+        return null;
+      }
+    } catch (error) {
+      console.error('❌ Health Check Error:', error);
+      return null;
+    }
+  };
+
+  // Test config loading action
+  window.testConfigLoad = async (tenantHash) => {
+    const hash = tenantHash || 'fo85e6a06dcdf4';
+    console.log('🧪 Testing NEW get_config action...');
+    
+    try {
+      const response = await fetch(`https://chat.myrecruiter.ai/Master_Function?action=get_config&t=${hash}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        mode: 'cors'
+      });
+      
+      if (response.ok) {
+        const config = await response.json();
+        console.log('✅ NEW Config Load Action:', {
+          chatTitle: config.chat_title,
+          hasBranding: !!config.branding,
+          hasFeatures: !!config.features,
+          tenantHash: config.tenant_hash
+        });
+        return config;
+      } else {
+        const errorText = await response.text();
+        console.error('❌ Config Load Failed:', response.status, errorText);
+        return null;
+      }
+    } catch (error) {
+      console.error('❌ Config Load Error:', error);
+      return null;
+    }
+  };
+
+  // Test chat action
+  window.testChatAction = async (tenantHash, userInput = "Hello") => {
+    const hash = tenantHash || 'fo85e6a06dcdf4';
+    console.log('🧪 Testing NEW chat action...');
+    
+    try {
+      const response = await fetch(`https://chat.myrecruiter.ai/Master_Function?action=chat&t=${hash}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        mode: 'cors',
+        body: JSON.stringify({
+          tenant_hash: hash,
+          user_input: userInput
+        })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('✅ NEW Chat Action:', data);
+        return data;
+      } else {
+        const errorText = await response.text();
+        console.error('❌ Chat Action Failed:', response.status, errorText);
+        return null;
+      }
+    } catch (error) {
+      console.error('❌ Chat Action Error:', error);
+      return null;
+    }
+  };
+
+  console.log(`
+🛠️  PICASSO NEW PURE HASH + ACTION SYSTEM COMMANDS:
+   testHealthCheck()             - Test action=health_check
+   testConfigLoad()              - Test action=get_config  
+   testChatAction()              - Test action=chat
+   refreshPicassoConfig()        - Force refresh config
+   
+   NEW ENDPOINTS: /Master_Function?action=ACTION&t=HASH
+   ✅ No parameters, no tenant IDs, no hardcoded customers
+  `);
+}
+
+// Hook for manual config refresh in components
 export function useConfigRefresh() {
   const { refreshConfig } = useConfig();
   return refreshConfig;
