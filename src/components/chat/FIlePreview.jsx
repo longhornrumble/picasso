@@ -26,7 +26,7 @@ export default function FilePreview({ file, uploadState = "complete", onCancel }
   const getStatusText = () => {
     switch (uploadState) {
       case 'uploading':
-        return 'Uploading...';
+        return file?.progress ? `Uploading... ${file.progress}%` : 'Uploading...';
       case 'error':
         return 'Upload failed';
       case 'complete':
@@ -82,9 +82,9 @@ export default function FilePreview({ file, uploadState = "complete", onCancel }
           justifyContent: 'center',
           position: 'relative'
         }}>
-          {file.preview ? (
+          {file.url ? (
             <img 
-              src={file.preview} 
+              src={file.url} 
               alt={file.name}
               style={{
                 width: '100%',
@@ -104,6 +104,49 @@ export default function FilePreview({ file, uploadState = "complete", onCancel }
               {file.name}
             </div>
           )}
+        </div>
+      ) : file.type?.startsWith('video/') && uploadState === 'complete' ? (
+        <div style={{
+          width: '200px',
+          height: '150px',
+          borderRadius: '8px',
+          overflow: 'hidden',
+          border: '1px solid #e5e7eb',
+          backgroundColor: '#f3f4f6',
+          position: 'relative'
+        }}>
+          <video 
+            src={file.url} 
+            controls
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover'
+            }}
+          />
+        </div>
+      ) : file.type?.includes('pdf') && uploadState === 'complete' ? (
+        <div style={{
+          width: '200px',
+          height: '150px',
+          borderRadius: '8px',
+          overflow: 'hidden',
+          border: '1px solid #e5e7eb',
+          backgroundColor: '#f3f4f6',
+          position: 'relative'
+        }}>
+          <iframe 
+            src={file.url}
+            title={file.name}
+            style={{
+              width: '100%',
+              height: '100%',
+              border: 'none'
+            }}
+            onError={(e) => {
+              e.target.outerHTML = `<div style='display:flex;align-items:center;justify-content:center;height:100%;color:#6b7280;font-size:12px;text-align:center;padding:10px;'>Unable to preview PDF. Please download the file instead.</div>`;
+            }}
+          />
         </div>
       ) : (
         /* File Card */
@@ -193,7 +236,7 @@ export default function FilePreview({ file, uploadState = "complete", onCancel }
                   height: '100%',
                   backgroundColor: '#3b82f6',
                   borderRadius: '2px',
-                  width: '65%',
+                  width: file.progress ? `${file.progress}%` : '10%',
                   transition: 'width 0.3s ease'
                 }} />
               </div>

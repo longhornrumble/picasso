@@ -1,4 +1,4 @@
-// src/components/chat/InputBar.jsx
+// src/components/chat/InputBar.jsx - FIXED inline send button alignment
 import React, { useState, useRef, useEffect } from "react";
 import { useChat } from "../../context/ChatProvider";
 import { useConfig } from "../../context/ConfigProvider";
@@ -185,62 +185,99 @@ export default function InputBar({ input, setInput }) {
     setShowAttachments(false);
   };
 
+  const hasBottomRow = features.uploads || features.photo_uploads || features.voice_input;
+
   return (
-    <div className="input-bar-container">
-      {/* Render AttachmentMenu above the input row */}
+    <div className={`input-bar-container ${hasBottomRow ? "double-row" : "single-row"}`}>
       {showAttachments && (
         <AttachmentMenu onClose={() => setShowAttachments(false)} />
       )}
 
       <div className="input-row-container">
-        <div className="input-text-row">
-          <textarea
-            ref={textareaRef}
-            id="chat-message-input"
-            name="message"
-            value={actualInput}
-            onChange={handleInputChange}
-            onKeyDown={handleKeyDown}
-            placeholder="How can I help you today?"
-            autoComplete="off"
-            className="input-textarea"
-          />
-        </div>
-
-        <div className="input-controls-row">
-          <div className="input-tools">
-            {/* Only render "+" if file or media uploads are enabled */}
-            {(features.uploads || features.photo_uploads) && (
-              <div
-                className="input-tool-button"
-                onClick={() => setShowAttachments((prev) => !prev)}
-                aria-label="Add Attachment"
+        <div className={`input-text-row ${!hasBottomRow ? "inline-mode" : ""}`}>
+          {!hasBottomRow ? (
+            // FIXED: Single row with inline send button
+            <div className="input-inline-container">
+              <textarea
+                ref={textareaRef}
+                id="chat-message-input"
+                name="message"
+                value={actualInput}
+                onChange={handleInputChange}
+                onKeyDown={handleKeyDown}
+                placeholder="How can I help you today?"
+                autoComplete="off"
+                className="input-textarea inline-textarea"
+                style={{ height: "auto", overflowY: "hidden" }}
+              />
+              <button
+                onClick={handleSubmit}
+                disabled={!actualInput.trim() || isTyping}
+                className={`send-button inline-send ${
+                  actualInput.trim()
+                    ? "send-button-active"
+                    : "send-button-disabled"
+                }`}
+                aria-label="Send"
               >
-                <Plus size={16} />
-              </div>
-            )}
-            {/* Microphone icon (voice input) */}
-            <div className="input-tool-button" data-voice>
-              <Mic size={16} />
+                <ArrowRight
+                  size={16}
+                  color={actualInput.trim() ? "white" : "#94a3b8"}
+                />
+              </button>
             </div>
-          </div>
-
-          <button
-            onClick={handleSubmit}
-            disabled={!actualInput.trim() || isTyping}
-            className={`send-button ${
-              actualInput.trim()
-                ? "send-button-active"
-                : "send-button-disabled"
-            }`}
-            aria-label="Send"
-          >
-            <ArrowRight
-              size={16}
-              color={actualInput.trim() ? "white" : "#94a3b8"}
+          ) : (
+            // Double row mode - textarea only
+            <textarea
+              ref={textareaRef}
+              id="chat-message-input"
+              name="message"
+              value={actualInput}
+              onChange={handleInputChange}
+              onKeyDown={handleKeyDown}
+              placeholder="How can I help you today?"
+              autoComplete="off"
+              className="input-textarea"
             />
-          </button>
+          )}
         </div>
+
+        {hasBottomRow ? (
+          <div className="input-controls-row">
+            <div className="input-tools">
+              {(features.uploads || features.photo_uploads) && (
+                <div
+                  className="input-tool-button"
+                  onClick={() => setShowAttachments((prev) => !prev)}
+                  aria-label="Add Attachment"
+                >
+                  <Plus size={16} />
+                </div>
+              )}
+              {features.voice_input && (
+                <div className="input-tool-button" data-voice>
+                  <Mic size={16} />
+                </div>
+              )}
+            </div>
+
+            <button
+              onClick={handleSubmit}
+              disabled={!actualInput.trim() || isTyping}
+              className={`send-button ${
+                actualInput.trim()
+                  ? "send-button-active"
+                  : "send-button-disabled"
+              }`}
+              aria-label="Send"
+            >
+              <ArrowRight
+                size={16}
+                color={actualInput.trim() ? "white" : "#94a3b8"}
+              />
+            </button>
+          </div>
+        ) : null}
       </div>
     </div>
   );

@@ -283,6 +283,8 @@ function ChatWidget() {
     }
   });
 
+  const isDoubleInput = config?.features?.uploads || config?.features?.voice;
+
   return (
     <div>
       {/* Widget toggle and callout */}
@@ -321,7 +323,7 @@ function ChatWidget() {
 
       {/* Chat container */}
       {isOpen && (
-        <div className="chat-container">
+        <div className="chat-container" data-input-mode={isDoubleInput ? "double" : "single"}>
           <ChatHeader onClose={() => {
             setIsOpen(false);
             if (config?.widget_behavior?.remember_state) {

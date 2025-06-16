@@ -296,6 +296,10 @@ export function ConfigProvider({ children }) {
       tenantHash: configMetadata.current.tenantHash,
       lastModified: configMetadata.current.lastModified,
       apiType: 'hash-action-NEW'
+    },
+    features: {
+      uploads: config?.features?.uploads || false,
+      photoUploads: config?.features?.photo_uploads || false,
     }
   };
 

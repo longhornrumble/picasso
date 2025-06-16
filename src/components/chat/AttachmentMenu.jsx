@@ -1,10 +1,12 @@
 import React from "react";
 import { Camera, FilePlus, Image, Video } from "lucide-react";
 import { useConfig } from "../../context/ConfigProvider";
+import { useChat } from "../../context/ChatProvider";
 
 export default function AttachmentMenu({ onClose }) {
   const { config } = useConfig();
   const features = config?.features || {};
+  const { addMessage } = useChat();
 
   // Define all possible buttons with their feature requirements
   const allButtons = [
@@ -47,27 +49,42 @@ export default function AttachmentMenu({ onClose }) {
   }
 
   const handleButtonClick = (button) => {
-    console.log(`Trigger: ${button.label} (${button.action})`);
-    
-    // Here you can add specific logic for each action type
-    switch (button.action) {
-      case 'file':
-        // Handle file upload
-        break;
-      case 'camera':
-        // Handle camera capture
-        break;
-      case 'photo':
-        // Handle photo upload
-        break;
-      case 'video':
-        // Handle video upload
-        break;
-      default:
-        console.log(`Unknown action: ${button.action}`);
+    const input = document.createElement("input");
+    input.type = "file";
+    input.multiple = true;
+
+    // Accept file types based on button action
+    if (button.action === "photo" || button.action === "camera") {
+      input.accept = "image/*";
+      if (button.action === "camera") {
+        input.capture = "environment"; // or "user" for front-facing
+      }
+    } else if (button.action === "video") {
+      input.accept = "video/*";
+    } else {
+      input.accept = "*/*";
     }
-    
-    if (onClose) onClose();
+
+    input.onchange = () => {
+      const selectedFiles = Array.from(input.files);
+      if (!selectedFiles.length) return;
+
+      const messageFiles = selectedFiles.map(file => ({
+        name: file.name,
+        type: file.type,
+        url: URL.createObjectURL(file)
+      }));
+
+      addMessage({
+        role: "user",
+        content: `📎 Uploaded ${messageFiles.length > 1 ? 'files' : 'file'}`,
+        files: messageFiles
+      });
+
+      if (onClose) onClose();
+    };
+
+    input.click();
   };
 
   return (

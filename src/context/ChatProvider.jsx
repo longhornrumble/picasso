@@ -35,9 +35,9 @@ export const ChatProvider = ({ children }) => {
     return chips.slice(0, maxDisplay);
   }, []);
 
-  // Generate welcome message with proper action chips
+  // Generate welcome message with proper action chips - ONLY when no messages exist
   useEffect(() => {
-    if (tenantConfig) {
+    if (tenantConfig && messages.length === 0) {
       const welcomeActions = generateWelcomeActions(tenantConfig);
 
       setMessages([{
@@ -47,7 +47,7 @@ export const ChatProvider = ({ children }) => {
         actions: welcomeActions
       }]);
     }
-  }, [tenantConfig, generateWelcomeActions]);
+  }, [tenantConfig, generateWelcomeActions, messages.length]);
 
   // Get tenant hash for API calls
   const getTenantHash = () => {

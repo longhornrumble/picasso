@@ -75,6 +75,7 @@ export default function MessageBubble({ role, content, files = [], actions = [],
               onLoad={handleAvatarLoad}
               style={{ display: 'none' }}
               alt="Avatar"
+              crossOrigin="anonymous"
             />
           </div>
         </div>

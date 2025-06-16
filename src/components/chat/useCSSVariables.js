@@ -69,6 +69,7 @@ export function useCSSVariables(config) {
                              branding.chat_title_color || 
                              branding.title_color || 
                              determineHeaderTextColor(branding),
+      '--header-subtitle-color': branding.header_subtitle_color || generateSubtitleColor(branding),
       '--header-close-color': branding.header_close_color || 
                              branding.header_text_color || 
                              branding.chat_title_color || 
@@ -134,9 +135,9 @@ export function useCSSVariables(config) {
       '--chat-width-large': ensurePixelUnit(branding.chat_width_large || '400px'),
       '--chat-height-large': ensurePixelUnit(branding.chat_height_large || '600px'),
       '--chat-width-mobile': branding.chat_width_mobile || 'calc(100vw - 24px)',
-      '--chat-height-mobile': branding.chat_height_mobile || 'calc(100vh - 80px)',
+      '--chat-height-mobile': branding.chat_height_mobile || 'calc(100vh - 160px)',
       '--chat-width-tablet': branding.chat_width_tablet || 'calc(100vw - 32px)',
-      '--chat-height-tablet': branding.chat_height_tablet || 'calc(100vh - 100px)',
+      '--chat-height-tablet': branding.chat_height_tablet || 'calc(100vh - 140px)',
       
       /* === WIDGET POSITIONING === */
       '--widget-bottom': calculateWidgetPosition(branding.chat_position, 'bottom'),
@@ -475,6 +476,19 @@ function determineHeaderTextColor(branding) {
     return '#ffffff';
   }
   return isLightColor(headerBg) ? '#1f2937' : '#ffffff';
+}
+
+function generateSubtitleColor(branding) {
+  // Get the header text color first
+  const headerTextColor = determineHeaderTextColor(branding);
+  
+  // If header text is white/light, make subtitle 80% opacity
+  if (headerTextColor === '#ffffff' || isLightColor(headerTextColor)) {
+    return 'rgba(255, 255, 255, 0.8)';
+  }
+  
+  // If header text is dark, make subtitle 70% opacity dark
+  return 'rgba(31, 41, 55, 0.7)';
 }
 
 function determineContrastColor(backgroundColor) {
