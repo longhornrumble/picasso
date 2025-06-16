@@ -1,5 +1,5 @@
 // src/components/chat/ChatWindow.jsx
-import React from "react";
+import React, { useRef, useLayoutEffect, useState } from "react";
 import { useConfig } from "../../context/ConfigProvider";
 import MessageList from "./MessageList";
 import InputBar from "./InputBar";
@@ -8,6 +8,15 @@ import { X } from "lucide-react";
 
 export default function ChatWindow({ onClose }) {
   const { config, loading } = useConfig();
+
+  const headerRef = useRef(null);
+  const [headerHeight, setHeaderHeight] = useState(0);
+
+  useLayoutEffect(() => {
+    if (headerRef.current) {
+      setHeaderHeight(headerRef.current.offsetHeight);
+    }
+  }, []);
 
   if (loading) {
     return (
@@ -34,6 +43,7 @@ export default function ChatWindow({ onClose }) {
     <div className="flex flex-col h-[500px] w-80 bg-white rounded-xl shadow-lg overflow-hidden">
       {/* Header */}
       <div
+        ref={headerRef}
         className="flex items-center justify-between px-4 py-3 border-b text-sm font-semibold shrink-0"
         style={{ backgroundColor: headerBg, color: headerText }}
       >
@@ -48,7 +58,7 @@ export default function ChatWindow({ onClose }) {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 min-h-0">
+      <div className="flex-1 min-h-0 overflow-y-auto" style={{ paddingTop: `${headerHeight}px` }}>
         <MessageList />
       </div>
 

@@ -127,9 +127,9 @@
 /* === ENHANCED CHAT HEADER === */
 .chat-header {
   display: flex;
-  align-items: flex-start; /* Changed from center to flex-start for text alignment */
+  align-items: center;
   justify-content: space-between;
-  padding: 16px 18px 14px 18px; /* Slightly adjusted padding for new layout */
+  padding: 12px 18px; /* Reduced from 20px to ensure content fits */
   border-bottom: none;
   background: var(--header-gradient, linear-gradient(135deg, #3b82f6 0%, #2563eb 100%));
   color: var(--header-text-color);
@@ -137,16 +137,18 @@
   border-top-right-radius: calc(var(--border-radius-large) - 2px);
   box-shadow: var(--header-shadow, 0 2px 8px rgba(59, 130, 246, 0.15));
   position: relative;
-  height: 40px;
-  min-height: 40px;
-  max-height: 40px;
+  height: 80px !important;
+  min-height: 80px !important;
+  max-height: 80px !important;
   overflow: hidden;
+  box-sizing: border-box !important;
+  flex-shrink: 0;
 }
 
 /* Brand unit container */
 .chat-header-brand {
   display: flex;
-  align-items: flex-start; /* Align items to top for baseline alignment */
+  align-items: center;
   gap: 10px; /* Reduced gap between logo and text (8-12px range) */
   flex: 1;
   margin-right: 12px; /* Space from close button */
@@ -165,7 +167,6 @@
   flex-shrink: 0;
   display: var(--avatar-display, block);
   background-color: var(--avatar-background-color);
-  margin-top: 2px; /* Slight adjustment for baseline alignment */
 }
 
 /* Enhanced fallback support for logo loading */
@@ -190,7 +191,7 @@
 .chat-header-text {
   display: flex;
   flex-direction: column;
-  gap: 3px; /* Small gap between title and subtitle */
+  gap: 1px; /* Reduced from 3px to fit within 80px constraint */
   min-width: 0; /* Allows text to truncate if needed */
 }
 
@@ -203,7 +204,7 @@
   font-family: var(--font-family);
   letter-spacing: 0.01em;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-  line-height: 1.2;
+  line-height: 1.1; /* Reduced from 1.2 */
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -216,7 +217,7 @@
   font-weight: 400; /* Regular weight */
   color: var(--header-subtitle-color, rgba(255, 255, 255, 0.8)); /* 20% more transparent */
   font-family: var(--font-family);
-  line-height: 1.3;
+  line-height: 1.1; /* Reduced from 1.3 */
   letter-spacing: 0.005em;
   white-space: nowrap;
   overflow: hidden;
@@ -259,7 +260,6 @@
   width: 28px;
   height: 28px;
   flex-shrink: 0;
-  margin-top: 2px; /* Align with logo position */
 }
 
 .chat-header-close-button:hover {
@@ -274,10 +274,10 @@
   overflow-y: auto;
   overflow-x: hidden;
   scroll-behavior: smooth;
-  padding-top: 20px;
+  padding-top: 0px;
   padding-left: var(--container-padding, 16px);
   padding-right: var(--container-padding, 16px);
-  padding-bottom: 0;
+  padding-bottom: var(--chat-window-bottom, 24px);
   background: linear-gradient(to bottom, 
     rgba(59, 130, 246, 0.02) 0%, 
     transparent 100%);
@@ -679,20 +679,23 @@
   font-family: var(--font-family);
 }
 
-.chat-callout-close {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--secondary-color);
-  padding: 2px;
-  border-radius: var(--border-radius-small);
-  transition: all var(--transition-normal, 0.2s ease);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  margin-top: -2px;
-}
+  .chat-callout-close {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--secondary-color);
+    padding: 2px;
+    border-radius: var(--border-radius-small);
+    transition: all var(--transition-normal, 0.2s ease);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    margin-top: 0;
+  }
 
 .chat-callout-close:hover {
   background-color: var(--border-color);
@@ -842,8 +845,8 @@
 
 /* === ACTION CHIPS - Multi-Tenant Ready === */
 .action-chips {
-  display: var(--action-chips-display, flex);
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
   gap: 8px;
   margin-top: 10px;
   padding: 0;
@@ -1207,15 +1210,15 @@
 /* === RESPONSIVE DESIGN === */
 @media (max-width: 768px) {
   .chat-container {
-    bottom: 100px !important;
+    bottom: var(--widget-bottom, 24px) !important;
   }
   
   body.chat-open .chat-container {
     width: calc(100vw - 20px);
     right: 10px;
     left: 10px;
-    height: calc(100vh - 140px);
-    max-height: calc(100vh - 140px);
+    height: calc(100vh - 20px);
+    max-height: calc(100vh - 20px);
     border-radius: var(--border-radius);
     bottom: 10px !important;
     top: 10px !important;
@@ -1266,7 +1269,8 @@
   }
   
   .action-chips {
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
     gap: 6px;
   }
   
@@ -1287,7 +1291,7 @@
   
   /* Enhanced header responsive adjustments */
   .chat-header {
-    padding: 14px 16px 12px 16px;
+    padding: 10px 18px;
     min-height: 64px;
   }
   
@@ -1865,4 +1869,10 @@
     right: 6px;
     bottom: 6px;
   }
+}
+/* === CHAT HEADER SPACER UTILITY === */
+.chat-header-spacer {
+  height: 20px;
+  flex-shrink: 0;
+  pointer-events: none;
 }

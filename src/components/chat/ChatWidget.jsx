@@ -332,6 +332,7 @@ function ChatWidget() {
           }} />
 
           <div ref={chatWindowRef} className="chat-window">
+            <div className="chat-header-spacer" />
             {messages.map((msg, idx) => {
               const isLastMessage = idx === messages.length - 1;
               return (
