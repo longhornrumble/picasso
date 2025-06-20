@@ -1,110 +1,110 @@
 // src/hooks/useCSSVariables.js - Generic Multi-Tenant CSS System
 import { useEffect } from 'react';
-import { useConfig } from '../../context/ConfigProvider';
+import { useConfig } from '../../hooks/useConfig';
 
 export function useCSSVariables(config) {
   useEffect(() => {
-    // Validate config before proceeding
-    if (!config) {
-      console.log('⏳ Waiting for config to load...');
-      return;
-    }
-
-    // Validate config structure
-    if (!config.branding && !config.features && !config.tenant_hash) {
-      console.warn('⚠️ Invalid or incomplete config structure received:', config);
-      return;
-    }
-
-    const isFullPage = window.PicassoConfig?.mode === 'fullpage';
-    console.log(`🎨 Injecting ${isFullPage ? 'FULL-PAGE' : 'WIDGET'} CSS variables:`, config.tenant_hash || 'no-hash');
-    
-    console.log('📊 Config structure validation:', {
-      hasBranding: !!config.branding,
-      hasFeatures: !!config.features,
-      primaryColor: config.branding?.primary_color || 'using-default',
-      tenantHash: config.tenant_hash || 'missing',
-      configSource: config.metadata?.source || 'unknown'
-    });
-
     const root = document.documentElement;
     
-    // Safe config access with fallbacks
-    const branding = config.branding || {};
+    // Debug: Log the full config structure and timing
+    console.log('🔍 useCSSVariables called at:', new Date().toISOString());
+    console.log('🔍 useCSSVariables received config:', config);
+    console.log('🔍 Config type:', typeof config);
+    console.log('🔍 Config branding:', config?.branding);
+    console.log('🔍 Config keys:', config ? Object.keys(config) : 'no config');
+    
+    // Handle loading state - if config is null/undefined, just return (don't warn yet)
+    if (!config) {
+      console.log('⏳ Config not loaded yet, waiting...');
+      return;
+    }
+
+    // Handle case where branding might be missing - create default branding
+    const branding = config.branding || {
+      primary_color: '#3b82f6',
+      background_color: '#ffffff',
+      font_color: '#374151'
+    };
+
+    if (!config.branding) {
+      console.warn('⚠️ No branding config found, using defaults');
+    } else {
+      console.log('✅ Found branding config:', config.branding);
+    }
+
+    console.log('🎨 Applying CSS variables for tenant:', config.tenant_hash || config.tenant_id);
+    
     const features = config.features || {};
 
-    // Feature configuration access
-    const calloutConfig = features.callout || {};
-    const quickHelpConfig = config?.quick_help || {};
-    const actionChipsConfig = config?.action_chips || {};
-    
-    const quickHelpEnabled = quickHelpConfig.enabled !== false;
-    const actionChipsEnabled = actionChipsConfig.enabled !== false;
-    const calloutEnabled = calloutConfig.enabled !== false;
+    // Action chips configuration
+    const actionChipsConfig = features.action_chips || {};
+    const actionChipsEnabled = typeof actionChipsConfig === 'object' 
+      ? actionChipsConfig.enabled !== false 
+      : features.action_chips !== false;
 
-    // COMPLETE CSS Variables Mapping - Generic & Tenant-Agnostic
+    // Quick help configuration  
+    const quickHelpConfig = features.quick_help || {};
+    const quickHelpEnabled = typeof quickHelpConfig === 'object' 
+      ? quickHelpConfig.enabled !== false 
+      : features.quick_help !== false;
+
+    // Callout configuration
+    const calloutConfig = features.callout || {};
+    const calloutEnabled = typeof calloutConfig === 'object' 
+      ? calloutConfig.enabled !== false 
+      : features.callout !== false;
+
+    // Generate CSS variables object
     const cssVariables = {
-      
-      /* === CORE COLORS === */
+
+      /* === BASE COLOR SYSTEM === */
       '--primary-color': branding.primary_color || '#3b82f6',
-      '--primary-light': branding.primary_light || lightenColor(branding.primary_color || '#3b82f6', 20),
+      '--primary-light': branding.primary_light || lightenColor(branding.primary_color || '#3b82f6', 15),
       '--primary-dark': branding.primary_dark || darkenColor(branding.primary_color || '#3b82f6', 15),
       '--secondary-color': branding.secondary_color || '#6b7280',
       '--font-color': branding.font_color || '#374151',
       '--background-color': branding.background_color || '#ffffff',
       '--border-color': branding.border_color || 'rgba(59, 130, 246, 0.1)',
+      '--success-color': branding.success_color || '#10b981',
+      '--warning-color': branding.warning_color || '#f59e0b',
+      '--error-color': branding.error_color || '#ef4444',
+      '--info-color': branding.info_color || '#3b82f6',
       
       /* === CHAT BUBBLE COLORS === */
       '--user-bubble-color': branding.user_bubble_color || branding.primary_color || '#3b82f6',
-      '--user-bubble-text-color': branding.user_bubble_text_color || '#ffffff',
-      '--user-bubble-margin': branding.user_bubble_margin || '20px',
+      '--user-bubble-text-color': branding.user_bubble_text_color || determineContrastColor(branding.user_bubble_color || branding.primary_color || '#3b82f6'),
       '--bot-bubble-color': branding.bot_bubble_color || '#f8fafc',
-      '--bot-bubble-text-color': branding.bot_bubble_text_color || '#374151',
-      '--bot-bubble-border': branding.bot_bubble_border || '1px solid rgba(59, 130, 246, 0.1)',
-      '--bot-bubble-margin': branding.bot_bubble_margin || '20px',
+      '--bot-bubble-text-color': branding.bot_bubble_text_color || branding.font_color || '#374151',
+      '--bot-bubble-border': branding.bot_bubble_border || branding.border_color || 'rgba(59, 130, 246, 0.1)',
       
       /* === INTERFACE COLORS === */
-      '--header-background-color': branding.header_background_color || branding.title_bar_color || branding.primary_color || '#3b82f6',
-      '--header-text-color': branding.header_text_color || 
-                             branding.chat_title_color || 
-                             branding.title_color || 
-                             determineHeaderTextColor(branding),
-      '--header-subtitle-color': branding.header_subtitle_color || generateSubtitleColor(branding),
-      '--header-close-color': branding.header_close_color || 
-                             branding.header_text_color || 
-                             branding.chat_title_color || 
-                             determineHeaderTextColor(branding),
-      '--widget-icon-color': branding.widget_icon_color || 
-                            branding.chat_toggle_icon_color ||
-                            determineContrastColor(branding.widget_background_color || branding.primary_color || '#3b82f6'),
-      '--widget-background-color': branding.widget_background_color || 
-                                  branding.chat_toggle_background_color || 
-                                  branding.primary_color || '#3b82f6',
-      '--link-color': branding.link_color || branding.markdown_link_color || branding.primary_color || '#3b82f6',
-      '--link-hover-color': branding.link_hover_color || darkenColor(branding.link_color || branding.primary_color || '#3b82f6', 15),
+      '--header-background-color': branding.header_background_color || branding.primary_color || '#3b82f6',
+      '--header-text-color': branding.header_text_color || determineHeaderTextColor(branding),
+      '--widget-icon-color': branding.widget_icon_color || '#ffffff',
+      '--widget-background-color': branding.widget_background_color || branding.primary_color || '#3b82f6',
+      '--link-color': branding.link_color || branding.primary_color || '#3b82f6',
+      '--link-hover-color': branding.link_hover_color || darkenColor(branding.link_color || branding.primary_color || '#3b82f6', 10),
       
-      /* === INPUT FIELD STYLING === */
-      '--input-background-color': branding.input_background_color || '#ffffff',
-      '--input-border-color': branding.input_border_color || 'rgba(59, 130, 246, 0.08)',
-      '--input-border-width': branding.input_border_width || '2px',
+      /* === INPUT SYSTEM === */
+      '--input-background-color': branding.input_background_color || branding.background_color || '#ffffff',
+      '--input-border-color': branding.input_border_color || branding.border_color || 'rgba(59, 130, 246, 0.1)',
+      '--input-text-color': branding.input_text_color || branding.font_color || '#374151',
+      '--input-placeholder-color': branding.input_placeholder_color || '#6b7280',
       '--input-focus-color': branding.input_focus_color || branding.primary_color || '#3b82f6',
-      '--input-focus-bg': branding.input_focus_bg || '#ffffff',
-      '--input-placeholder-color': branding.input_placeholder_color || '#94a3b8',
-      '--input-font-size': ensurePixelUnit(branding.input_font_size || branding.font_size || '14px'),
-      '--input-padding': branding.input_padding || '10px 14px 6px 14px',
+      '--input-focus-border-color': branding.input_focus_border_color || branding.primary_color || '#3b82f6',
+      '--input-font-size': ensurePixelUnit(branding.input_font_size || '14px'),
+      '--input-padding': branding.input_padding || '12px 16px',
       '--input-border-radius': ensurePixelUnit(branding.input_border_radius || branding.border_radius || '12px'),
-      
-      /* === STATUS COLORS === */
-      '--error-color': branding.error_color || '#ef4444',
-      '--success-color': branding.success_color || '#10b981',
-      '--warning-color': branding.warning_color || '#f59e0b',
+      '--input-border-width': ensurePixelUnit(branding.input_border_width || '1px'),
+      '--input-min-height': ensurePixelUnit(branding.input_min_height || '44px'),
+      '--input-max-height': ensurePixelUnit(branding.input_max_height || '120px'),
       
       /* === TYPOGRAPHY === */
       '--font-family': branding.font_family || 'system-ui, -apple-system, sans-serif',
-      '--font-size-base': ensurePixelUnit(branding.font_size_base || branding.font_size || '14px'),
+      '--font-size-base': ensurePixelUnit(branding.font_size || '14px'),
+      '--font-size-heading': ensurePixelUnit(branding.font_size_heading || '16px'),
       '--font-size-small': ensurePixelUnit(branding.font_size_small || '12px'),
-      '--font-size-large': ensurePixelUnit(branding.font_size_large || '16px'),
-      '--font-size-heading': ensurePixelUnit(branding.font_size_heading || branding.title_font_size || '16px'),
+      '--font-size-large': ensurePixelUnit(branding.font_size_large || '18px'),
       '--font-weight-normal': branding.font_weight_normal || branding.font_weight || '400',
       '--font-weight-medium': branding.font_weight_medium || '500',
       '--font-weight-semibold': branding.font_weight_semibold || '600',
@@ -117,11 +117,11 @@ export function useCSSVariables(config) {
       '--border-radius': ensurePixelUnit(branding.border_radius || '12px'),
       '--border-radius-small': ensurePixelUnit(branding.border_radius_small || calculateSmallRadius(branding.border_radius)),
       '--border-radius-large': ensurePixelUnit(branding.border_radius_large || calculateLargeRadius(branding.border_radius)),
-      '--border-width': ensurePixelUnit(branding.border_height || branding.border_width || '1px'),
+      '--border-width': ensurePixelUnit(branding.border_width || '1px'),
       '--border-width-thick': ensurePixelUnit(branding.border_width_thick || '2px'),
       
       /* === SPACING SYSTEM === */
-      '--message-spacing': branding.message_spacing || '16px',
+      '--message-spacing': branding.message_spacing || '20px',
       '--bubble-padding': branding.bubble_padding || '12px 16px',
       '--container-padding': branding.container_padding || '16px',
       '--action-chip-margin': branding.action_chip_margin || '16px',
@@ -292,6 +292,39 @@ export function useCSSVariables(config) {
       '--upload-warning-bg': branding.upload_warning_bg || 'rgba(245, 158, 11, 0.1)',
     };
 
+    // Check iframe context and filter variables BEFORE applying
+    const isInIframe = document.body.getAttribute('data-iframe') === 'true';
+    if (isInIframe) {
+      console.log('🖼️ Iframe context detected - applying iframe-specific variables');
+      
+      // Force iframe-specific sizing variables that override everything
+      cssVariables['--chat-width'] = '100%';
+      cssVariables['--chat-height'] = '100%';
+      cssVariables['--chat-max-height'] = '100%';
+      cssVariables['--chat-width-large'] = '100%';
+      cssVariables['--chat-height-large'] = '100%';
+      cssVariables['--chat-width-mobile'] = '100%';
+      cssVariables['--chat-height-mobile'] = '100%';
+      cssVariables['--chat-width-tablet'] = '100%';
+      cssVariables['--chat-height-tablet'] = '100%';
+      
+      // Override widget positioning to static/auto
+      cssVariables['--widget-bottom'] = 'auto';
+      cssVariables['--widget-right'] = 'auto';
+      cssVariables['--widget-top'] = 'auto';
+      cssVariables['--widget-left'] = 'auto';
+      
+      // Force container behavior
+      cssVariables['--chat-container-position'] = 'static';
+      cssVariables['--chat-container-width'] = '100%';
+      cssVariables['--chat-container-height'] = '100%';
+      cssVariables['--chat-container-max-height'] = '100%';
+      cssVariables['--chat-container-margin'] = '0';
+      cssVariables['--chat-container-border-radius'] = '0';
+      
+      console.log('✅ Iframe-specific CSS variables applied');
+    }
+
     // Apply CSS variables with error handling
     const appliedVariables = [];
     const failedVariables = [];
@@ -317,7 +350,7 @@ export function useCSSVariables(config) {
     // Apply advanced computed styles
     applyComputedStyles(cssVariables, root);
 
-    console.log(`🎨 Applied ${appliedVariables.length} CSS variables for tenant: ${config.tenant_hash}`);
+    console.log(`🎨 Applied ${appliedVariables.length} CSS variables for tenant: ${config.tenant_hash || config.tenant_id}`);
     
     if (failedVariables.length > 0) {
       console.warn(`⚠️ ${failedVariables.length} variables failed:`, failedVariables);
@@ -894,8 +927,8 @@ if (typeof window !== 'undefined') {
    All CSS variables are tenant-agnostic with generic defaults
    No hard-coded tenant-specific references
    Ready for multi-tenant deployment
-  `);
-  
+`);
+
   // Prevent tree-shaking of utility functions
   window.picassoUtilities = { 
     isLightColor, 
@@ -907,3 +940,4 @@ if (typeof window !== 'undefined') {
     lightenColor
   };
 }
+

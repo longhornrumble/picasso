@@ -1,6 +1,6 @@
 import React from "react";
-import { useChat } from "../../context/ChatProvider";
-import { useConfig } from "../../context/ConfigProvider";
+import { useChat } from "../../hooks/useChat";
+import { useConfig } from "../../hooks/useConfig";
 import { X } from "lucide-react";
 
 export default function FollowUpPromptBar() {

@@ -103,15 +103,25 @@ class PicassoDeployer {
     // Check all required files exist
     try {
       const jsStats = execSync('stat dist/widget.js', { encoding: 'utf8' });
-      console.log('📊 Widget.js size:', jsStats.split(' ')[4], 'bytes');
+      console.log('📊 Widget.js (host) size:', jsStats.split(' ')[4], 'bytes');
       
-      const cssStats = execSync('stat dist/widget.css', { encoding: 'utf8' });
-      console.log('📊 Widget.css size:', cssStats.split(' ')[4], 'bytes');
+      const frameStats = execSync('stat dist/widget-frame.html', { encoding: 'utf8' });
+      console.log('📊 Widget-frame.html size:', frameStats.split(' ')[4], 'bytes');
+      
+      const iframeJsStats = execSync('stat dist/iframe-main.js', { encoding: 'utf8' });
+      console.log('📊 Iframe-main.js size:', iframeJsStats.split(' ')[4], 'bytes');
       
       const htmlStats = execSync('stat dist/fullpage.html', { encoding: 'utf8' });
       console.log('📊 Fullpage.html size:', htmlStats.split(' ')[4], 'bytes');
+      
+      // Check for CSS bundle (with hash)
+      const cssFiles = execSync('ls dist/style-*.css', { encoding: 'utf8' }).trim();
+      if (cssFiles) {
+        const cssStats = execSync(`stat ${cssFiles.split('\n')[0]}`, { encoding: 'utf8' });
+        console.log('📊 CSS bundle size:', cssStats.split(' ')[4], 'bytes');
+      }
     } catch {
-      throw new Error('Required files (widget.js, widget.css, fullpage.html) not found in build output');
+      throw new Error('Required iframe files (widget.js, widget-frame.html, iframe-main.js, style-*.css) not found in build output');
     }
 
     console.log('✅ Build completed successfully');
@@ -183,11 +193,25 @@ class PicassoDeployer {
         description: 'Deploy widget.js (short cache)'
       },
       
-      // CSS files - short cache (5 minutes) for widget.css
+      // NEW: Iframe entry point - short cache (5 minutes)
       {
-        pattern: 'widget.css',
+        pattern: 'widget-frame.html',
         cache: 'max-age=300, public',
-        description: 'Deploy widget.css (short cache)'
+        description: 'Deploy widget-frame.html (iframe entry - short cache)'
+      },
+      
+      // NEW: Iframe React app - medium cache (1 hour) with hash
+      {
+        pattern: 'iframe-main.js',
+        cache: 'max-age=3600, public',
+        description: 'Deploy iframe-main.js (React app - medium cache)'
+      },
+      
+      // NEW: CSS bundle with hash - long cache (1 year)
+      {
+        pattern: 'style-*.css',
+        cache: 'max-age=31536000, public, immutable',
+        description: 'Deploy hashed CSS bundle (long cache)'
       },
       
       // HTML files - short cache (5 minutes) for fullpage.html
@@ -208,7 +232,7 @@ class PicassoDeployer {
       {
         pattern: '.',
         cache: 'max-age=3600, public',
-        exclude: '--exclude "widget.js" --exclude "widget.css" --exclude "fullpage.html" --exclude "assets/*"',
+        exclude: '--exclude "widget.js" --exclude "widget-frame.html" --exclude "iframe-main.js" --exclude "style-*.css" --exclude "fullpage.html" --exclude "assets/*"',
         description: 'Deploy other files (medium cache)'
       }
     ];
@@ -233,9 +257,17 @@ class PicassoDeployer {
       return;
     }
 
-    console.log(`🌐 Invalidating CloudFront: ${this.config.cloudfront}`);
+    console.log(`�� Invalidating CloudFront: ${this.config.cloudfront}`);
     
-    const paths = ['/widget.js', '/widget.css', '/fullpage.html', '/manifest.json', '/*'];
+    const paths = [
+      '/widget.js',           // Host script
+      '/widget-frame.html',   // NEW: Iframe entry point
+      '/iframe-main.js',      // NEW: React app
+      '/style-*.css',         // NEW: CSS bundle (with wildcard for hash)
+      '/fullpage.html',       // Existing fullpage
+      '/manifest.json',       // Deployment manifest
+      '/*'                    // Catch-all
+    ];
     const pathsString = paths.join(' ');
     
     const invalidationId = this.exec(
@@ -275,10 +307,18 @@ class PicassoDeployer {
       'Widget JS accessibility test'
     );
 
-    const cssUrl = `https://${this.config.domain}/widget.css`;
+    // Test widget-frame.html (iframe entry point)
+    const frameUrl = `https://${this.config.domain}/widget-frame.html`;
     this.exec(
-      `curl -f -s -o /dev/null -w "%{http_code}" ${cssUrl}`,
-      'Widget CSS accessibility test'
+      `curl -f -s -o /dev/null -w "%{http_code}" ${frameUrl}`,
+      'Widget frame HTML accessibility test'
+    );
+
+    // Test iframe-main.js (React app)
+    const iframeJsUrl = `https://${this.config.domain}/iframe-main.js`;
+    this.exec(
+      `curl -f -s -o /dev/null -w "%{http_code}" ${iframeJsUrl}`,
+      'Iframe React app JS accessibility test'
     );
 
     const fullpageUrl = `https://${this.config.domain}/fullpage.html`;
@@ -296,6 +336,8 @@ class PicassoDeployer {
 
     console.log('✅ Post-deployment verification passed');
     console.log(`🎉 Deployment successful! Widget available at: ${widgetUrl}`);
+    console.log(`📁 Iframe entry point: ${frameUrl}`);
+    console.log(`⚛️ React app bundle: ${iframeJsUrl}`);
   }
 
   // Run full deployment

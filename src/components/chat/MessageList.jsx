@@ -1,7 +1,7 @@
 // src/components/chat/MessageList.jsx - Clean version with action chips removed
 import React, { useEffect, useRef } from "react";
-import { useChat } from "../../context/ChatProvider";
-import { useConfig } from "../../context/ConfigProvider";
+import { useChat } from "../../hooks/useChat";
+import { useConfig } from "../../hooks/useConfig";
 import MessageBubble from "./MessageBubble";
 import TypingIndicator from "./TypingIndicator";
 

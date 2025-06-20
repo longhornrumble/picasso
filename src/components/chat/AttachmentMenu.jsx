@@ -1,7 +1,7 @@
 import React from "react";
 import { Camera, FilePlus, Image, Video } from "lucide-react";
-import { useConfig } from "../../context/ConfigProvider";
-import { useChat } from "../../context/ChatProvider";
+import { useConfig } from "../../hooks/useConfig";
+import { useChat } from "../../hooks/useChat";
 
 export default function AttachmentMenu({ onClose }) {
   const { config } = useConfig();

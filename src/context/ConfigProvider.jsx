@@ -1,13 +1,13 @@
 // src/context/ConfigProvider.jsx - FIXED Pure Hash + Action System
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useState, useEffect, useRef } from 'react';
 
 const ConfigContext = createContext();
 
-export function useConfig() {
-  return useContext(ConfigContext);
-}
+// Function to get the context for hooks
+export const getConfigContext = () => ConfigContext;
 
-export function ConfigProvider({ children }) {
+// Export provider as named export
+const ConfigProvider = ({ children }) => {
   const [config, setConfig] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -198,11 +198,23 @@ export function ConfigProvider({ children }) {
       clearInterval(updateIntervalRef.current);
     }
 
-    // Check for updates every 5 minutes
+    // Check for updates every 5 minutes 
+    // Note: Only check for updates if chat has no active messages to avoid disrupting conversations
     const checkInterval = 5 * 60 * 1000;
-    updateIntervalRef.current = setInterval(checkForConfigUpdates, checkInterval);
     
-    console.log(`🕐 Config update checker started (every ${checkInterval / 1000}s)`);
+    const conditionalConfigCheck = () => {
+      // Skip config update if there are active messages in the chat
+      const chatHasMessages = window.picassoChatHasMessages;
+      if (chatHasMessages) {
+        console.log('⏸️ Skipping config update - chat has active messages');
+        return;
+      }
+      checkForConfigUpdates();
+    };
+    
+    updateIntervalRef.current = setInterval(conditionalConfigCheck, checkInterval);
+    
+    console.log(`🕐 Config update checker started (every ${checkInterval / 1000}s, respects active conversations)`);
   };
 
   // Manual refresh function
@@ -254,22 +266,20 @@ export function ConfigProvider({ children }) {
   useEffect(() => {
     const initializeConfig = async () => {
       const tenantHash = getTenantHash();
-      console.log('🏁 ConfigProvider initializing with NEW PURE hash + action system');
-      console.log('🔑 Tenant hash:', tenantHash.slice(0, 8) + '...');
+      console.log('🚀 Initializing config for tenant:', tenantHash);
       
+      // Use the built-in loadTenantConfig function which properly manages state
       await loadTenantConfig(tenantHash);
-      startConfigWatcher();
     };
-    
+
     initializeConfig();
 
-    // Cleanup on unmount
-    return () => {
-      if (updateIntervalRef.current) {
-        clearInterval(updateIntervalRef.current);
-        console.log('🛑 Config update checker stopped');
-      }
-    };
+    // Set up polling for config updates (every 5 minutes)
+    const interval = setInterval(() => {
+      checkForConfigUpdates();
+    }, 5 * 60 * 1000);
+    
+    return () => clearInterval(interval);
   }, []);
 
   // Handle visibility change (check config when user returns to tab)
@@ -308,7 +318,7 @@ export function ConfigProvider({ children }) {
       {children}
     </ConfigContext.Provider>
   );
-}
+};
 
 // Global functions for debugging - NEW hash + action system
 if (typeof window !== 'undefined') {
@@ -424,6 +434,12 @@ if (typeof window !== 'undefined') {
    NEW ENDPOINTS: /Master_Function?action=ACTION&t=HASH
    ✅ No parameters, no tenant IDs, no hardcoded customers
   `);
+
+  console.log(`
+🛠️  CONFIG API TEST COMMANDS:
+   testConfigAPI("tenant_hash")    - Test config fetch
+   testConfigAPI()                 - Test with current hash
+  `);
 }
 
 // Hook for manual config refresh in components
@@ -431,3 +447,6 @@ export function useConfigRefresh() {
   const { refreshConfig } = useConfig();
   return refreshConfig;
 }
+
+// Export only the provider
+export { ConfigProvider };

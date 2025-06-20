@@ -1,7 +1,7 @@
 // src/components/chat/InputBar.jsx - FIXED inline send button alignment
 import React, { useState, useRef, useEffect } from "react";
-import { useChat } from "../../context/ChatProvider";
-import { useConfig } from "../../context/ConfigProvider";
+import { useChat } from "../../hooks/useChat";
+import { useConfig } from "../../hooks/useConfig";
 import { Plus, ArrowRight, Mic } from "lucide-react";
 import AttachmentMenu from "./AttachmentMenu";
 

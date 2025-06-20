@@ -1,32 +1,53 @@
 /**
- * Fetch the config JSON for a given tenant ID.
+ * Fetch the config JSON for a given tenant hash.
  * 
- * This function fetches from the S3 bucket where configs are stored.
+ * This function fetches from the production API using tenant hashes.
+ * Matches the deployment infrastructure and hash-based system.
  * 
- * @param {string} tenantId - The ID of the tenant (e.g., FOS402334)
+ * @param {string} tenantHash - The hash of the tenant (e.g., fo85e6a06dcdf4)
  * @returns {Promise<Object>} - Resolves to the config JSON object
  * @throws {Error} - If the fetch fails or config is invalid
  */
 
-export async function fetchTenantConfig(tenantId) {
-  if (!tenantId) {
-    throw new Error("fetchTenantConfig: tenantId is required");
+export async function fetchTenantConfig(tenantHash) {
+  if (!tenantHash) {
+    throw new Error("fetchTenantConfig: tenantHash is required");
   }
 
-  // Use your Lambda API for config instead of S3
-  const url = `https://chat.myrecruiter.ai/Master_Function/tenants/${tenantId}`;
+  // PRODUCTION: Use the correct hash-based API endpoint
+  const url = `https://chat.myrecruiter.ai/Master_Function?action=get_config&t=${encodeURIComponent(tenantHash)}`;
 
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Failed to load config for tenant '${tenantId}': ${response.statusText}`);
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      mode: 'cors',
+      credentials: 'omit',
+      cache: 'no-cache'
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    const config = await response.json();
+
+    // Validate structure before returning
+    if (!config || typeof config !== "object") {
+      throw new Error("Invalid config structure received.");
+    }
+
+    // Ensure required fields exist
+    if (!config.tenant_id && !config.tenant_hash) {
+      config.tenant_hash = tenantHash;
+    }
+
+    return config;
+  } catch (error) {
+    console.error(`❌ Failed to fetch config for tenant '${tenantHash}':`, error);
+    throw error;
   }
-
-  const config = await response.json();
-
-  // Optional: validate structure here before returning
-  if (!config || typeof config !== "object" || !config.tenant_id) {
-    throw new Error("Invalid config structure received.");
-  }
-
-  return config;
 }

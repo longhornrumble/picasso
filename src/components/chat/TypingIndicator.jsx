@@ -1,6 +1,6 @@
 // TypingIndicator.jsx - Enhanced with S3 Logo Support
 import React, { useState } from "react";
-import { useConfig } from "../../context/ConfigProvider";
+import { useConfig } from "../../hooks/useConfig";
 
 // Same avatar helper as MessageBubble
 const getAvatarUrl = (config) => {

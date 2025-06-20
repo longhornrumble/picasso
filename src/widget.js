@@ -138,7 +138,7 @@ class PicassoWidget {
   }
 
   // Initialize the widget
-  async init() {
+  async init(options = {}) {
     try {
       // Prevent double initialization
       if (this.mounted || window.__picassoWidgetMounted) {
@@ -146,21 +146,34 @@ class PicassoWidget {
         return;
       }
 
-      // Get tenant ID and mode
-      this.tenantId = this.getTenantId();
-      this.mode = this.getMode();
+      // Get tenant ID and mode - allow override from options
+      this.tenantId = options.tenant || this.getTenantId();
+      this.mode = options.mode || this.getMode();
       console.info(`🚀 Initializing Picasso Widget for tenant: ${this.tenantId || 'unknown'} in ${this.mode} mode`);
 
-      // Create container
-      this.container = this.createContainer();
+      // Create container - allow override from options
+      if (options.container) {
+        if (typeof options.container === 'string') {
+          this.container = document.getElementById(options.container);
+          if (!this.container) {
+            throw new Error(`Container element with id "${options.container}" not found`);
+          }
+        } else {
+          this.container = options.container;
+        }
+      } else {
+        this.container = this.createContainer();
+      }
 
       // Set global config for React app
       window.PicassoConfig = {
         tenant: this.tenantId,
         mode: this.mode,
-        embedded: this.mode === 'widget',
+        embedded: this.mode === 'widget' || this.mode === 'iframe',
         fullpage: this.mode === 'fullpage',
-        widget: this.mode === 'widget'
+        widget: this.mode === 'widget',
+        iframe: this.mode === 'iframe',
+        config: options.config || window.PicassoConfig?.config
       };
 
       console.info('🎯 PicassoConfig set:', window.PicassoConfig);
@@ -179,7 +192,7 @@ class PicassoWidget {
       // Optional: Dispatch custom event for integrations
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('picasso:mounted', {
-          detail: { tenantId: this.tenantId }
+          detail: { tenantId: this.tenantId, mode: this.mode }
         }));
       }
 
@@ -276,11 +289,18 @@ if (typeof window !== 'undefined') {
     isLoaded: () => !!window.__picassoWidgetMounted,
     version: '1.0.0' // Remove __APP_VERSION__ reference that causes build issues
   };
+
+  // Export PicassoWidget class for iframe usage
+  window.PicassoWidget = {
+    init: (options) => {
+      const widget = new PicassoWidget();
+      return widget.init(options);
+    },
+    create: () => new PicassoWidget()
+  };
 }
 
 // Auto-initialize unless disabled
 if (typeof window !== 'undefined' && !window.PICASSO_MANUAL_INIT) {
   initializeWidget();
 }
-
-export default PicassoWidget;

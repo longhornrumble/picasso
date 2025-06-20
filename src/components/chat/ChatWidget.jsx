@@ -1,8 +1,8 @@
 // src/components/chat/ChatWidget.jsx - FIXED callout timer bug + FOS callout text override
 import React, { useState, useEffect, useRef } from "react";
 import { MessagesSquare, X } from "lucide-react";
-import { useChat } from "../../context/ChatProvider";
-import { useConfig } from "../../context/ConfigProvider";
+import { useChat } from "../../hooks/useChat";
+import { useConfig } from "../../hooks/useConfig";
 import { useCSSVariables } from "./useCSSVariables";
 import ChatHeader from "./ChatHeader";
 import InputBar from "./InputBar";
@@ -14,6 +14,16 @@ import TypingIndicator from "./TypingIndicator";
 function ChatWidget() {
   const { messages, isTyping } = useChat();
   const { config } = useConfig();
+  
+  // Debug: Log what config we're getting
+  console.log('🔍 ChatWidget config:', config);
+  console.log('🔍 ChatWidget config type:', typeof config);
+  console.log('🔍 ChatWidget config keys:', config ? Object.keys(config) : 'no config');
+  
+  // Debug: Component mounting
+  console.log('🎨 ChatWidget component rendering...');
+  console.log('🎨 ChatWidget messages:', messages?.length || 0);
+  console.log('🎨 ChatWidget isTyping:', isTyping);
   
   // Apply CSS variables for theming
   useCSSVariables(config);
@@ -51,10 +61,26 @@ function ChatWidget() {
   // 🔧 FIX: Add ref to track if callout was auto-dismissed
   const calloutAutoDismissedRef = useRef(false);
 
+  // Iframe communication helper
+  const notifyParentEvent = (event, payload = {}) => {
+    // Only notify if we're in an iframe
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage({
+        type: 'PICASSO_EVENT',
+        event,
+        payload
+      }, '*');
+    }
+  };
+
   // Persist chat open/close on toggle
   const handleToggle = () => {
     const newOpen = !isOpen;
     setIsOpen(newOpen);
+    
+    // Notify parent of state change (PRD requirement)
+    notifyParentEvent(newOpen ? 'CHAT_OPENED' : 'CHAT_CLOSED');
+    
     if (config?.widget_behavior?.remember_state) {
       try {
         localStorage.setItem('picasso_chat_state', JSON.stringify(newOpen));
@@ -280,14 +306,35 @@ function ChatWidget() {
       textFromConfig: calloutConfig.text,
       textFromRoot: config?.calloutText,
       textFromLegacy: config?.callout_text
-    }
+    },
+    // Debug iframe and responsive behavior
+    windowWidth: window.innerWidth,
+    isIframe: document.body.getAttribute('data-iframe'),
+    shouldShowToggle: (window.innerWidth >= 768 || !isOpen),
+    shouldShowChat: isOpen
   });
 
   const isDoubleInput = config?.features?.uploads || config?.features?.voice;
 
+  // Don't render anything if config is still loading to prevent null reference errors
+  if (!config) {
+    return (
+      <div style={{ 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'center', 
+        height: '100%', 
+        color: '#666',
+        fontFamily: 'system-ui'
+      }}>
+        Loading...
+      </div>
+    );
+  }
+
   return (
     <div>
-      {/* Widget toggle and callout */}
+      {/* Widget toggle and callout - Show in iframe mode when closed */}
       {(window.innerWidth >= 768 || !isOpen) && (
         <div className="chat-toggle-wrapper">
           <button
@@ -321,7 +368,7 @@ function ChatWidget() {
         </div>
       )}
 
-      {/* Chat container */}
+      {/* Chat container - Show when open */}
       {isOpen && (
         <div className="chat-container" data-input-mode={isDoubleInput ? "double" : "single"}>
           <ChatHeader onClose={() => {

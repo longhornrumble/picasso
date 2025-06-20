@@ -1,14 +1,14 @@
 import React from "react";
-import { useConfig } from "../../context/ConfigProvider";
+import { useConfig } from "../../hooks/useConfig";
 import { X } from "lucide-react";
 
 export default function ChatHeader({ onClose }) {
   const { config } = useConfig();
 
-  // Get subtitle from config with fallback
-  const subtitle = config.branding?.chat_subtitle || 
-                  config.branding?.header_subtitle || 
-                  config.chat_subtitle ||
+  // Get subtitle from config with fallback - add null check
+  const subtitle = config?.branding?.chat_subtitle || 
+                  config?.branding?.header_subtitle || 
+                  config?.chat_subtitle ||
                   "How can we help you today?";
 
   return (
@@ -18,7 +18,7 @@ export default function ChatHeader({ onClose }) {
         <div className="chat-header-logo" />
         
         <div className="chat-header-text">
-          <h3 className="chat-title">{config.branding?.chat_title}</h3>
+          <h3 className="chat-title">{config?.branding?.chat_title || "Chat"}</h3>
           {subtitle && (
             <p className="chat-subtitle">{subtitle}</p>
           )}

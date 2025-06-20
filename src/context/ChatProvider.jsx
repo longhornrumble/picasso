@@ -1,22 +1,19 @@
 // src/context/ChatProvider.jsx - Updated for Actions API Response Format
-import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
-import { useConfig } from "./ConfigProvider";
+import React, { createContext, useState, useCallback, useEffect } from "react";
+import { useConfig } from "../hooks/useConfig";
 
 const ChatContext = createContext();
 
-export const useChat = () => {
-  const context = useContext(ChatContext);
-  if (!context) {
-    throw new Error("useChat must be used within a ChatProvider");
-  }
-  return context;
-};
+// Function to get the context for hooks
+export const getChatContext = () => ChatContext;
 
-export const ChatProvider = ({ children }) => {
+// Export provider as const
+const ChatProvider = ({ children }) => {
   const { config: tenantConfig } = useConfig();
   
   const [messages, setMessages] = useState([]);
   const [isTyping, setIsTyping] = useState(false);
+  const [hasInitializedMessages, setHasInitializedMessages] = useState(false);
 
   // Generate welcome actions from config
   const generateWelcomeActions = useCallback((config) => {
@@ -35,9 +32,10 @@ export const ChatProvider = ({ children }) => {
     return chips.slice(0, maxDisplay);
   }, []);
 
-  // Generate welcome message with proper action chips - ONLY when no messages exist
+  // Generate welcome message ONLY on initial load - prevent resets on config updates
   useEffect(() => {
-    if (tenantConfig && messages.length === 0) {
+    if (tenantConfig && !hasInitializedMessages) {
+      console.log('🎬 Setting initial welcome message');
       const welcomeActions = generateWelcomeActions(tenantConfig);
 
       setMessages([{
@@ -46,8 +44,10 @@ export const ChatProvider = ({ children }) => {
         content: tenantConfig.welcome_message || "Hello! How can I help you today?",
         actions: welcomeActions
       }]);
+      
+      setHasInitializedMessages(true);
     }
-  }, [tenantConfig, generateWelcomeActions, messages.length]);
+  }, [tenantConfig, generateWelcomeActions, hasInitializedMessages]);
 
   // Get tenant hash for API calls
   const getTenantHash = () => {
@@ -72,6 +72,19 @@ export const ChatProvider = ({ children }) => {
       }
       return [...prev, messageWithId];
     });
+    
+    // Notify parent of message sent (PRD requirement)
+    if (message.role === "user" && window.parent && window.parent !== window) {
+      window.parent.postMessage({
+        type: 'PICASSO_EVENT',
+        event: 'MESSAGE_SENT',
+        payload: {
+          content: message.content,
+          files: message.files || [],
+          messageId: messageWithId.id
+        }
+      }, '*');
+    }
     
     // ✅ ACTIONS ONLY: Call chat API for user messages
     if (message.role === "user" && !message.skipBotResponse && !message.uploadState) {
@@ -225,6 +238,7 @@ export const ChatProvider = ({ children }) => {
   }, []);
 
   const clearMessages = useCallback(() => {
+    console.log('🗑️ Manually clearing messages');
     // Reset to welcome message
     if (tenantConfig) {
       const welcomeActions = generateWelcomeActions(tenantConfig);
@@ -323,3 +337,6 @@ if (typeof window !== 'undefined') {
    testServices()                  - Test services response
   `);
 }
+
+// Export only the provider
+export { ChatProvider };

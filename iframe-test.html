@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Picasso Iframe Architecture Test</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      line-height: 1.6;
+      margin: 0;
+      padding: 20px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+    }
+    
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      background: white;
+      padding: 30px;
+      border-radius: 12px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    }
+    
+    h1 {
+      color: #2d3748;
+      text-align: center;
+      margin-bottom: 30px;
+    }
+    
+    .test-section {
+      margin: 20px 0;
+      padding: 20px;
+      border: 2px solid #e2e8f0;
+      border-radius: 8px;
+      background: #f8fafc;
+    }
+    
+    .test-section h3 {
+      color: #4a5568;
+      margin-top: 0;
+    }
+    
+    .test-result {
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 6px;
+      font-weight: bold;
+    }
+    
+    .test-pass {
+      background: #f0fff4;
+      color: #22543d;
+      border: 1px solid #9ae6b4;
+    }
+    
+    .test-fail {
+      background: #fed7d7;
+      color: #742a2a;
+      border: 1px solid #feb2b2;
+    }
+    
+    .test-info {
+      background: #ebf8ff;
+      color: #2d3748;
+      border: 1px solid #90cdf4;
+    }
+    
+    .performance-metrics {
+      background: #fffaf0;
+      border: 1px solid #fbd38d;
+      padding: 15px;
+      border-radius: 6px;
+      margin: 10px 0;
+    }
+    
+    .controls {
+      margin: 20px 0;
+      text-align: center;
+    }
+    
+    button {
+      background: #4299e1;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 6px;
+      cursor: pointer;
+      margin: 0 10px;
+      font-size: 14px;
+    }
+    
+    button:hover {
+      background: #3182ce;
+    }
+    
+    .hostile-css {
+      /* Aggressive CSS that would break non-iframe widgets */
+      * {
+        margin: 100px !important;
+        padding: 50px !important;
+        background: red !important;
+        color: yellow !important;
+        border: 10px solid purple !important;
+        font-size: 50px !important;
+      }
+      
+      div {
+        position: absolute !important;
+        top: 0 !important;
+        left: 0 !important;
+        width: 100vw !important;
+        height: 100vh !important;
+        z-index: 9999999 !important;
+      }
+    }
+    
+    .hostile-toggle {
+      background: #e53e3e;
+      color: white;
+    }
+    
+    .hostile-toggle:hover {
+      background: #c53030;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🚀 Picasso Iframe Architecture Test</h1>
+    <p><strong>PRD v2.0 Compliance Testing</strong></p>
+    
+    <div class="test-section">
+      <h3>🎯 Test Configuration</h3>
+      <div id="test-config" class="test-info">
+        <strong>Test Tenant Hash:</strong> fo85e6a06dcdf4<br>
+        <strong>Expected Behavior:</strong> Complete CSS isolation, responsive iframe resizing<br>
+        <strong>Performance Target:</strong> &lt;500ms initialization
+      </div>
+    </div>
+    
+    <div class="controls">
+      <button onclick="openChat()">Open Chat</button>
+      <button onclick="closeChat()">Close Chat</button>
+      <button onclick="toggleHostileCSS()" class="hostile-toggle" id="hostile-btn">
+        Enable Hostile CSS (Test Isolation)
+      </button>
+      <button onclick="runTests()">Run All Tests</button>
+    </div>
+    
+    <div class="test-section">
+      <h3>🏗️ Architecture Tests</h3>
+      <div id="architecture-tests"></div>
+    </div>
+    
+    <div class="test-section">
+      <h3>⚡ Performance Metrics</h3>
+      <div id="performance-metrics" class="performance-metrics">
+        Waiting for widget initialization...
+      </div>
+    </div>
+    
+    <div class="test-section">
+      <h3>🔒 CSS Isolation Test</h3>
+      <div id="isolation-tests">
+        <div class="test-info">
+          Use the "Enable Hostile CSS" button to test complete CSS isolation.
+          The widget should remain unaffected by aggressive host page styles.
+        </div>
+      </div>
+    </div>
+    
+    <div class="test-section">
+      <h3>📱 Responsive Behavior</h3>
+      <div id="responsive-tests">
+        <div class="test-info">
+          Resize the browser window or use mobile device simulation to test responsive iframe behavior.
+        </div>
+      </div>
+    </div>
+    
+    <div class="test-section">
+      <h3>🔗 Communication Protocol</h3>
+      <div id="communication-tests"></div>
+    </div>
+    
+    <div class="test-section">
+      <h3>📊 Event Log</h3>
+      <div id="event-log" style="background: #1a202c; color: #a0aec0; padding: 15px; border-radius: 6px; font-family: monospace; font-size: 12px; max-height: 200px; overflow-y: auto;">
+        Waiting for events...
+      </div>
+    </div>
+  </div>
+
+  <!-- Load the Picasso Widget -->
+  <script src="/widget.js" data-tenant="fo85e6a06dcdf4"></script>
+
+  <script>
+    let widget = null;
+    let hostileCSS = false;
+    let performanceData = {};
+    
+    // Test results tracking
+    const testResults = {
+      architecture: {},
+      performance: {},
+      isolation: {},
+      communication: {}
+    };
+    
+    // Event logging
+    function logEvent(message, type = 'info') {
+      const log = document.getElementById('event-log');
+      const timestamp = new Date().toLocaleTimeString();
+      const color = type === 'error' ? '#f56565' : type === 'success' ? '#68d391' : '#90cdf4';
+      log.innerHTML += `<div style="color: ${color};">[${timestamp}] ${message}</div>`;
+      log.scrollTop = log.scrollHeight;
+    }
+    
+    // Listen for widget events
+    window.addEventListener('picasso:ready', (event) => {
+      logEvent('✅ Widget ready event received', 'success');
+      widget = window.__picassoWidget;
+      runTests();
+    });
+    
+    window.addEventListener('picasso:opened', () => {
+      logEvent('📂 Chat opened', 'success');
+      testResults.communication.openCommand = true;
+      updateCommunicationTests();
+    });
+    
+    window.addEventListener('picasso:closed', () => {
+      logEvent('📁 Chat closed', 'success');
+      testResults.communication.closeCommand = true;
+      updateCommunicationTests();
+    });
+    
+    // Listen for iframe messages
+    window.addEventListener('message', (event) => {
+      if (event.data.type === 'PICASSO_EVENT') {
+        const { event: eventType, payload } = event.data;
+        logEvent(`📡 Iframe event: ${eventType}`, 'info');
+        
+        switch (eventType) {
+          case 'IFRAME_READY':
+            performanceData = payload.performance || {};
+            updatePerformanceMetrics();
+            testResults.performance.initialization = performanceData.totalLoadTime < 500;
+            break;
+            
+          case 'RESIZE_REQUEST':
+            logEvent(`📏 Resize request: ${JSON.stringify(payload)}`, 'info');
+            testResults.communication.resizeEvents = true;
+            break;
+            
+          case 'IFRAME_ERROR':
+            logEvent(`❌ Iframe error: ${payload.error}`, 'error');
+            break;
+        }
+        
+        updateCommunicationTests();
+      }
+    });
+    
+    // Control functions
+    function openChat() {
+      if (widget) {
+        widget.openChat();
+      } else {
+        logEvent('⚠️ Widget not ready', 'error');
+      }
+    }
+    
+    function closeChat() {
+      if (widget) {
+        widget.closeChat();
+      } else {
+        logEvent('⚠️ Widget not ready', 'error');
+      }
+    }
+    
+    function toggleHostileCSS() {
+      const btn = document.getElementById('hostile-btn');
+      
+      if (!hostileCSS) {
+        document.body.classList.add('hostile-css');
+        btn.textContent = 'Disable Hostile CSS';
+        btn.style.background = '#38a169';
+        hostileCSS = true;
+        logEvent('🔴 Hostile CSS enabled - testing isolation', 'info');
+        
+        // Test if widget survives hostile CSS
+        setTimeout(() => {
+          testResults.isolation.hostileCSS = checkWidgetIntegrity();
+          updateIsolationTests();
+        }, 1000);
+      } else {
+        document.body.classList.remove('hostile-css');
+        btn.textContent = 'Enable Hostile CSS (Test Isolation)';
+        btn.style.background = '#e53e3e';
+        hostileCSS = false;
+        logEvent('🟢 Hostile CSS disabled', 'success');
+      }
+    }
+    
+    // Test functions
+    function checkWidgetIntegrity() {
+      try {
+        const iframe = document.querySelector('#picasso-widget-container iframe');
+        if (!iframe) return false;
+        
+        // Check if iframe is still properly positioned and sized
+        const styles = window.getComputedStyle(iframe);
+        const isProperlyPositioned = styles.position === 'static' || 
+                                    (styles.width && styles.height);
+        
+        logEvent(`🔍 Widget integrity check: ${isProperlyPositioned ? 'PASS' : 'FAIL'}`, 
+                isProperlyPositioned ? 'success' : 'error');
+        
+        return isProperlyPositioned;
+      } catch (error) {
+        logEvent(`❌ Widget integrity check failed: ${error.message}`, 'error');
+        return false;
+      }
+    }
+    
+    function runTests() {
+      logEvent('🧪 Running comprehensive tests...', 'info');
+      
+      // Architecture tests
+      testResults.architecture.widgetMounted = !!window.__picassoWidget;
+      testResults.architecture.iframeExists = !!document.querySelector('#picasso-widget-container iframe');
+      testResults.architecture.containerPositioned = checkContainerPositioning();
+      
+      // Performance tests
+      testResults.performance.configLoad = performanceData.configLoadTime < 200;
+      testResults.performance.initialization = performanceData.totalLoadTime < 500;
+      
+      // Communication tests
+      testResults.communication.messageListener = typeof window.addEventListener === 'function';
+      testResults.communication.postMessage = typeof window.postMessage === 'function';
+      
+      // Update displays
+      updateArchitectureTests();
+      updatePerformanceMetrics();
+      updateCommunicationTests();
+      updateIsolationTests();
+      
+      logEvent('✅ Tests completed', 'success');
+    }
+    
+    function checkContainerPositioning() {
+      try {
+        const container = document.getElementById('picasso-widget-container');
+        if (!container) return false;
+        
+        const styles = window.getComputedStyle(container);
+        return styles.position === 'fixed' && 
+               styles.zIndex > '1000000';
+      } catch (error) {
+        return false;
+      }
+    }
+    
+    // Update display functions
+    function updateArchitectureTests() {
+      const container = document.getElementById('architecture-tests');
+      container.innerHTML = Object.entries(testResults.architecture)
+        .map(([key, value]) => {
+          const status = value ? 'test-pass' : 'test-fail';
+          const icon = value ? '✅' : '❌';
+          const label = key.replace(/([A-Z])/g, ' $1').toLowerCase();
+          return `<div class="test-result ${status}">${icon} ${label}</div>`;
+        }).join('');
+    }
+    
+    function updatePerformanceMetrics() {
+      const container = document.getElementById('performance-metrics');
+      
+      if (Object.keys(performanceData).length === 0) {
+        container.innerHTML = 'Waiting for performance data...';
+        return;
+      }
+      
+      const metrics = [
+        `Total Load Time: ${performanceData.totalLoadTime?.toFixed(2) || 'N/A'}ms`,
+        `Config Load Time: ${performanceData.configLoadTime?.toFixed(2) || 'N/A'}ms`,
+        `Render Time: ${performanceData.renderTime?.toFixed(2) || 'N/A'}ms`
+      ];
+      
+      container.innerHTML = metrics.map(metric => `<div>${metric}</div>`).join('');
+      
+      // Add performance test results
+      const perfTests = Object.entries(testResults.performance)
+        .map(([key, value]) => {
+          const status = value ? 'test-pass' : 'test-fail';
+          const icon = value ? '✅' : '❌';
+          const label = key.replace(/([A-Z])/g, ' $1').toLowerCase();
+          return `<div class="test-result ${status}">${icon} ${label} meets PRD target</div>`;
+        }).join('');
+      
+      container.innerHTML += perfTests;
+    }
+    
+    function updateCommunicationTests() {
+      const container = document.getElementById('communication-tests');
+      container.innerHTML = Object.entries(testResults.communication)
+        .map(([key, value]) => {
+          const status = value ? 'test-pass' : 'test-fail';
+          const icon = value ? '✅' : '❌';
+          const label = key.replace(/([A-Z])/g, ' $1').toLowerCase();
+          return `<div class="test-result ${status}">${icon} ${label}</div>`;
+        }).join('');
+    }
+    
+    function updateIsolationTests() {
+      const container = document.getElementById('isolation-tests');
+      const isolationHTML = Object.entries(testResults.isolation)
+        .map(([key, value]) => {
+          const status = value ? 'test-pass' : 'test-fail';
+          const icon = value ? '✅' : '❌';
+          const label = key.replace(/([A-Z])/g, ' $1').toLowerCase();
+          return `<div class="test-result ${status}">${icon} ${label}</div>`;
+        }).join('');
+      
+      if (isolationHTML) {
+        container.innerHTML = isolationHTML;
+      }
+    }
+    
+    // Initialize logging
+    logEvent('🚀 Iframe architecture test page loaded', 'info');
+    logEvent('⏳ Waiting for widget initialization...', 'info');
+    
+    // Responsive test
+    window.addEventListener('resize', () => {
+      logEvent(`📱 Window resized to ${window.innerWidth}x${window.innerHeight}`, 'info');
+    });
+  </script>
+</body>
+</html> 

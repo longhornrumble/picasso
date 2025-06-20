@@ -1,7 +1,7 @@
 // src/components/chat/FullPageChat.jsx - Full Page Chat Mode
 import React, { useState, useEffect } from "react";
-import { useConfig } from "../../context/ConfigProvider";
-import { useChat } from "../../context/ChatProvider";
+import { useConfig } from "../../hooks/useConfig";
+import { useChat } from "../../hooks/useChat";
 import { useCSSVariables } from "./useCSSVariables";
 import ChatHeader from "./ChatHeader";
 import MessageList from "./MessageList";

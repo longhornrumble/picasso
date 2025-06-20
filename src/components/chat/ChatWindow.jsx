@@ -1,6 +1,6 @@
 // src/components/chat/ChatWindow.jsx
 import React, { useRef, useLayoutEffect, useState } from "react";
-import { useConfig } from "../../context/ConfigProvider";
+import { useConfig } from "../../hooks/useConfig";
 import MessageList from "./MessageList";
 import InputBar from "./InputBar";
 import FollowUpPromptBar from "./FollowUpPromptBar";

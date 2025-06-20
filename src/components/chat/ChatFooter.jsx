@@ -1,6 +1,6 @@
 // Enhanced ChatFooter.jsx with MyRecruiter company logo
 import React, { useState } from "react";
-import { useConfig } from "../../context/ConfigProvider";
+import { useConfig } from "../../hooks/useConfig";
 import FollowUpPromptBar from "./FollowUpPromptBar";
 
 export default function ChatFooter({ brandText = "MyRecruiter" }) {

@@ -2,8 +2,8 @@
 import React, { useState } from "react";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
-import { useConfig } from "../../context/ConfigProvider";
-import { useChat } from "../../context/ChatProvider";
+import { useConfig } from "../../hooks/useConfig";
+import { useChat } from "../../hooks/useChat";
 import FilePreview from "./FilePreview";
 
 // Enhanced avatar URL helper
