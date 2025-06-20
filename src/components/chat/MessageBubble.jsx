@@ -55,41 +55,50 @@ export default function MessageBubble({ role, content, files = [], actions = [],
     setAvatarError(false);
   };
 
+  // Determine if action chips should use full-width layout based on text length
+  const getActionChipsLayoutClass = (actions) => {
+    if (!actions || actions.length === 0) return '';
+    
+    // Check if any action has long text (configurable threshold)
+    const maxShortTextLength = config?.action_chips?.short_text_threshold || 16;
+    const hasLongText = actions.some(action => 
+      (action.label || '').length > maxShortTextLength
+    );
+    
+    return hasLongText ? 'long-text' : '';
+  };
+
   return (
     <div className={`message ${isUser ? 'user' : 'bot'}`}>
-      {!isUser && (
-        <div className="avatar-wrapper">
-          <div 
-            className="bot-avatar"
-            style={{ 
-              backgroundImage: avatarError ? 'url(https://chat.myrecruiter.ai/collateral/default-avatar.png)' : `url(${avatarSrc})`,
-              backgroundSize: 'cover',
-              backgroundPosition: 'center',
-              backgroundRepeat: 'no-repeat'
-            }}
-            onError={handleAvatarError}
-          >
-            <img 
-              src={avatarSrc}
-              onError={handleAvatarError}
-              onLoad={handleAvatarLoad}
-              style={{ display: 'none' }}
-              alt="Avatar"
-              crossOrigin="anonymous"
-            />
-          </div>
-        </div>
-      )}
-
       <div className="message-content">
+        {/* Bot message header with avatar and name - inside bubble */}
+        {!isUser && (
+          <div className="message-header">
+            <div className="message-avatar">
+              {!avatarError && (
+                <img 
+                  src={avatarSrc}
+                  onError={handleAvatarError}
+                  onLoad={handleAvatarLoad}
+                  alt="Avatar"
+                  crossOrigin="anonymous"
+                />
+              )}
+            </div>
+            <div className="message-sender-name">
+              {config?.branding?.bot_name || config?.branding?.chat_title || 'Assistant'}
+            </div>
+          </div>
+        )}
+
         {/* Text Content */}
         {content && (
-          <div dangerouslySetInnerHTML={{ __html: html }} />
+          <div className="message-text" dangerouslySetInnerHTML={{ __html: html }} />
         )}
 
         {/* Action Chips - Only for assistant/bot messages */}
         {(role === "assistant" || role === "bot") && actions && actions.length > 0 && (
-  <div className="action-chips">
+  <div className={`action-chips ${getActionChipsLayoutClass(actions)}`}>
     {actions.slice(0, config?.action_chips?.max_display || 5).map((action, index) => (
       <button
         key={index}

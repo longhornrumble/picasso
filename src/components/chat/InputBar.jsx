@@ -207,8 +207,7 @@ export default function InputBar({ input, setInput }) {
                 onKeyDown={handleKeyDown}
                 placeholder="How can I help you today?"
                 autoComplete="off"
-                className="input-textarea inline-textarea"
-                style={{ height: "auto", overflowY: "hidden" }}
+                className="input-textarea inline-textarea auto-resize-textarea"
               />
               <button
                 onClick={handleSubmit}

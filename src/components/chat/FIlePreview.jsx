@@ -66,179 +66,86 @@ export default function FilePreview({ file, uploadState = "complete", onCancel }
     }
   };
 
+  const getFileCardClass = () => {
+    switch (uploadState) {
+      case 'uploading':
+        return 'file-card file-card-uploading';
+      case 'error':
+        return 'file-card file-card-error';
+      case 'complete':
+      default:
+        return 'file-card file-card-complete';
+    }
+  };
+
   return (
-    <div style={{ marginTop: '8px' }}>
+    <div className="file-preview-container">
       {/* Image Preview */}
       {isImage && uploadState === 'complete' ? (
-        <div style={{
-          width: '200px',
-          height: '150px',
-          borderRadius: '8px',
-          overflow: 'hidden',
-          border: '1px solid #e5e7eb',
-          backgroundColor: '#f3f4f6',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          position: 'relative'
-        }}>
+        <div className="image-preview">
           {file.url ? (
             <img 
               src={file.url} 
               alt={file.name}
-              style={{
-                width: '100%',
-                height: '100%',
-                objectFit: 'cover'
-              }}
             />
           ) : (
-            <div style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              color: '#6b7280',
-              fontSize: '12px'
-            }}>
-              <Image size={24} style={{ marginBottom: '4px' }} />
+            <div className="file-preview-placeholder">
+              <Image size={24} className="file-preview-placeholder-icon" />
               {file.name}
             </div>
           )}
         </div>
       ) : file.type?.startsWith('video/') && uploadState === 'complete' ? (
-        <div style={{
-          width: '200px',
-          height: '150px',
-          borderRadius: '8px',
-          overflow: 'hidden',
-          border: '1px solid #e5e7eb',
-          backgroundColor: '#f3f4f6',
-          position: 'relative'
-        }}>
+        <div className="video-preview">
           <video 
             src={file.url} 
             controls
-            style={{
-              width: '100%',
-              height: '100%',
-              objectFit: 'cover'
-            }}
           />
         </div>
       ) : file.type?.includes('pdf') && uploadState === 'complete' ? (
-        <div style={{
-          width: '200px',
-          height: '150px',
-          borderRadius: '8px',
-          overflow: 'hidden',
-          border: '1px solid #e5e7eb',
-          backgroundColor: '#f3f4f6',
-          position: 'relative'
-        }}>
+        <div className="pdf-preview">
           <iframe 
             src={file.url}
             title={file.name}
-            style={{
-              width: '100%',
-              height: '100%',
-              border: 'none'
-            }}
             onError={(e) => {
-              e.target.outerHTML = `<div style='display:flex;align-items:center;justify-content:center;height:100%;color:#6b7280;font-size:12px;text-align:center;padding:10px;'>Unable to preview PDF. Please download the file instead.</div>`;
+              e.target.outerHTML = `<div class="pdf-error-message">Unable to preview PDF. Please download the file instead.</div>`;
             }}
           />
         </div>
       ) : (
         /* File Card */
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '12px',
-          padding: '12px',
-          border: '1px solid',
-          borderRadius: '8px',
-          maxWidth: '280px',
-          position: 'relative',
-          ...getStateStyle()
-        }}>
+        <div className={getFileCardClass()}>
           {/* Cancel button for uploading files */}
           {uploadState === 'uploading' && onCancel && (
             <button
               onClick={onCancel}
-              style={{
-                position: 'absolute',
-                top: '4px',
-                right: '4px',
-                background: '#ef4444',
-                border: 'none',
-                borderRadius: '50%',
-                width: '20px',
-                height: '20px',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'white'
-              }}
+              className="file-cancel-button"
             >
               <X size={12} />
             </button>
           )}
 
           {/* File Icon */}
-          <div style={{
-            width: '32px',
-            height: '32px',
-            borderRadius: '6px',
-            backgroundColor: uploadState === 'error' ? '#ef4444' : '#3b82f6',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: 'white',
-            fontSize: '10px',
-            fontWeight: '600',
-            flexShrink: 0
-          }}>
+          <div className={`file-icon ${uploadState === 'error' ? 'file-icon-error' : ''}`}>
             {uploadState === 'error' ? '✗' : getFileTypeLabel(file.type)}
           </div>
 
           {/* File Info */}
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{
-              fontSize: '13px',
-              fontWeight: '500',
-              color: uploadState === 'error' ? '#dc2626' : '#374151',
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis'
-            }}>
+          <div className="file-info">
+            <div className={`file-name ${uploadState === 'error' ? 'file-name-error' : ''}`}>
               {file.name}
             </div>
-            <div style={{
-              fontSize: '11px',
-              color: uploadState === 'error' ? '#dc2626' : '#6b7280',
-              marginTop: '2px'
-            }}>
+            <div className={`file-status ${uploadState === 'error' ? 'file-status-error' : ''}`}>
               {getStatusText()}
             </div>
 
             {/* Progress Bar for Uploading */}
             {uploadState === 'uploading' && (
-              <div style={{
-                width: '100%',
-                height: '4px',
-                backgroundColor: '#e5e7eb',
-                borderRadius: '2px',
-                marginTop: '4px',
-                overflow: 'hidden'
-              }}>
-                <div style={{
-                  height: '100%',
-                  backgroundColor: '#3b82f6',
-                  borderRadius: '2px',
-                  width: file.progress ? `${file.progress}%` : '10%',
-                  transition: 'width 0.3s ease'
-                }} />
+              <div className="file-progress-bar">
+                <div 
+                  className="file-progress-fill"
+                  style={{ '--progress-width': file.progress ? `${file.progress}%` : '10%' }}
+                />
               </div>
             )}
           </div>

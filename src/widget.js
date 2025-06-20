@@ -99,21 +99,15 @@ class PicassoWidget {
       const mode = this.getMode();
       
       if (mode === 'fullpage') {
-        // Full-page mode: use existing root or body
+        // Full-page mode: take over entire page
         let container = document.getElementById('root') || document.getElementById('picasso-fullpage-root');
         
         if (!container) {
           container = document.createElement('div');
           container.id = 'picasso-fullpage-root';
-          container.style.width = '100vw';
-          container.style.height = '100vh';
-          container.style.position = 'fixed';
-          container.style.top = '0';
-          container.style.left = '0';
-          container.style.zIndex = '999999';
-          container.style.background = 'var(--picasso-fullpage-background, #f8fafc)';
+          container.className = 'fullpage-container';
           
-          // Clear existing page content for clean full-page experience
+          // Clear body and add container
           document.body.innerHTML = '';
           document.body.appendChild(container);
         }
@@ -126,9 +120,7 @@ class PicassoWidget {
         if (!container) {
           container = document.createElement('div');
           container.id = 'picasso-widget-root';
-          container.style.position = 'fixed';
-          container.style.zIndex = '999999';
-          container.style.pointerEvents = 'none'; // Allow clicks through when closed
+          container.className = 'widget-container';
           
           document.body.appendChild(container);
         }
@@ -207,32 +199,10 @@ class PicassoWidget {
       }
 
       this.container.innerHTML = `
-        <div style="
-          position: fixed;
-          bottom: 24px;
-          right: 24px;
-          background: #ef4444;
-          color: white;
-          padding: 12px 16px;
-          border-radius: 8px;
-          font-family: system-ui, sans-serif;
-          font-size: 14px;
-          box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-          z-index: 999999;
-          max-width: 300px;
-        ">
+        <div class="widget-error-fallback">
           <strong>Chat Widget Error</strong><br>
           <small>Please refresh the page or contact support</small>
-          <button onclick="this.parentElement.remove()" style="
-            position: absolute;
-            top: 4px;
-            right: 4px;
-            background: none;
-            border: none;
-            color: white;
-            cursor: pointer;
-            font-size: 16px;
-          ">×</button>
+          <button onclick="this.parentElement.remove()" class="widget-error-close">×</button>
         </div>
       `;
 

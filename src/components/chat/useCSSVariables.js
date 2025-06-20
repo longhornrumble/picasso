@@ -130,10 +130,10 @@ export function useCSSVariables(config) {
       
       /* === CHAT WIDGET DIMENSIONS === */
       '--chat-width': ensurePixelUnit(branding.chat_width || '360px'),
-      '--chat-height': ensurePixelUnit(branding.chat_height || '540px'),
+      '--chat-height': ensurePixelUnit(branding.chat_height || '640px'),
       '--chat-max-height': branding.chat_max_height || '80vh',
       '--chat-width-large': ensurePixelUnit(branding.chat_width_large || '400px'),
-      '--chat-height-large': ensurePixelUnit(branding.chat_height_large || '600px'),
+      '--chat-height-large': ensurePixelUnit(branding.chat_height_large || '700px'),
       '--chat-width-mobile': branding.chat_width_mobile || 'calc(100vw - 24px)',
       '--chat-height-mobile': branding.chat_height_mobile || 'calc(100vh - 160px)',
       '--chat-width-tablet': branding.chat_width_tablet || 'calc(100vw - 32px)',
@@ -153,6 +153,12 @@ export function useCSSVariables(config) {
       '--avatar-display': branding.avatar_shape === 'hidden' ? 'none' : 'block',
       '--avatar-border': branding.avatar_border || '2px solid rgba(59, 130, 246, 0.15)',
       '--avatar-shadow': branding.avatar_shadow || '0 2px 8px rgba(59, 130, 246, 0.1), 0 1px 3px rgba(0, 0, 0, 0.05)',
+      
+      /* === MESSAGE HEADER STYLING === */
+      '--message-avatar-size': branding.message_avatar_size || '24px',
+      '--message-sender-font-size': branding.message_sender_font_size || '13px',
+      '--message-sender-font-weight': branding.message_sender_font_weight || '600',
+      '--message-sender-color': branding.message_sender_color || branding.font_color || '#374151',
       
       /* === LOGO/AVATAR BACKGROUND COLORS === */
       '--logo-background-color': branding.logo_background_color || branding.avatar_background_color || 'transparent',
@@ -176,6 +182,29 @@ export function useCSSVariables(config) {
       '--action-chip-font-weight': branding.action_chip_font_weight || '500',
       '--action-chip-shadow': branding.action_chip_shadow || '0 1px 3px rgba(0, 0, 0, 0.1)',
       '--action-chip-hover-shadow': generateActionChipShadow(branding.primary_color),
+      
+      /* === CALLOUT SYSTEM === */
+      '--callout-background': branding.callout_background || branding.background_color || '#ffffff',
+      '--callout-border-color': branding.callout_border_color || branding.border_color || 'rgba(59, 130, 246, 0.1)',
+      '--callout-border-width': branding.callout_border_width || '1px',
+      '--callout-border-radius': ensurePixelUnit(branding.callout_border_radius || branding.border_radius || '12px'),
+      '--callout-padding': branding.callout_padding || '14px 18px',
+      '--callout-min-width': ensurePixelUnit(branding.callout_min_width || '160px'),
+      '--callout-max-width': ensurePixelUnit(branding.callout_max_width || '320px'),
+      '--callout-font-size': ensurePixelUnit(branding.callout_font_size || '14px'),
+      '--callout-text-color': branding.callout_text_color || branding.font_color || '#374151',
+      '--callout-main-weight': branding.callout_main_weight || '600',
+      '--callout-main-size': ensurePixelUnit(branding.callout_main_size || '14px'),
+      '--callout-main-color': branding.callout_main_color || branding.font_color || '#374151',
+      '--callout-subtitle-size': ensurePixelUnit(branding.callout_subtitle_size || '12px'),
+      '--callout-subtitle-weight': branding.callout_subtitle_weight || '400',
+      '--callout-subtitle-color': branding.callout_subtitle_color || branding.secondary_color || '#6b7280',
+      '--callout-close-bg': branding.callout_close_bg || 'rgba(0, 0, 0, 0.05)',
+      '--callout-close-color': branding.callout_close_color || branding.secondary_color || '#6b7280',
+      '--callout-close-radius': ensurePixelUnit(branding.callout_close_radius || '50%'),
+      '--callout-close-hover-bg': branding.callout_close_hover_bg || branding.border_color || 'rgba(59, 130, 246, 0.1)',
+      '--callout-close-hover-color': branding.callout_close_hover_color || branding.font_color || '#374151',
+      '--callout-animation-duration': branding.callout_animation_duration || '0.35s',
       
       /* === ENHANCED SHADOW SYSTEM === */
       '--bubble-shadow': branding.bubble_shadow || '0 1px 3px rgba(0, 0, 0, 0.1)',
@@ -219,8 +248,9 @@ export function useCSSVariables(config) {
       '--photo-button-display': features.photo_uploads !== false ? 'flex' : 'none',
       '--voice-display': features.voice_input ? 'flex' : 'none',
       '--voice-button-display': features.voice_input ? 'flex' : 'none',
-      '--quick-help-container-display': quickHelpEnabled ? 'block' : 'none',
+
       '--action-chips-display': actionChipsEnabled ? 'flex' : 'none',
+      '--action-chips-short-text-threshold': branding.action_chips_short_text_threshold || '16',
       '--callout-display': calloutEnabled ? 'block' : 'none',
       '--callout-enabled': calloutEnabled ? '1' : '0',
       '--notification-display': 'flex',
@@ -233,6 +263,8 @@ export function useCSSVariables(config) {
       '--quick-help-overlay-border': branding.quick_help_overlay_border || '#e5e7eb',
       '--quick-help-overlay-shadow': branding.quick_help_overlay_shadow || '0 -4px 12px rgba(0, 0, 0, 0.1)',
       '--quick-help-button-shadow': branding.quick_help_button_shadow || '0 2px 4px rgba(0, 0, 0, 0.08)',
+      '--quick-help-animation-duration': branding.quick_help_animation_duration || '0.375s',
+      '--quick-help-slide-distance': branding.quick_help_slide_distance || '20px',
       
       /* === CALLOUT STYLING === */
       '--callout-shadow': branding.callout_shadow || '0 8px 24px rgba(0, 0, 0, 0.15)',

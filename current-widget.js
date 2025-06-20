@@ -7737,7 +7737,7 @@ var __async = (__this, __arguments, generator) => {
         "--action-chip-container-padding": branding.action_chip_container_padding || "4px 0",
         /* === CHAT WIDGET DIMENSIONS === */
         "--chat-width": ensurePixelUnit(branding.chat_width || "360px"),
-        "--chat-height": ensurePixelUnit(branding.chat_height || "540px"),
+        "--chat-height": ensurePixelUnit(branding.chat_height || "640px"),
         "--chat-max-height": branding.chat_max_height || "80vh",
         "--chat-width-large": ensurePixelUnit(branding.chat_width_large || "400px"),
         "--chat-height-large": ensurePixelUnit(branding.chat_height_large || "600px"),
@@ -7758,6 +7758,12 @@ var __async = (__this, __arguments, generator) => {
         "--avatar-display": branding.avatar_shape === "hidden" ? "none" : "block",
         "--avatar-border": branding.avatar_border || "2px solid rgba(59, 130, 246, 0.15)",
         "--avatar-shadow": branding.avatar_shadow || "0 2px 8px rgba(59, 130, 246, 0.1), 0 1px 3px rgba(0, 0, 0, 0.05)",
+        
+        /* === MESSAGE HEADER STYLING === */
+        "--message-avatar-size": branding.message_avatar_size || "24px",
+        "--message-sender-font-size": branding.message_sender_font_size || "13px",
+        "--message-sender-font-weight": branding.message_sender_font_weight || "600",
+        "--message-sender-color": branding.message_sender_color || branding.font_color || "#374151",
         /* === LOGO/AVATAR BACKGROUND COLORS === */
         "--logo-background-color": branding.logo_background_color || branding.avatar_background_color || "transparent",
         "--avatar-background-color": branding.avatar_background_color || branding.logo_background_color || "transparent",
@@ -7816,8 +7822,9 @@ var __async = (__this, __arguments, generator) => {
         "--photo-button-display": features.photo_uploads !== false ? "flex" : "none",
         "--voice-display": features.voice_input ? "flex" : "none",
         "--voice-button-display": features.voice_input ? "flex" : "none",
-        "--quick-help-container-display": quickHelpEnabled ? "block" : "none",
+
         "--action-chips-display": actionChipsEnabled ? "flex" : "none",
+        "--action-chips-short-text-threshold": branding.action_chips_short_text_threshold || "16",
         "--callout-display": calloutEnabled ? "block" : "none",
         "--callout-enabled": calloutEnabled ? "1" : "0",
         "--notification-display": "flex",
@@ -7829,6 +7836,8 @@ var __async = (__this, __arguments, generator) => {
         "--quick-help-overlay-border": branding.quick_help_overlay_border || "#e5e7eb",
         "--quick-help-overlay-shadow": branding.quick_help_overlay_shadow || "0 -4px 12px rgba(0, 0, 0, 0.1)",
         "--quick-help-button-shadow": branding.quick_help_button_shadow || "0 2px 4px rgba(0, 0, 0, 0.08)",
+        "--quick-help-animation-duration": branding.quick_help_animation_duration || "0.375s",
+        "--quick-help-slide-distance": branding.quick_help_slide_distance || "20px",
         /* === CALLOUT STYLING === */
         "--callout-shadow": branding.callout_shadow || "0 8px 24px rgba(0, 0, 0, 0.15)",
         "--callout-hover-shadow": branding.callout_hover_shadow || "0 12px 32px rgba(0, 0, 0, 0.2)",

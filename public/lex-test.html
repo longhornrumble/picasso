@@ -2,10 +2,15 @@
 <html>
 <head>
   <title>Lex Test</title>
+  <style>
+    .lex-test-input {
+      width: 300px;
+    }
+  </style>
 </head>
 <body>
   <h2>Talk to Lex</h2>
-  <input id="msg" type="text" placeholder="Say something..." style="width: 300px;">
+  <input id="msg" type="text" placeholder="Say something..." class="lex-test-input">
   <button onclick="send()">Send</button>
 
   <pre id="output"></pre>
