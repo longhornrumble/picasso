@@ -2,17 +2,25 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import "./styles/theme.css";
+import { setupGlobalErrorHandling } from "./utils/errorHandling";
 
-/**
- * main.jsx
- *
- * Entry point for Picasso frontend.
- * No tenant ID is exposed client-side.
- * Config resolution is handled internally via a secure backend endpoint.
- */
+// Initialize global error handling
+setupGlobalErrorHandling();
 
-ReactDOM.createRoot(document.getElementById("root")).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
+function createWidgetIframe() {
+  const container = document.getElementById("root");
+  
+  container.innerHTML = `
+    <div style="position: fixed; bottom: 20px; right: 20px; z-index: 9999;">
+      <iframe 
+        src="widget-frame.html" 
+        style="width: 60px; height: 60px; border: none; border-radius: 50%;"
+        id="picasso-widget-iframe"
+        title="Picasso Chat Widget">
+      </iframe>
+    </div>
+  `;
+}
+
+// Create the iframe widget instead of rendering React app
+createWidgetIframe();

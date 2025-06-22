@@ -6,7 +6,7 @@ const path = require('path');
 console.log('🧪 Validating "Unexpected token exports" Fix\n');
 
 // Files to check
-const sourceFile = './public/widget-frame.html';
+const sourceFile = './widget-frame.html';
 const distFile = './dist/widget-frame.html';
 const iframeJsFile = './dist/iframe-main.js';
 

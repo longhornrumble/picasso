@@ -21,6 +21,10 @@ export default defineConfig({
     headers: {
       // Enable iframe embedding for development
       'X-Frame-Options': 'SAMEORIGIN',
+      'X-Content-Type-Options': 'nosniff',
+      'X-XSS-Protection': '1; mode=block',
+      'Referrer-Policy': 'strict-origin-when-cross-origin',
+      'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=()',
       'Content-Security-Policy': "frame-ancestors 'self' http://localhost:* https://localhost:*"
     },
     fs: {
@@ -29,52 +33,56 @@ export default defineConfig({
   },
   
   build: {
+    target: 'esnext',
     outDir: 'dist',
     emptyOutDir: true,
     
+    minify: 'esbuild',
+    sourcemap: false,
+    cssCodeSplit: true,
+    
     rollupOptions: {
       input: {
-        // Only JavaScript entry points - no HTML files
+        main: 'src/main.jsx',
         iframe: 'src/iframe-main.jsx',
-        host: 'src/widget-host.js'
+        host: 'src/widget-host.js',
+        'widget-frame': resolve(__dirname, 'widget-frame.html')
       },
       output: {
-        // Output structure
         entryFileNames: (chunkInfo) => {
+          if (chunkInfo.name === 'main') {
+            return 'main.js';
+          }
           if (chunkInfo.name === 'host') {
-            return 'widget.js'; // Host script becomes widget.js
+            return 'widget.js';
           }
           if (chunkInfo.name === 'iframe') {
-            return 'iframe-main.js'; // Remove hash for predictable naming
+            return 'iframe-main.js';
           }
           return '[name]-[hash].js';
         },
         chunkFileNames: '[name]-[hash].js',
-        assetFileNames: '[name]-[hash][extname]'
+        assetFileNames: '[name]-[hash][extname]',
+        
+        manualChunks: {
+          vendor: ['react', 'react-dom'],
+          ui: ['lucide-react']
+        }
       }
     },
     
     // Copy public files separately
     copyPublicDir: true,
     
-    target: 'es2015',
-    cssCodeSplit: false,
-    minify: false,
-    sourcemap: true,
+    chunkSizeWarningLimit: 500,
     logLevel: 'info'
   },
   
   define: {
-    // Process polyfills for browser
-    'process.env.NODE_ENV': '"production"',
-    'process.env': '{"NODE_ENV":"production"}',
-    'process.browser': 'true',
-    'process.version': '""',
-    'process.platform': '"browser"',
-    'process.argv': '[]',
-    global: 'globalThis',
-    __PICASSO_VERSION__: JSON.stringify(process.env.npm_package_version || '1.0.0'),
-    __PICASSO_MODE__: JSON.stringify('iframe')
+    'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'production'),
+    __PICASSO_VERSION__: JSON.stringify(process.env.npm_package_version || '2.0.0'),
+    __PICASSO_MODE__: JSON.stringify('iframe'),
+    __PICASSO_SECURE__: JSON.stringify(process.env.NODE_ENV === 'production')
   },
   
   // Resolve configuration for iframe development
@@ -85,6 +93,10 @@ export default defineConfig({
     }
   },
   
-  // Public directory configuration
-  publicDir: 'public'
+  publicDir: 'public',
+  
+  optimizeDeps: {
+    include: ['react', 'react-dom', 'marked', 'dompurify'],
+    exclude: ['@testing-library/react', '@testing-library/jest-dom']
+  }
 });

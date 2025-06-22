@@ -1,46 +1,51 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Picasso Widget</title>
-  <style>
-    /* Iframe-specific CSS reset and isolation */
-    html, body {
-      margin: 0;
-      padding: 0;
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-      font-family: system-ui, -apple-system, sans-serif;
-      background: transparent;
-    }
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#1D4ED8" />
     
-    #root {
-      width: 100%;
-      height: 100%;
-      display: flex;
-      flex-direction: column;
-    }
+    <title>Picasso Widget</title>
     
-    /* Prevent any parent page styles from leaking in */
-    * {
-      box-sizing: border-box;
-    }
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="preload" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'" />
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" /></noscript>
     
-    /* Basic iframe setup - let the React component handle the rest */
-    .loading-indicator {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      height: 100%;
-      background: #f8f9fa;
-      color: #6c757d;
-      font-family: system-ui, -apple-system, sans-serif;
-      font-size: 14px;
-    }
-  </style>
-</head>
+    <style>
+      *,*::before,*::after{box-sizing:border-box;}
+      html, body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        font-family: Inter, system-ui, -apple-system, sans-serif;
+        background: transparent;
+      }
+      
+      #root {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+      }
+      
+      .loading-indicator {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        background: #f8f9fa;
+        color: #6c757d;
+        font-family: Inter, system-ui, -apple-system, sans-serif;
+        font-size: 14px;
+      }
+      
+      .spinner{width:32px;height:32px;border:3px solid #f3f4f6;border-radius:50%;border-top-color:#1d4ed8;animation:spin 1s ease-in-out infinite;margin-bottom:10px;}
+      @keyframes spin{to{transform:rotate(360deg);}}
+    </style>
+  </head>
 <body>
   <div id="root">
     <div class="loading-indicator">
@@ -48,37 +53,32 @@
     </div>
   </div>
   
-  <!-- Global environment detection (avoid redeclaration) -->
-  <script>
-    // Single global isDev variable to avoid redeclaration errors
-    window.picassoIsDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-  </script>
-  
   <!-- Manual React Refresh preamble injection for iframe context -->
   <script type="module">
-    // Use global isDev variable
-    if (window.picassoIsDev) {
-      try {
-        // Import and inject React Refresh runtime
-        const port = window.location.port || '5173';
-        const RefreshRuntime = await import(`http://localhost:${port}/@react-refresh`);
-        RefreshRuntime.injectIntoGlobalHook(window);
-        
-        // Set up required globals for React Refresh
-        window.$RefreshReg$ = () => {};
-        window.$RefreshSig$ = () => (type) => type;
-        window.__vite_plugin_react_preamble_installed__ = true;
-        
-        console.log('✅ React Refresh preamble injected successfully');
-      } catch (error) {
-        console.log('⚠️ React Refresh not available (normal in production):', error.message);
-      }
+    if (import.meta.env.DEV) {
+      (async () => {
+        try {
+          // Import and inject React Refresh runtime
+          const port = window.location.port || '5173';
+          const RefreshRuntime = await import(`http://localhost:${port}/@react-refresh`);
+          RefreshRuntime.injectIntoGlobalHook(window);
+          
+          // Set up required globals for React Refresh
+          window.$RefreshReg$ = () => {};
+          window.$RefreshSig$ = () => (type) => type;
+          window.__vite_plugin_react_preamble_installed__ = true;
+          
+          console.log('✅ React Refresh preamble injected successfully');
+        } catch (error) {
+          console.log('⚠️ React Refresh not available (normal in production):', error.message);
+        }
+      })();
     }
   </script>
   
   <!-- Vite client for HMR (development only) -->
-  <script>
-    if (window.picassoIsDev) {
+  <script type="module">
+    if (import.meta.env.DEV) {
       const script = document.createElement('script');
       script.type = 'module';
       const port = window.location.port || '5173';
@@ -190,44 +190,56 @@
     
     // Dynamically load the iframe script based on environment
     function loadIframeScript() {
-      if (!document.head) {
-        console.error('❌ Document head not available for script loading');
-        return;
-      }
-      
-      const script = document.createElement('script');
-      
-      // Use global isDev variable (no redeclaration)
-      if (window.picassoIsDev) {
-        // Development mode - load from Vite dev server
-        script.type = 'module';
-        script.src = '/src/iframe-main.jsx';
-      } else {
-        // Production mode - load built version
-        script.src = '/iframe-main.js';
-      }
-      
-      script.onerror = function() {
-        console.error('❌ Failed to load iframe script:', script.src);
-      };
-      
-      script.onload = function() {
-        console.log('✅ Iframe script loaded:', script.src);
-      };
-      
-      // Small delay to ensure preamble is loaded first
-      setTimeout(() => {
-        try {
-          document.head.appendChild(script);
-          console.log('✅ Script appended to head');
-        } catch (error) {
-          console.error('❌ Failed to append script:', error);
-        }
-      }, 100);
+  if (!document.head) {
+    console.error('❌ Document head not available for script loading');
+    return;
+  }
+  
+  const script = document.createElement('script');
+  script.type = 'module';  // Always set module type
+  
+  if (window.picassoIsDev) {
+    // Development mode - load from Vite dev server
+    script.src = `http://localhost:${window.location.port || '5173'}/src/iframe-main.jsx`;
+  } else {
+    // Production mode - load built version
+    script.src = '/iframe-main.js';
+  }
+  
+  script.onerror = function() {
+    console.error('❌ Failed to load iframe script:', script.src);
+  };
+  
+  script.onload = function() {
+    console.log('✅ Iframe script loaded:', script.src);
+  };
+  
+  setTimeout(() => {
+    try {
+      document.head.appendChild(script);
+      console.log('✅ Script appended to head');
+    } catch (error) {
+      console.error('❌ Failed to append script:', error);
     }
+  }, 100);
+}
     
     // Load the script after preamble setup
     loadIframeScript();
+    
+    // In widget-frame.html, dynamically load the CSS
+    if (!window.picassoIsDev) {
+      // Find and load the theme CSS file
+      fetch('/').then(r => r.text()).then(html => {
+        const cssMatch = html.match(/theme-[^"]+\.css/);
+        if (cssMatch) {
+          const link = document.createElement('link');
+          link.rel = 'stylesheet';
+          link.href = `/${cssMatch[0]}`;
+          document.head.appendChild(link);
+        }
+      });
+    }
   </script>
 </body>
 </html> 

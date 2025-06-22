@@ -1,27 +1,169 @@
-// src/context/ChatProvider.jsx - Updated for Actions API Response Format
-import React, { createContext, useState, useCallback, useEffect } from "react";
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
 import { useConfig } from "../hooks/useConfig";
+import { config as environmentConfig } from '../config/environment';
+import PropTypes from "prop-types";
+import { 
+  errorLogger, 
+  performanceMonitor, 
+  classifyError, 
+  shouldRetry, 
+  getBackoffDelay, 
+  getUserFriendlyMessage,
+  ERROR_TYPES 
+} from "../utils/errorHandling";
+
+let markdownParser = null;
+
+async function getMarkdownParser() {
+  if (markdownParser) return markdownParser;
+
+  performanceMonitor.startTimer('markdown_load');
+  const [{ marked }, { default: DOMPurify }] = await Promise.all([
+    import('marked'),
+    import('dompurify')
+  ]);
+
+  marked.setOptions({
+    breaks: true,
+    gfm: true,
+    sanitize: false,
+    smartLists: true,
+    smartypants: false,
+    xhtml: false
+  });
+
+  const renderer = new marked.Renderer();
+  
+  renderer.link = (href, title, text) => {
+    const cleanHref = DOMPurify.sanitize(href);
+    const cleanTitle = title ? DOMPurify.sanitize(title) : '';
+    const cleanText = DOMPurify.sanitize(text);
+    
+    return `<a href="${cleanHref}" ${cleanTitle ? `title="${cleanTitle}"` : ''} target="_blank" rel="noopener noreferrer">${cleanText}</a>`;
+  };
+
+  renderer.image = (href, title, text) => {
+    const cleanHref = DOMPurify.sanitize(href);
+    const cleanTitle = title ? DOMPurify.sanitize(title) : '';
+    const cleanText = DOMPurify.sanitize(text);
+    
+    return `<img src="${cleanHref}" alt="${cleanText}" ${cleanTitle ? `title="${cleanTitle}"` : ''} style="max-width: 100%; height: auto;" loading="lazy" />`;
+  };
+
+  marked.use({ renderer });
+
+  markdownParser = { marked, DOMPurify };
+  performanceMonitor.endTimer('markdown_load');
+  errorLogger.logInfo('✅ Markdown parser loaded on demand');
+
+  return markdownParser;
+}
+
+async function sanitizeMessage(content) {
+  if (!content || typeof content !== 'string') {
+    return '';
+  }
+
+  try {
+    const { marked, DOMPurify } = await getMarkdownParser();
+    const html = marked.parse(content);
+    
+    const cleanHtml = DOMPurify.sanitize(html, {
+      ALLOWED_TAGS: [
+        'p', 'br', 'strong', 'b', 'em', 'i', 'u', 'strike', 'del', 's',
+        'ul', 'ol', 'li', 'blockquote', 'code', 'pre', 'hr',
+        'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+        'a', 'img', 'table', 'thead', 'tbody', 'tr', 'th', 'td'
+      ],
+      ALLOWED_ATTR: [
+        'href', 'title', 'target', 'rel', 'alt', 'src', 
+        'width', 'height', 'style', 'class'
+      ],
+      ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
+      FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover'],
+      FORBID_TAGS: ['script', 'object', 'embed', 'form', 'input', 'button'],
+      KEEP_CONTENT: true,
+      RETURN_DOM: false,
+      RETURN_DOM_FRAGMENT: false,
+      RETURN_TRUSTED_TYPE: false
+    });
+
+    return cleanHtml;
+  } catch (error) {
+    const { DOMPurify } = await getMarkdownParser();
+    errorLogger.logError(error, { context: 'sanitizeMessage' });
+    return DOMPurify.sanitize(content, { ALLOWED_TAGS: [], KEEP_CONTENT: true });
+  }
+}
 
 const ChatContext = createContext();
 
-// Function to get the context for hooks
 export const getChatContext = () => ChatContext;
 
-// Export provider as const
 const ChatProvider = ({ children }) => {
   const { config: tenantConfig } = useConfig();
   
   const [messages, setMessages] = useState([]);
   const [isTyping, setIsTyping] = useState(false);
   const [hasInitializedMessages, setHasInitializedMessages] = useState(false);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [pendingRetries, setPendingRetries] = useState(new Map());
+  
+  const abortControllersRef = useRef(new Map());
+  const retryTimeoutsRef = useRef(new Map());
 
-  // Generate welcome actions from config
+  // Network connectivity monitoring
+  useEffect(() => {
+    const handleOnline = () => {
+      errorLogger.logInfo('🌐 Network connection restored');
+      setIsOnline(true);
+      
+      // Retry any pending requests when back online
+      pendingRetries.forEach((retryData, messageId) => {
+        if (retryData.errorClassification?.type === ERROR_TYPES.NETWORK_ERROR) {
+          errorLogger.logInfo(`🔄 Auto-retrying message ${messageId} after network restoration`);
+          retryMessage(messageId);
+        }
+      });
+    };
+    
+    const handleOffline = () => {
+      errorLogger.logWarning('📡 Network connection lost');
+      setIsOnline(false);
+    };
+    
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [pendingRetries]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      // Abort all ongoing requests
+      abortControllersRef.current.forEach(controller => {
+        controller.abort();
+      });
+      
+      // Clear all retry timeouts
+      retryTimeoutsRef.current.forEach(timeoutId => {
+        clearTimeout(timeoutId);
+      });
+      
+      abortControllersRef.current.clear();
+      retryTimeoutsRef.current.clear();
+    };
+  }, []);
+
   const generateWelcomeActions = useCallback((config) => {
     if (!config) return [];
     
     const actionChipsConfig = config.action_chips || {};
     
-    // Check if action chips are enabled and should show on welcome
     if (!actionChipsConfig.enabled || !actionChipsConfig.show_on_welcome) {
       return [];
     }
@@ -32,36 +174,313 @@ const ChatProvider = ({ children }) => {
     return chips.slice(0, maxDisplay);
   }, []);
 
-  // Generate welcome message ONLY on initial load - prevent resets on config updates
   useEffect(() => {
     if (tenantConfig && !hasInitializedMessages) {
-      console.log('🎬 Setting initial welcome message');
+      errorLogger.logInfo('🎬 Setting initial welcome message');
       const welcomeActions = generateWelcomeActions(tenantConfig);
 
-      setMessages([{
-        id: "welcome",
-        role: "assistant",
-        content: tenantConfig.welcome_message || "Hello! How can I help you today?",
-        actions: welcomeActions
-      }]);
-      
-      setHasInitializedMessages(true);
+      // Sanitize welcome message async
+      sanitizeMessage(tenantConfig.welcome_message || "Hello! How can I help you today?")
+        .then(sanitizedContent => {
+          setMessages([{
+            id: "welcome",
+            role: "assistant",
+            content: sanitizedContent,
+            actions: welcomeActions
+          }]);
+          setHasInitializedMessages(true);
+        });
     }
   }, [tenantConfig, generateWelcomeActions, hasInitializedMessages]);
 
-  // Get tenant hash for API calls
   const getTenantHash = () => {
     return tenantConfig?.tenant_hash || 
            tenantConfig?.metadata?.tenantHash || 
            window.PicassoConfig?.tenant ||
-           'fo85e6a06dcdf4'; // Fallback
+           'fo85e6a06dcdf4';
   };
+
+  const makeAPIRequest = async (url, options, retries = 3) => {
+    const messageId = options.body ? JSON.parse(options.body).messageId : null;
+    
+    return performanceMonitor.measure('api_request', async () => {
+      for (let attempt = 1; attempt <= retries; attempt++) {
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 10000);
+          
+          if (messageId) {
+            abortControllersRef.current.set(messageId, controller);
+          }
+          
+          errorLogger.logInfo(`🚀 API Request Attempt ${attempt}/${retries}`, { messageId, url });
+          
+          const response = await fetch(url, {
+            ...options,
+            signal: controller.signal
+          });
+          
+          clearTimeout(timeoutId);
+          
+          if (messageId) {
+            abortControllersRef.current.delete(messageId);
+          }
+          
+          if (!response.ok) {
+            const errorClassification = classifyError(null, response);
+            
+            if (shouldRetry(errorClassification, attempt)) {
+              const delay = getBackoffDelay(errorClassification, attempt);
+              errorLogger.logWarning(`${errorClassification.type} error, retrying in ${delay}ms (attempt ${attempt})`, {
+                messageId,
+                status: response.status,
+                errorClassification
+              });
+              
+              if (messageId) {
+                setPendingRetries(prev => new Map(prev.set(messageId, {
+                  errorClassification,
+                  attempt,
+                  retries,
+                  url,
+                  options
+                })));
+              }
+              
+              await new Promise(resolve => {
+                const timeoutId = setTimeout(resolve, delay);
+                if (messageId) {
+                  retryTimeoutsRef.current.set(messageId, timeoutId);
+                }
+              });
+              
+              if (messageId) {
+                retryTimeoutsRef.current.delete(messageId);
+              }
+              
+              continue;
+            } else {
+              const error = new Error(`HTTP ${response.status}: ${response.statusText}`);
+              errorLogger.logError(error, {
+                messageId,
+                attempt,
+                response: { status: response.status, statusText: response.statusText },
+                errorClassification
+              });
+              throw error;
+            }
+          }
+          
+          const rawText = await response.text();
+          errorLogger.logInfo('📥 RAW CHAT RESPONSE received', { messageId, responseLength: rawText.length });
+          
+          let data;
+          try {
+            data = JSON.parse(rawText);
+            errorLogger.logInfo('📥 PARSED CHAT RESPONSE', { messageId, hasContent: !!data.content });
+          } catch (e) {
+            const parseError = new Error('Invalid JSON response from server');
+            errorLogger.logError(parseError, {
+              messageId,
+              attempt,
+              rawText: rawText.substring(0, 200) + '...',
+              originalError: e
+            });
+            throw parseError;
+          }
+          
+          // Clear any pending retries for this message
+          if (messageId) {
+            setPendingRetries(prev => {
+              const newMap = new Map(prev);
+              newMap.delete(messageId);
+              return newMap;
+            });
+          }
+          
+          return data;
+          
+        } catch (error) {
+          const errorClassification = classifyError(error, null);
+          
+          errorLogger.logError(error, {
+            messageId,
+            attempt,
+            url,
+            errorClassification,
+            tenantHash: getTenantHash()
+          });
+          
+          if (shouldRetry(errorClassification, attempt)) {
+            const delay = getBackoffDelay(errorClassification, attempt);
+            errorLogger.logWarning(`${errorClassification.type} error, retrying in ${delay}ms (attempt ${attempt})`, {
+              messageId,
+              errorClassification,
+              delay
+            });
+            
+            if (messageId) {
+              setPendingRetries(prev => new Map(prev.set(messageId, {
+                errorClassification,
+                attempt,
+                retries,
+                url,
+                options
+              })));
+            }
+            
+            await new Promise(resolve => {
+              const timeoutId = setTimeout(resolve, delay);
+              if (messageId) {
+                retryTimeoutsRef.current.set(messageId, timeoutId);
+              }
+            });
+            
+            if (messageId) {
+              retryTimeoutsRef.current.delete(messageId);
+            }
+            
+            continue;
+          } else {
+            // Final failure - throw error with user-friendly message
+            const userMessage = getUserFriendlyMessage(errorClassification, attempt);
+            const userError = new Error(userMessage);
+            errorLogger.logError(userError, {
+              messageId,
+              attempt,
+              originalError: error,
+              errorClassification,
+              finalAttempt: true
+            });
+            throw userError;
+          }
+        }
+      }
+      
+      const maxRetriesError = new Error('Maximum retry attempts exceeded');
+      errorLogger.logError(maxRetriesError, {
+        messageId,
+        maxRetries: retries,
+        finalAttempt: true
+      });
+      throw maxRetriesError;
+    });
+  };
+
+  const retryMessage = useCallback(async (messageId) => {
+    const retryData = pendingRetries.get(messageId);
+    if (!retryData) {
+      errorLogger.logWarning('No retry data found for message', { messageId });
+      return;
+    }
+    
+    errorLogger.logInfo(`🔄 Manual retry for message ${messageId}`);
+    
+    try {
+      const data = await makeAPIRequest(retryData.url, retryData.options, retryData.retries);
+      
+      // Process successful response
+      let botContent = "I apologize, but I'm having trouble processing that request right now.";
+      let botActions = [];
+      
+      try {
+        if (data.content) {
+          botContent = await sanitizeMessage(data.content);
+          
+          if (data.actions && Array.isArray(data.actions)) {
+            botActions = data.actions;
+          }
+        }
+        else if (data.messages && data.messages[0] && data.messages[0].content) {
+          const messageContent = JSON.parse(data.messages[0].content);
+          botContent = await sanitizeMessage(messageContent.message || messageContent.content || botContent);
+          
+          if (messageContent.actions && Array.isArray(messageContent.actions)) {
+            botActions = messageContent.actions;
+          }
+        }
+        else if (data.body) {
+          const bodyData = JSON.parse(data.body);
+          botContent = await sanitizeMessage(bodyData.content || bodyData.message || botContent);
+          
+          if (bodyData.actions && Array.isArray(bodyData.actions)) {
+            botActions = bodyData.actions;
+          }
+        }
+        else if (data.response) {
+          botContent = await sanitizeMessage(data.response);
+        }
+        
+        if (data.fallback_message) {
+          botContent = await sanitizeMessage(data.fallback_message);
+        }
+        
+        if (data.file_acknowledgment) {
+          const sanitizedAck = await sanitizeMessage(data.file_acknowledgment);
+          botContent += "\n\n" + sanitizedAck;
+        }
+        
+      } catch (parseError) {
+        errorLogger.logError(parseError, {
+          messageId,
+          context: 'retry_response_parsing',
+          data: typeof data === 'string' ? data.substring(0, 200) + '...' : JSON.stringify(data).substring(0, 200) + '...'
+        });
+        
+        if (typeof data === 'string') {
+          botContent = await sanitizeMessage(data);
+        }
+      }
+      
+      // Replace error message with successful response
+      setMessages(prev => prev.map(msg => 
+        msg.id === messageId ? {
+          ...msg,
+          role: "assistant",
+          content: botContent,
+          actions: botActions,
+          timestamp: new Date().toISOString(),
+          metadata: {
+            session_id: data.session_id,
+            api_version: data.api_version || 'actions-complete',
+            retry_success: true
+          }
+        } : msg
+      ));
+      
+      errorLogger.logInfo('✅ Retry successful for message', { messageId });
+      
+    } catch (error) {
+      errorLogger.logError(error, {
+        messageId,
+        context: 'retry_failed',
+        retryData: {
+          attempt: retryData.attempt,
+          errorClassification: retryData.errorClassification
+        }
+      });
+      
+      // Update error message with retry failure
+      setMessages(prev => prev.map(msg => 
+        msg.id === messageId ? {
+          ...msg,
+          content: error.message,
+          metadata: {
+            ...msg.metadata,
+            retry_failed: true,
+            final_error: error.message
+          }
+        } : msg
+      ));
+    }
+  }, [pendingRetries]);
 
   const addMessage = useCallback((message) => {
     const messageWithId = {
       id: message.id || `msg_${Date.now()}_${Math.random()}`,
       timestamp: new Date().toISOString(),
-      ...message
+      ...message,
+      content: message.role === 'user' ? DOMPurify.sanitize(message.content, { ALLOWED_TAGS: [], KEEP_CONTENT: true }) : message.content
     };
     
     setMessages(prev => {
@@ -73,7 +492,6 @@ const ChatProvider = ({ children }) => {
       return [...prev, messageWithId];
     });
     
-    // Notify parent of message sent (PRD requirement)
     if (message.role === "user" && window.parent && window.parent !== window) {
       window.parent.postMessage({
         type: 'PICASSO_EVENT',
@@ -86,108 +504,91 @@ const ChatProvider = ({ children }) => {
       }, '*');
     }
     
-    // ✅ ACTIONS ONLY: Call chat API for user messages
     if (message.role === "user" && !message.skipBotResponse && !message.uploadState) {
-      console.log('✅ Making chat request via actions API');
+      errorLogger.logInfo('✅ Making chat request via actions API');
       setIsTyping(true);
       
       const makeAPICall = async () => {
         try {
           const tenantHash = getTenantHash();
-          console.log('🚀 Making chat API call with hash:', tenantHash.slice(0, 8) + '...');
-          
-          // ✅ SINGLE PATH: Use actions-only chat API
-          const response = await fetch('https://chat.myrecruiter.ai/Master_Function?action=chat&t=' + encodeURIComponent(tenantHash), {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              tenant_hash: tenantHash, // Include hash in body for redundancy
-              user_input: message.content,
-              session_id: `session_${Date.now()}`,
-              files: message.files || []
-            })
+          errorLogger.logInfo('🚀 Making chat API call', { 
+            tenantHash: tenantHash.slice(0, 8) + '...',
+            messageId: messageWithId.id 
           });
           
-          console.log('📡 Chat response status:', response.status);
+          const requestBody = {
+            tenant_hash: tenantHash,
+            user_input: message.content,
+            session_id: `session_${Date.now()}`,
+            files: message.files || [],
+            messageId: messageWithId.id
+          };
           
-          if (!response.ok) {
-            const errorText = await response.text();
-            console.error('❌ Chat API error:', errorText);
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-          }
+          const data = await makeAPIRequest(
+            environmentConfig.getChatUrl(tenantHash),
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+              },
+              body: JSON.stringify(requestBody)
+            },
+            3
+          );
           
-          const rawText = await response.text();
-          console.log('📥 RAW CHAT RESPONSE:', rawText);
-          
-          let data;
-          try {
-            data = JSON.parse(rawText);
-            console.log('📥 PARSED CHAT RESPONSE:', data);
-          } catch (e) {
-            console.error('❌ Failed to parse JSON:', e);
-            throw new Error('Invalid JSON response from server');
-          }
-          
-          // 🔧 FIXED: Parse new Lambda response format
           let botContent = "I apologize, but I'm having trouble processing that request right now.";
           let botActions = [];
           
           try {
-            // ✅ NEW: Handle direct actions API response format
             if (data.content) {
-              // Direct response from new Lambda format
-              botContent = data.content;
+              botContent = await sanitizeMessage(data.content);
               
-              // Extract actions if available
               if (data.actions && Array.isArray(data.actions)) {
                 botActions = data.actions;
               }
             }
-            // Legacy Lex response format support
             else if (data.messages && data.messages[0] && data.messages[0].content) {
               const messageContent = JSON.parse(data.messages[0].content);
-              botContent = messageContent.message || messageContent.content || botContent;
+              botContent = await sanitizeMessage(messageContent.message || messageContent.content || botContent);
               
               if (messageContent.actions && Array.isArray(messageContent.actions)) {
                 botActions = messageContent.actions;
               }
             }
-            // HTTP wrapper format
             else if (data.body) {
               const bodyData = JSON.parse(data.body);
-              botContent = bodyData.content || bodyData.message || botContent;
+              botContent = await sanitizeMessage(bodyData.content || bodyData.message || botContent);
               
               if (bodyData.actions && Array.isArray(bodyData.actions)) {
                 botActions = bodyData.actions;
               }
             }
-            // Other response formats
             else if (data.response) {
-              botContent = data.response;
+              botContent = await sanitizeMessage(data.response);
             }
             
-            // Check for error fallback message
             if (data.fallback_message) {
-              botContent = data.fallback_message;
+              botContent = await sanitizeMessage(data.fallback_message);
             }
             
-            // Handle file acknowledgment
             if (data.file_acknowledgment) {
-              botContent += "\n\n" + data.file_acknowledgment;
+              const sanitizedAck = await sanitizeMessage(data.file_acknowledgment);
+              botContent += "\n\n" + sanitizedAck;
             }
             
           } catch (parseError) {
-            console.error('❌ Error parsing response content:', parseError);
+            errorLogger.logError(parseError, {
+              messageId: messageWithId.id,
+              context: 'response_parsing',
+              data: typeof data === 'string' ? data.substring(0, 200) + '...' : JSON.stringify(data).substring(0, 200) + '...'
+            });
             
-            // If parsing fails, try to use the raw response
             if (typeof data === 'string') {
-              botContent = data;
+              botContent = await sanitizeMessage(data);
             }
           }
           
-          // ✅ Add response message to chat
           setMessages(prev => [...prev, {
             id: `bot_${Date.now()}_${Math.random()}`,
             role: "assistant", 
@@ -200,24 +601,30 @@ const ChatProvider = ({ children }) => {
             }
           }]);
           
-          console.log('✅ Chat response processed successfully', {
-            contentLength: botContent.length,
-            actionsCount: botActions.length,
+          errorLogger.logInfo('✅ Chat response processed successfully', {
+            messageId: messageWithId.id,
+            hasContent: !!botContent,
+            hasActions: botActions.length > 0,
             sessionId: data.session_id
           });
           
         } catch (error) {
-          console.error('❌ Chat API Error:', error);
+          errorLogger.logError(error, {
+            messageId: messageWithId.id,
+            context: 'chat_api_error',
+            tenantHash: getTenantHash()
+          });
           
-          // Add error message to chat with helpful info
           setMessages(prev => [...prev, {
             id: `error_${Date.now()}_${Math.random()}`,
             role: "assistant",
-            content: "I'm sorry, I'm having trouble connecting right now. Please try again in a moment.",
+            content: error.message,
             timestamp: new Date().toISOString(),
             metadata: {
               error: error.message,
-              api_type: 'actions-chat'
+              api_type: 'actions-chat',
+              can_retry: true,
+              messageId: messageWithId.id
             }
           }]);
         } finally {
@@ -227,7 +634,7 @@ const ChatProvider = ({ children }) => {
       
       makeAPICall();
     }
-  }, [tenantConfig]);
+  }, [tenantConfig, retryMessage]);
 
   const updateMessage = useCallback((messageId, updates) => {
     setMessages(prev => 
@@ -238,41 +645,29 @@ const ChatProvider = ({ children }) => {
   }, []);
 
   const clearMessages = useCallback(() => {
-    console.log('🗑️ Manually clearing messages');
-    // Reset to welcome message
-    if (tenantConfig) {
-      const welcomeActions = generateWelcomeActions(tenantConfig);
-
-      setMessages([{
-        id: "welcome",
-        role: "assistant",
-        content: tenantConfig.welcome_message || "Hello! How can I help you today?",
-        actions: welcomeActions
-      }]);
-    } else {
-      // Fallback if no config
-      setMessages([{
-        id: "welcome",
-        role: "assistant", 
-        content: "Hello! How can I help you today?",
-        actions: []
-      }]);
-    }
-  }, [tenantConfig, generateWelcomeActions]);
+    errorLogger.logInfo('🗑️ Manually clearing messages');
+    setMessages([]);
+    setHasInitializedMessages(false);
+  }, []);
 
   const value = {
     messages,
     isTyping,
     tenantConfig,
+    isOnline,
+    pendingRetries,
     addMessage,
     updateMessage,
     clearMessages,
-    // Debug info
+    retryMessage,
     _debug: {
       tenantHash: getTenantHash(),
       apiType: 'actions-only',
       configLoaded: !!tenantConfig,
-      chatEndpoint: `https://chat.myrecruiter.ai/Master_Function?action=chat&t=${getTenantHash()}`
+      chatEndpoint: environmentConfig.getChatUrl(getTenantHash()),
+      environment: environmentConfig.ENVIRONMENT,
+      networkStatus: isOnline ? 'online' : 'offline',
+      pendingRetryCount: pendingRetries.size
     }
   };
 
@@ -283,15 +678,22 @@ const ChatProvider = ({ children }) => {
   );
 };
 
-// Global debugging functions
+// PropTypes for ChatProvider
+ChatProvider.propTypes = {
+  children: PropTypes.node.isRequired
+};
+
+ChatProvider.defaultProps = {
+  // No default props needed
+};
+
 if (typeof window !== 'undefined') {
-  // Test chat API directly
   window.testChatAPI = async (message, tenantHash) => {
     const hash = tenantHash || 'fo85e6a06dcdf4';
-    console.log('🧪 Testing chat API...');
+    errorLogger.logInfo('🧪 Testing chat API...', { message, tenantHash: hash });
     
     try {
-      const response = await fetch(`https://chat.myrecruiter.ai/Master_Function?action=chat&t=${hash}`, {
+      const response = await fetch(environmentConfig.getChatUrl(hash), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -305,38 +707,48 @@ if (typeof window !== 'undefined') {
       
       if (response.ok) {
         const data = await response.json();
-        console.log('✅ Chat API Test Response:', data);
-        console.log('📝 Bot said:', data.content);
-        if (data.actions && data.actions.length > 0) {
-          console.log('🎯 Available actions:', data.actions.map(a => a.label));
+        errorLogger.logInfo('✅ Chat API Test Response', { 
+          hasContent: !!data.content,
+          hasActions: data.actions?.length > 0,
+          sessionId: data.session_id
+        });
+        
+        if (data.content) {
+          errorLogger.logInfo('📝 Bot response', { content: data.content.substring(0, 100) + '...' });
         }
+        
+        if (data.actions && data.actions.length > 0) {
+          errorLogger.logInfo('🎯 Available actions', { 
+            actionCount: data.actions.length,
+            actionLabels: data.actions.map(a => a.label)
+          });
+        }
+        
         return data;
       } else {
         const errorText = await response.text();
-        console.error('❌ Chat API Test Failed:', response.status, errorText);
+        const error = new Error(`Chat API Test Failed: ${response.status} ${errorText}`);
+        errorLogger.logError(error, { 
+          context: 'chat_api_test',
+          status: response.status,
+          responseText: errorText
+        });
         return null;
       }
     } catch (error) {
-      console.error('❌ Chat API Test Error:', error);
+      errorLogger.logError(error, { context: 'chat_api_test_error' });
       return null;
     }
   };
 
-  // Quick test with different messages
   window.testVolunteer = () => window.testChatAPI("I want to volunteer");
   window.testDonate = () => window.testChatAPI("How can I donate?");
   window.testContact = () => window.testChatAPI("How do I contact you?");
   window.testServices = () => window.testChatAPI("What services do you offer?");
 
-  console.log(`
-🛠️  CHAT API TEST COMMANDS:
-   testChatAPI("your message")     - Test any message
-   testVolunteer()                 - Test volunteer response
-   testDonate()                    - Test donation response  
-   testContact()                   - Test contact response
-   testServices()                  - Test services response
-  `);
+  errorLogger.logInfo('🛠️ Chat API test commands available', {
+    commands: ['testChatAPI', 'testVolunteer', 'testDonate', 'testContact', 'testServices']
+  });
 }
 
-// Export only the provider
 export { ChatProvider };
