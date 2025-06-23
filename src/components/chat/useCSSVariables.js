@@ -14,9 +14,33 @@ export function useCSSVariables(config) {
     console.log('🔍 Config branding:', config?.branding);
     console.log('🔍 Config keys:', config ? Object.keys(config) : 'no config');
     
-    // Handle loading state - if config is null/undefined, just return (don't warn yet)
+    // Handle loading state - apply minimal fallback CSS immediately
     if (!config) {
-      console.log('⏳ Config not loaded yet, waiting...');
+      console.log('⏳ Config not loaded yet, applying fallback CSS...');
+      
+      // Apply immediate fallback styling so components aren't completely unstyled
+      const fallbackCSS = {
+        '--primary-color': '#3b82f6',
+        '--background-color': '#ffffff',
+        '--font-color': '#374151',
+        '--border-radius': '12px',
+        '--font-family': 'system-ui, -apple-system, sans-serif',
+        '--chat-width': '360px',
+        '--chat-height': '640px',
+        '--header-background-color': '#3b82f6',
+        '--header-text-color': '#ffffff',
+        '--user-bubble-color': '#3b82f6',
+        '--user-bubble-text-color': '#ffffff',
+        '--bot-bubble-color': '#f8fafc',
+        '--bot-bubble-text-color': '#374151',
+      };
+      
+      // Apply fallback CSS variables
+      Object.entries(fallbackCSS).forEach(([property, value]) => {
+        root.style.setProperty(property, value);
+      });
+      
+      console.log('✅ Applied fallback CSS variables for immediate styling');
       return;
     }
 

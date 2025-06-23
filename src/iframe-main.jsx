@@ -78,8 +78,31 @@ function setupCommandListener() {
           // Could trigger config reload if needed
           break;
           
+        case 'SIZE_CHANGE':
+          console.log('📡 Received SIZE_CHANGE command:', payload);
+          // Apply size class to body for responsive styling
+          if (payload?.size) {
+            document.body.classList.remove('iframe-mobile', 'iframe-tablet', 'iframe-desktop');
+            document.body.classList.add(`iframe-${payload.size}`);
+            
+            // Also set data attributes for CSS targeting
+            document.body.setAttribute('data-iframe-size', payload.size);
+            if (payload.isMobile) document.body.setAttribute('data-mobile', 'true');
+            if (payload.isTablet) document.body.setAttribute('data-tablet', 'true');
+          }
+          break;
+          
         default:
           console.log('❓ Unknown command:', action);
+      }
+    }
+    
+    // Handle PICASSO_INIT from parent
+    if (event.data.type === 'PICASSO_INIT') {
+      console.log('📡 Received PICASSO_INIT from parent:', event.data);
+      if (event.data.tenantHash) {
+        console.log('✅ Parent confirmed tenant hash:', event.data.tenantHash);
+        // Config will be fetched by normal flow - handshake complete
       }
     }
   });

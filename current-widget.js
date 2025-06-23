@@ -51,8 +51,9 @@ var __spreadValues = (a, b) => {
         bottom: "20px",
         right: "20px",
         zIndex: this.config.zIndex,
-        width: this.config.minimizedSize,
-        height: this.config.minimizedSize,
+        // Size for minimized state - add more space for notification badge & callout
+        width: "90px", // 56px toggle + 34px for badge/callout overflow (badge extends 8px + callout space)
+        height: "90px", // 56px toggle + 34px for badge/callout overflow  
         transition: "all 0.3s ease",
         pointerEvents: "auto"
       });
@@ -63,8 +64,22 @@ var __spreadValues = (a, b) => {
       var _a;
       this.iframe = document.createElement("iframe");
       const urlParams = new URLSearchParams(window.location.search);
-      const devMode = urlParams.get("picasso-dev") === "true" || ((_a = document.currentScript) == null ? void 0 : _a.getAttribute("data-dev")) === "true" || document.querySelector('script[src*="widget.js"][data-dev="true"]');
-      const widgetDomain = devMode ? `http://localhost:5173` : "https://chat.myrecruiter.ai";
+      const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      const devMode = urlParams.get("picasso-dev") === "true" || 
+                     ((_a = document.currentScript) == null ? void 0 : _a.getAttribute("data-dev")) === "true" || 
+                     document.querySelector('script[src*="widget.js"][data-dev="true"]') ||
+                     isLocalhost; // Auto-detect localhost as dev mode
+      
+      // Determine the base URL for widget frame
+      let widgetDomain;
+      if (devMode) {
+        // In dev mode, use the current origin (preserve the current port)
+        const currentPort = window.location.port;
+        widgetDomain = `${window.location.protocol}//${window.location.hostname}:${currentPort}`;
+      } else {
+        widgetDomain = "https://chat.myrecruiter.ai";
+      }
+      
       const iframeUrl = `${widgetDomain}/widget-frame.html?t=${this.tenantHash}`;
       console.log(`🌐 Loading iframe from: ${iframeUrl} (${devMode ? "DEV" : "PROD"} mode)`);
       console.log(`💡 To use dev mode, add ?picasso-dev=true to URL or data-dev="true" to script tag`);
@@ -170,10 +185,12 @@ var __spreadValues = (a, b) => {
     // Send initialization data to iframe
     sendInitMessage() {
       if (this.iframe.contentWindow) {
+        console.log('📡 Sending PICASSO_INIT with tenant:', this.tenantHash);
         this.iframe.contentWindow.postMessage({
           type: "PICASSO_INIT",
           tenantHash: this.tenantHash,
-          config: this.config
+          // Skip config for now - let iframe fetch it directly
+          skipConfigWait: true
         }, "*");
       }
     },
@@ -182,8 +199,13 @@ var __spreadValues = (a, b) => {
       if (this.isOpen) return;
       this.isOpen = true;
       const isMobile = window.innerWidth <= 768;
-      const isTablet = window.innerWidth > 768 && window.innerWidth <= 1024;
+      const isTablet = window.innerWidth > 768 && window.innerWidth <= 1200;
+      
+      // Determine iframe size and send to iframe for responsive styling
+      let iframeSize = 'desktop';
+      
       if (isMobile) {
+        iframeSize = 'mobile';
         Object.assign(this.container.style, {
           position: "fixed",
           top: "10px",
@@ -195,23 +217,44 @@ var __spreadValues = (a, b) => {
           zIndex: this.config.zIndex + 1e3
         });
       } else if (isTablet) {
+        iframeSize = 'tablet';
+        // For tablets, scale responsively between mobile and desktop sizes
+        // Use 40-60% of screen width, capped at desktop width (360px)
+        const responsiveWidth = Math.max(360, Math.min(480, window.innerWidth * 0.5));
+        const responsiveHeight = Math.max(480, Math.min(640, window.innerHeight - 120));
+        const maxWidth = Math.min(responsiveWidth, window.innerWidth - 40);
+        const maxHeight = Math.min(responsiveHeight, window.innerHeight - 80);
         Object.assign(this.container.style, {
-          width: "480px",
-          height: "calc(100vh - 40px)",
+          position: "fixed",
+          top: "auto",
+          left: "auto",
+          width: maxWidth + "px",
+          height: maxHeight + "px",
           bottom: "20px",
           right: "20px"
         });
       } else {
+        iframeSize = 'desktop';
+        // Force exact dimensions for desktop mode
         Object.assign(this.container.style, {
+          position: "fixed",
+          top: "auto",
+          left: "auto",
           width: this.config.expandedWidth,
           height: this.config.expandedHeight,
+          maxHeight: this.config.expandedHeight, // Ensure no height constraints
           bottom: "20px",
           right: "20px"
         });
       }
+      
       Object.assign(this.iframe.style, {
         borderRadius: isMobile ? "12px" : "12px"
       });
+      
+      // Notify iframe of size change for responsive styling
+      this.sendCommand("SIZE_CHANGE", { size: iframeSize, isMobile, isTablet });
+      
       console.log(`📈 Widget expanded - ${isMobile ? "mobile" : isTablet ? "tablet" : "desktop"} mode`);
     },
     // Minimize widget to button
@@ -219,8 +262,9 @@ var __spreadValues = (a, b) => {
       if (!this.isOpen) return;
       this.isOpen = false;
       Object.assign(this.container.style, {
-        width: this.config.minimizedSize,
-        height: this.config.minimizedSize,
+        // Size for minimized state - iframe needs more space for badge/callout
+        width: "90px", // 56px toggle + 34px for badge/callout overflow (badge extends 8px + callout space)
+        height: "90px", // 56px toggle + 34px for badge/callout overflow
         bottom: "20px",
         right: "20px"
       });
@@ -252,12 +296,45 @@ var __spreadValues = (a, b) => {
         const resizeObserver = new ResizeObserver(() => {
           if (this.isOpen) {
             const isMobile = window.innerWidth <= 768;
-            Object.assign(this.container.style, {
-              width: isMobile ? "calc(100vw - 20px)" : this.config.expandedWidth,
-              height: isMobile ? "calc(100vh - 40px)" : this.config.expandedHeight,
-              bottom: isMobile ? "10px" : "20px",
-              right: isMobile ? "10px" : "20px"
-            });
+            const isTablet = window.innerWidth > 768 && window.innerWidth <= 1200;
+            
+            if (isMobile) {
+              Object.assign(this.container.style, {
+                position: "fixed",
+                top: "10px",
+                left: "10px",
+                bottom: "10px",
+                right: "10px",
+                width: "calc(100vw - 20px)",
+                height: "calc(100vh - 20px)"
+              });
+            } else if (isTablet) {
+              // For tablets, scale responsively between mobile and desktop sizes
+              // Use 40-60% of screen width, capped at desktop width (360px)
+              const responsiveWidth = Math.max(360, Math.min(480, window.innerWidth * 0.5));
+              const responsiveHeight = Math.max(480, Math.min(640, window.innerHeight - 120));
+              const maxWidth = Math.min(responsiveWidth, window.innerWidth - 40);
+              const maxHeight = Math.min(responsiveHeight, window.innerHeight - 80);
+              Object.assign(this.container.style, {
+                position: "fixed",
+                top: "auto",
+                left: "auto",
+                width: maxWidth + "px",
+                height: maxHeight + "px",
+                bottom: "20px",
+                right: "20px"
+              });
+            } else {
+              Object.assign(this.container.style, {
+                position: "fixed",
+                top: "auto",
+                left: "auto",
+                width: this.config.expandedWidth,
+                height: this.config.expandedHeight,
+                bottom: "20px",
+                right: "20px"
+              });
+            }
           }
         });
         resizeObserver.observe(document.body);

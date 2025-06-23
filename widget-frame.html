@@ -55,12 +55,14 @@
   
   <!-- Manual React Refresh preamble injection for iframe context -->
   <script type="module">
-    if (import.meta.env.DEV) {
+    // Check if we're in development (localhost)
+    const isLocalDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    
+    if (isLocalDev) {
       (async () => {
         try {
-          // Import and inject React Refresh runtime
-          const port = window.location.port || '5173';
-          const RefreshRuntime = await import(`http://localhost:${port}/@react-refresh`);
+          // Import and inject React Refresh runtime from Vite dev server
+          const RefreshRuntime = await import('http://localhost:5174/@react-refresh');
           RefreshRuntime.injectIntoGlobalHook(window);
           
           // Set up required globals for React Refresh
@@ -78,11 +80,13 @@
   
   <!-- Vite client for HMR (development only) -->
   <script type="module">
-    if (import.meta.env.DEV) {
+    // Check if we're in development (localhost) for Vite client
+    const isDevMode = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    
+    if (isDevMode) {
       const script = document.createElement('script');
       script.type = 'module';
-      const port = window.location.port || '5173';
-      script.src = `http://localhost:${port}/@vite/client`;
+      script.src = 'http://localhost:5174/@vite/client';
       script.onerror = () => console.log('⚠️ Vite client not available');
       document.head.appendChild(script);
     }
@@ -198,12 +202,16 @@
   const script = document.createElement('script');
   script.type = 'module';  // Always set module type
   
-  if (window.picassoIsDev) {
-    // Development mode - load from Vite dev server
-    script.src = `http://localhost:${window.location.port || '5173'}/src/iframe-main.jsx`;
+  const isLocalDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+  
+  if (isLocalDevelopment) {
+    // Development mode - load from Vite dev server (always port 5174)
+    script.src = 'http://localhost:5174/src/iframe-main.jsx';
+    console.log('🚀 Loading iframe script from Vite dev server:', script.src);
   } else {
     // Production mode - load built version
     script.src = '/iframe-main.js';
+    console.log('🚀 Loading iframe script from production:', script.src);
   }
   
   script.onerror = function() {
@@ -227,9 +235,23 @@
     // Load the script after preamble setup
     loadIframeScript();
     
-    // In widget-frame.html, dynamically load the CSS
-    if (!window.picassoIsDev) {
-      // Find and load the theme CSS file
+    // In widget-frame.html, dynamically load the CSS based on environment
+    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    
+    if (isLocalhost) {
+      // Development mode - load CSS from Vite dev server (port 5174)
+      const viteDevServer = 'http://localhost:5174';
+      console.log('🎨 Loading CSS from Vite dev server:', viteDevServer);
+      
+      // Import CSS via Vite module system
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = `${viteDevServer}/src/styles/theme.css`;
+      link.onerror = () => console.warn('⚠️ Could not load dev CSS');
+      link.onload = () => console.log('✅ CSS loaded from Vite dev server');
+      document.head.appendChild(link);
+    } else {
+      // Production mode - find and load the theme CSS file
       fetch('/').then(r => r.text()).then(html => {
         const cssMatch = html.match(/theme-[^"]+\.css/);
         if (cssMatch) {
@@ -238,7 +260,7 @@
           link.href = `/${cssMatch[0]}`;
           document.head.appendChild(link);
         }
-      });
+      }).catch(e => console.warn('⚠️ Could not load production CSS:', e));
     }
   </script>
 </body>

@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Picasso Widget Demo - Tenant fo85e6a06dcdf4</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            margin: 0;
+            padding: 40px;
+            background: #f8fafc;
+            line-height: 1.6;
+        }
+        .demo-container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        h1 {
+            color: #1e293b;
+            margin-bottom: 10px;
+        }
+        .tenant-info {
+            background: #f1f5f9;
+            padding: 16px;
+            border-radius: 8px;
+            margin: 20px 0;
+            border-left: 4px solid #3b82f6;
+        }
+        .status {
+            padding: 12px;
+            border-radius: 6px;
+            margin: 10px 0;
+        }
+        .status.success {
+            background: #dcfce7;
+            color: #166534;
+            border: 1px solid #bbf7d0;
+        }
+        .status.error {
+            background: #fee2e2;
+            color: #991b1b;
+            border: 1px solid #fecaca;
+        }
+        .status.info {
+            background: #dbeafe;
+            color: #1e40af;
+            border: 1px solid #bfdbfe;
+        }
+        .logs {
+            background: #1e293b;
+            color: #e2e8f0;
+            padding: 16px;
+            border-radius: 8px;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 13px;
+            max-height: 200px;
+            overflow-y: auto;
+            margin: 20px 0;
+        }
+        button {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        button:hover {
+            background: #2563eb;
+        }
+        button:disabled {
+            background: #94a3b8;
+            cursor: not-allowed;
+        }
+        .widget-info {
+            margin-top: 30px;
+            padding: 20px;
+            background: #f8fafc;
+            border-radius: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="demo-container">
+        <h1>🎨 Picasso Widget Demo</h1>
+        <p>Testing the Picasso AI chat widget with tenant configuration</p>
+        
+        <div class="tenant-info">
+            <strong>Tenant Hash:</strong> fo85e6a06dcdf4<br>
+            <strong>Environment:</strong> Development (localhost:4174)<br>
+            <strong>Widget Source:</strong> current-widget.js
+        </div>
+        
+        <div id="status" class="status info">Initializing widget...</div>
+        
+        <div>
+            <button onclick="reloadWidget()">🔄 Reload Widget</button>
+            <button onclick="openWidget()">📖 Open Chat</button>
+            <button onclick="closeWidget()">📕 Close Chat</button>
+            <button onclick="toggleWidget()">🔄 Toggle Chat</button>
+            <button onclick="clearLogs()">🗑️ Clear Logs</button>
+        </div>
+        
+        <div id="logs" class="logs"></div>
+        
+        <div class="widget-info">
+            <h3>Widget Information</h3>
+            <div id="widget-info">
+                <p>Widget will appear in the bottom-right corner of this page.</p>
+                <p>Click the widget to open the chat interface.</p>
+                <p>Check the logs above for debugging information.</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const TENANT_HASH = 'fo85e6a06dcdf4';
+        
+        // Logging function
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logElement = document.getElementById('logs');
+            const logEntry = `[${timestamp}] ${message}\n`;
+            logElement.textContent += logEntry;
+            logElement.scrollTop = logElement.scrollHeight;
+            
+            console.log(`[${type.toUpperCase()}] ${message}`);
+        }
+        
+        // Status update function
+        function updateStatus(message, type = 'info') {
+            const statusElement = document.getElementById('status');
+            statusElement.textContent = message;
+            statusElement.className = `status ${type}`;
+        }
+        
+        // Widget control functions
+        function reloadWidget() {
+            log('🔄 Reloading widget...');
+            updateStatus('Reloading widget...', 'info');
+            
+            // Remove existing widget
+            if (window.PicassoWidget) {
+                window.PicassoWidget.destroy();
+            }
+            
+            // Remove any existing script tags
+            const existingScripts = document.querySelectorAll('script[src*="current-widget.js"]');
+            existingScripts.forEach(script => script.remove());
+            
+            // Remove widget container if it exists
+            const existingContainer = document.getElementById('picasso-widget-container');
+            if (existingContainer) {
+                existingContainer.remove();
+            }
+            
+            // Wait a moment then load new script
+            setTimeout(() => {
+                const script = document.createElement('script');
+                script.src = './current-widget.js';
+                script.setAttribute('data-tenant', TENANT_HASH);
+                
+                script.onload = () => {
+                    log('✅ Widget script loaded successfully');
+                    updateStatus('Widget loaded - check bottom-right corner', 'success');
+                    
+                    // Auto-initialize widget
+                    if (window.PicassoWidget) {
+                        try {
+                            window.PicassoWidget.init(TENANT_HASH);
+                            log('🚀 Widget initialized with tenant: ' + TENANT_HASH);
+                        } catch (error) {
+                            log('❌ Widget initialization failed: ' + error.message, 'error');
+                            updateStatus('Widget initialization failed', 'error');
+                        }
+                    }
+                };
+                
+                script.onerror = () => {
+                    log('❌ Failed to load widget script', 'error');
+                    updateStatus('Failed to load widget script', 'error');
+                };
+                
+                document.head.appendChild(script);
+            }, 100);
+        }
+        
+        function openWidget() {
+            if (window.PicassoWidget && window.PicassoWidget.open) {
+                window.PicassoWidget.open();
+                log('📖 Opening widget');
+            } else {
+                log('❌ Widget not loaded', 'error');
+            }
+        }
+        
+        function closeWidget() {
+            if (window.PicassoWidget && window.PicassoWidget.close) {
+                window.PicassoWidget.close();
+                log('📕 Closing widget');
+            } else {
+                log('❌ Widget not loaded', 'error');
+            }
+        }
+        
+        function toggleWidget() {
+            if (window.PicassoWidget && window.PicassoWidget.toggle) {
+                window.PicassoWidget.toggle();
+                log('🔄 Toggling widget');
+            } else {
+                log('❌ Widget not loaded', 'error');
+            }
+        }
+        
+        function clearLogs() {
+            document.getElementById('logs').textContent = '';
+            log('🗑️ Logs cleared');
+        }
+        
+        // Listen for widget events
+        window.addEventListener('message', (event) => {
+            if (event.data && event.data.type) {
+                log(`📨 Received event: ${event.data.type}`, 'info');
+                
+                switch (event.data.type) {
+                    case 'PICASSO_LOADED':
+                        updateStatus('Widget fully loaded and ready', 'success');
+                        break;
+                    case 'PICASSO_EXPANDED':
+                        updateStatus('Chat interface opened', 'success');
+                        break;
+                    case 'PICASSO_MINIMIZED':
+                        updateStatus('Chat interface closed', 'info');
+                        break;
+                    case 'PICASSO_ERROR':
+                        updateStatus('Widget error occurred', 'error');
+                        log(`❌ Widget error: ${JSON.stringify(event.data)}`, 'error');
+                        break;
+                }
+            }
+        });
+        
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            log('🎨 Demo page loaded');
+            log('🌐 Current URL: ' + window.location.href);
+            log('📍 Environment: localhost:' + window.location.port);
+            
+            // Auto-load widget after 1 second
+            setTimeout(() => {
+                reloadWidget();
+            }, 1000);
+        });
+        
+        // Error handling
+        window.addEventListener('error', (event) => {
+            log(`❌ Global error: ${event.message}`, 'error');
+            if (event.filename) {
+                log(`📁 File: ${event.filename}:${event.lineno}`, 'error');
+            }
+        });
+        
+        window.addEventListener('unhandledrejection', (event) => {
+            log(`❌ Unhandled promise rejection: ${event.reason}`, 'error');
+        });
+    </script>
+</body>
+</html> 
