@@ -123,6 +123,17 @@ function ChatWidget() {
     }
   }, [isOpen]);
 
+  // Add/remove callout-visible class for CSS targeting
+  useEffect(() => {
+    if (showCallout) {
+      document.body.classList.add("callout-visible");
+      document.body.setAttribute("data-callout-visible", "true");
+    } else {
+      document.body.classList.remove("callout-visible");
+      document.body.removeAttribute("data-callout-visible");
+    }
+  }, [showCallout]);
+
   // Auto-close attachment menu if photo_uploads disabled
   useEffect(() => {
     if (!config?.features?.photo_uploads && showAttachmentMenu) {
@@ -275,6 +286,25 @@ function ChatWidget() {
     setShowCallout(false);
     setCalloutDismissed(true); // Only set permanent dismiss on manual close
   };
+
+  // Callout state monitoring - notify parent of callout visibility changes
+  useEffect(() => {
+    if (window.parent && window.parent !== window) {
+      const calloutData = {
+        visible: showCallout,
+        width: showCallout ? 300 : 0,
+        height: showCallout ? 60 : 0,
+        text: calloutText,
+        enabled: calloutEnabled
+      };
+      
+      console.log('📢 Notifying parent of callout state change:', calloutData);
+      
+      notifyParentEvent('CALLOUT_STATE_CHANGE', {
+        calloutConfig: calloutData
+      });
+    }
+  }, [showCallout, calloutText, calloutEnabled]);
 
   // 🔧 FIXED: Reset auto-dismiss state when user opens chat
   useEffect(() => {

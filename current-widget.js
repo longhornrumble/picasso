@@ -73,9 +73,8 @@ var __spreadValues = (a, b) => {
       // Determine the base URL for widget frame
       let widgetDomain;
       if (devMode) {
-        // In dev mode, use the current origin (preserve the current port)
-        const currentPort = window.location.port;
-        widgetDomain = `${window.location.protocol}//${window.location.hostname}:${currentPort}`;
+        // In dev mode, use Vite dev server port (5174) for widget frame
+        widgetDomain = `${window.location.protocol}//${window.location.hostname}:5174`;
       } else {
         widgetDomain = "https://chat.myrecruiter.ai";
       }
@@ -167,6 +166,11 @@ var __spreadValues = (a, b) => {
           if (payload == null ? void 0 : payload.dimensions) {
             this.handleResize(payload.dimensions);
           }
+          break;
+        case "CALLOUT_STATE_CHANGE":
+          console.log("📢 Callout state changed:", payload);
+          // Resize container for callout regardless of open state
+          this.resizeForCallout(payload.calloutConfig);
           break;
         default:
           console.log("❓ Unknown PICASSO_EVENT:", event);
@@ -261,17 +265,40 @@ var __spreadValues = (a, b) => {
     minimize() {
       if (!this.isOpen) return;
       this.isOpen = false;
-      Object.assign(this.container.style, {
-        // Size for minimized state - iframe needs more space for badge/callout
-        width: "90px", // 56px toggle + 34px for badge/callout overflow (badge extends 8px + callout space)
-        height: "90px", // 56px toggle + 34px for badge/callout overflow
-        bottom: "20px",
-        right: "20px"
-      });
-      Object.assign(this.iframe.style, {
-        borderRadius: "50%"
-      });
+      this.resizeForCallout();
       console.log("📉 Widget minimized");
+    },
+    
+    // Resize container for callout (can be called when widget is open or closed)
+    resizeForCallout(calloutConfig = null) {
+      // Calculate container size based on callout presence
+      let containerWidth = 90;  // Default: 56px toggle + 34px for badge
+      let containerHeight = 90;
+      
+      if (calloutConfig && calloutConfig.visible) {
+        // Callout is visible - expand container to accommodate it
+        // Callout: 300px width + 70px toggle area + 20px spacing = 390px total
+        containerWidth = Math.max(390, calloutConfig.width + 90);
+        containerHeight = Math.max(90, calloutConfig.height + 20); // Add some vertical padding
+        console.log(`📢 Callout active - expanding container to ${containerWidth}x${containerHeight}`);
+      }
+      
+      // Only apply minimized styling when widget is actually closed
+      if (!this.isOpen) {
+        Object.assign(this.container.style, {
+          width: containerWidth + "px",
+          height: containerHeight + "px",
+          bottom: "20px",
+          right: "20px",
+          position: "fixed",
+          top: "auto",
+          left: "auto"
+        });
+        Object.assign(this.iframe.style, {
+          borderRadius: calloutConfig && calloutConfig.visible ? "12px" : "50%"
+        });
+        console.log(`📦 Container resized for callout: ${containerWidth}x${containerHeight}`);
+      }
     },
     // Toggle widget state
     toggle() {
@@ -432,4 +459,4 @@ var __spreadValues = (a, b) => {
   };
   autoInit();
 })();
-//# sourceMappingURL=widget.js.map
+

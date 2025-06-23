@@ -606,6 +606,23 @@
     }
   }
 
+  /* Callout state styling - when callout is visible, iframe should not be circular */
+  body[data-iframe="true"][data-callout-visible="true"]:not(.chat-open) {
+    /* When callout is showing and chat is closed, use rectangular styling */
+  }
+
+  body[data-iframe="true"][data-callout-visible="true"]:not(.chat-open) .chat-callout {
+    /* Ensure callout is properly positioned when iframe is expanded for it */
+    position: absolute !important;
+    bottom: 50% !important;
+    right: 70px !important;
+    left: auto !important;
+    top: auto !important;
+    width: 300px !important;
+    transform: translateY(50%) !important;
+    display: block !important;
+  }
+
   /* Ensure the chat window fills remaining space in iframe */
   body[data-iframe="true"] .chat-window {
     flex: 1 1 auto !important; /* Grow and shrink to fill available space */

@@ -139,7 +139,12 @@
         // Listen for widget events
         window.addEventListener('message', function(event) {
             if (event.data && event.data.type && event.data.type.startsWith('PICASSO_')) {
-                log('📨 Widget event: ' + event.data.type);
+                if (event.data.type === 'PICASSO_EVENT' && event.data.event === 'CALLOUT_STATE_CHANGE') {
+                    const callout = event.data.payload.calloutConfig;
+                    log(`📢 Callout ${callout.visible ? 'SHOWN' : 'HIDDEN'}: ${callout.width}x${callout.height}px - "${callout.text}"`);
+                } else {
+                    log('📨 Widget event: ' + event.data.type + (event.data.event ? ' - ' + event.data.event : ''));
+                }
             }
         });
         
