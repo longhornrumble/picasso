@@ -1,6 +1,7 @@
 // src/hooks/useCSSVariables.js - Generic Multi-Tenant CSS System
 import { useEffect } from 'react';
 import { useConfig } from '../../hooks/useConfig';
+import { config as environmentConfig } from '../../config/environment';
 
 export function useCSSVariables(config) {
   useEffect(() => {
@@ -269,7 +270,6 @@ export function useCSSVariables(config) {
       /* === CALLOUT STYLING === */
       '--callout-shadow': branding.callout_shadow || '0 8px 24px rgba(0, 0, 0, 0.15)',
       '--callout-hover-shadow': branding.callout_hover_shadow || '0 12px 32px rgba(0, 0, 0, 0.2)',
-      '--callout-animation-duration': branding.callout_animation_duration || '0.3s',
       '--notification-animation-duration': branding.notification_animation_duration || '2s',
       
       /* === FOCUS STATES === */
@@ -423,17 +423,17 @@ function generateAvatarUrl(config) {
     _cloudfront?.urls?.avatar,
     _cloudfront?.urls?.logo,
     
-    // Hash-based generic paths (tenant agnostic)
-    tenant_hash ? `https://chat.myrecruiter.ai/tenants/hash-${tenant_hash}/avatar.png` : null,
-    tenant_hash ? `https://chat.myrecruiter.ai/tenants/hash-${tenant_hash}/logo.png` : null,
-    tenant_hash ? `https://chat.myrecruiter.ai/tenants/hash-${tenant_hash}/avatar.svg` : null,
-    tenant_hash ? `https://chat.myrecruiter.ai/tenants/hash-${tenant_hash}/logo.svg` : null,
+    // Hash-based generic paths (tenant agnostic) using environment config
+    tenant_hash ? `${environmentConfig.API_BASE_URL}/tenants/hash-${tenant_hash}/avatar.png` : null,
+    tenant_hash ? `${environmentConfig.API_BASE_URL}/tenants/hash-${tenant_hash}/logo.png` : null,
+    tenant_hash ? `${environmentConfig.API_BASE_URL}/tenants/hash-${tenant_hash}/avatar.svg` : null,
+    tenant_hash ? `${environmentConfig.API_BASE_URL}/tenants/hash-${tenant_hash}/logo.svg` : null,
     
     // Generic fallbacks
-    'https://chat.myrecruiter.ai/collateral/default-avatar.png'
+    `${environmentConfig.API_BASE_URL}/collateral/default-avatar.png`
   ];
   
-  const finalUrl = avatarSources.find(url => url && url.trim() && url !== 'undefined') || 'https://chat.myrecruiter.ai/collateral/default-avatar.png';
+  const finalUrl = avatarSources.find(url => url && url.trim() && url !== 'undefined') || `${environmentConfig.API_BASE_URL}/collateral/default-avatar.png`;
   
   console.log('✅ Selected avatar URL:', finalUrl);
   
@@ -543,7 +543,7 @@ function determineHeaderTextColor(branding) {
   return isLightColor(headerBg) ? '#1f2937' : '#ffffff';
 }
 
-function generateSubtitleColor(branding) {
+function _generateSubtitleColor(branding) {
   // Get the header text color first
   const headerTextColor = determineHeaderTextColor(branding);
   
@@ -839,10 +839,10 @@ if (typeof window !== 'undefined') {
     const candidateUrls = [
       branding?.avatar_url,
       branding?.logo_url,
-      tenant_hash ? `https://chat.myrecruiter.ai/tenants/hash-${tenant_hash}/avatar.png` : null,
-      tenant_hash ? `https://chat.myrecruiter.ai/tenants/hash-${tenant_hash}/logo.png` : null,
-      tenant_hash ? `https://chat.myrecruiter.ai/tenants/hash-${tenant_hash}/avatar.svg` : null,
-      'https://chat.myrecruiter.ai/collateral/default-avatar.png'
+      tenant_hash ? `${environmentConfig.API_BASE_URL}/tenants/hash-${tenant_hash}/avatar.png` : null,
+      tenant_hash ? `${environmentConfig.API_BASE_URL}/tenants/hash-${tenant_hash}/logo.png` : null,
+      tenant_hash ? `${environmentConfig.API_BASE_URL}/tenants/hash-${tenant_hash}/avatar.svg` : null,
+      `${environmentConfig.API_BASE_URL}/collateral/default-avatar.png`
     ].filter(url => url && url.trim());
     
     console.log('🧪 Testing avatar URLs for hash:', tenant_hash);
@@ -857,8 +857,8 @@ if (typeof window !== 'undefined') {
     }
     
     console.log('⚠️ No working avatar URLs found, using default');
-    document.documentElement.style.setProperty('--avatar-url', 'url(https://chat.myrecruiter.ai/collateral/default-avatar.png)');
-    return 'url(https://chat.myrecruiter.ai/collateral/default-avatar.png)';
+    document.documentElement.style.setProperty('--avatar-url', `url(${environmentConfig.API_BASE_URL}/collateral/default-avatar.png)`);
+    return `url(${environmentConfig.API_BASE_URL}/collateral/default-avatar.png)`;
   };
 
   window.applyTestLogo = (url) => {

@@ -46,7 +46,12 @@ export default defineConfig(({ mode }) => {
           // Consistent naming for predictable script tags
           entryFileNames: 'assets/[name].js',
           chunkFileNames: 'assets/[name]-[hash].js',
-          assetFileNames: 'assets/[name]-[hash][extname]',
+          assetFileNames: (assetInfo) => {
+            if (assetInfo.name.endsWith('.css')) {
+              return 'assets/[name][extname]';
+            }
+            return 'assets/[name]-[hash][extname]';
+          },
         },
       },
       copyPublicDir: true,

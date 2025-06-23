@@ -1,10 +1,11 @@
 // TypingIndicator.jsx - Enhanced with S3 Logo Support
 import React, { useState } from "react";
 import { useConfig } from "../../hooks/useConfig";
+import { config as environmentConfig } from '../../config/environment';
 
 // Same avatar helper as MessageBubble
 const getAvatarUrl = (config) => {
-  const { tenant_id, branding, _cloudfront } = config || {};
+  const { tenant_id, branding, _cloudfront, tenant_hash } = config || {};
   
   const avatarSources = [
     branding?.avatar_url,
@@ -13,15 +14,15 @@ const getAvatarUrl = (config) => {
     branding?.icon,                     
     branding?.custom_icons?.bot_avatar,
     _cloudfront?.urls?.avatar,
-    `https://chat.myrecruiter.ai/tenants/${tenant_id}/avatar.png`,
-    `https://chat.myrecruiter.ai/tenants/${tenant_id}/logo.png`,
-    `https://myrecruiter-picasso.s3.us-east-1.amazonaws.com/tenants/${tenant_id}/FVC_logo.png`,
-    `https://myrecruiter-picasso.s3.us-east-1.amazonaws.com/tenants/${tenant_id}/avatar.png`,
-    `https://myrecruiter-picasso.s3.us-east-1.amazonaws.com/tenants/${tenant_id}/logo.png`,
-    'https://chat.myrecruiter.ai/collateral/default-avatar.png'
+    tenant_id ? `${environmentConfig.API_BASE_URL}/tenants/${tenant_id}/avatar.png` : null,
+    tenant_id ? `${environmentConfig.API_BASE_URL}/tenants/${tenant_id}/logo.png` : null,
+    tenant_id ? environmentConfig.getLegacyS3Url(tenant_id, 'FVC_logo.png') : null,
+    tenant_id ? environmentConfig.getLegacyS3Url(tenant_id, 'avatar.png') : null,
+    tenant_id ? environmentConfig.getLegacyS3Url(tenant_id, 'logo.png') : null,
+    `${environmentConfig.API_BASE_URL}/collateral/default-avatar.png`
   ];
   
-  return avatarSources.find(url => url && url.trim()) || 'https://chat.myrecruiter.ai/collateral/default-avatar.png';
+  return avatarSources.find(url => url && url.trim()) || `${environmentConfig.API_BASE_URL}/collateral/default-avatar.png`;
 };
 
 export default function TypingIndicator() {
@@ -41,7 +42,7 @@ export default function TypingIndicator() {
   };
 
   // Set the dynamic avatar URL as a CSS custom property
-  const avatarUrl = avatarError ? 'url(https://chat.myrecruiter.ai/collateral/default-avatar.png)' : `url(${avatarSrc})`;
+  const avatarUrl = avatarError ? `url(${environmentConfig.API_BASE_URL}/collateral/default-avatar.png)` : `url(${avatarSrc})`;
 
   return (
     <div className="typing-indicator-wrapper">

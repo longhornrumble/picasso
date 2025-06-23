@@ -44,8 +44,8 @@ export default function FilePreview({ file, uploadState = "complete", onCancel }
     return Math.round(bytes / (1024 * 1024)) + ' MB';
   };
 
-  // Helper function to get styling based on upload state
-  const getStateStyle = () => {
+  // Helper function to get styling based on upload state (currently unused)
+  const _getStateStyle = () => {
     switch (uploadState) {
       case 'uploading':
         return {

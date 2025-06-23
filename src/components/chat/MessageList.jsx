@@ -7,11 +7,11 @@ import TypingIndicator from "./TypingIndicator";
 
 export default function MessageList({ 
   enableAutoScroll = true,
-  scrollBehavior = 'smooth',
-  scrollToPosition = 'start'
+  scrollBehavior: _scrollBehavior = 'smooth',
+  scrollToPosition: _scrollToPosition = 'start'
 }) {
   const { messages, isTyping } = useChat();
-  const { config } = useConfig();
+  const { config: _config } = useConfig();
   const containerRef = useRef(null);
   const messagesEndRef = useRef(null);
 

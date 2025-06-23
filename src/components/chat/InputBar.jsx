@@ -10,7 +10,7 @@ export default function InputBar({ input, setInput }) {
   const { config } = useConfig();
   const features = config?.features || {};
   const [showAttachments, setShowAttachments] = useState(false);
-  const [uploadingFiles, setUploadingFiles] = useState(new Set());
+  const [_uploadingFiles, setUploadingFiles] = useState(new Set());
   const textareaRef = useRef(null);
 
   const [localInput, setLocalInput] = useState("");
@@ -95,7 +95,7 @@ export default function InputBar({ input, setInput }) {
     });
   };
 
-  const handleFileSelect = (type) => {
+  const _handleFileSelect = (type) => {
     const inputElem = document.createElement("input");
     inputElem.type = "file";
 

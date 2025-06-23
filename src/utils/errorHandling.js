@@ -5,7 +5,7 @@
  * Provides structured error reporting, retry logic, and user-friendly error messages.
  */
 
-import { sanitizeError, isSecureEnvironment } from './security';
+import { sanitizeError } from './security';
 import { config as environmentConfig } from '../config/environment';
 
 // Error severity levels
@@ -137,7 +137,7 @@ export const classifyError = (error, response = null) => {
 /**
  * Enhanced retry logic with exponential backoff
  */
-export const shouldRetry = (errorClassification, attempt, maxRetries = 3) => {
+export const shouldRetry = (errorClassification, attempt, _maxRetries = 3) => {
   if (!errorClassification.retryable) {
     return false;
   }

@@ -66,7 +66,7 @@
   --photo-button-display: flex;
   
   /* Avatar System - Generic Multi-Tenant */
-  --avatar-url: url('https://chat.myrecruiter.ai/collateral/default-avatar.png');
+  --avatar-url: url('/collateral/default-avatar.png');
   --avatar-border-radius: 50%;
   --avatar-display: block;
   --avatar-background-color: transparent;

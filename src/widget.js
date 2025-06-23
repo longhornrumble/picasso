@@ -205,7 +205,7 @@ class PicassoWidget {
   }
 
   // Fallback UI for errors
-  showFallback(error) {
+  showFallback(_error) {
     try {
       if (!this.container) {
         this.container = this.createContainer();
@@ -250,8 +250,8 @@ class PicassoWidget {
 
       console.info('🧹 Picasso Widget destroyed');
 
-    } catch (error) {
-      console.error('❌ Error destroying widget:', error);
+    } catch (_error) {
+      console.error('❌ Error destroying widget:', _error);
     }
   }
 }

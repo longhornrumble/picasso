@@ -9,13 +9,15 @@
  * @throws {Error} - If the fetch fails or config is invalid
  */
 
+import { config as environmentConfig } from '../config/environment';
+
 export async function fetchTenantConfig(tenantHash) {
   if (!tenantHash) {
     throw new Error("fetchTenantConfig: tenantHash is required");
   }
 
-  // PRODUCTION: Use the correct hash-based API endpoint
-  const url = `https://chat.myrecruiter.ai/Master_Function?action=get_config&t=${encodeURIComponent(tenantHash)}`;
+  // PRODUCTION: Use the correct hash-based API endpoint from environment config
+  const url = environmentConfig.getConfigUrl(tenantHash);
 
   try {
     const response = await fetch(url, {

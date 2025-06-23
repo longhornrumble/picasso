@@ -327,7 +327,9 @@ describe('Error Handling Infrastructure', () => {
       
       // Simulate some work
       const start = Date.now();
-      while (Date.now() - start < 10) {}
+      while (Date.now() - start < 10) {
+        // Intentionally empty - waiting for time to pass
+      }
       
       const duration = performanceMonitor.endTimer('manual');
       

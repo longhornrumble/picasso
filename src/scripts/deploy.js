@@ -2,8 +2,7 @@
 
 // scripts/deploy.js - Production Deployment Script
 import { execSync } from 'child_process';
-import { readFileSync, writeFileSync } from 'fs';
-import { join } from 'path';
+import { writeFileSync } from 'fs';
 
 const ENVIRONMENTS = {
   staging: {

@@ -1,6 +1,7 @@
 // Enhanced ChatFooter.jsx with MyRecruiter company logo
 import React, { useState } from "react";
 import { useConfig } from "../../hooks/useConfig";
+import { config as environmentConfig } from '../../config/environment';
 import FollowUpPromptBar from "./FollowUpPromptBar";
 
 export default function ChatFooter({ brandText = "MyRecruiter" }) {
@@ -8,7 +9,7 @@ export default function ChatFooter({ brandText = "MyRecruiter" }) {
   const [logoError, setLogoError] = useState(false);
   
   // MyRecruiter company logo - this is YOUR company's logo that powers the platform
-  const myRecruiterLogoUrl = config?.branding?.company_logo_url || "https://chat.myrecruiter.ai/collateral/MyRecruiterLogo.png";
+  const myRecruiterLogoUrl = config?.branding?.company_logo_url || `${environmentConfig.API_BASE_URL}/collateral/MyRecruiterLogo.png`;
   const showLogo = myRecruiterLogoUrl && !logoError;
   
   const handleLogoError = () => {

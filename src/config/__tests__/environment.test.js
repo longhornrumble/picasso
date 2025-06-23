@@ -50,7 +50,7 @@ describe('Environment Configuration', () => {
 
   it('should handle URL parameter environment override', () => {
     // Mock URLSearchParams
-    const mockSearchParams = new Map([
+    const _mockSearchParams = new Map([
       ['picasso-env', 'staging']
     ]);
     

@@ -84,7 +84,7 @@ export const config = {
   
   // Legacy S3 bucket URLs for backward compatibility
   getLegacyS3Url: (tenantHash, assetPath) => {
-    const env = ENVIRONMENTS[currentEnv];
+    const _env = ENVIRONMENTS[currentEnv];
     if (currentEnv === 'development') {
     return `http://localhost:3000/tenants/${tenantHash}/${assetPath}`;
     }

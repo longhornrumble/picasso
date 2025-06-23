@@ -10,7 +10,7 @@ import ChatFooter from "./ChatFooter";
 
 export default function FullPageChat() {
   const { config } = useConfig();
-  const { messages } = useChat();
+  const { messages: _messages } = useChat();
   
   // Apply CSS variables for theming
   useCSSVariables(config);

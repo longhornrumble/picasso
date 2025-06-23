@@ -1,5 +1,6 @@
 // src/context/ConfigProvider.jsx - FIXED Pure Hash + Action System
 import React, { createContext, useState, useEffect, useRef } from 'react';
+import { config as environmentConfig } from '../config/environment';
 
 const ConfigContext = createContext();
 
@@ -62,8 +63,8 @@ const ConfigProvider = ({ children }) => {
   // FIXED: Pure hash + action config fetch
   const fetchConfigWithCacheCheck = async (tenantHash, force = false) => {
     try {
-      // NEW: Pure hash + action system URL
-      const configUrl = `https://chat.myrecruiter.ai/Master_Function?action=get_config&t=${encodeURIComponent(tenantHash)}`;
+      // NEW: Pure hash + action system URL using environment config
+      const configUrl = environmentConfig.getConfigUrl(tenantHash);
       
       // Prepare headers
       const headers = {
@@ -192,7 +193,7 @@ const ConfigProvider = ({ children }) => {
   };
 
   // Set up automatic config checking
-  const startConfigWatcher = () => {
+  const _startConfigWatcher = () => {
     // Clear any existing interval
     if (updateIntervalRef.current) {
       clearInterval(updateIntervalRef.current);
@@ -335,7 +336,8 @@ if (typeof window !== 'undefined') {
     console.log('🧪 Testing NEW health check action...');
     
     try {
-      const response = await fetch(`https://chat.myrecruiter.ai/Master_Function?action=health_check&t=${hash}`, {
+      const healthCheckUrl = `${environmentConfig.API_BASE_URL}/Master_Function?action=health_check&t=${hash}`;
+      const response = await fetch(healthCheckUrl, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json'
@@ -363,7 +365,8 @@ if (typeof window !== 'undefined') {
     console.log('🧪 Testing NEW get_config action...');
     
     try {
-      const response = await fetch(`https://chat.myrecruiter.ai/Master_Function?action=get_config&t=${hash}`, {
+      const configLoadUrl = environmentConfig.getConfigUrl(hash);
+      const response = await fetch(configLoadUrl, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json'
@@ -397,7 +400,8 @@ if (typeof window !== 'undefined') {
     console.log('🧪 Testing NEW chat action...');
     
     try {
-      const response = await fetch(`https://chat.myrecruiter.ai/Master_Function?action=chat&t=${hash}`, {
+      const chatUrl = environmentConfig.getChatUrl(hash);
+      const response = await fetch(chatUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -444,8 +448,11 @@ if (typeof window !== 'undefined') {
 
 // Hook for manual config refresh in components
 export function useConfigRefresh() {
-  const { refreshConfig } = useConfig();
-  return refreshConfig;
+  const context = React.useContext(ConfigContext);
+  if (!context) {
+    throw new Error('useConfigRefresh must be used within a ConfigProvider');
+  }
+  return context.refreshConfig;
 }
 
 // Export only the provider

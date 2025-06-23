@@ -4,7 +4,9 @@ import { ConfigProvider } from './context/ConfigProvider.jsx';
 import { ChatProvider } from './context/ChatProvider.jsx';
 import ChatWidget from './components/chat/ChatWidget.jsx';
 import { CSSVariablesProvider } from './components/chat/useCSSVariables.js';
+import { config as environmentConfig } from './config/environment.js';
 import "./styles/theme.css";
+import "./styles/widget-entry.css";
 
 /**
  * iframe-main.jsx
@@ -134,12 +136,12 @@ function initializeWidget() {
               console.log(`⚡ Config loaded from cache in ${loadTime.toFixed(2)}ms ✅`);
               return cachedConfig;
             }
-          } catch (e) {
+          } catch {
             console.warn('Invalid cached config, fetching fresh');
           }
         }
         
-        const configUrl = `https://chat.myrecruiter.ai/Master_Function?action=get_config&t=${encodeURIComponent(tenantHash)}`;
+        const configUrl = environmentConfig.getConfigUrl(tenantHash);
         console.log('🔄 Fetching config from:', configUrl);
         
         const controller = new AbortController();

@@ -4,6 +4,8 @@
  * Uses your existing React app, theme.css, and useCSSVariables system
  */
 
+import { config as environmentConfig } from './config/environment.js';
+
 (function() {
   'use strict';
   
@@ -70,13 +72,19 @@
                       document.currentScript?.getAttribute('data-dev') === 'true' ||
                       document.querySelector('script[src*="widget.js"][data-dev="true"]');
       
+      const isLocal = devMode || ['localhost', '127.0.0.1'].includes(window.location.hostname);
+      
       const widgetDomain = devMode ? 
         `http://localhost:5173` : 
-        'https://chat.myrecruiter.ai';
+        (isLocal ? window.location.origin : environmentConfig.WIDGET_DOMAIN);
       
-      const iframeUrl = `${widgetDomain}/widget-frame.html?t=${this.tenantHash}`;
+      let iframeUrl = `${widgetDomain}/widget-frame.html?t=${this.tenantHash}`;
       
-      console.log(`🌐 Loading iframe from: ${iframeUrl} (${devMode ? 'DEV' : 'PROD'} mode)`);
+      if (isLocal && !iframeUrl.includes('picasso-env')) {
+        iframeUrl += '&picasso-env=development';
+      }
+      
+      console.log(`🌐 Loading iframe from: ${iframeUrl} (${isLocal ? 'LOCAL' : 'PROD'} mode)`);
       console.log(`💡 To use dev mode, add ?picasso-dev=true to URL or data-dev="true" to script tag`);
       
       // Configure iframe for complete isolation

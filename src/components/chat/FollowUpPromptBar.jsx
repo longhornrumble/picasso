@@ -7,26 +7,7 @@ export default function FollowUpPromptBar() {
   const { addMessage, isTyping } = useChat();
   const { config } = useConfig();
 
-  // Use new config structure for quick help
-  const quickHelpConfig = config?.quick_help || {};
-  const enabled = quickHelpConfig.enabled !== false; // Default to true
-  
-  if (!enabled) return null;
-
-  // Get all config values from quick_help section
-  const prompts = quickHelpConfig.prompts || [
-    "Tell me about volunteering",
-    "Where does my donation go?",
-    "How can I get involved?",
-    "What volunteer opportunities are available?",
-    "How can I make a donation?",
-    "What impact does my support have?"
-  ];
-  
-  const title = quickHelpConfig.title || "Common Questions:";
-  const toggleText = quickHelpConfig.toggle_text || "Help Menu ↑";
-  const closeAfterSelection = quickHelpConfig.close_after_selection !== false; // Default to true
-
+  // All hooks must be called before any early returns
   // Manage animation states for gradual sliding
   const [animationState, setAnimationState] = React.useState('closed'); // 'closed', 'opening', 'open', 'closing'
   const [toggleState, setToggleState] = React.useState('visible'); // 'visible', 'hiding', 'hidden', 'showing'
@@ -35,17 +16,12 @@ export default function FollowUpPromptBar() {
   const menuRef = React.useRef(null);
   const toggleRef = React.useRef(null);
 
-  const handleOpen = () => {
-    setToggleState('hiding');
-    setAnimationState('opening');
-    // Hide toggle and show menu after toggle starts hiding
-    setTimeout(() => {
-      setToggleState('hidden');
-      setAnimationState('open');
-    }, 10);
-  };
-
-  const handleClose = () => {
+  // Use new config structure for quick help
+  const quickHelpConfig = config?.quick_help || {};
+  const enabled = quickHelpConfig.enabled !== false; // Default to true
+  
+  // Click outside to close menu - using useCallback to prevent infinite re-renders
+  const handleClose = React.useCallback(() => {
     setAnimationState('closing');
     // Complete close and show toggle after animation duration
     setTimeout(() => {
@@ -54,18 +30,8 @@ export default function FollowUpPromptBar() {
       // Return toggle to visible state after showing animation
       setTimeout(() => setToggleState('visible'), 375);
     }, 375); // Match CSS animation duration
-  };
+  }, []);
 
-  const handleClick = (prompt) => {
-    if (!isTyping) {
-      addMessage({ role: "user", content: prompt });
-      if (closeAfterSelection) {
-        handleClose();
-      }
-    }
-  };
-
-  // Click outside to close menu
   React.useEffect(() => {
     const handleClickOutside = (event) => {
       // Only handle clicks when menu is open
@@ -91,7 +57,45 @@ export default function FollowUpPromptBar() {
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [animationState]);
+  }, [animationState, handleClose]);
+
+  // Early return after all hooks are called
+  if (!enabled) return null;
+
+  // Get all config values from quick_help section
+  const prompts = quickHelpConfig.prompts || [
+    "Tell me about volunteering",
+    "Where does my donation go?",
+    "How can I get involved?",
+    "What volunteer opportunities are available?",
+    "How can I make a donation?",
+    "What impact does my support have?"
+  ];
+  
+  const title = quickHelpConfig.title || "Common Questions:";
+  const toggleText = quickHelpConfig.toggle_text || "Help Menu ↑";
+  const closeAfterSelection = quickHelpConfig.close_after_selection !== false; // Default to true
+
+  const handleOpen = () => {
+    setToggleState('hiding');
+    setAnimationState('opening');
+    // Hide toggle and show menu after toggle starts hiding
+    setTimeout(() => {
+      setToggleState('hidden');
+      setAnimationState('open');
+    }, 10);
+  };
+
+
+
+  const handleClick = (prompt) => {
+    if (!isTyping) {
+      addMessage({ role: "user", content: prompt });
+      if (closeAfterSelection) {
+        handleClose();
+      }
+    }
+  };
 
   return (
     <>
