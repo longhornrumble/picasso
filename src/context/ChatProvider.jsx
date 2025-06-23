@@ -90,6 +90,10 @@ async function sanitizeMessage(content) {
 
     return cleanHtml;
   } catch (error) {
+    // In case of a markdown parsing error, fall back to basic sanitization.
+    // This ensures we never return raw, potentially unsafe content.
+    // We assume DOMPurify is available because it's part of the same dynamic import.
+    // If it's not, the outer catch will handle it.
     const { DOMPurify } = await getMarkdownParser();
     errorLogger.logError(error, { context: 'sanitizeMessage' });
     return DOMPurify.sanitize(content, { ALLOWED_TAGS: [], KEEP_CONTENT: true });
@@ -207,7 +211,7 @@ const ChatProvider = ({ children }) => {
       for (let attempt = 1; attempt <= retries; attempt++) {
         try {
           const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 10000);
+          const timeoutId = setTimeout(() => controller.abort(), 10000); // 10-second timeout
           
           if (messageId) {
             abortControllersRef.current.set(messageId, controller);
@@ -258,8 +262,9 @@ const ChatProvider = ({ children }) => {
                 retryTimeoutsRef.current.delete(messageId);
               }
               
-              continue;
+              continue; // Retry the loop
             } else {
+              // Non-retryable error, throw immediately
               const error = new Error(`HTTP ${response.status}: ${response.statusText}`);
               errorLogger.logError(error, {
                 messageId,
@@ -267,7 +272,7 @@ const ChatProvider = ({ children }) => {
                 response: { status: response.status, statusText: response.statusText },
                 errorClassification
               });
-              throw error;
+              throw error; // This will be caught by the outer catch block
             }
           }
           
@@ -340,7 +345,7 @@ const ChatProvider = ({ children }) => {
               retryTimeoutsRef.current.delete(messageId);
             }
             
-            continue;
+            continue; // Retry the loop
           } else {
             // Final failure - throw error with user-friendly message
             const userMessage = getUserFriendlyMessage(errorClassification, attempt);
@@ -357,6 +362,7 @@ const ChatProvider = ({ children }) => {
         }
       }
       
+      // If the loop completes without returning, it means we've exceeded retries
       const maxRetriesError = new Error('Maximum retry attempts exceeded');
       errorLogger.logError(maxRetriesError, {
         messageId,
@@ -377,6 +383,8 @@ const ChatProvider = ({ children }) => {
     errorLogger.logInfo(`🔄 Manual retry for message ${messageId}`);
     
     try {
+      // The last attempt failed, so we start from the next attempt number.
+      // We pass the *remaining* retries to makeAPIRequest.
       const data = await makeAPIRequest(retryData.url, retryData.options, retryData.retries);
       
       // Process successful response
@@ -427,6 +435,7 @@ const ChatProvider = ({ children }) => {
           data: typeof data === 'string' ? data.substring(0, 200) + '...' : JSON.stringify(data).substring(0, 200) + '...'
         });
         
+        // As a fallback, try to sanitize the raw response if it's a string
         if (typeof data === 'string') {
           botContent = await sanitizeMessage(data);
         }
@@ -464,7 +473,7 @@ const ChatProvider = ({ children }) => {
       setMessages(prev => prev.map(msg => 
         msg.id === messageId ? {
           ...msg,
-          content: error.message,
+          content: error.message, // Use the user-friendly message from the thrown error
           metadata: {
             ...msg.metadata,
             retry_failed: true,
@@ -475,12 +484,15 @@ const ChatProvider = ({ children }) => {
     }
   }, [pendingRetries]);
 
-  const addMessage = useCallback((message) => {
+  const addMessage = useCallback(async (message) => {
+    // Sanitize user message content immediately for security.
+    const sanitizedUserContent = await sanitizeMessage(message.content);
+
     const messageWithId = {
       id: message.id || `msg_${Date.now()}_${Math.random()}`,
       timestamp: new Date().toISOString(),
       ...message,
-      content: message.role === 'user' ? DOMPurify.sanitize(message.content, { ALLOWED_TAGS: [], KEEP_CONTENT: true }) : message.content
+      content: sanitizedUserContent
     };
     
     setMessages(prev => {
@@ -497,7 +509,7 @@ const ChatProvider = ({ children }) => {
         type: 'PICASSO_EVENT',
         event: 'MESSAGE_SENT',
         payload: {
-          content: message.content,
+          content: sanitizedUserContent,
           files: message.files || [],
           messageId: messageWithId.id
         }
@@ -518,7 +530,7 @@ const ChatProvider = ({ children }) => {
           
           const requestBody = {
             tenant_hash: tenantHash,
-            user_input: message.content,
+            user_input: sanitizedUserContent, // Send sanitized content
             session_id: `session_${Date.now()}`,
             files: message.files || [],
             messageId: messageWithId.id
@@ -534,7 +546,7 @@ const ChatProvider = ({ children }) => {
               },
               body: JSON.stringify(requestBody)
             },
-            3
+            3 // Number of retries
           );
           
           let botContent = "I apologize, but I'm having trouble processing that request right now.";
@@ -584,6 +596,7 @@ const ChatProvider = ({ children }) => {
               data: typeof data === 'string' ? data.substring(0, 200) + '...' : JSON.stringify(data).substring(0, 200) + '...'
             });
             
+            // As a fallback, try to sanitize the raw response if it's a string
             if (typeof data === 'string') {
               botContent = await sanitizeMessage(data);
             }
@@ -618,7 +631,7 @@ const ChatProvider = ({ children }) => {
           setMessages(prev => [...prev, {
             id: `error_${Date.now()}_${Math.random()}`,
             role: "assistant",
-            content: error.message,
+            content: error.message, // This will be the user-friendly message
             timestamp: new Date().toISOString(),
             metadata: {
               error: error.message,
@@ -687,68 +700,73 @@ ChatProvider.defaultProps = {
   // No default props needed
 };
 
-if (typeof window !== 'undefined') {
-  window.testChatAPI = async (message, tenantHash) => {
-    const hash = tenantHash || 'fo85e6a06dcdf4';
-    errorLogger.logInfo('🧪 Testing chat API...', { message, tenantHash: hash });
-    
-    try {
-      const response = await fetch(environmentConfig.getChatUrl(hash), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          tenant_hash: hash,
-          user_input: message || "Hello, this is a test message",
-          session_id: `test_${Date.now()}`
-        })
-      });
+// --- Test Utilities ---
+// These are for development and debugging purposes.
+// They will not be included in the production build if tree-shaking is configured correctly.
+if (import.meta.env.DEV) {
+  if (typeof window !== 'undefined') {
+    window.testChatAPI = async (message, tenantHash) => {
+      const hash = tenantHash || 'fo85e6a06dcdf4';
+      errorLogger.logInfo('🧪 Testing chat API...', { message, tenantHash: hash });
       
-      if (response.ok) {
-        const data = await response.json();
-        errorLogger.logInfo('✅ Chat API Test Response', { 
-          hasContent: !!data.content,
-          hasActions: data.actions?.length > 0,
-          sessionId: data.session_id
+      try {
+        const response = await fetch(environmentConfig.getChatUrl(hash), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            tenant_hash: hash,
+            user_input: message || "Hello, this is a test message",
+            session_id: `test_${Date.now()}`
+          })
         });
         
-        if (data.content) {
-          errorLogger.logInfo('📝 Bot response', { content: data.content.substring(0, 100) + '...' });
-        }
-        
-        if (data.actions && data.actions.length > 0) {
-          errorLogger.logInfo('🎯 Available actions', { 
-            actionCount: data.actions.length,
-            actionLabels: data.actions.map(a => a.label)
+        if (response.ok) {
+          const data = await response.json();
+          errorLogger.logInfo('✅ Chat API Test Response', { 
+            hasContent: !!data.content,
+            hasActions: data.actions?.length > 0,
+            sessionId: data.session_id
           });
+          
+          if (data.content) {
+            errorLogger.logInfo('📝 Bot response', { content: data.content.substring(0, 100) + '...' });
+          }
+          
+          if (data.actions && data.actions.length > 0) {
+            errorLogger.logInfo('🎯 Available actions', { 
+              actionCount: data.actions.length,
+              actionLabels: data.actions.map(a => a.label)
+            });
+          }
+          
+          return data;
+        } else {
+          const errorText = await response.text();
+          const error = new Error(`Chat API Test Failed: ${response.status} ${errorText}`);
+          errorLogger.logError(error, { 
+            context: 'chat_api_test',
+            status: response.status,
+            responseText: errorText
+          });
+          return null;
         }
-        
-        return data;
-      } else {
-        const errorText = await response.text();
-        const error = new Error(`Chat API Test Failed: ${response.status} ${errorText}`);
-        errorLogger.logError(error, { 
-          context: 'chat_api_test',
-          status: response.status,
-          responseText: errorText
-        });
+      } catch (error) {
+        errorLogger.logError(error, { context: 'chat_api_test_error' });
         return null;
       }
-    } catch (error) {
-      errorLogger.logError(error, { context: 'chat_api_test_error' });
-      return null;
-    }
-  };
+    };
 
-  window.testVolunteer = () => window.testChatAPI("I want to volunteer");
-  window.testDonate = () => window.testChatAPI("How can I donate?");
-  window.testContact = () => window.testChatAPI("How do I contact you?");
-  window.testServices = () => window.testChatAPI("What services do you offer?");
+    window.testVolunteer = () => window.testChatAPI("I want to volunteer");
+    window.testDonate = () => window.testChatAPI("How can I donate?");
+    window.testContact = () => window.testChatAPI("How do I contact you?");
+    window.testServices = () => window.testChatAPI("What services do you offer?");
 
-  errorLogger.logInfo('🛠️ Chat API test commands available', {
-    commands: ['testChatAPI', 'testVolunteer', 'testDonate', 'testContact', 'testServices']
-  });
+    errorLogger.logInfo('🛠️ Chat API test commands available', {
+      commands: ['testChatAPI', 'testVolunteer', 'testDonate', 'testContact', 'testServices']
+    });
+  }
 }
 
 export { ChatProvider };
