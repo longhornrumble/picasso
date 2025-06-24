@@ -105,6 +105,7 @@ const ENVIRONMENTS = {
     DEBUG: true,
     CONFIG_ENDPOINT: 'https://chat.myrecruiter.ai/Master_Function?action=get_config',
     CHAT_ENDPOINT: 'https://chat.myrecruiter.ai/Master_Function?action=chat',
+    ERROR_REPORTING_ENDPOINT: 'https://chat.myrecruiter.ai/Master_Function?action=log_error',
     
     // Development-specific settings
     ENABLE_HOT_RELOAD: true,
@@ -124,6 +125,7 @@ const ENVIRONMENTS = {
     DEBUG: true,
     CONFIG_ENDPOINT: 'https://staging-chat.myrecruiter.ai/Master_Function?action=get_config',
     CHAT_ENDPOINT: 'https://staging-chat.myrecruiter.ai/Master_Function?action=chat',
+    ERROR_REPORTING_ENDPOINT: 'https://staging-chat.myrecruiter.ai/Master_Function?action=log_error',
     
     // Staging-specific settings
     ENABLE_HOT_RELOAD: false,
@@ -144,6 +146,7 @@ const ENVIRONMENTS = {
     DEBUG: false,
     CONFIG_ENDPOINT: 'https://chat.myrecruiter.ai/Master_Function?action=get_config',
     CHAT_ENDPOINT: 'https://chat.myrecruiter.ai/Master_Function?action=chat',
+    ERROR_REPORTING_ENDPOINT: 'https://chat.myrecruiter.ai/Master_Function?action=log_error',
     
     // Production-specific settings
     ENABLE_HOT_RELOAD: false,
@@ -221,7 +224,6 @@ export const config = {
       throw new Error('getLegacyS3Url: tenantHash and assetPath are required');
     }
     
-    const _env = ENVIRONMENTS[currentEnv];
     if (currentEnv === 'development') {
       return `https://picassostaging.s3.amazonaws.com/tenants/${tenantHash}/${assetPath}`;
     }
@@ -256,10 +258,9 @@ export const config = {
       }
     };
     
-    if (currentEnv === 'development' && ENVIRONMENTS[currentEnv].CORS_ENABLED) {
-      baseConfig.mode = 'cors';
-      baseConfig.credentials = 'omit';
-    }
+    // Always use CORS mode for API calls
+    baseConfig.mode = 'cors';
+    baseConfig.credentials = 'omit';
     
     // Merge configs properly, keeping merged headers
     const mergedConfig = { ...baseConfig, ...options };

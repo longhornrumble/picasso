@@ -27,12 +27,29 @@ export default defineConfig(({ mode }) => {
         'Content-Security-Policy': "frame-ancestors 'self' http://localhost:* https://localhost:*"
       },
     },
+    
+    // Make widget-loader.js available at root
+    publicDir: 'public',
 
     build: {
       target: 'esnext',
       outDir: 'dist',
       emptyOutDir: true,
-      minify: 'esbuild',
+      minify: isProduction ? 'terser' : 'esbuild',
+      terserOptions: isProduction ? {
+        compress: {
+          drop_console: true,      // Remove all console.* statements
+          drop_debugger: true,     // Remove debugger statements
+          pure_funcs: ['console.log', 'console.info', 'console.debug', 'console.warn'],
+          passes: 2,               // Run compress passes twice for better optimization
+        },
+        mangle: {
+          safari10: true,          // Work around Safari 10/11 bugs
+        },
+        format: {
+          comments: false,         // Remove all comments
+        },
+      } : undefined,
       sourcemap: isProduction ? false : 'inline',
       cssCodeSplit: true,
 
@@ -47,6 +64,34 @@ export default defineConfig(({ mode }) => {
           entryFileNames: 'assets/[name].js',
           chunkFileNames: 'assets/[name]-[hash].js',
           assetFileNames: 'assets/[name]-[hash][extname]',
+          
+          // Disable code splitting for iframe to fix module loading issues
+          // This ensures all dependencies are bundled into a single file
+          manualChunks: (id, { getModuleInfo }) => {
+            // Check if this module is imported by iframe entry
+            const isIframeModule = (modulePath) => {
+              if (modulePath.includes('iframe-main.jsx')) return true;
+              const info = getModuleInfo(modulePath);
+              if (!info || !info.importers) return false;
+              return info.importers.some(imp => isIframeModule(imp));
+            };
+            
+            // If this module is part of the iframe entry, don't split it
+            if (isIframeModule(id)) {
+              return undefined; // Return undefined to keep in the main chunk
+            }
+            
+            // For the main entry point, we can still do code splitting
+            if (id.includes('node_modules/react')) {
+              return 'vendor-react';
+            }
+            if (id.includes('node_modules/marked') || id.includes('node_modules/dompurify')) {
+              return 'vendor-libs';
+            }
+            if (id.includes('node_modules')) {
+              return 'vendor';
+            }
+          },
         },
       },
       copyPublicDir: true,
@@ -62,10 +107,9 @@ export default defineConfig(({ mode }) => {
     resolve: {
       alias: {
         '@': resolve(__dirname, './src'),
+        '/widget.js': resolve(__dirname, 'src/widget/widget-loader.js'),
       },
     },
-
-    publicDir: 'public',
 
     test: {
       globals: true,

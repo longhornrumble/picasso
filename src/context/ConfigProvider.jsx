@@ -26,7 +26,16 @@ const ConfigProvider = ({ children }) => {
   // Get tenant hash from script data-tenant attribute
   const getTenantHash = () => {
     try {
-      // Priority 1: Script tag data-tenant attribute
+      // Priority 1: From URL parameter (THIS IS HOW IFRAME GETS IT!)
+      const urlParams = new URLSearchParams(window.location.search);
+      const urlTenant = urlParams.get('t');
+      
+      if (urlTenant && urlTenant !== 'undefined' && urlTenant.length >= 8) {
+        console.log('✅ Found tenant hash from URL:', urlTenant.slice(0, 8) + '...');
+        return urlTenant;
+      }
+
+      // Priority 2: Script tag data-tenant attribute (parent page only)
       const script = document.querySelector('script[src*="widget.js"]');
       const rawHash = script?.getAttribute('data-tenant') || '';
       const tenantHash = rawHash.replace(/\.js$/, '');
@@ -34,15 +43,6 @@ const ConfigProvider = ({ children }) => {
       if (tenantHash && tenantHash !== 'undefined' && tenantHash.length >= 8) {
         console.log('✅ Found tenant hash from script:', tenantHash.slice(0, 8) + '...');
         return tenantHash;
-      }
-
-      // Priority 2: From URL parameter
-      const urlParams = new URLSearchParams(window.location.search);
-      const urlTenant = urlParams.get('t');
-      
-      if (urlTenant && urlTenant !== 'undefined' && urlTenant.length >= 8) {
-        console.log('✅ Found tenant hash from URL:', urlTenant.slice(0, 8) + '...');
-        return urlTenant;
       }
 
       // Priority 3: From global config
@@ -63,67 +63,102 @@ const ConfigProvider = ({ children }) => {
   // FIXED: Pure hash + action config fetch
   const fetchConfigWithCacheCheck = async (tenantHash, force = false) => {
     try {
-      // NEW: Pure hash + action system URL using environment config
+      // Use the Master_Function endpoint for config
       const configUrl = environmentConfig.getConfigUrl(tenantHash);
       
-      // Prepare headers
-      const headers = {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      };
+      // Check cache first with version validation
+      const cacheKey = `picasso-config-${tenantHash}`;
+      const cachedData = sessionStorage.getItem(cacheKey);
       
-      if (!force && configMetadata.current.etag) {
-        headers['If-None-Match'] = configMetadata.current.etag;
-      }
-      if (!force && configMetadata.current.lastModified) {
-        headers['If-Modified-Since'] = configMetadata.current.lastModified;
+      if (!force && cachedData) {
+        const cached = JSON.parse(cachedData);
+        const cacheAge = Date.now() - cached.timestamp;
+        const cacheTimeout = 2 * 60 * 1000; // 2 minutes instead of 5
+        
+        if (cacheAge < cacheTimeout) {
+          // Fetch latest to check version
+          try {
+            const versionCheckResponse = await fetch(configUrl, {
+              method: 'HEAD',
+              mode: 'cors',
+              cache: 'no-cache'
+            });
+            
+            if (versionCheckResponse.ok) {
+              const currentVersion = versionCheckResponse.headers.get('x-amz-version-id') || 
+                                   versionCheckResponse.headers.get('etag');
+              
+              if (currentVersion === cached.version) {
+                console.log('✅ Config unchanged (cached version matches)', {
+                  version: currentVersion,
+                  cacheAge: Math.round(cacheAge / 1000) + 's'
+                });
+                return { config: cached.config, unchanged: true };
+              }
+            }
+          } catch (err) {
+            console.warn('Version check failed, proceeding with full fetch:', err);
+          }
+        }
       }
 
-      console.log(`🔄 Fetching config via NEW hash + action system`, {
+      console.log(`🔄 Fetching config from S3/CloudFront`, {
         hash: tenantHash.slice(0, 8) + '...',
         force,
-        hasETag: !!configMetadata.current.etag,
         url: configUrl
       });
 
-      const response = await fetch(configUrl, {
+      const response = await fetch(configUrl, environmentConfig.getRequestConfig({
         method: 'GET',
-        headers,
-        mode: 'cors',
-        credentials: 'omit',
         cache: 'no-cache'
-      });
+      }));
 
       // Update last check time
       configMetadata.current.lastCheck = new Date().toISOString();
 
       console.log('📡 Response status:', response.status);
 
-      if (response.status === 304) {
-        console.log('✅ Config unchanged (304 Not Modified)');
-        return { unchanged: true };
+      if (response.status === 404) {
+        // Handle missing tenant gracefully
+        console.warn('⚠️ Tenant config not found (404), using fallback');
+        return { config: getFallbackConfig(tenantHash), changed: true };
       }
 
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error('❌ Response error:', errorText);
-        throw new Error(`HTTP ${response.status}: ${response.statusText} - ${errorText}`);
+        // For S3, we might get different error responses
+        if (response.status === 403) {
+          console.error('❌ Access denied to S3 config');
+        }
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
       // Get new config data
       const newConfig = await response.json();
+      
+      // Get version info from S3 headers
+      const version = response.headers.get('x-amz-version-id') || 
+                     response.headers.get('etag') || 
+                     Date.now().toString();
       
       // Update metadata
       configMetadata.current.etag = response.headers.get('etag');
       configMetadata.current.lastModified = response.headers.get('last-modified');
       configMetadata.current.tenantHash = tenantHash;
 
-      console.log('✅ Config loaded successfully via NEW hash + action system', {
+      // Cache the config with version
+      const cacheData = {
+        config: newConfig,
+        version: version,
+        timestamp: Date.now()
+      };
+      sessionStorage.setItem(`picasso-config-${tenantHash}`, JSON.stringify(cacheData));
+
+      console.log('✅ Config loaded successfully from S3/CloudFront', {
         hash: tenantHash.slice(0, 8) + '...',
         chatTitle: newConfig.chat_title,
         hasBranding: !!newConfig.branding,
         hasFeatures: !!newConfig.features,
-        responseTime: 'immediate'
+        version: version
       });
 
       return { config: newConfig, changed: true };
@@ -140,7 +175,7 @@ const ConfigProvider = ({ children }) => {
     setError(null);
     
     try {
-      console.log(`🔍 Loading config for hash: ${tenantHash.slice(0, 8)}... via NEW hash + action system`);
+      console.log(`🔍 Loading config for hash: ${tenantHash.slice(0, 8)}... via S3/CloudFront`);
       
       // Load config using pure hash + action API
       const result = await fetchConfigWithCacheCheck(tenantHash, true);
@@ -151,7 +186,7 @@ const ConfigProvider = ({ children }) => {
         console.log('🎉 Config loaded successfully:', {
           chatTitle: result.config.chat_title,
           hash: tenantHash.slice(0, 8) + '...',
-          apiType: 'hash-action-NEW'
+          apiType: 's3-cloudfront'
         });
       }
     } catch (error) {
@@ -199,9 +234,9 @@ const ConfigProvider = ({ children }) => {
       clearInterval(updateIntervalRef.current);
     }
 
-    // Check for updates every 5 minutes 
+    // Check for updates every 2 minutes (reduced from 5)
     // Note: Only check for updates if chat has no active messages to avoid disrupting conversations
-    const checkInterval = 5 * 60 * 1000;
+    const checkInterval = 2 * 60 * 1000;
     
     const conditionalConfigCheck = () => {
       // Skip config update if there are active messages in the chat
@@ -258,7 +293,7 @@ const ConfigProvider = ({ children }) => {
       metadata: {
         source: "fallback",
         generated_at: Date.now(),
-        apiType: "hash-action-NEW"
+        apiType: "s3-cloudfront"
       }
     };
   };
@@ -275,10 +310,10 @@ const ConfigProvider = ({ children }) => {
 
     initializeConfig();
 
-    // Set up polling for config updates (every 5 minutes)
+    // Set up polling for config updates (every 2 minutes)
     const interval = setInterval(() => {
       checkForConfigUpdates();
-    }, 5 * 60 * 1000);
+    }, 2 * 60 * 1000);
     
     return () => clearInterval(interval);
   }, []);
@@ -306,7 +341,7 @@ const ConfigProvider = ({ children }) => {
       etag: configMetadata.current.etag,
       tenantHash: configMetadata.current.tenantHash,
       lastModified: configMetadata.current.lastModified,
-      apiType: 'hash-action-NEW'
+      apiType: 's3-cloudfront'
     },
     features: {
       uploads: config?.features?.uploads || false,
@@ -321,7 +356,7 @@ const ConfigProvider = ({ children }) => {
   );
 };
 
-// Global functions for debugging - NEW hash + action system
+// Global functions for debugging - S3/CloudFront system
 if (typeof window !== 'undefined') {
   // Manual config refresh
   window.refreshPicassoConfig = () => {
@@ -333,7 +368,7 @@ if (typeof window !== 'undefined') {
   // Test health check action
   window.testHealthCheck = async (tenantHash) => {
     const hash = tenantHash || 'fo85e6a06dcdf4';
-    console.log('🧪 Testing NEW health check action...');
+    console.log('🧪 Testing health check action...');
     
     try {
       const healthCheckUrl = `${environmentConfig.API_BASE_URL}/Master_Function?action=health_check&t=${hash}`;
@@ -347,7 +382,7 @@ if (typeof window !== 'undefined') {
       
       if (response.ok) {
         const data = await response.json();
-        console.log('✅ NEW Health Check Action:', data);
+        console.log('✅ Health Check Action:', data);
         return data;
       } else {
         console.error('❌ Health Check Failed:', response.status);
@@ -359,33 +394,31 @@ if (typeof window !== 'undefined') {
     }
   };
 
-  // Test config loading action
+  // Test config loading from S3
   window.testConfigLoad = async (tenantHash) => {
     const hash = tenantHash || 'fo85e6a06dcdf4';
-    console.log('🧪 Testing NEW get_config action...');
+    console.log('🧪 Testing S3/CloudFront config load...');
     
     try {
-      const configLoadUrl = environmentConfig.getConfigUrl(hash);
+      const configLoadUrl = `https://your-cloudfront.com/tenants/${hash}/config.json`;
       const response = await fetch(configLoadUrl, {
         method: 'GET',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        mode: 'cors'
+        mode: 'cors',
+        cache: 'no-cache'
       });
       
       if (response.ok) {
         const config = await response.json();
-        console.log('✅ NEW Config Load Action:', {
+        console.log('✅ S3 Config Load:', {
           chatTitle: config.chat_title,
           hasBranding: !!config.branding,
           hasFeatures: !!config.features,
-          tenantHash: config.tenant_hash
+          tenantHash: config.tenant_hash,
+          version: response.headers.get('x-amz-version-id') || response.headers.get('etag')
         });
         return config;
       } else {
-        const errorText = await response.text();
-        console.error('❌ Config Load Failed:', response.status, errorText);
+        console.error('❌ Config Load Failed:', response.status);
         return null;
       }
     } catch (error) {
@@ -397,7 +430,7 @@ if (typeof window !== 'undefined') {
   // Test chat action
   window.testChatAction = async (tenantHash, userInput = "Hello") => {
     const hash = tenantHash || 'fo85e6a06dcdf4';
-    console.log('🧪 Testing NEW chat action...');
+    console.log('🧪 Testing chat action...');
     
     try {
       const chatUrl = environmentConfig.getChatUrl(hash);
@@ -415,7 +448,7 @@ if (typeof window !== 'undefined') {
       
       if (response.ok) {
         const data = await response.json();
-        console.log('✅ NEW Chat Action:', data);
+        console.log('✅ Chat Action:', data);
         return data;
       } else {
         const errorText = await response.text();
@@ -429,14 +462,14 @@ if (typeof window !== 'undefined') {
   };
 
   console.log(`
-🛠️  PICASSO NEW PURE HASH + ACTION SYSTEM COMMANDS:
+🛠️  PICASSO S3/CLOUDFRONT CONFIG COMMANDS:
    testHealthCheck()             - Test action=health_check
-   testConfigLoad()              - Test action=get_config  
+   testConfigLoad()              - Test S3/CloudFront config  
    testChatAction()              - Test action=chat
    refreshPicassoConfig()        - Force refresh config
    
-   NEW ENDPOINTS: /Master_Function?action=ACTION&t=HASH
-   ✅ No parameters, no tenant IDs, no hardcoded customers
+   CONFIG SOURCE: S3/CloudFront CDN
+   ✅ Public configs, version checking, 2-minute cache
   `);
 
   console.log(`

@@ -20,13 +20,14 @@ var __spreadValues = (a, b) => {
     container: null,
     isOpen: false,
     tenantHash: null,
+    widgetOrigin: null, // Store the expected origin for security
     config: {
       // Default configuration - will be overridden by tenant config
       position: "bottom-right",
       minimizedSize: "56px",
       expandedWidth: "360px",
       expandedHeight: "640px",
-      zIndex: 1e4
+      zIndex: 999999
     },
     // Initialize the widget
     init(tenantHash, customConfig = {}) {
@@ -37,10 +38,29 @@ var __spreadValues = (a, b) => {
       this.tenantHash = tenantHash;
       this.config = __spreadValues(__spreadValues({}, this.config), customConfig);
       console.log("🚀 Initializing Picasso Widget:", tenantHash);
+      
+      // Ensure viewport meta tag for mobile
+      this.ensureViewportMeta();
+      
       this.createContainer();
       this.createIframe();
       this.setupEventListeners();
       this.setupResizeObserver();
+      
+      // Ensure widget starts in correct position
+      this.isOpen = false;  // Start closed
+      this.minimize();      // Apply minimized positioning
+    },
+    // Ensure proper viewport meta tag for mobile
+    ensureViewportMeta() {
+      let viewport = document.querySelector('meta[name="viewport"]');
+      if (!viewport) {
+        viewport = document.createElement('meta');
+        viewport.name = 'viewport';
+        viewport.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover';
+        document.head.appendChild(viewport);
+        console.log("📱 Added viewport meta tag for mobile support");
+      }
     },
     // Create the widget container with positioning
     createContainer() {
@@ -55,9 +75,52 @@ var __spreadValues = (a, b) => {
         width: "90px", // 56px toggle + 34px for badge/callout overflow (badge extends 8px + callout space)
         height: "90px", // 56px toggle + 34px for badge/callout overflow  
         transition: "all 0.3s ease",
-        pointerEvents: "auto"
+        pointerEvents: "auto",
+        // Improve touch interactions on mobile
+        WebkitTapHighlightColor: "transparent",
+        touchAction: "manipulation",
+        cursor: "pointer"
       });
+      
+      // No additional CSS needed - positioning is handled inline
+      
+      // Ensure widget is last element in body to avoid z-index issues
       document.body.appendChild(this.container);
+      
+      // Force widget to top of stacking context
+      this.container.style.isolation = "isolate";
+      
+      // Add critical CSS for mobile viewport issues
+      const mobileFixStyle = document.createElement('style');
+      mobileFixStyle.innerHTML = `
+        #picasso-widget-container {
+          position: fixed !important;
+          bottom: 20px !important;
+          right: 20px !important;
+          /* Use CSS env() for safe areas */
+          bottom: calc(20px + env(safe-area-inset-bottom, 0px)) !important;
+          right: calc(20px + env(safe-area-inset-right, 0px)) !important;
+          /* Ensure it stays in visual viewport */
+          transform: translateZ(0);
+          -webkit-transform: translateZ(0);
+        }
+        
+        /* Fix for iOS Safari viewport issues */
+        @supports (-webkit-touch-callout: none) {
+          #picasso-widget-container {
+            position: -webkit-sticky !important;
+            position: fixed !important;
+          }
+        }
+      `;
+      document.head.appendChild(mobileFixStyle);
+      
+      // Debug positioning
+      console.log("🎯 Initial container position:", {
+        bottom: this.container.style.bottom,
+        right: this.container.style.right,
+        position: this.container.style.position
+      });
     },
     // Create the iframe with your React app
     createIframe() {
@@ -70,17 +133,46 @@ var __spreadValues = (a, b) => {
                      document.querySelector('script[src*="widget.js"][data-dev="true"]') ||
                      isLocalhost; // Auto-detect localhost as dev mode
       
-      // Determine the base URL for widget frame
+      // Detect if we're in staging based on the script source
+      const currentScriptSrc = ((_a = document.currentScript) == null ? void 0 : _a.src) || "";
+      // Also check all script tags in case currentScript is null (async loading)
+      const allScripts = Array.from(document.querySelectorAll('script[src*="widget.js"]'));
+      const stagingScript = allScripts.find(s => s.src.includes('/staging/'));
+      const isStaging = currentScriptSrc.includes('/staging/') || !!stagingScript;
+      
+      if (isStaging) {
+        console.log("🎯 Staging mode detected!");
+      }
+      
+      // Dynamically determine the base URL for widget frame
       let widgetDomain;
-      if (devMode) {
-        // In dev mode, use Vite dev server port (5174) for widget frame
-        widgetDomain = `${window.location.protocol}//${window.location.hostname}:5174`;
+      let pathPrefix = '';
+      
+      // Get the script's own URL to determine where assets should load from
+      const scriptElement = document.currentScript || document.querySelector('script[src*="widget.js"]');
+      const scriptUrl = scriptElement ? new URL(scriptElement.src) : null;
+      
+      if (devMode && scriptUrl) {
+        // In dev mode, use the same origin as the widget.js script
+        widgetDomain = scriptUrl.origin;
+        console.log(`🔧 Dev mode: Using script origin ${widgetDomain}`);
+      } else if (scriptUrl && scriptUrl.pathname.includes('/staging/')) {
+        // Staging is detected from the script path
+        widgetDomain = scriptUrl.origin;
+        pathPrefix = '/staging';
+        console.log(`🧪 Staging detected from script path`);
       } else {
+        // Production
         widgetDomain = "https://chat.myrecruiter.ai";
       }
       
-      const iframeUrl = `${widgetDomain}/widget-frame.html?t=${this.tenantHash}`;
-      console.log(`🌐 Loading iframe from: ${iframeUrl} (${devMode ? "DEV" : "PROD"} mode)`);
+      // Store the expected origin for security validation
+      this.widgetOrigin = widgetDomain;
+      
+      // Use staging-specific HTML file if in staging mode
+      const htmlFile = isStaging ? 'widget-frame-staging.html' : 'widget-frame.html';
+      const iframeUrl = `${widgetDomain}${pathPrefix}/${htmlFile}?t=${this.tenantHash}`;
+      console.log(`🌐 Loading iframe from: ${iframeUrl} (${devMode ? "DEV" : isStaging ? "STAGING" : "PROD"} mode)`);
       console.log(`💡 To use dev mode, add ?picasso-dev=true to URL or data-dev="true" to script tag`);
       Object.assign(this.iframe, {
         src: iframeUrl,
@@ -104,6 +196,13 @@ var __spreadValues = (a, b) => {
     setupEventListeners() {
       window.addEventListener("message", (event) => {
         console.log("📨 Host received message:", event.data.type, "from:", event.origin);
+        
+        // Security: Validate origin
+        if (!this.isValidOrigin(event.origin)) {
+          console.error("❌ Rejected message from untrusted origin:", event.origin);
+          return;
+        }
+        
         if (event.source !== this.iframe.contentWindow) {
           console.log("❌ Message not from our iframe, ignoring");
           return;
@@ -140,11 +239,17 @@ var __spreadValues = (a, b) => {
             console.log("❓ Unknown message type:", event.data.type);
         }
       });
-      this.container.addEventListener("click", (e) => {
+      // Handle both click and touch events for mobile
+      const handleContainerClick = (e) => {
         if (!this.isOpen && e.target === this.container) {
+          e.preventDefault();
+          e.stopPropagation();
           this.expand();
         }
-      });
+      };
+      
+      this.container.addEventListener("click", handleContainerClick);
+      this.container.addEventListener("touchend", handleContainerClick);
     },
     // Handle PRD-compliant PICASSO_EVENT messages
     handlePicassoEvent(data) {
@@ -178,24 +283,29 @@ var __spreadValues = (a, b) => {
     },
     // Send PRD-compliant commands to iframe
     sendCommand(action, payload = {}) {
-      if (this.iframe.contentWindow) {
-        this.iframe.contentWindow.postMessage({
+      if (this.iframe && this.iframe.contentWindow && this.widgetOrigin) {
+        const message = {
           type: "PICASSO_COMMAND",
           action,
-          payload
-        }, "*");
+          payload,
+          timestamp: Date.now() // Add timestamp for debugging
+        };
+        console.log(`📤 Sending command: ${action}`, payload);
+        this.iframe.contentWindow.postMessage(message, this.widgetOrigin);
+      } else {
+        console.warn(`⚠️ Cannot send command ${action} - iframe not ready`);
       }
     },
     // Send initialization data to iframe
     sendInitMessage() {
-      if (this.iframe.contentWindow) {
+      if (this.iframe.contentWindow && this.widgetOrigin) {
         console.log('📡 Sending PICASSO_INIT with tenant:', this.tenantHash);
         this.iframe.contentWindow.postMessage({
           type: "PICASSO_INIT",
           tenantHash: this.tenantHash,
           // Skip config for now - let iframe fetch it directly
           skipConfigWait: true
-        }, "*");
+        }, this.widgetOrigin);
       }
     },
     // Expand widget to chat interface
@@ -212,12 +322,13 @@ var __spreadValues = (a, b) => {
         iframeSize = 'mobile';
         Object.assign(this.container.style, {
           position: "fixed",
-          top: "10px",
-          left: "10px",
-          bottom: "10px",
-          right: "10px",
-          width: "calc(100vw - 20px)",
-          height: "calc(100vh - 20px)",
+          top: "0",
+          left: "0",
+          bottom: "0",
+          right: "0",
+          width: "100vw",
+          height: "100vh",
+          height: "100dvh", // Dynamic viewport height for mobile browsers
           zIndex: this.config.zIndex + 1e3
         });
       } else if (isTablet) {
@@ -253,7 +364,7 @@ var __spreadValues = (a, b) => {
       }
       
       Object.assign(this.iframe.style, {
-        borderRadius: isMobile ? "12px" : "12px"
+        borderRadius: isMobile ? "0" : "12px"  // No border radius for full-screen mobile
       });
       
       // Notify iframe of size change for responsive styling
@@ -265,8 +376,48 @@ var __spreadValues = (a, b) => {
     minimize() {
       if (!this.isOpen) return;
       this.isOpen = false;
-      this.resizeForCallout();
+      
+      // Reset all positioning to ensure proper anchoring
+      Object.assign(this.container.style, {
+        position: "fixed",
+        top: "auto",
+        left: "auto",
+        bottom: "20px",
+        right: "20px",
+        width: "90px",
+        height: "90px",
+        zIndex: this.config.zIndex,
+        // Ensure smooth transition back to corner
+        transition: "all 0.3s ease"
+      });
+      
+      // Reset iframe to circular button
+      Object.assign(this.iframe.style, {
+        borderRadius: "50%",
+        transition: "all 0.3s ease"
+      });
+      
+      // Send minimize command to iframe
+      this.sendCommand("MINIMIZE");
+      
+      // Then apply any callout resizing if needed
+      setTimeout(() => {
+        this.resizeForCallout();
+      }, 50); // Small delay to ensure position is set first
+      
       console.log("📉 Widget minimized");
+    },
+    
+    // Security helper: Validate message origin
+    isValidOrigin(origin) {
+      // In development, allow localhost origins
+      const isLocalhost = origin.includes('localhost') || origin.includes('127.0.0.1');
+      if (isLocalhost && this.widgetOrigin && this.widgetOrigin.includes('localhost')) {
+        return true;
+      }
+      
+      // In production, only allow exact match with expected origin
+      return origin === this.widgetOrigin;
     },
     
     // Resize container for callout (can be called when widget is open or closed)
@@ -328,12 +479,13 @@ var __spreadValues = (a, b) => {
             if (isMobile) {
               Object.assign(this.container.style, {
                 position: "fixed",
-                top: "10px",
-                left: "10px",
-                bottom: "10px",
-                right: "10px",
-                width: "calc(100vw - 20px)",
-                height: "calc(100vh - 20px)"
+                top: "0",
+                left: "0",
+                bottom: "0",
+                right: "0",
+                width: "100vw",
+                height: "100vh",
+                height: "100dvh" // Dynamic viewport height for mobile browsers
               });
             } else if (isTablet) {
               // For tablets, scale responsively between mobile and desktop sizes
@@ -450,11 +602,45 @@ var __spreadValues = (a, b) => {
     onEvent(callback) {
       if (typeof callback === "function") {
         window.addEventListener("message", (event) => {
-          if (event.data.type === "PICASSO_EVENT") {
+          // Security: Validate origin before processing analytics events
+          if (globalWidgetInstance && globalWidgetInstance.isValidOrigin(event.origin) && 
+              event.data.type === "PICASSO_EVENT") {
             callback(event.data);
           }
         });
       }
+    },
+    // Health check mechanism
+    health() {
+      const status = {
+        widgetLoaded: globalWidgetInstance !== null,
+        iframeLoaded: globalWidgetInstance && globalWidgetInstance.iframe !== null,
+        containerExists: globalWidgetInstance && globalWidgetInstance.container !== null,
+        isOpen: (globalWidgetInstance == null ? void 0 : globalWidgetInstance.isOpen) || false,
+        tenantHash: (globalWidgetInstance == null ? void 0 : globalWidgetInstance.tenantHash) || null,
+        timestamp: new Date().toISOString()
+      };
+      
+      // Check if iframe is responsive
+      if (globalWidgetInstance && globalWidgetInstance.iframe && globalWidgetInstance.iframe.contentWindow) {
+        try {
+          // Send health check message to iframe
+          globalWidgetInstance.iframe.contentWindow.postMessage({
+            type: "PICASSO_HEALTH_CHECK"
+          }, globalWidgetInstance.widgetOrigin || '*');
+          status.iframeResponsive = true;
+        } catch (error) {
+          status.iframeResponsive = false;
+          status.error = error.message;
+        }
+      } else {
+        status.iframeResponsive = false;
+      }
+      
+      // Overall health status
+      status.healthy = status.widgetLoaded && status.iframeLoaded && status.containerExists && status.iframeResponsive;
+      
+      return status;
     }
   };
   autoInit();
