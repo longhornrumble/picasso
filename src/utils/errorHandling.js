@@ -310,15 +310,26 @@ class ErrorLogger {
    */
   reportToExternalService(logEntry) {
     try {
-      // In production, send to error tracking service
-      // This could be Sentry, LogRocket, or a custom endpoint
-      if (window.PicassoConfig?.error_reporting_endpoint) {
-        fetch(window.PicassoConfig.error_reporting_endpoint, {
+      // Use environment-specific error reporting endpoint
+      const errorEndpoint = environmentConfig.ERROR_REPORTING_ENDPOINT || 
+                           window.PicassoConfig?.error_reporting_endpoint;
+      
+      if (errorEndpoint && environmentConfig.ERROR_REPORTING !== false) {
+        const tenantHash = window.PicassoConfig?.tenant || 
+                          window.PicassoConfig?.tenant_id || 
+                          'unknown';
+        
+        fetch(errorEndpoint, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'x-tenant-id': tenantHash
           },
-          body: JSON.stringify(logEntry),
+          body: JSON.stringify({
+            ...logEntry,
+            source: 'picasso-widget',
+            iframeMode: document.body.getAttribute('data-iframe') === 'true'
+          }),
           credentials: 'omit'
         }).catch(err => {
           console.warn('Failed to report error to external service:', err);

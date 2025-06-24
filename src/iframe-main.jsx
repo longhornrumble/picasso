@@ -5,6 +5,9 @@ import { ChatProvider } from './context/ChatProvider.jsx';
 import ChatWidget from './components/chat/ChatWidget.jsx';
 import { CSSVariablesProvider } from './components/chat/useCSSVariables.js';
 import { config as environmentConfig } from './config/environment.js';
+import ErrorBoundary from './components/ErrorBoundary.jsx';
+import { setupGlobalErrorHandling, performanceMonitor } from './utils/errorHandling.js';
+import { performanceTracker } from './utils/performanceTracking.js';
 import "./styles/theme.css";
 import "./styles/widget-entry.css";
 
@@ -16,22 +19,78 @@ import "./styles/widget-entry.css";
  * Performance optimized per PRD requirements
  */
 
-// Performance monitoring
+// Performance monitoring with enhanced tracking
 const performanceMetrics = {
   iframeStartTime: performance.now(),
   configStartTime: null,
   configEndTime: null,
-  iframeReadyTime: null
+  iframeReadyTime: null,
+  firstMessageTime: null,
+  renderStartTime: null,
+  renderEndTime: null
 };
+
+// Expose performance metrics globally for other components
+window.performanceMetrics = performanceMetrics;
+
+// Expose performance tracker for debugging and health checks
+window.PicassoPerformance = performanceTracker;
+
+// Setup global error handling immediately
+setupGlobalErrorHandling();
+
+// Security: Get allowed parent origins
+function getAllowedOrigins() {
+  const origins = [];
+  
+  // Always allow the parent origin if we're in an iframe
+  if (window.parent !== window && document.referrer) {
+    try {
+      const referrerUrl = new URL(document.referrer);
+      origins.push(referrerUrl.origin);
+    } catch (e) {
+      console.warn('Could not parse referrer URL:', e);
+    }
+  }
+  
+  // In development, allow localhost origins
+  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    origins.push('http://localhost:5173');
+    origins.push('http://localhost:3000');
+    origins.push('http://127.0.0.1:5173');
+    origins.push('http://127.0.0.1:3000');
+  }
+  
+  // In production, only allow specific domains
+  origins.push('https://myrecruiter.ai');
+  origins.push('https://www.myrecruiter.ai');
+  origins.push('https://app.myrecruiter.ai');
+  
+  return origins;
+}
+
+// Security: Validate message origin
+function isValidOrigin(origin) {
+  const allowedOrigins = getAllowedOrigins();
+  return allowedOrigins.includes(origin);
+}
 
 // Notify parent that iframe is ready
 function notifyParentReady() {
   performanceMetrics.iframeReadyTime = performance.now();
   const loadTime = performanceMetrics.iframeReadyTime - performanceMetrics.iframeStartTime;
   
+  // Track widget load performance
+  performanceTracker.track('widgetLoad', loadTime, {
+    tenantHash: window.PicassoConfig?.tenant || 'unknown',
+    iframeMode: true
+  });
+  
   console.log(`⚡ Iframe loaded in ${loadTime.toFixed(2)}ms ${loadTime < 500 ? '✅' : '⚠️ (PRD target: <500ms)'}`);
   
   if (window.parent && window.parent !== window) {
+    // Get parent origin from referrer or use wildcard for initial handshake only
+    const targetOrigin = document.referrer ? new URL(document.referrer).origin : '*';
     window.parent.postMessage({
       type: 'PICASSO_IFRAME_READY',
       performance: {
@@ -39,24 +98,32 @@ function notifyParentReady() {
         configLoadTime: performanceMetrics.configEndTime ? 
           performanceMetrics.configEndTime - performanceMetrics.configStartTime : null
       }
-    }, '*');
+    }, targetOrigin);
   }
 }
 
 // Notify parent of state changes (PRD-compliant events)
 function notifyParentEvent(event, payload = {}) {
   if (window.parent && window.parent !== window) {
+    // Get parent origin from referrer for security
+    const targetOrigin = document.referrer ? new URL(document.referrer).origin : '*';
     window.parent.postMessage({
       type: 'PICASSO_EVENT',
       event,
       payload
-    }, '*');
+    }, targetOrigin);
   }
 }
 
 // Listen for commands from host (PRD-compliant)
 function setupCommandListener() {
   window.addEventListener('message', (event) => {
+    // Security: Validate origin before processing any messages
+    if (!isValidOrigin(event.origin)) {
+      console.error('❌ Rejected message from untrusted origin:', event.origin);
+      return;
+    }
+    
     if (event.data.type === 'PICASSO_COMMAND') {
       const { action, payload } = event.data;
       
@@ -99,26 +166,66 @@ function setupCommandListener() {
     
     // Handle PICASSO_INIT from parent
     if (event.data.type === 'PICASSO_INIT') {
+      // Security: Validate origin for INIT messages too
+      if (!isValidOrigin(event.origin)) {
+        console.error('❌ Rejected PICASSO_INIT from untrusted origin:', event.origin);
+        return;
+      }
+      
       console.log('📡 Received PICASSO_INIT from parent:', event.data);
       if (event.data.tenantHash) {
         console.log('✅ Parent confirmed tenant hash:', event.data.tenantHash);
         // Config will be fetched by normal flow - handshake complete
       }
     }
+    
+    // Handle health check requests
+    if (event.data.type === 'PICASSO_HEALTH_CHECK') {
+      // Security: Validate origin for health check messages
+      if (!isValidOrigin(event.origin)) {
+        console.error('❌ Rejected PICASSO_HEALTH_CHECK from untrusted origin:', event.origin);
+        return;
+      }
+      
+      const healthStatus = {
+        type: 'PICASSO_HEALTH_RESPONSE',
+        status: {
+          iframeAlive: true,
+          configLoaded: !!window.PicassoConfig,
+          tenantHash: window.PicassoConfig?.tenant || window.PicassoConfig?.tenant_id,
+          performanceMetrics: {
+            iframeLoadTime: performanceMetrics.iframeReadyTime ? 
+              performanceMetrics.iframeReadyTime - performanceMetrics.iframeStartTime : null,
+            configLoadTime: performanceMetrics.configEndTime ? 
+              performanceMetrics.configEndTime - performanceMetrics.configStartTime : null,
+            totalLoadTime: performanceMetrics.renderEndTime ? 
+              performanceMetrics.renderEndTime - performanceMetrics.iframeStartTime : null
+          },
+          timestamp: new Date().toISOString()
+        }
+      };
+      
+      // Send health response back to parent
+      const targetOrigin = document.referrer ? new URL(document.referrer).origin : '*';
+      window.parent.postMessage(healthStatus, targetOrigin);
+    }
   });
 }
 
-// Initialize the React widget
+// Initialize the React widget with performance tracking
 function initializeWidget() {
+  performanceMonitor.startTimer('widget_initialization');
   const container = document.getElementById("root");
   
   if (!container) {
     console.error("Picasso Widget: Root container not found");
+    performanceMonitor.endTimer('widget_initialization');
     return;
   }
 
   try {
     console.log('🚀 DOM ready, setting up iframe context...');
+    performanceMetrics.renderStartTime = performance.now();
     
     // Set iframe context attributes for CSS targeting
     document.body.setAttribute('data-iframe', 'true');
@@ -156,6 +263,14 @@ function initializeWidget() {
             if (cacheAge < 300000) { // 5 minutes cache
               performanceMetrics.configEndTime = performance.now();
               const loadTime = performanceMetrics.configEndTime - performanceMetrics.configStartTime;
+              
+              // Track cached config performance
+              performanceTracker.track('configFetch', loadTime, {
+                tenantHash,
+                fromCache: true,
+                cacheAge
+              });
+              
               console.log(`⚡ Config loaded from cache in ${loadTime.toFixed(2)}ms ✅`);
               return cachedConfig;
             }
@@ -200,6 +315,13 @@ function initializeWidget() {
         
         performanceMetrics.configEndTime = performance.now();
         const loadTime = performanceMetrics.configEndTime - performanceMetrics.configStartTime;
+        
+        // Track config fetch performance
+        performanceTracker.track('configFetch', loadTime, {
+          tenantHash,
+          fromCache: false
+        });
+        
         console.log(`⚡ Config fetched in ${loadTime.toFixed(2)}ms ${loadTime < 200 ? '✅' : '⚠️ (PRD target: <200ms)'}`);
         
         return config;
@@ -260,19 +382,41 @@ function initializeWidget() {
     console.log('✅ data-iframe attribute set to:', isIframe);
     console.log('✅ Iframe height setup complete');
     
-    // Create React root and render app
+    // Create React root and render app with ErrorBoundary
     const root = createRoot(container);
     root.render(
-      <ConfigProvider>
-        <ChatProvider>
-          <CSSVariablesProvider>
-            <ChatWidget />
-          </CSSVariablesProvider>
-        </ChatProvider>
-      </ConfigProvider>
+      <ErrorBoundary>
+        <ConfigProvider>
+          <ChatProvider>
+            <CSSVariablesProvider>
+              <ChatWidget />
+            </CSSVariablesProvider>
+          </ChatProvider>
+        </ConfigProvider>
+      </ErrorBoundary>
     );
     
     console.log("✅ Picasso Widget iframe initialized successfully");
+    
+    // Track render completion
+    performanceMetrics.renderEndTime = performance.now();
+    performanceMonitor.endTimer('widget_initialization');
+    
+    // Log performance metrics
+    const metrics = {
+      totalLoadTime: performanceMetrics.renderEndTime - performanceMetrics.iframeStartTime,
+      renderTime: performanceMetrics.renderEndTime - performanceMetrics.renderStartTime,
+      configLoadTime: performanceMetrics.configEndTime ? 
+        performanceMetrics.configEndTime - performanceMetrics.configStartTime : null
+    };
+    
+    if (metrics.totalLoadTime > 500) {
+      performanceMonitor.measure('slow_iframe_load', () => {
+        console.warn(`⚠️ Slow iframe load detected: ${metrics.totalLoadTime.toFixed(2)}ms (target: <500ms)`);
+      });
+    }
+    
+    console.log('📊 Performance metrics:', metrics);
     
     // Notify parent that we're ready
     notifyParentReady();

@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Foster Village Widget Test</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 40px;
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #f5f5f5;
+    }
+    .info {
+      max-width: 600px;
+      margin: 0 auto 40px;
+      padding: 20px;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    code {
+      background: #f0f0f0;
+      padding: 2px 4px;
+      border-radius: 3px;
+    }
+  </style>
+</head>
+<body>
+  <div class="info">
+    <h1>Foster Village Widget Test</h1>
+    <p>Widget should appear in bottom-right with:</p>
+    <ul>
+      <li>Foster Village branding (hash: <code>fo85e6a06dcdf4</code>)</li>
+      <li>4px padding inside iframe</li>
+      <li>Visible borders</li>
+      <li>368×648px iframe (to fit 360×640px chat)</li>
+    </ul>
+  </div>
+
+  <script>
+    console.log('Loading widget from staging...');
+  </script>
+  <script src="https://chat.myrecruiter.ai/staging/widget.js" data-tenant="fo85e6a06dcdf4"></script>
+</body>
+</html>

@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Picasso Widget Staging Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+        }
+        .info {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 20px 0;
+        }
+        code {
+            background: #f5f5f5;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Picasso Widget Staging Test</h1>
+        
+        <div class="info">
+            <h3>Test Information:</h3>
+            <p><strong>Environment:</strong> Staging</p>
+            <p><strong>Widget URL:</strong> <code>https://chat.myrecruiter.ai/staging/widget.js</code></p>
+            <p><strong>Tenant:</strong> FOS402334 (Foster Village)</p>
+            <p><strong>Time:</strong> <span id="time"></span></p>
+        </div>
+        
+        <h2>Widget Status</h2>
+        <p>The Picasso chat widget should appear in the bottom-right corner of this page.</p>
+        
+        <h3>Quick Tests:</h3>
+        <ul>
+            <li>Click the chat bubble to open the widget</li>
+            <li>Type a message and press Enter</li>
+            <li>Check if the config loaded (should show "Foster Village" branding)</li>
+            <li>Test the callout notification (wait a few seconds)</li>
+        </ul>
+        
+        <h3>Console Commands:</h3>
+        <pre>
+// Check widget health
+PicassoWidget.health()
+
+// Open widget programmatically
+PicassoWidget.open()
+
+// Close widget
+PicassoWidget.close()
+
+// Check if loaded
+PicassoWidget.isLoaded()
+        </pre>
+    </div>
+
+    <script>
+        // Update time
+        document.getElementById('time').textContent = new Date().toLocaleString();
+        
+        // Log widget events
+        window.addEventListener('message', (event) => {
+            if (event.data.type && event.data.type.startsWith('PICASSO')) {
+                console.log('Widget Event:', event.data);
+            }
+        });
+    </script>
+    
+    <!-- Load Picasso Widget from Staging -->
+    <script 
+        src="https://chat.myrecruiter.ai/staging/widget.js" 
+        data-tenant="FOS402334"
+        data-dev="true">
+    </script>
+</body>
+</html>

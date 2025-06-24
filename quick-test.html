@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quick Widget Test</title>
+</head>
+<body>
+    <h1>Quick Widget Test</h1>
+    <p>Widget should appear in the bottom right corner...</p>
+    
+    <!-- Test with production tenant -->
+    <script src="http://localhost:5173/widget.js" data-tenant="fo85e6a06dcdf4" data-dev="true"></script>
+    
+    <script>
+        // Debug info
+        console.log('🧪 Quick test page loaded');
+        console.log('📍 Location:', window.location.href);
+        console.log('🔧 Looking for widget script...');
+        
+        // Give it a moment to load
+        setTimeout(() => {
+            if (window.PicassoWidget) {
+                console.log('✅ PicassoWidget loaded!');
+                console.log('Widget state:', {
+                    isOpen: window.PicassoWidget.isOpen,
+                    tenantHash: window.PicassoWidget.tenantHash
+                });
+            } else {
+                console.error('❌ PicassoWidget not found!');
+            }
+        }, 1000);
+    </script>
+</body>
+</html>

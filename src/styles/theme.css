@@ -445,9 +445,9 @@
   position: fixed;
   bottom: 80px;
   right: var(--widget-right, 24px);
-  border: none;
+  border: 1px solid var(--border-color, rgba(0, 0, 0, 0.08));
   border-radius: var(--border-radius-large, 16px);
-  box-shadow: var(--container-shadow);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.04);
   z-index: 99998 !important;
   pointer-events: auto !important;
   overflow: hidden;
@@ -483,19 +483,20 @@
   /* When widget is in iframe context, override positioning */
   body[data-iframe="true"] .chat-container {
     position: absolute !important; /* Use absolute positioning to fill container */
-    top: 0 !important;
-    left: 0 !important;
-    right: 0 !important;
-    bottom: 0 !important;
-    width: 100% !important;
-    height: 100% !important;
-    min-width: 100% !important;
-    min-height: 100% !important;
-    max-width: 100% !important;
+    top: 4px !important;
+    left: 4px !important;
+    right: 4px !important;
+    bottom: 4px !important;
+    width: calc(100% - 8px) !important;
+    height: calc(100% - 8px) !important;
+    min-width: calc(100% - 8px) !important;
+    min-height: calc(100% - 8px) !important;
+    max-width: calc(100% - 8px) !important;
     margin: 0 !important;
     padding: 0 !important;
-    border-radius: 0 !important;
-    box-shadow: none !important;
+    border: 1px solid var(--border-color, rgba(0, 0, 0, 0.08)) !important;
+    border-radius: 12px !important;
+    box-shadow: 0 1px 6px rgba(0, 0, 0, 0.08) !important;
     display: flex !important;
     flex-direction: column !important;
     overflow: hidden !important;
@@ -513,10 +514,6 @@
     z-index: 99999 !important;
   }
 
-  /* Let Picasso handle its own chat container positioning in iframe */
-  body[data-iframe="true"] .chat-container {
-    margin: 0 !important;
-  }
 
   /* Ensure toggle button itself is properly sized in iframe */
   body[data-iframe="true"] .chat-toggle-button {
@@ -1198,6 +1195,7 @@
   align-items: center;
   gap: 12px;
   margin-bottom: 2px;
+  flex-wrap: wrap;
 }
 
 .chat-callout-text {
@@ -1211,6 +1209,7 @@
   word-wrap: break-word;
   overflow-wrap: break-word;
   hyphens: auto;
+  text-align: center;
 }
 
 .chat-callout-subtitle {

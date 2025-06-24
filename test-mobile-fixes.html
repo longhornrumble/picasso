@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Test Mobile Fixes</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            padding: 20px; 
+            margin: 0;
+            height: 100vh;
+            overflow-x: hidden;
+        }
+        .info { 
+            background: #e3f2fd; 
+            padding: 15px; 
+            border-radius: 8px; 
+            margin-bottom: 20px;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+        h2 { margin-top: 0; }
+        code {
+            background: #f5f5f5;
+            padding: 2px 5px;
+            border-radius: 3px;
+        }
+        .mobile-test {
+            background: #fff3e0;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>Mobile Widget Fixes Test</h1>
+    
+    <div class="info">
+        <h2>🔧 Fixes Applied:</h2>
+        <ul>
+            <li>✅ Minimize function now properly resets position to bottom-right</li>
+            <li>✅ Added touch event support (touchend) for mobile</li>
+            <li>✅ Improved touch CSS (tap highlight, manipulation)</li>
+            <li>✅ Better command logging for debugging</li>
+        </ul>
+    </div>
+    
+    <div class="test-section">
+        <h2>📱 Mobile Test Instructions:</h2>
+        <ol>
+            <li>Open DevTools and toggle device mode (Cmd+Shift+M)</li>
+            <li>Select iPhone or Android device</li>
+            <li>Refresh the page</li>
+            <li>Test the following:</li>
+        </ol>
+        
+        <div class="mobile-test">
+            <strong>Test 1: Toggle Anchoring</strong>
+            <p>The toggle button should always be in bottom-right corner (20px from edges)</p>
+        </div>
+        
+        <div class="mobile-test">
+            <strong>Test 2: Open/Close Responsiveness</strong>
+            <p>Tap the toggle - chat should open full screen with 10px margins</p>
+            <p>Tap the X or outside - chat should close back to toggle</p>
+        </div>
+        
+        <div class="mobile-test">
+            <strong>Test 3: Position After Close</strong>
+            <p>After closing, toggle should return to bottom-right (not stuck in wrong position)</p>
+        </div>
+    </div>
+    
+    <div class="test-section">
+        <h2>🖥️ Desktop Test:</h2>
+        <p>Exit device mode and verify desktop still works correctly</p>
+    </div>
+    
+    <!-- Load widget with fixes -->
+    <script src="widget.js" data-tenant="fo85e6a06dcdf4" data-dev="true"></script>
+    
+    <script>
+        // Monitor widget events in console
+        window.addEventListener('message', (e) => {
+            if (e.data.type && e.data.type.includes('PICASSO')) {
+                console.log('📨 Widget message:', e.data);
+            }
+        });
+        
+        // Log widget state after load
+        setTimeout(() => {
+            if (window.PicassoWidget) {
+                console.log('Widget loaded:', {
+                    isOpen: window.PicassoWidget.isOpen,
+                    container: document.getElementById('picasso-widget-container'),
+                    containerStyle: window.getComputedStyle(document.getElementById('picasso-widget-container'))
+                });
+            }
+        }, 1000);
+    </script>
+</body>
+</html>

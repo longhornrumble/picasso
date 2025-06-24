@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mobile Toggle Test - Simple</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background: #f0f2f5;
+      min-height: 100vh;
+    }
+    .info {
+      max-width: 600px;
+      margin: 0 auto;
+      background: white;
+      padding: 30px;
+      border-radius: 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    h1 { 
+      color: #2db8be; 
+      margin: 0 0 20px 0;
+      font-size: 24px;
+    }
+    .status {
+      background: #e3f2fd;
+      padding: 15px;
+      border-radius: 8px;
+      margin: 20px 0;
+      font-family: monospace;
+      font-size: 14px;
+    }
+    .status.success {
+      background: #d4edda;
+      color: #155724;
+    }
+    .status.error {
+      background: #f8d7da;
+      color: #721c24;
+    }
+    ol {
+      line-height: 1.8;
+      margin: 20px 0;
+    }
+    .fix-list {
+      background: #f8f9fa;
+      padding: 15px;
+      border-radius: 8px;
+      margin: 20px 0;
+    }
+    .fix-list li {
+      margin: 5px 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="info">
+    <h1>🎯 Mobile Toggle Fix Test</h1>
+    
+    <p><strong>Testing:</strong> Toggle button positioning on mobile devices</p>
+    
+    <div class="status" id="status">
+      Initializing widget...
+    </div>
+    
+    <div class="fix-list">
+      <strong>What we fixed:</strong>
+      <ul>
+        <li>✅ Toggle stays at bottom-right (16px from edges)</li>
+        <li>✅ Toggle remains visible when chat opens</li>
+        <li>✅ Removed window width tracking</li>
+        <li>✅ Added root container class</li>
+      </ul>
+    </div>
+    
+    <strong>How to test:</strong>
+    <ol>
+      <li>Open Chrome DevTools (F12)</li>
+      <li>Toggle device toolbar (Ctrl+Shift+M or Cmd+Shift+M)</li>
+      <li>Select "iPhone 12 Pro" or any mobile device</li>
+      <li>Look for toggle at bottom-right corner</li>
+      <li>Click toggle - verify it stays visible</li>
+    </ol>
+    
+    <p style="margin-top: 30px; font-size: 14px; color: #666;">
+      Widget: Foster Village (Teal #2db8be)
+    </p>
+  </div>
+
+  <!-- Simple widget load -->
+  <script>
+    // Update status
+    function updateStatus(message, type = 'info') {
+      const status = document.getElementById('status');
+      status.textContent = message;
+      status.className = 'status ' + type;
+    }
+    
+    // Create and load widget
+    try {
+      const script = document.createElement('script');
+      script.src = '/widget.js';
+      script.setAttribute('data-tenant', 'fo85e6a06dcdf4');
+      script.setAttribute('data-dev', 'true');
+      
+      script.onload = () => {
+        updateStatus('✅ Widget loaded! Check bottom-right corner.', 'success');
+        console.log('Widget loaded successfully');
+      };
+      
+      script.onerror = (e) => {
+        updateStatus('❌ Failed to load widget.js', 'error');
+        console.error('Widget load error:', e);
+      };
+      
+      document.body.appendChild(script);
+      
+      // Debug window size
+      function logSize() {
+        console.log(`Window: ${window.innerWidth}x${window.innerHeight}`);
+      }
+      
+      logSize();
+      window.addEventListener('resize', logSize);
+      
+    } catch (error) {
+      updateStatus('❌ Error: ' + error.message, 'error');
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mobile Toggle Test - Foster Village</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background: #f5f5f5;
+      min-height: 100vh;
+    }
+    .info {
+      max-width: 600px;
+      margin: 0 auto;
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    h1 { color: #2db8be; margin-top: 0; }
+    .status {
+      background: #e3f2fd;
+      padding: 10px;
+      border-radius: 4px;
+      margin: 20px 0;
+      font-family: monospace;
+      font-size: 14px;
+    }
+    ul { line-height: 1.8; }
+  </style>
+</head>
+<body>
+  <div class="info">
+    <h1>🔧 Mobile Toggle Fix Test</h1>
+    
+    <p><strong>Testing:</strong> Toggle button stays fixed at bottom-right (16px from edges)</p>
+    
+    <div class="status" id="status">
+      Loading widget...
+    </div>
+    
+    <h2>What we fixed:</h2>
+    <ul>
+      <li>✅ Removed window width tracking</li>
+      <li>✅ Toggle always visible</li>
+      <li>✅ Added chat-widget-root container</li>
+      <li>✅ CSS fixed positioning (16px from edges)</li>
+    </ul>
+    
+    <h2>How to test:</h2>
+    <ol>
+      <li>Open DevTools (F12)</li>
+      <li>Toggle device toolbar (Ctrl+Shift+M)</li>
+      <li>Select mobile device</li>
+      <li>Verify toggle at bottom-right</li>
+      <li>Click toggle - it should stay visible</li>
+    </ol>
+  </div>
+
+  <!-- Load widget from local dev server -->
+  <script>
+    // Create script element
+    const script = document.createElement('script');
+    script.src = 'http://localhost:5173/widget.js';
+    script.setAttribute('data-tenant', 'fo85e6a06dcdf4');
+    script.setAttribute('data-dev', 'true');
+    
+    script.onload = () => {
+      document.getElementById('status').textContent = 'Widget loaded! Look for the toggle at bottom-right.';
+      document.getElementById('status').style.background = '#c6f6d5';
+    };
+    
+    script.onerror = () => {
+      document.getElementById('status').textContent = 'Error: Could not load widget. Is dev server running on port 5173?';
+      document.getElementById('status').style.background = '#fed7d7';
+    };
+    
+    document.body.appendChild(script);
+    
+    // Debug info
+    console.log('Mobile test page loaded');
+    console.log('Window size:', window.innerWidth, 'x', window.innerHeight);
+  </script>
+</body>
+</html>

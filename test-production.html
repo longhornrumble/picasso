@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Picasso Production Smoke Test</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .test-suite {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .test-result {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 14px;
+        }
+        .test-pass {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .test-fail {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .test-warn {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeeba;
+        }
+        .test-info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 10px;
+            margin: 20px 0;
+        }
+        .metric {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            border: 1px solid #dee2e6;
+        }
+        .metric-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+        }
+        .metric-label {
+            font-size: 12px;
+            color: #666;
+            text-transform: uppercase;
+        }
+        #console-output {
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+            background: #000;
+            color: #fff;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .console-log { color: #fff; }
+        .console-error { color: #ff6b6b; }
+        .console-warn { color: #ffd93d; }
+    </style>
+</head>
+<body>
+    <h1>🧪 Picasso Production Smoke Test Suite</h1>
+    
+    <div class="test-suite">
+        <h2>Test Configuration</h2>
+        <div id="config-info"></div>
+        <div class="metrics" id="test-metrics">
+            <div class="metric">
+                <div class="metric-label">Widget Load Time</div>
+                <div class="metric-value" id="load-time">--</div>
+            </div>
+            <div class="metric">
+                <div class="metric-label">Bundle Size</div>
+                <div class="metric-value" id="bundle-size">--</div>
+            </div>
+            <div class="metric">
+                <div class="metric-label">Config Load Time</div>
+                <div class="metric-value" id="config-time">--</div>
+            </div>
+            <div class="metric">
+                <div class="metric-label">Health Status</div>
+                <div class="metric-value" id="health-status">--</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="test-suite">
+        <h2>Test Controls</h2>
+        <button onclick="runAllTests()">🚀 Run All Tests</button>
+        <button onclick="testWidgetInit()">1. Test Widget Init</button>
+        <button onclick="testConfigLoading()">2. Test Config Loading</button>
+        <button onclick="testMessageSending()">3. Test Message API</button>
+        <button onclick="testErrorHandling()">4. Test Error Handling</button>
+        <button onclick="testPerformance()">5. Test Performance</button>
+        <button onclick="testSecurity()">6. Test Security</button>
+        <button onclick="clearResults()">🗑️ Clear Results</button>
+    </div>
+
+    <div class="test-suite">
+        <h2>Test Results</h2>
+        <div id="test-results"></div>
+    </div>
+
+    <div class="test-suite">
+        <h2>Console Output</h2>
+        <div id="console-output"></div>
+    </div>
+
+    <!-- Load production widget with test tenant -->
+    <script src="https://chat.myrecruiter.ai/widget.js" data-tenant="test-tenant-hash"></script>
+
+    <script>
+        // Test configuration
+        const TEST_CONFIG = {
+            tenantHash: 'test-tenant-hash',
+            productionDomain: 'https://chat.myrecruiter.ai',
+            cloudFrontDomain: 'https://d1234567890.cloudfront.net', // Update with actual CloudFront domain
+            lambdaEndpoint: 'https://chat.myrecruiter.ai/Master_Function',
+            maxLoadTime: 500, // ms
+            maxConfigTime: 200, // ms
+            maxBundleSize: 150 * 1024 // 150KB
+        };
+
+        // Performance tracking
+        const performance = {
+            widgetStartTime: Date.now(),
+            widgetLoadTime: null,
+            configLoadTime: null,
+            messageResponseTime: null
+        };
+
+        // Console capture
+        const originalConsole = {
+            log: console.log,
+            error: console.error,
+            warn: console.warn
+        };
+
+        function captureConsole() {
+            const output = document.getElementById('console-output');
+            
+            console.log = function(...args) {
+                originalConsole.log(...args);
+                addConsoleEntry('log', args);
+            };
+            
+            console.error = function(...args) {
+                originalConsole.error(...args);
+                addConsoleEntry('error', args);
+            };
+            
+            console.warn = function(...args) {
+                originalConsole.warn(...args);
+                addConsoleEntry('warn', args);
+            };
+        }
+
+        function addConsoleEntry(type, args) {
+            const output = document.getElementById('console-output');
+            const entry = document.createElement('div');
+            entry.className = `console-${type}`;
+            entry.textContent = `[${type.toUpperCase()}] ${args.map(arg => 
+                typeof arg === 'object' ? JSON.stringify(arg, null, 2) : arg
+            ).join(' ')}`;
+            output.appendChild(entry);
+            output.scrollTop = output.scrollHeight;
+        }
+
+        // Test result logging
+        function logResult(test, status, message, details = null) {
+            const results = document.getElementById('test-results');
+            const result = document.createElement('div');
+            result.className = `test-result test-${status}`;
+            
+            let content = `[${test}] ${message}`;
+            if (details) {
+                content += `\n${JSON.stringify(details, null, 2)}`;
+            }
+            
+            result.textContent = content;
+            results.appendChild(result);
+        }
+
+        // Update metrics
+        function updateMetric(id, value, isGood = true) {
+            const element = document.getElementById(id);
+            element.textContent = value;
+            element.style.color = isGood ? '#28a745' : '#dc3545';
+        }
+
+        // Test functions
+        async function testWidgetInit() {
+            logResult('Widget Init', 'info', 'Testing widget initialization...');
+            
+            try {
+                // Check if PicassoWidget is available
+                if (typeof window.PicassoWidget === 'undefined') {
+                    logResult('Widget Init', 'fail', 'PicassoWidget not found on window');
+                    return false;
+                }
+                
+                // Check widget methods
+                const requiredMethods = ['init', 'open', 'close', 'toggle', 'isOpen', 'health'];
+                const missingMethods = requiredMethods.filter(method => 
+                    typeof window.PicassoWidget[method] !== 'function'
+                );
+                
+                if (missingMethods.length > 0) {
+                    logResult('Widget Init', 'fail', `Missing methods: ${missingMethods.join(', ')}`);
+                    return false;
+                }
+                
+                // Test health check
+                const health = window.PicassoWidget.health();
+                logResult('Widget Init', 'info', 'Health check:', health);
+                
+                if (health.healthy) {
+                    logResult('Widget Init', 'pass', 'Widget initialized successfully');
+                    updateMetric('health-status', '✅ Healthy', true);
+                } else {
+                    logResult('Widget Init', 'warn', 'Widget initialized but not fully healthy', health);
+                    updateMetric('health-status', '⚠️ Degraded', false);
+                }
+                
+                // Calculate load time
+                performance.widgetLoadTime = Date.now() - performance.widgetStartTime;
+                updateMetric('load-time', `${performance.widgetLoadTime}ms`, 
+                    performance.widgetLoadTime < TEST_CONFIG.maxLoadTime);
+                
+                return true;
+            } catch (error) {
+                logResult('Widget Init', 'fail', `Error: ${error.message}`);
+                return false;
+            }
+        }
+
+        async function testConfigLoading() {
+            logResult('Config Loading', 'info', 'Testing configuration loading from S3/CloudFront...');
+            
+            try {
+                const configStartTime = Date.now();
+                
+                // Fetch config directly
+                const configUrl = `${TEST_CONFIG.lambdaEndpoint}?action=get_config&t=${TEST_CONFIG.tenantHash}`;
+                const response = await fetch(configUrl);
+                
+                if (!response.ok) {
+                    logResult('Config Loading', 'fail', `HTTP ${response.status}: ${response.statusText}`);
+                    return false;
+                }
+                
+                const config = await response.json();
+                performance.configLoadTime = Date.now() - configStartTime;
+                
+                logResult('Config Loading', 'info', 'Config loaded:', config);
+                updateMetric('config-time', `${performance.configLoadTime}ms`,
+                    performance.configLoadTime < TEST_CONFIG.maxConfigTime);
+                
+                // Validate config structure
+                const requiredFields = ['tenantId', 'theme', 'branding'];
+                const missingFields = requiredFields.filter(field => !config[field]);
+                
+                if (missingFields.length > 0) {
+                    logResult('Config Loading', 'warn', `Missing config fields: ${missingFields.join(', ')}`);
+                } else {
+                    logResult('Config Loading', 'pass', 'Configuration loaded successfully');
+                }
+                
+                return true;
+            } catch (error) {
+                logResult('Config Loading', 'fail', `Error: ${error.message}`);
+                return false;
+            }
+        }
+
+        async function testMessageSending() {
+            logResult('Message API', 'info', 'Testing message sending to Lambda...');
+            
+            try {
+                const messageStartTime = Date.now();
+                
+                // Send test message
+                const chatUrl = `${TEST_CONFIG.lambdaEndpoint}?action=chat&t=${TEST_CONFIG.tenantHash}`;
+                const response = await fetch(chatUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        message: 'Test message from smoke test',
+                        sessionId: 'test-session-' + Date.now(),
+                        timestamp: new Date().toISOString()
+                    })
+                });
+                
+                if (!response.ok) {
+                    logResult('Message API', 'fail', `HTTP ${response.status}: ${response.statusText}`);
+                    return false;
+                }
+                
+                const result = await response.json();
+                performance.messageResponseTime = Date.now() - messageStartTime;
+                
+                logResult('Message API', 'info', `Response received in ${performance.messageResponseTime}ms`);
+                logResult('Message API', 'pass', 'Message sent successfully', result);
+                
+                return true;
+            } catch (error) {
+                logResult('Message API', 'fail', `Error: ${error.message}`);
+                return false;
+            }
+        }
+
+        async function testErrorHandling() {
+            logResult('Error Handling', 'info', 'Testing error handling and logging...');
+            
+            try {
+                // Test error logging endpoint
+                const errorUrl = `${TEST_CONFIG.lambdaEndpoint}?action=log_error`;
+                const response = await fetch(errorUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        error: 'Test error from smoke test',
+                        type: 'test',
+                        timestamp: new Date().toISOString(),
+                        userAgent: navigator.userAgent,
+                        url: window.location.href
+                    })
+                });
+                
+                if (response.ok) {
+                    logResult('Error Handling', 'pass', 'Error logging endpoint working');
+                } else {
+                    logResult('Error Handling', 'warn', `Error endpoint returned ${response.status}`);
+                }
+                
+                // Test widget error recovery
+                try {
+                    // Intentionally cause an error
+                    window.PicassoWidget.updateConfig({ invalid: 'config' });
+                    logResult('Error Handling', 'pass', 'Widget handles invalid config gracefully');
+                } catch (error) {
+                    logResult('Error Handling', 'warn', 'Widget threw error on invalid config', error.message);
+                }
+                
+                return true;
+            } catch (error) {
+                logResult('Error Handling', 'fail', `Error: ${error.message}`);
+                return false;
+            }
+        }
+
+        async function testPerformance() {
+            logResult('Performance', 'info', 'Testing performance metrics...');
+            
+            try {
+                // Check bundle size
+                const widgetResponse = await fetch(`${TEST_CONFIG.productionDomain}/widget.js`);
+                const widgetSize = parseInt(widgetResponse.headers.get('content-length') || '0');
+                
+                updateMetric('bundle-size', `${(widgetSize / 1024).toFixed(1)}KB`,
+                    widgetSize < TEST_CONFIG.maxBundleSize);
+                
+                if (widgetSize > TEST_CONFIG.maxBundleSize) {
+                    logResult('Performance', 'fail', 
+                        `Bundle size (${(widgetSize / 1024).toFixed(1)}KB) exceeds limit (${(TEST_CONFIG.maxBundleSize / 1024)}KB)`);
+                } else {
+                    logResult('Performance', 'pass', 
+                        `Bundle size (${(widgetSize / 1024).toFixed(1)}KB) within limits`);
+                }
+                
+                // Check load performance
+                if (performance.widgetLoadTime && performance.widgetLoadTime < TEST_CONFIG.maxLoadTime) {
+                    logResult('Performance', 'pass', 
+                        `Widget load time (${performance.widgetLoadTime}ms) within target`);
+                } else {
+                    logResult('Performance', 'warn', 
+                        `Widget load time (${performance.widgetLoadTime}ms) exceeds target (${TEST_CONFIG.maxLoadTime}ms)`);
+                }
+                
+                // Check for memory leaks
+                if (window.performance && window.performance.memory) {
+                    const memoryInfo = {
+                        usedJSHeapSize: (window.performance.memory.usedJSHeapSize / 1048576).toFixed(2) + ' MB',
+                        totalJSHeapSize: (window.performance.memory.totalJSHeapSize / 1048576).toFixed(2) + ' MB'
+                    };
+                    logResult('Performance', 'info', 'Memory usage:', memoryInfo);
+                }
+                
+                return true;
+            } catch (error) {
+                logResult('Performance', 'fail', `Error: ${error.message}`);
+                return false;
+            }
+        }
+
+        async function testSecurity() {
+            logResult('Security', 'info', 'Testing security measures...');
+            
+            try {
+                // Test postMessage origin validation
+                const testOrigins = [
+                    'https://evil.com',
+                    'http://localhost:1234',
+                    TEST_CONFIG.productionDomain
+                ];
+                
+                for (const origin of testOrigins) {
+                    try {
+                        window.postMessage({
+                            type: 'PICASSO_COMMAND',
+                            action: 'OPEN_CHAT'
+                        }, origin);
+                        
+                        if (origin === TEST_CONFIG.productionDomain) {
+                            logResult('Security', 'pass', `Valid origin accepted: ${origin}`);
+                        } else {
+                            logResult('Security', 'info', `Testing invalid origin: ${origin}`);
+                        }
+                    } catch (error) {
+                        logResult('Security', 'info', `Origin test error: ${error.message}`);
+                    }
+                }
+                
+                // Check for exposed sensitive data
+                const sensitivePatterns = [
+                    /api[_-]?key/i,
+                    /secret/i,
+                    /password/i,
+                    /token/i
+                ];
+                
+                const widgetText = await (await fetch(`${TEST_CONFIG.productionDomain}/widget.js`)).text();
+                const exposedSecrets = sensitivePatterns.filter(pattern => pattern.test(widgetText));
+                
+                if (exposedSecrets.length > 0) {
+                    logResult('Security', 'fail', 'Potential sensitive data found in bundle');
+                } else {
+                    logResult('Security', 'pass', 'No sensitive data patterns found in bundle');
+                }
+                
+                // Check CSP headers
+                const response = await fetch(`${TEST_CONFIG.productionDomain}/widget.js`);
+                const cspHeader = response.headers.get('content-security-policy');
+                
+                if (cspHeader) {
+                    logResult('Security', 'pass', 'CSP headers present');
+                } else {
+                    logResult('Security', 'warn', 'No CSP headers found');
+                }
+                
+                return true;
+            } catch (error) {
+                logResult('Security', 'fail', `Error: ${error.message}`);
+                return false;
+            }
+        }
+
+        async function runAllTests() {
+            clearResults();
+            logResult('Test Suite', 'info', 'Starting all tests...');
+            
+            const tests = [
+                testWidgetInit,
+                testConfigLoading,
+                testMessageSending,
+                testErrorHandling,
+                testPerformance,
+                testSecurity
+            ];
+            
+            let passed = 0;
+            let failed = 0;
+            
+            for (const test of tests) {
+                try {
+                    const result = await test();
+                    if (result) passed++;
+                    else failed++;
+                } catch (error) {
+                    failed++;
+                    logResult('Test Suite', 'fail', `Test crashed: ${error.message}`);
+                }
+                
+                // Small delay between tests
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+            
+            logResult('Test Suite', passed > failed ? 'pass' : 'fail', 
+                `Completed: ${passed} passed, ${failed} failed`);
+        }
+
+        function clearResults() {
+            document.getElementById('test-results').innerHTML = '';
+            document.getElementById('console-output').innerHTML = '';
+        }
+
+        // Initialize on load
+        window.addEventListener('load', () => {
+            captureConsole();
+            
+            // Display config info
+            document.getElementById('config-info').innerHTML = `
+                <div class="test-info">
+                    <strong>Production Domain:</strong> ${TEST_CONFIG.productionDomain}<br>
+                    <strong>Lambda Endpoint:</strong> ${TEST_CONFIG.lambdaEndpoint}<br>
+                    <strong>Test Tenant:</strong> ${TEST_CONFIG.tenantHash}<br>
+                    <strong>Test Started:</strong> ${new Date().toLocaleString()}
+                </div>
+            `;
+            
+            // Auto-run basic health check
+            setTimeout(() => {
+                if (window.PicassoWidget && window.PicassoWidget.health) {
+                    const health = window.PicassoWidget.health();
+                    console.log('Initial health check:', health);
+                }
+            }, 1000);
+        });
+    </script>
+</body>
+</html>

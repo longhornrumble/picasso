@@ -9,7 +9,7 @@ import FilePreview from "./FilePreview";
 
 // Enhanced avatar URL helper
 const getAvatarUrl = (config) => {
-  const { tenant_id, branding, _cloudfront, tenant_hash } = config || {};
+  const { tenant_id, branding, _cloudfront } = config || {};
   
   const avatarSources = [
     branding?.avatar_url,

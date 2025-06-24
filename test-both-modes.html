@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Both Modes - Iframe and Full Page</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .test-section {
+            margin: 30px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+        .test-section h2 {
+            margin-top: 0;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .info { background: #d1ecf1; color: #0c5460; }
+        .btn {
+            padding: 10px 20px;
+            margin: 5px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            background: #007bff;
+            color: white;
+        }
+        .btn:hover { background: #0056b3; }
+    </style>
+</head>
+<body>
+    <h1>Picasso Widget Test - Both Modes</h1>
+    
+    <div class="test-section">
+        <h2>1. Iframe Mode (Widget)</h2>
+        <p>This is the standard mode - widget appears in bottom right corner</p>
+        <div id="iframe-status" class="status info">Loading widget...</div>
+        <button class="btn" onclick="testIframeMode()">Open Widget</button>
+        <button class="btn" onclick="closeWidget()">Close Widget</button>
+    </div>
+    
+    <div class="test-section">
+        <h2>2. Full Page Mode</h2>
+        <p>For email signatures, social media links, etc.</p>
+        <button class="btn" onclick="openFullPage()">Open Full Page Chat</button>
+        <p>Full page URL: <code id="fullpage-url"></code></p>
+    </div>
+    
+    <div class="test-section">
+        <h2>3. Test Production Config</h2>
+        <p>Tenant: fo85e6a06dcdf4 (Foster Village)</p>
+        <button class="btn" onclick="testConfigLoad()">Test Config Load</button>
+        <div id="config-result" class="status info" style="display:none;"></div>
+    </div>
+    
+    <!-- Load widget in iframe mode -->
+    <script src="http://localhost:5173/widget.js" data-tenant="fo85e6a06dcdf4" data-dev="true"></script>
+    
+    <script>
+        // Update full page URL
+        document.getElementById('fullpage-url').textContent = 
+            `http://localhost:5173/fullpage.html?t=fo85e6a06dcdf4`;
+        
+        // Check widget status
+        setTimeout(() => {
+            const status = document.getElementById('iframe-status');
+            if (window.PicassoWidget) {
+                status.className = 'status success';
+                status.textContent = '✅ Widget loaded successfully!';
+                console.log('PicassoWidget:', window.PicassoWidget);
+            } else {
+                status.className = 'status error';
+                status.textContent = '❌ Widget failed to load';
+            }
+        }, 2000);
+        
+        function testIframeMode() {
+            if (window.PicassoWidget) {
+                window.PicassoWidget.open();
+            } else {
+                alert('Widget not loaded yet!');
+            }
+        }
+        
+        function closeWidget() {
+            if (window.PicassoWidget) {
+                window.PicassoWidget.close();
+            }
+        }
+        
+        function openFullPage() {
+            const url = `http://localhost:5173/fullpage.html?t=fo85e6a06dcdf4`;
+            window.open(url, '_blank');
+        }
+        
+        async function testConfigLoad() {
+            const resultDiv = document.getElementById('config-result');
+            resultDiv.style.display = 'block';
+            resultDiv.className = 'status info';
+            resultDiv.textContent = 'Loading config...';
+            
+            try {
+                // Test the config endpoint
+                const response = await fetch('https://chat.myrecruiter.ai/Master_Function?action=get_config&t=fo85e6a06dcdf4');
+                const data = await response.json();
+                
+                resultDiv.className = 'status success';
+                resultDiv.innerHTML = `
+                    ✅ Config loaded successfully!<br>
+                    Chat Title: ${data.chat_title || 'N/A'}<br>
+                    Primary Color: ${data.branding?.primary_color || 'N/A'}
+                `;
+            } catch (error) {
+                resultDiv.className = 'status error';
+                resultDiv.textContent = `❌ Failed to load config: ${error.message}`;
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Direct S3 Test - Foster Village Widget</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background: #f5f5f5;
+        }
+        .info {
+            background: #d1ecf1;
+            color: #0c5460;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="info">
+        <h2>Direct S3 Test (Bypasses CloudFront Cache)</h2>
+        <p>This loads the widget directly from S3 to bypass CloudFront caching issues.</p>
+        <p>Timestamp: <span id="timestamp"></span></p>
+    </div>
+
+    <script>
+        document.getElementById('timestamp').textContent = new Date().toISOString();
+        
+        // Create script element with cache buster
+        const script = document.createElement('script');
+        script.src = `https://picassostaging.s3.amazonaws.com/staging/widget.js?cb=${Date.now()}`;
+        script.setAttribute('data-tenant', 'fo85e6a06dcdf4');
+        script.async = true;
+        
+        // Override the domain in the script
+        script.onload = function() {
+            // The widget should use S3 URLs directly
+            console.log('Widget loaded from S3');
+        };
+        
+        document.body.appendChild(script);
+    </script>
+</body>
+</html>

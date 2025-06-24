@@ -49,57 +49,11 @@
 <body>
   <div id="root">
     <div class="loading-indicator">
-      🎨 Loading Picasso Widget...
+      Loading Widget...
     </div>
   </div>
-  
-  <!-- Manual React Refresh preamble injection for iframe context -->
-  <script type="module">
-    // Check if we're in development (localhost)
-    const isLocalDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-    
-    if (isLocalDev) {
-      (async () => {
-        try {
-          // Import and inject React Refresh runtime from Vite dev server
-          const RefreshRuntime = await import('http://localhost:5174/@react-refresh');
-          RefreshRuntime.injectIntoGlobalHook(window);
-          
-          // Set up required globals for React Refresh
-          window.$RefreshReg$ = () => {};
-          window.$RefreshSig$ = () => (type) => type;
-          window.__vite_plugin_react_preamble_installed__ = true;
-          
-          console.log('✅ React Refresh preamble injected successfully');
-        } catch (error) {
-          console.log('⚠️ React Refresh not available (normal in production):', error.message);
-        }
-      })();
-    }
-  </script>
-  
-  <!-- Vite client for HMR (development only) -->
-  <script type="module">
-    // Check if we're in development (localhost) for Vite client
-    const isDevMode = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-    
-    if (isDevMode) {
-      const script = document.createElement('script');
-      script.type = 'module';
-      script.src = 'http://localhost:5174/@vite/client';
-      script.onerror = () => console.log('⚠️ Vite client not available');
-      document.head.appendChild(script);
-    }
-  </script>
 
   <script>
-    // Debug URL parameters
-    console.log('🔍 Current URL:', window.location.href);
-    console.log('🔍 URL Parameters:', new URLSearchParams(window.location.search).toString());
-    const urlParams = new URLSearchParams(window.location.search);
-    const tenantHash = urlParams.get('t');
-    console.log('🔑 Detected tenant hash from URL:', tenantHash || 'none');
-    
     // Communication bridge with parent window
     function notifyParent(data) {
       if (window.parent && window.parent !== window) {
@@ -112,11 +66,8 @@
 
     // Monitor chat state changes for iframe resizing
     function setupStateMonitoring() {
-      console.log('🔧 Setting up state monitoring...');
-      
       // Ensure document.body exists and is properly initialized
       if (!document || !document.body || typeof document.body.classList === 'undefined') {
-        console.warn('⚠️ Document body not ready for state monitoring, retrying in 100ms');
         setTimeout(setupStateMonitoring, 100);
         return;
       }
@@ -132,12 +83,11 @@
             notifyParent({
               action: 'SIZE_CHANGE',
               isOpen: isOpen,
-              size: isOpen ? { width: 360, height: 640 } : { width: 56, height: 56 }
+              size: isOpen ? { width: 368, height: 648 } : { width: 56, height: 56 }
             });
-            console.log(`📏 State changed: ${isOpen ? 'OPEN' : 'CLOSED'}`);
           }
         } catch (error) {
-          console.warn('⚠️ Error checking state:', error);
+          // Silently handle errors
         }
       }
       
@@ -160,15 +110,11 @@
             attributeFilter: ['class'],
             subtree: false
           });
-          
-          console.log('✅ MutationObserver setup successfully');
         } catch (error) {
-          console.warn('⚠️ MutationObserver failed, falling back to polling:', error);
           // Fallback to polling
           setInterval(checkStateChange, 200);
         }
       } else {
-        console.log('📊 Using polling fallback for state monitoring');
         setInterval(checkStateChange, 200);
       }
       
@@ -180,11 +126,9 @@
     function initializeWhenReady() {
       if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', () => {
-          console.log('✅ DOM loaded, setting up monitoring');
-          setTimeout(setupStateMonitoring, 50); // Small delay to ensure everything is ready
+          setTimeout(setupStateMonitoring, 50);
         });
       } else {
-        console.log('✅ DOM already ready, setting up monitoring');
         setTimeout(setupStateMonitoring, 50);
       }
     }
@@ -192,76 +136,10 @@
     // Initialize
     initializeWhenReady();
     
-    // Dynamically load the iframe script based on environment
-    function loadIframeScript() {
-  if (!document.head) {
-    console.error('❌ Document head not available for script loading');
-    return;
-  }
-  
-  const script = document.createElement('script');
-  script.type = 'module';  // Always set module type
-  
-  const isLocalDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-  
-  if (isLocalDevelopment) {
-    // Development mode - load from Vite dev server (always port 5174)
-    script.src = 'http://localhost:5174/src/iframe-main.jsx';
-    console.log('🚀 Loading iframe script from Vite dev server:', script.src);
-  } else {
-    // Production mode - load built version
-    script.src = '/iframe-main.js';
-    console.log('🚀 Loading iframe script from production:', script.src);
-  }
-  
-  script.onerror = function() {
-    console.error('❌ Failed to load iframe script:', script.src);
-  };
-  
-  script.onload = function() {
-    console.log('✅ Iframe script loaded:', script.src);
-  };
-  
-  setTimeout(() => {
-    try {
-      document.head.appendChild(script);
-      console.log('✅ Script appended to head');
-    } catch (error) {
-      console.error('❌ Failed to append script:', error);
-    }
-  }, 100);
-}
-    
-    // Load the script after preamble setup
-    loadIframeScript();
-    
-    // In widget-frame.html, dynamically load the CSS based on environment
-    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-    
-    if (isLocalhost) {
-      // Development mode - load CSS from Vite dev server (port 5174)
-      const viteDevServer = 'http://localhost:5174';
-      console.log('🎨 Loading CSS from Vite dev server:', viteDevServer);
-      
-      // Import CSS via Vite module system
-      const link = document.createElement('link');
-      link.rel = 'stylesheet';
-      link.href = `${viteDevServer}/src/styles/theme.css`;
-      link.onerror = () => console.warn('⚠️ Could not load dev CSS');
-      link.onload = () => console.log('✅ CSS loaded from Vite dev server');
-      document.head.appendChild(link);
-    } else {
-      // Production mode - find and load the theme CSS file
-      fetch('/').then(r => r.text()).then(html => {
-        const cssMatch = html.match(/theme-[^"]+\.css/);
-        if (cssMatch) {
-          const link = document.createElement('link');
-          link.rel = 'stylesheet';
-          link.href = `/${cssMatch[0]}`;
-          document.head.appendChild(link);
-        }
-      }).catch(e => console.warn('⚠️ Could not load production CSS:', e));
-    }
+    // Load the iframe script
   </script>
+  
+  <!-- Vite will replace this with the built assets -->
+  <script type="module" src="/src/iframe-main.jsx"></script>
 </body>
 </html> 

@@ -22,8 +22,10 @@
     "test:build": "npm run build:production && npm run serve",
     "analyze": "npx vite-bundle-analyzer dist",
     "size": "npm run build && bundlesize",
-    "deploy:staging": "npm run build:all && aws s3 sync dist/ s3://picasso-staging --delete",
-    "deploy:production": "npm run build:all && aws s3 sync dist/ s3://picasso-production --delete"
+    "deploy:staging": "./deploy-staging.sh",
+    "deploy:production": "./deploy-production.sh",
+    "deploy:staging:old": "npm run build:all && aws s3 sync dist/ s3://picasso-staging --delete",
+    "deploy:production:old": "npm run build:all && aws s3 sync dist/ s3://picasso-production --delete"
   },
   "dependencies": {
     "dompurify": "^3.1.6",

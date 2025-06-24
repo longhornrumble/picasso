@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Local Test - Foster Village Staging Widget</title>
+  <style>
+    body {
+      margin: 40px;
+      font-family: Arial, sans-serif;
+      background: #f0f0f0;
+    }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      background: white;
+      padding: 30px;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    h1 { color: #333; }
+    .status {
+      background: #e8f5e9;
+      padding: 15px;
+      border-radius: 4px;
+      margin: 20px 0;
+    }
+    .console {
+      background: #263238;
+      color: #aed581;
+      padding: 15px;
+      border-radius: 4px;
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    .error { color: #ef5350; }
+    .info { color: #64b5f6; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Foster Village Widget - Staging Test</h1>
+    
+    <div class="status">
+      <h3>Expected Behavior:</h3>
+      <ul>
+        <li>Widget loads with Foster Village branding</li>
+        <li>Iframe size: 368×648px (contains 360×640px chat with 4px padding)</li>
+        <li>Visible borders around chat container</li>
+        <li>Loads from staging environment</li>
+      </ul>
+    </div>
+
+    <h3>Console Output:</h3>
+    <div class="console" id="console"></div>
+  </div>
+
+  <script>
+    // Capture console logs
+    const consoleDiv = document.getElementById('console');
+    const originalLog = console.log;
+    const originalError = console.error;
+    
+    console.log = function(...args) {
+      originalLog.apply(console, args);
+      const msg = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : arg).join(' ');
+      consoleDiv.innerHTML += `<div class="info">[LOG] ${msg}</div>`;
+    };
+    
+    console.error = function(...args) {
+      originalError.apply(console, args);
+      const msg = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : arg).join(' ');
+      consoleDiv.innerHTML += `<div class="error">[ERROR] ${msg}</div>`;
+    };
+
+    console.log('Page loaded, initializing widget...');
+    console.log('Loading from: https://chat.myrecruiter.ai/staging/widget.js');
+    console.log('Tenant hash: fo85e6a06dcdf4');
+  </script>
+
+  <!-- Load the staging widget -->
+  <script src="https://chat.myrecruiter.ai/staging/widget.js" data-tenant="fo85e6a06dcdf4"></script>
+  
+  <script>
+    // Monitor widget loading
+    setTimeout(() => {
+      const iframe = document.querySelector('#picasso-widget-iframe');
+      if (iframe) {
+        console.log('Widget iframe found!');
+        console.log(`Iframe dimensions: ${iframe.style.width} × ${iframe.style.height}`);
+      } else {
+        console.error('Widget iframe not found');
+      }
+    }, 2000);
+  </script>
+</body>
+</html>

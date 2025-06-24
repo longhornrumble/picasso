@@ -364,7 +364,7 @@ var __spreadValues = (a, b) => {
       }
       
       Object.assign(this.iframe.style, {
-        borderRadius: isMobile ? "0" : "16px"  // Match container radius + padding
+        borderRadius: isMobile ? "0" : "12px"  // No border radius for full-screen mobile
       });
       
       // Notify iframe of size change for responsive styling

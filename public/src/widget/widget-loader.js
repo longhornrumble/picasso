@@ -27,7 +27,7 @@ var __spreadValues = (a, b) => {
       minimizedSize: "56px",
       expandedWidth: "360px",
       expandedHeight: "640px",
-      zIndex: 999999
+      zIndex: 1e4
     },
     // Initialize the widget
     init(tenantHash, customConfig = {}) {
@@ -38,29 +38,10 @@ var __spreadValues = (a, b) => {
       this.tenantHash = tenantHash;
       this.config = __spreadValues(__spreadValues({}, this.config), customConfig);
       console.log("🚀 Initializing Picasso Widget:", tenantHash);
-      
-      // Ensure viewport meta tag for mobile
-      this.ensureViewportMeta();
-      
       this.createContainer();
       this.createIframe();
       this.setupEventListeners();
       this.setupResizeObserver();
-      
-      // Ensure widget starts in correct position
-      this.isOpen = false;  // Start closed
-      this.minimize();      // Apply minimized positioning
-    },
-    // Ensure proper viewport meta tag for mobile
-    ensureViewportMeta() {
-      let viewport = document.querySelector('meta[name="viewport"]');
-      if (!viewport) {
-        viewport = document.createElement('meta');
-        viewport.name = 'viewport';
-        viewport.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover';
-        document.head.appendChild(viewport);
-        console.log("📱 Added viewport meta tag for mobile support");
-      }
     },
     // Create the widget container with positioning
     createContainer() {
@@ -75,52 +56,9 @@ var __spreadValues = (a, b) => {
         width: "90px", // 56px toggle + 34px for badge/callout overflow (badge extends 8px + callout space)
         height: "90px", // 56px toggle + 34px for badge/callout overflow  
         transition: "all 0.3s ease",
-        pointerEvents: "auto",
-        // Improve touch interactions on mobile
-        WebkitTapHighlightColor: "transparent",
-        touchAction: "manipulation",
-        cursor: "pointer"
+        pointerEvents: "auto"
       });
-      
-      // No additional CSS needed - positioning is handled inline
-      
-      // Ensure widget is last element in body to avoid z-index issues
       document.body.appendChild(this.container);
-      
-      // Force widget to top of stacking context
-      this.container.style.isolation = "isolate";
-      
-      // Add critical CSS for mobile viewport issues
-      const mobileFixStyle = document.createElement('style');
-      mobileFixStyle.innerHTML = `
-        #picasso-widget-container {
-          position: fixed !important;
-          bottom: 20px !important;
-          right: 20px !important;
-          /* Use CSS env() for safe areas */
-          bottom: calc(20px + env(safe-area-inset-bottom, 0px)) !important;
-          right: calc(20px + env(safe-area-inset-right, 0px)) !important;
-          /* Ensure it stays in visual viewport */
-          transform: translateZ(0);
-          -webkit-transform: translateZ(0);
-        }
-        
-        /* Fix for iOS Safari viewport issues */
-        @supports (-webkit-touch-callout: none) {
-          #picasso-widget-container {
-            position: -webkit-sticky !important;
-            position: fixed !important;
-          }
-        }
-      `;
-      document.head.appendChild(mobileFixStyle);
-      
-      // Debug positioning
-      console.log("🎯 Initial container position:", {
-        bottom: this.container.style.bottom,
-        right: this.container.style.right,
-        position: this.container.style.position
-      });
     },
     // Create the iframe with your React app
     createIframe() {
@@ -144,26 +82,17 @@ var __spreadValues = (a, b) => {
         console.log("🎯 Staging mode detected!");
       }
       
-      // Dynamically determine the base URL for widget frame
+      // Determine the base URL for widget frame
       let widgetDomain;
       let pathPrefix = '';
-      
-      // Get the script's own URL to determine where assets should load from
-      const scriptElement = document.currentScript || document.querySelector('script[src*="widget.js"]');
-      const scriptUrl = scriptElement ? new URL(scriptElement.src) : null;
-      
-      if (devMode && scriptUrl) {
-        // In dev mode, use the same origin as the widget.js script
-        widgetDomain = scriptUrl.origin;
-        console.log(`🔧 Dev mode: Using script origin ${widgetDomain}`);
-      } else if (scriptUrl && scriptUrl.pathname.includes('/staging/')) {
-        // Staging is detected from the script path
-        widgetDomain = scriptUrl.origin;
-        pathPrefix = '/staging';
-        console.log(`🧪 Staging detected from script path`);
+      if (devMode) {
+        // In dev mode, use Vite dev server port (5174) for widget frame
+        widgetDomain = `${window.location.protocol}//${window.location.hostname}:5174`;
       } else {
-        // Production
         widgetDomain = "https://chat.myrecruiter.ai";
+        if (isStaging) {
+          pathPrefix = '/staging';
+        }
       }
       
       // Store the expected origin for security validation
@@ -239,17 +168,11 @@ var __spreadValues = (a, b) => {
             console.log("❓ Unknown message type:", event.data.type);
         }
       });
-      // Handle both click and touch events for mobile
-      const handleContainerClick = (e) => {
+      this.container.addEventListener("click", (e) => {
         if (!this.isOpen && e.target === this.container) {
-          e.preventDefault();
-          e.stopPropagation();
           this.expand();
         }
-      };
-      
-      this.container.addEventListener("click", handleContainerClick);
-      this.container.addEventListener("touchend", handleContainerClick);
+      });
     },
     // Handle PRD-compliant PICASSO_EVENT messages
     handlePicassoEvent(data) {
@@ -283,17 +206,12 @@ var __spreadValues = (a, b) => {
     },
     // Send PRD-compliant commands to iframe
     sendCommand(action, payload = {}) {
-      if (this.iframe && this.iframe.contentWindow && this.widgetOrigin) {
-        const message = {
+      if (this.iframe.contentWindow && this.widgetOrigin) {
+        this.iframe.contentWindow.postMessage({
           type: "PICASSO_COMMAND",
           action,
-          payload,
-          timestamp: Date.now() // Add timestamp for debugging
-        };
-        console.log(`📤 Sending command: ${action}`, payload);
-        this.iframe.contentWindow.postMessage(message, this.widgetOrigin);
-      } else {
-        console.warn(`⚠️ Cannot send command ${action} - iframe not ready`);
+          payload
+        }, this.widgetOrigin);
       }
     },
     // Send initialization data to iframe
@@ -322,13 +240,12 @@ var __spreadValues = (a, b) => {
         iframeSize = 'mobile';
         Object.assign(this.container.style, {
           position: "fixed",
-          top: "0",
-          left: "0",
-          bottom: "0",
-          right: "0",
-          width: "100vw",
-          height: "100vh",
-          height: "100dvh", // Dynamic viewport height for mobile browsers
+          top: "10px",
+          left: "10px",
+          bottom: "10px",
+          right: "10px",
+          width: "calc(100vw - 20px)",
+          height: "calc(100vh - 20px)",
           zIndex: this.config.zIndex + 1e3
         });
       } else if (isTablet) {
@@ -364,7 +281,7 @@ var __spreadValues = (a, b) => {
       }
       
       Object.assign(this.iframe.style, {
-        borderRadius: isMobile ? "0" : "16px"  // Match container radius + padding
+        borderRadius: isMobile ? "12px" : "12px"
       });
       
       // Notify iframe of size change for responsive styling
@@ -376,35 +293,7 @@ var __spreadValues = (a, b) => {
     minimize() {
       if (!this.isOpen) return;
       this.isOpen = false;
-      
-      // Reset all positioning to ensure proper anchoring
-      Object.assign(this.container.style, {
-        position: "fixed",
-        top: "auto",
-        left: "auto",
-        bottom: "20px",
-        right: "20px",
-        width: "90px",
-        height: "90px",
-        zIndex: this.config.zIndex,
-        // Ensure smooth transition back to corner
-        transition: "all 0.3s ease"
-      });
-      
-      // Reset iframe to circular button
-      Object.assign(this.iframe.style, {
-        borderRadius: "50%",
-        transition: "all 0.3s ease"
-      });
-      
-      // Send minimize command to iframe
-      this.sendCommand("MINIMIZE");
-      
-      // Then apply any callout resizing if needed
-      setTimeout(() => {
-        this.resizeForCallout();
-      }, 50); // Small delay to ensure position is set first
-      
+      this.resizeForCallout();
       console.log("📉 Widget minimized");
     },
     
@@ -479,13 +368,12 @@ var __spreadValues = (a, b) => {
             if (isMobile) {
               Object.assign(this.container.style, {
                 position: "fixed",
-                top: "0",
-                left: "0",
-                bottom: "0",
-                right: "0",
-                width: "100vw",
-                height: "100vh",
-                height: "100dvh" // Dynamic viewport height for mobile browsers
+                top: "10px",
+                left: "10px",
+                bottom: "10px",
+                right: "10px",
+                width: "calc(100vw - 20px)",
+                height: "calc(100vh - 20px)"
               });
             } else if (isTablet) {
               // For tablets, scale responsively between mobile and desktop sizes

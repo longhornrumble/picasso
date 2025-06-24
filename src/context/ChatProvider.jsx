@@ -211,7 +211,7 @@ const ChatProvider = ({ children }) => {
       for (let attempt = 1; attempt <= retries; attempt++) {
         try {
           const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 10000); // 10-second timeout
+          const timeoutId = setTimeout(() => controller.abort(), 13000); // 13-second timeout (Lambda has 15s limit)
           
           if (messageId) {
             abortControllersRef.current.set(messageId, controller);
@@ -308,12 +308,23 @@ const ChatProvider = ({ children }) => {
         } catch (error) {
           const errorClassification = classifyError(error, null);
           
+          // Check for timeout specifically
+          const isTimeout = error.name === 'AbortError' || error.message?.includes('aborted');
+          if (isTimeout) {
+            errorLogger.logWarning('Request timeout detected', {
+              messageId,
+              attempt,
+              url
+            });
+          }
+          
           errorLogger.logError(error, {
             messageId,
             attempt,
             url,
             errorClassification,
-            tenantHash: getTenantHash()
+            tenantHash: getTenantHash(),
+            isTimeout
           });
           
           if (shouldRetry(errorClassification, attempt)) {
@@ -348,14 +359,21 @@ const ChatProvider = ({ children }) => {
             continue; // Retry the loop
           } else {
             // Final failure - throw error with user-friendly message
-            const userMessage = getUserFriendlyMessage(errorClassification, attempt);
+            let userMessage = getUserFriendlyMessage(errorClassification, attempt);
+            
+            // Override with specific timeout message if it's a timeout
+            if (isTimeout) {
+              userMessage = 'Request timed out. Please try again.';
+            }
+            
             const userError = new Error(userMessage);
             errorLogger.logError(userError, {
               messageId,
               attempt,
               originalError: error,
               errorClassification,
-              finalAttempt: true
+              finalAttempt: true,
+              isTimeout
             });
             throw userError;
           }
@@ -485,6 +503,24 @@ const ChatProvider = ({ children }) => {
   }, [pendingRetries]);
 
   const addMessage = useCallback(async (message) => {
+    // Track time to first message
+    if (message.role === "user" && messages.filter(m => m.role === "user").length === 0) {
+      performanceMonitor.measure('time_to_first_message', () => {
+        const loadTime = window.performanceMetrics?.iframeStartTime || 0;
+        const firstMessageTime = performance.now() - loadTime;
+        
+        if (firstMessageTime > 1000) {
+          errorLogger.logWarning('Slow time to first message', {
+            firstMessageTime,
+            threshold: 1000,
+            tenantHash: getTenantHash()
+          });
+        }
+        
+        errorLogger.logInfo(`⏱️ Time to first message: ${firstMessageTime.toFixed(2)}ms`);
+      });
+    }
+    
     // Sanitize user message content immediately for security.
     const sanitizedUserContent = await sanitizeMessage(message.content);
 
@@ -528,21 +564,24 @@ const ChatProvider = ({ children }) => {
             messageId: messageWithId.id 
           });
           
+          const sessionId = `session_${Date.now()}`;
           const requestBody = {
             tenant_hash: tenantHash,
             user_input: sanitizedUserContent, // Send sanitized content
-            session_id: `session_${Date.now()}`,
+            session_id: sessionId,
             files: message.files || [],
             messageId: messageWithId.id
           };
           
           const data = await makeAPIRequest(
-            environmentConfig.getChatUrl(tenantHash),
+            'https://chat.myrecruiter.ai/Master_Function?action=chat',
             {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
-                'Accept': 'application/json'
+                'Accept': 'application/json',
+                'x-tenant-id': tenantHash,
+                'x-session-id': sessionId
               },
               body: JSON.stringify(requestBody)
             },
@@ -677,7 +716,7 @@ const ChatProvider = ({ children }) => {
       tenantHash: getTenantHash(),
       apiType: 'actions-only',
       configLoaded: !!tenantConfig,
-      chatEndpoint: environmentConfig.getChatUrl(getTenantHash()),
+      chatEndpoint: 'https://your-api-gateway.com/chat',
       environment: environmentConfig.ENVIRONMENT,
       networkStatus: isOnline ? 'online' : 'offline',
       pendingRetryCount: pendingRetries.size
@@ -710,15 +749,18 @@ if (import.meta.env.DEV) {
       errorLogger.logInfo('🧪 Testing chat API...', { message, tenantHash: hash });
       
       try {
-        const response = await fetch(environmentConfig.getChatUrl(hash), {
+        const sessionId = `test_${Date.now()}`;
+        const response = await fetch('https://your-api-gateway.com/chat', {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'x-tenant-id': hash,
+            'x-session-id': sessionId
           },
           body: JSON.stringify({
             tenant_hash: hash,
             user_input: message || "Hello, this is a test message",
-            session_id: `test_${Date.now()}`
+            session_id: sessionId
           })
         });
         

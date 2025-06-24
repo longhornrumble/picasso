@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Test Config Fetch</title>
+</head>
+<body>
+  <h1>Testing Foster Village Config Fetch</h1>
+  <div id="result"></div>
+
+  <script>
+    const resultDiv = document.getElementById('result');
+    
+    async function testConfigFetch() {
+      const url = 'https://chat.myrecruiter.ai/Master_Function?action=get_config&t=fo85e6a06dcdf4';
+      
+      resultDiv.innerHTML = `<p>Fetching from: ${url}</p>`;
+      
+      try {
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          mode: 'cors',
+          credentials: 'omit',
+          cache: 'no-cache'
+        });
+        
+        resultDiv.innerHTML += `<p>Response status: ${response.status}</p>`;
+        resultDiv.innerHTML += `<p>Response headers:</p><pre>${JSON.stringify(Object.fromEntries(response.headers.entries()), null, 2)}</pre>`;
+        
+        if (response.ok) {
+          const data = await response.json();
+          resultDiv.innerHTML += `<p style="color: green;">✅ Config loaded successfully!</p>`;
+          resultDiv.innerHTML += `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+        } else {
+          resultDiv.innerHTML += `<p style="color: red;">❌ Failed to load config: ${response.status} ${response.statusText}</p>`;
+        }
+      } catch (error) {
+        resultDiv.innerHTML += `<p style="color: red;">❌ Fetch error: ${error.message}</p>`;
+        console.error('Full error:', error);
+      }
+    }
+    
+    testConfigFetch();
+  </script>
+</body>
+</html>

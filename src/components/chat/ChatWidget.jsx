@@ -25,6 +25,9 @@ function ChatWidget() {
   console.log('🎨 ChatWidget messages:', messages?.length || 0);
   console.log('🎨 ChatWidget isTyping:', isTyping);
   
+  // In iframe mode, we don't need breakpoints - the iframe container handles responsive sizing
+  // The widget should always fill its container
+  
   // Apply CSS variables for theming
   useCSSVariables(config);
   
@@ -363,10 +366,9 @@ function ChatWidget() {
   }
 
   return (
-    <div>
-      {/* Widget toggle and callout - Show in iframe mode when closed */}
-      {(window.innerWidth >= 768 || !isOpen) && (
-        <div className="chat-toggle-wrapper">
+    <div className="chat-widget-root">
+      {/* Widget toggle - Always visible for better UX */}
+      <div className="chat-toggle-wrapper">
           <button
             onClick={() => {
               console.log(`🔄 Widget toggle clicked: ${isOpen ? 'closing' : 'opening'}`);
@@ -396,7 +398,6 @@ function ChatWidget() {
             </div>
           )}
         </div>
-      )}
 
       {/* Chat container - Show when open */}
       {isOpen && (
