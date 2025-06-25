@@ -76,29 +76,12 @@ const ConfigProvider = ({ children }) => {
         const cacheTimeout = 2 * 60 * 1000; // 2 minutes instead of 5
         
         if (cacheAge < cacheTimeout) {
-          // Fetch latest to check version
-          try {
-            const versionCheckResponse = await fetch(configUrl, {
-              method: 'HEAD',
-              mode: 'cors',
-              cache: 'no-cache'
-            });
-            
-            if (versionCheckResponse.ok) {
-              const currentVersion = versionCheckResponse.headers.get('x-amz-version-id') || 
-                                   versionCheckResponse.headers.get('etag');
-              
-              if (currentVersion === cached.version) {
-                console.log('✅ Config unchanged (cached version matches)', {
-                  version: currentVersion,
-                  cacheAge: Math.round(cacheAge / 1000) + 's'
-                });
-                return { config: cached.config, unchanged: true };
-              }
-            }
-          } catch (err) {
-            console.warn('Version check failed, proceeding with full fetch:', err);
-          }
+          // Skip version check for now - Lambda doesn't support HEAD
+          console.log('✅ Using cached config', {
+            cacheAge: Math.round(cacheAge / 1000) + 's',
+            cacheTimeout: Math.round(cacheTimeout / 1000) + 's'
+          });
+          return { config: cached.config, unchanged: true };
         }
       }
 
@@ -108,7 +91,7 @@ const ConfigProvider = ({ children }) => {
         url: configUrl
       });
 
-      const response = await fetch(configUrl, environmentConfig.getRequestConfig({
+      let response = await fetch(configUrl, environmentConfig.getRequestConfig({
         method: 'GET',
         cache: 'no-cache'
       }));
@@ -117,6 +100,17 @@ const ConfigProvider = ({ children }) => {
       configMetadata.current.lastCheck = new Date().toISOString();
 
       console.log('📡 Response status:', response.status);
+
+      // If primary endpoint fails with 404, try legacy endpoint
+      if (response.status === 404) {
+        console.warn('⚠️ Primary config endpoint returned 404, trying legacy endpoint...');
+        const legacyUrl = `https://chat.myrecruiter.ai/v1/widget/config/${tenantHash}`;
+        response = await fetch(legacyUrl, environmentConfig.getRequestConfig({
+          method: 'GET',
+          cache: 'no-cache'
+        }));
+        console.log('📡 Legacy response status:', response.status);
+      }
 
       if (response.status === 404) {
         // Handle missing tenant gracefully

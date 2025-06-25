@@ -58,11 +58,23 @@ EOF
 
 echo -e "${YELLOW}☁️  Step 5: Uploading to S3...${NC}"
 # Upload to production (root level)
-aws s3 sync dist/ s3://picassostaging/ \
+# IMPORTANT: We use two separate sync commands to preserve the collateral folder
+# First, sync everything except files we want to preserve
+aws s3 sync dist/ s3://picassocode/ \
     --exclude "*.DS_Store" \
     --exclude ".git/*" \
     --exclude "widget-frame-staging.html" \
+    --exclude "collateral/*" \
+    --exclude "tenants/*" \
     --delete
+
+# Note: The --delete flag only removes files from S3 that don't exist in dist/
+# Since dist/ doesn't contain collateral/ or tenants/, they would be deleted
+# That's why we exclude them from the sync with --delete
+
+# Verify collateral folder is preserved
+echo -e "${GREEN}✅ Verifying collateral folder preserved...${NC}"
+aws s3 ls s3://picassocode/collateral/ --recursive | head -5 || echo "No collateral files found"
 
 echo -e "${YELLOW}🔄 Step 6: Invalidating CloudFront cache...${NC}"
 # Invalidate everything for production

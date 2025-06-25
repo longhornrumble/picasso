@@ -6,6 +6,29 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Picasso is an iframe-based chat widget for the MyRecruiter SaaS platform. It provides complete CSS isolation and multi-tenant support through a dual-entry architecture: a host page script that creates the iframe, and a React application running inside the iframe.
 
+## Core Philosophy: Simplification Over Complexity
+
+**"Trim the fat"** - This codebase values:
+- **Defaults over configuration**: If it works well out-of-box, don't make it configurable
+- **Lean over complete**: 50 lines that work > 500 lines with edge cases  
+- **Pass-through over transformation**: Let data flow naturally between systems
+- **Production stability over feature richness**: Ship working code, iterate later
+
+**Example**: Foster Village's config is 84 lines instead of 500+ because we use CSS defaults for everything except logo/colors. This is the way.
+
+### Simplification Targets
+
+**Master_Function** (Current: 1,350 lines → Target: 600 lines)
+- `tenant_config_loader.py`: 535 lines → 200 lines (remove over-engineering)
+- Consolidate error handling across all modules
+- Extract shared constants to single location
+- Remove redundant logging and metrics
+
+**Picasso** (Ongoing)
+- Continue CSS variable approach (working well)
+- Remove unused component variations
+- Simplify build pipeline (see roadmap/build-architecture.md)
+
 ## ⚠️ Current Build Architecture Issues (2024-06-24)
 
 **CRITICAL**: The build system is fragmented with no unified pipeline. This causes frequent development friction.
@@ -29,6 +52,36 @@ Picasso is an iframe-based chat widget for the MyRecruiter SaaS platform. It pro
    - Hours wasted on basic "get widget to show up" tasks
 
 **See `roadmap/build-architecture.md` for the unified build pipeline solution.**
+
+## 🚨 CRITICAL: Lambda 404 Emergency Fix
+
+**If you're seeing 404 errors in production:**
+
+1. **Verify CloudFront Settings** (AWS Console):
+   - Go to CloudFront → Your Distribution → Behaviors
+   - Edit default behavior
+   - Cache Key and Origin Requests → Query Strings → **"All"**
+   - Save and wait 5 minutes for propagation
+
+2. **Update Picasso Immediately**:
+   ```javascript
+   // src/context/ConfigProvider.jsx
+   const configUrl = `https://chat.myrecruiter.ai/Master_Function?action=get_config&t=${tenantHash}`;
+   
+   // src/context/ChatProvider.jsx  
+   const chatUrl = `https://chat.myrecruiter.ai/Master_Function?action=chat&t=${tenantHash}`;
+   ```
+
+3. **Deploy Fix**:
+   ```bash
+   npm run build:production
+   npm run deploy:production
+   ```
+
+4. **Verify Fix**:
+   - Check Network tab for successful 200 responses
+   - Confirm config loads with correct structure
+   - Test chat functionality
 
 ## Common Development Commands
 
@@ -269,27 +322,96 @@ Host Page
 
 ### Current Infrastructure
 - **Bubble**: Admin console, tenant management, API configuration
-- **AWS Lambda**: 5-module system (Gatekeeper + Lex/Bedrock/Responses/Utils)
+- **AWS Lambda**: 2-function system (deploy_tenant_stack + Master_Function)
 - **S3/CloudFront**: Hosts Picasso widget and tenant config.json files
-- **Config Flow**: Bubble → Lambda → S3 config.json → Picasso reads config
+- **Config Flow**: Bubble → deploy_tenant_stack → S3 → Master_Function → Picasso
 
-### Critical Updates Needed for Production (Night of Launch)
+### Lambda Architecture & Integration
 
-#### 1. **Update Config Fetching** ⚠️ CRITICAL
-ConfigProvider needs to fetch from S3 instead of API:
+#### Master_Function Overview
+Master_Function is a modular Lambda with 6 components:
+
+1. **lambda_function.py** (372 lines) - Entry point, action routing
+2. **intent_router.py** (191 lines) - Chat orchestration
+3. **bedrock_handler.py** (75 lines) - AI/KB integration
+4. **response_formatter.py** (155 lines) - Output formatting
+5. **session_utils.py** (28 lines) - Session management
+6. **tenant_config_loader.py** (535 lines) - Config & caching
+
+**Key Features:**
+- Hash-only security (no tenant_id exposure)
+- 5-minute in-memory config caching
+- S3 fallback for resilience
+- CloudFront integration
+- Supports both Lex and HTTP requests
+
+#### Master_Function API Endpoints
+The production Lambda uses action-based routing with query parameters:
+
 ```javascript
-// src/context/ConfigProvider.jsx - Line ~60
-const configUrl = `https://your-cloudfront.com/tenants/${tenantHash}/config.json`;
-// Remove API auth headers, add cache control
+// Config endpoint (WORKING IN PRODUCTION)
+GET https://chat.myrecruiter.ai/Master_Function?action=get_config&t={tenant_hash}
+
+// Chat endpoint
+POST https://chat.myrecruiter.ai/Master_Function?action=chat&t={tenant_hash}
+Body: {
+  "tenant_hash": "fo85e6a06dcdf4",
+  "user_input": "Hello, how can I get help?",
+  "session_id": "session_123456",
+  "context": {} // optional
+}
+
+// Health check
+GET https://chat.myrecruiter.ai/Master_Function?action=health_check&t={tenant_hash}
+
+// Cache operations
+GET https://chat.myrecruiter.ai/Master_Function?action=cache_status
+POST https://chat.myrecruiter.ai/Master_Function?action=clear_cache&t={tenant_hash}
 ```
 
-#### 2. **Update Chat Endpoint** ⚠️ CRITICAL  
-ChatProvider needs to point to production Lambda:
-```javascript
-// src/context/ChatProvider.jsx - Line ~95
-const chatUrl = 'https://your-api-gateway.com/chat';
-// Add proper headers: x-tenant-id, session_id
-```
+#### 🚨 CRITICAL: Production 404 Fix (IMMEDIATE)
+
+If you see 404 errors on config fetching:
+
+1. **Check CloudFront Query String Forwarding**:
+   ```bash
+   # CloudFront must forward query strings
+   # Console → Behaviors → Edit → Cache Key and Origin Requests → Query Strings → "All"
+   ```
+
+2. **Update ConfigProvider.jsx**:
+   ```javascript
+   // CORRECT endpoint format with fallbacks
+   const configUrl = `https://chat.myrecruiter.ai/Master_Function?action=get_config&t=${tenantHash}`;
+   
+   // Add fallback for resilience
+   const fetchConfig = async () => {
+     const urls = [
+       `https://chat.myrecruiter.ai/Master_Function?action=get_config&t=${tenantHash}`,
+       `https://chat.myrecruiter.ai/v1/widget/config/${tenantHash}`, // Legacy fallback
+     ];
+     
+     for (const url of urls) {
+       try {
+         const response = await fetch(url);
+         if (response.ok) return await response.json();
+       } catch (e) {
+         console.warn(`Config attempt failed: ${url}`);
+       }
+     }
+     throw new Error('Config loading failed');
+   };
+   ```
+
+3. **Update ChatProvider.jsx**:
+   ```javascript
+   // Chat endpoint with proper timeout
+   const chatUrl = `https://chat.myrecruiter.ai/Master_Function?action=chat&t=${tenantHash}`;
+   
+   // 25-second timeout (Lambda has 30s limit)
+   const controller = new AbortController();
+   const timeoutId = setTimeout(() => controller.abort(), 25000);
+   ```
 
 #### 3. **Add Lambda Timeout Protection** ⚠️ HIGH
 Lambda has 30s timeout, need to handle gracefully:
@@ -451,15 +573,51 @@ TEST_TENANT_HASH = "your-test-tenant-hash"
 3. **ROLLBACK READY** - Keep current version accessible
 4. **DOCUMENT EVERYTHING** - Update this file with actual values
 
-### ACTUAL VALUES TO REPLACE
-```javascript
-// These MUST be replaced before deployment
-CLOUDFRONT_URL = "https://d2xxxxxxxxxxxxx.cloudfront.net"
-API_GATEWAY_URL = "https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/prod"
-S3_BUCKET = "picasso-production-configs"
-TEST_TENANT_HASH = "test_tenant_12345"
-ERROR_ENDPOINT = "https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/prod/errors"
+### Production Configuration Philosophy
+
+**Defaults Over Configuration**: Picasso uses smart defaults in theme.css. Only configure what's different:
+- ✅ Logo URL, tenant hash, custom messages
+- ❌ Border radius, shadows, spacing (use CSS defaults)
+
+**Lean Configs**: Foster Village's config is only 84 lines because it relies on defaults:
+```json
+{
+  "tenant_hash": "fo85e6a06dcdf4",
+  "branding": {
+    "primary_color": "#2db8be",  // Only what's different
+    "logo_url": "..."            // Only what's needed
+  }
+  // Everything else uses theme.css defaults
+}
 ```
+
+### Lambda Architecture Plan
+
+#### Phase 1: NEED IT NOW (Production 404 Fix)
+- [x] Fix query parameter handling in Master_Function
+- [x] Add CloudFront query string forwarding
+- [x] Implement config loading fallbacks
+- [x] Update deploy_tenant_stack with iframe-aware embed codes
+- [ ] Deploy and verify with Foster Village
+
+#### Phase 2: Stability (This Week)
+- [ ] Fix session_utils.py tenant_id references
+- [ ] Centralize CloudFront domain configuration
+- [ ] Implement consistent error response format
+- [ ] Set up CloudWatch alarms for 4xx/5xx
+
+#### Phase 3: Simplification (Next Sprint)
+Based on Master_Function analysis:
+- [ ] Reduce tenant_config_loader.py from 535 to ~200 lines
+- [ ] Extract shared constants to config module
+- [ ] Simplify config loading logic (remove over-engineering)
+- [ ] Consolidate error handling patterns
+
+#### Phase 4: Optimization (Next Month)
+- [ ] Add S3 connection pooling
+- [ ] Implement config pre-loading for known tenants
+- [ ] Move to Lambda@Edge for config serving
+- [ ] Add config inheritance (base + tenant overrides)
 
 ### EMERGENCY ROLLBACK PROCEDURE
 1. Revert to previous S3 version: `aws s3 cp s3://backup/widget.js s3://prod/widget.js`

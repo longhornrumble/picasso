@@ -211,7 +211,7 @@ const ChatProvider = ({ children }) => {
       for (let attempt = 1; attempt <= retries; attempt++) {
         try {
           const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 13000); // 13-second timeout (Lambda has 15s limit)
+          const timeoutId = setTimeout(() => controller.abort(), 25000); // 25-second timeout (Master_Function Lambda has 30s limit)
           
           if (messageId) {
             abortControllersRef.current.set(messageId, controller);

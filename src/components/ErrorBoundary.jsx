@@ -67,54 +67,17 @@ class ErrorBoundary extends React.Component {
   }
 
   reportErrorToLambda = async (error, errorInfo, errorEntry) => {
-    try {
-      // Get the error reporting endpoint from config
-      const errorEndpoint = environmentConfig.ERROR_REPORTING_ENDPOINT || 
-                           `${environmentConfig.API_BASE_URL}/Master_Function?action=log_error`;
-      
-      const tenantHash = window.PicassoConfig?.tenant || 
-                        window.PicassoConfig?.tenant_id || 
-                        'unknown';
-
-      const payload = {
-        error: {
-          message: error.message,
-          stack: error.stack,
-          name: error.name,
-          componentStack: errorInfo.componentStack
-        },
-        metadata: {
-          errorId: errorEntry.errorId,
-          timestamp: new Date().toISOString(),
-          tenantHash,
-          environment: environmentConfig.ENVIRONMENT,
-          version: window.PICASSO_VERSION || 'unknown',
-          userAgent: navigator.userAgent,
-          url: window.location.href,
-          errorCount: this.state.errorCount,
-          widgetLoadTime: performance.now() - this.mountTime,
-          iframeMode: document.body.getAttribute('data-iframe') === 'true'
-        },
-        classification: errorEntry.classification
-      };
-
-      // Fire-and-forget approach - don't await or block on error reporting
-      fetch(errorEndpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-tenant-id': tenantHash
-        },
-        body: JSON.stringify(payload),
-        credentials: 'omit'
-      }).catch(err => {
-        // Silently fail - don't let error reporting failures crash the widget
-        console.warn('Failed to report error to Lambda:', err);
+    // TODO: Implement error reporting when Lambda endpoint is ready
+    // For now, just log to console in development
+    if (environmentConfig.isDevelopment()) {
+      console.error('ErrorBoundary caught:', {
+        error,
+        errorInfo,
+        errorEntry
       });
-    } catch (err) {
-      // Silently fail - don't let error reporting failures crash the widget
-      console.warn('Error in reportErrorToLambda:', err);
     }
+    // Temporarily disabled until Lambda endpoint supports error logging
+    return;
   };
 
   handleReload = () => {

@@ -57,10 +57,23 @@
     // Communication bridge with parent window
     function notifyParent(data) {
       if (window.parent && window.parent !== window) {
-        window.parent.postMessage({
-          type: 'PICASSO_WIDGET',
-          ...data
-        }, '*');
+        // Convert legacy SIZE_CHANGE action to PICASSO_EVENT format
+        if (data.action === 'SIZE_CHANGE') {
+          window.parent.postMessage({
+            type: 'PICASSO_EVENT',
+            event: 'RESIZE_REQUEST',
+            payload: {
+              dimensions: data.size,
+              isOpen: data.isOpen
+            }
+          }, '*');
+        } else {
+          // For any other legacy messages, keep as-is for now
+          window.parent.postMessage({
+            type: 'PICASSO_WIDGET',
+            ...data
+          }, '*');
+        }
       }
     }
 
