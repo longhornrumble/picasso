@@ -69,7 +69,8 @@ export const validateURL = (url, allowedDomains = []) => {
     const parsed = new URL(url);
     
     // Check if URL uses secure protocol in production
-    const isProduction = import.meta.env?.PROD || false;
+    const isProduction = import.meta.env?.PROD || 
+                        (typeof process !== 'undefined' && process.env?.NODE_ENV === 'production');
     if (isProduction && parsed.protocol !== 'https:') {
       console.warn('Insecure URL detected in production:', url);
       return null;
@@ -260,7 +261,8 @@ export const isSecureEnvironment = () => {
     return window.isSecureContext || window.location.hostname === 'localhost';
   }
   // Check if we're in production build
-  return import.meta.env?.PROD || false;
+  return import.meta.env?.PROD || 
+         (typeof process !== 'undefined' && process.env?.NODE_ENV === 'production');
 };
 
 export default {

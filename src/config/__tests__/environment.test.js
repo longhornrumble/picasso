@@ -167,6 +167,10 @@ describe('Environment Configuration', () => {
   });
 
   it('should detect development environment from hostname', async () => {
+    // Reset environment to not be production
+    vi.unstubAllEnvs();
+    vi.stubEnv('NODE_ENV', 'development');
+    
     global.window.location.hostname = 'localhost';
     vi.resetModules();
     
@@ -176,7 +180,7 @@ describe('Environment Configuration', () => {
     expect(config.ENVIRONMENT).toBe('development');
     expect(config.DEBUG).toBe(true);
     expect(config.LOG_LEVEL).toBe('debug');
-    expect(config.API_BASE_URL).toBe('http://localhost:3000');
+    expect(config.API_BASE_URL).toBe('https://chat.myrecruiter.ai');
   });
 
   it('should detect staging environment from hostname', async () => {

@@ -249,7 +249,8 @@ class ErrorLogger {
     }
     
     // Report to external service in production
-    if (environmentConfig.ENVIRONMENT === 'production') {
+    // TODO: Enable when Lambda endpoint supports action=log_error
+    if (environmentConfig.ENVIRONMENT === 'production' && false) {
       this.reportToExternalService(logEntry);
     }
     

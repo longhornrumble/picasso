@@ -29,9 +29,9 @@ const getAvatarUrl = (config) => {
   return avatarSources.find(url => url && url.trim()) || `${environmentConfig.API_BASE_URL}/collateral/default-avatar.png`;
 };
 
-export default function MessageBubble({ role, content, files = [], actions = [], uploadState, onCancel }) {
+export default function MessageBubble({ role, content, files = [], actions = [], uploadState, onCancel, metadata = {}, onRetry }) {
   const { config } = useConfig();
-  const { addMessage, isTyping } = useChat();
+  const { addMessage, isTyping, retryMessage } = useChat();
   const [avatarError, setAvatarError] = useState(false);
   const isUser = role === "user";
   
@@ -95,6 +95,23 @@ export default function MessageBubble({ role, content, files = [], actions = [],
         {/* Text Content */}
         {content && (
           <div className="message-text" dangerouslySetInnerHTML={{ __html: html }} />
+        )}
+
+        {/* Retry button for failed messages */}
+        {metadata.can_retry && !metadata.retry_failed && (
+          <button 
+            className="retry-button"
+            onClick={() => {
+              if (onRetry) {
+                onRetry();
+              } else if (retryMessage) {
+                retryMessage(metadata.messageId);
+              }
+            }}
+            disabled={isTyping}
+          >
+            Try again
+          </button>
         )}
 
         {/* Action Chips - Only for assistant/bot messages */}

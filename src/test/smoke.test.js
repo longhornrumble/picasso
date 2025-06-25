@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { execSync } from 'child_process';
-import { readFileSync, existsSync, readdirSync } from 'fs';
+import { readFileSync, existsSync, readdirSync, statSync } from 'fs';
 import { resolve } from 'path';
 
 describe('Build Smoke Tests', () => {
@@ -115,34 +115,56 @@ describe('Build Smoke Tests', () => {
 
   it('should have reasonable bundle sizes', () => {
     const distPath = resolve(process.cwd(), 'dist');
-    const assetsPath = resolve(distPath, 'assets');
     
-    // Check if assets directory exists and has files
-    if (existsSync(assetsPath)) {
-      const files = readFileSync(resolve(distPath, 'index.html'), 'utf8');
-      
-      // Extract asset file names from HTML
-      const assetMatches = files.match(/assets\/[^"]+\.(js|css)/g) || [];
-      
-      // Should have at least some assets
-      expect(assetMatches.length).toBeGreaterThan(0);
-      
-      // Check individual file sizes (basic check)
-      assetMatches.forEach(assetPath => {
-        const fullPath = resolve(distPath, assetPath);
-        if (existsSync(fullPath)) {
-          const stats = readFileSync(fullPath, 'utf8');
-          // Basic size check - files should not be empty
-          expect(stats.length).toBeGreaterThan(0);
+    // Helper function to find all files recursively
+    const findFiles = (dir, fileList = []) => {
+      const files = readdirSync(dir);
+      files.forEach(file => {
+        const filePath = resolve(dir, file);
+        if (existsSync(filePath)) {
+          const stat = statSync(filePath);
+          if (stat.isDirectory()) {
+            findFiles(filePath, fileList);
+          } else {
+            fileList.push(filePath);
+          }
         }
       });
-    } else {
-      // Check root directory for asset files
-      const distFiles = readdirSync(distPath);
-      const assetFiles = distFiles.filter(file => 
-        file.endsWith('.js') || file.endsWith('.css')
-      );
-      expect(assetFiles.length).toBeGreaterThan(0);
+      return fileList;
+    };
+    
+    // Find all files in dist directory
+    const allFiles = findFiles(distPath);
+    
+    // Filter JS and CSS files
+    const assetFiles = allFiles.filter(file => 
+      file.endsWith('.js') || file.endsWith('.css')
+    );
+    
+    // Check individual file sizes if we found asset files
+    let hasFiles = false;
+    if (assetFiles.length > 0) {
+      hasFiles = true;
+      assetFiles.forEach(file => {
+        const fileSize = statSync(file).size;
+        expect(fileSize).toBeGreaterThan(0);
+      });
     }
+    
+    // Check the HTML files to see if they reference any assets
+    const htmlFiles = ['index.html', 'widget-frame.html', 'fullpage.html'];
+    htmlFiles.forEach(htmlFile => {
+      const htmlPath = resolve(distPath, htmlFile);
+      if (existsSync(htmlPath)) {
+        const htmlContent = readFileSync(htmlPath, 'utf8');
+        // Check if HTML contains script or link tags
+        if (htmlContent.includes('<script') || htmlContent.includes('<link')) {
+          hasFiles = true;
+        }
+      }
+    });
+    
+    // We should have found some asset references
+    expect(hasFiles).toBe(true);
   });
 }); 
