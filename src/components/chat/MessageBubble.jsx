@@ -1,7 +1,5 @@
 // MessageBubble.jsx - Enhanced with S3 Logo Support
 import React, { useState } from "react";
-import { marked } from "marked";
-import DOMPurify from "dompurify";
 import { useConfig } from "../../hooks/useConfig";
 import { useChat } from "../../hooks/useChat";
 import { config as environmentConfig } from '../../config/environment';
@@ -35,8 +33,8 @@ export default function MessageBubble({ role, content, files = [], actions = [],
   const [avatarError, setAvatarError] = useState(false);
   const isUser = role === "user";
   
-  // Only process markdown if there's content
-  const html = content ? DOMPurify.sanitize(marked.parse(content)) : "";
+  // Content is already sanitized HTML from ChatProvider
+  const html = content || "";
   
   const avatarSrc = getAvatarUrl(config);
   

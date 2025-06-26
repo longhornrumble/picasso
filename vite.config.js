@@ -26,6 +26,22 @@ export default defineConfig(({ mode }) => {
         'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=()',
         'Content-Security-Policy': "frame-ancestors 'self' http://localhost:* https://localhost:*"
       },
+      proxy: {
+        '/Master_Function': {
+          target: 'https://chat.myrecruiter.ai',
+          changeOrigin: true,
+          secure: true,
+          rewrite: (path) => path,
+          configure: (proxy, options) => {
+            proxy.on('proxyReq', (proxyReq, req, res) => {
+              console.log('🔄 Proxying request:', req.url);
+            });
+            proxy.on('proxyRes', (proxyRes, req, res) => {
+              console.log('✅ Proxy response:', proxyRes.statusCode);
+            });
+          }
+        }
+      }
     },
     
     // Make widget-loader.js available at root

@@ -29,28 +29,80 @@ async function getMarkdownParser() {
     sanitize: false,
     smartLists: true,
     smartypants: false,
-    xhtml: false
+    xhtml: false,
+    mangle: false  // Don't mangle email addresses
   });
 
-  const renderer = new marked.Renderer();
+  // Custom extension to auto-link URLs and emails
+  marked.use({
+    extensions: [{
+      name: 'autolink',
+      level: 'inline',
+      start(src) {
+        const match = src.match(/https?:\/\/|www\.|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+        return match ? match.index : -1;
+      },
+      tokenizer(src) {
+        const urlRegex = /^(https?:\/\/[^\s<]+[^<.,:;"')\]\s])/;
+        const wwwRegex = /^(www\.[^\s<]+[^<.,:;"')\]\s])/;
+        const emailRegex = /^([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/;
+        
+        let match;
+        if (match = urlRegex.exec(src)) {
+          return {
+            type: 'autolink',
+            raw: match[0],
+            href: match[1],
+            text: match[1]
+          };
+        } else if (match = wwwRegex.exec(src)) {
+          return {
+            type: 'autolink', 
+            raw: match[0],
+            href: 'http://' + match[1],
+            text: match[1]
+          };
+        } else if (match = emailRegex.exec(src)) {
+          return {
+            type: 'autolink',
+            raw: match[0], 
+            href: 'mailto:' + match[1],
+            text: match[1]
+          };
+        }
+        return false;
+      },
+      renderer(token) {
+        return `<a href="${token.href}" target="_blank" rel="noopener noreferrer">${token.text}</a>`;
+      }
+    }]
+  });
+
+  // Don't use custom renderer - it causes [object Object] issues
+
+  // Comment out custom renderer to test
+  // const renderer = new marked.Renderer();
   
-  renderer.link = (href, title, text) => {
-    const cleanHref = DOMPurify.sanitize(href);
-    const cleanTitle = title ? DOMPurify.sanitize(title) : '';
-    const cleanText = DOMPurify.sanitize(text);
+  // renderer.link = (href, title, text) => {
+  //   console.log('🔗 Link renderer - href:', href, 'title:', title, 'text:', text);
+  //   // Don't use DOMPurify on URLs - just ensure it's a string
+  //   const cleanHref = String(href || '');
+  //   const cleanTitle = title ? DOMPurify.sanitize(title) : '';
+  //   const cleanText = DOMPurify.sanitize(text);
     
-    return `<a href="${cleanHref}" ${cleanTitle ? `title="${cleanTitle}"` : ''} target="_blank" rel="noopener noreferrer">${cleanText}</a>`;
-  };
+  //   return `<a href="${cleanHref}" ${cleanTitle ? `title="${cleanTitle}"` : ''} target="_blank" rel="noopener noreferrer">${cleanText}</a>`;
+  // };
 
-  renderer.image = (href, title, text) => {
-    const cleanHref = DOMPurify.sanitize(href);
-    const cleanTitle = title ? DOMPurify.sanitize(title) : '';
-    const cleanText = DOMPurify.sanitize(text);
+  // renderer.image = (href, title, text) => {
+  //   // Don't use DOMPurify on URLs - just ensure it's a string
+  //   const cleanHref = String(href || '');
+  //   const cleanTitle = title ? DOMPurify.sanitize(title) : '';
+  //   const cleanText = DOMPurify.sanitize(text);
     
-    return `<img src="${cleanHref}" alt="${cleanText}" ${cleanTitle ? `title="${cleanTitle}"` : ''} style="max-width: 100%; height: auto;" loading="lazy" />`;
-  };
+  //   return `<img src="${cleanHref}" alt="${cleanText}" ${cleanTitle ? `title="${cleanTitle}"` : ''} style="max-width: 100%; height: auto;" loading="lazy" />`;
+  // };
 
-  marked.use({ renderer });
+  // marked.use({ renderer });
 
   markdownParser = { marked, DOMPurify };
   performanceMonitor.endTimer('markdown_load');
@@ -64,9 +116,12 @@ async function sanitizeMessage(content) {
     return '';
   }
 
+  console.log('🔍 sanitizeMessage - Input content:', content);
+
   try {
     const { marked, DOMPurify } = await getMarkdownParser();
     const html = marked.parse(content);
+    console.log('🔍 After marked.parse:', html);
     
     const cleanHtml = DOMPurify.sanitize(html, {
       ALLOWED_TAGS: [
@@ -88,7 +143,14 @@ async function sanitizeMessage(content) {
       RETURN_TRUSTED_TYPE: false
     });
 
-    return cleanHtml;
+    // Add target="_blank" to all links
+    const finalHtml = cleanHtml.replace(
+      /<a\s+href=/gi,
+      '<a target="_blank" rel="noopener noreferrer" href='
+    );
+
+    console.log('🔍 After DOMPurify.sanitize:', finalHtml);
+    return finalHtml;
   } catch (error) {
     // In case of a markdown parsing error, fall back to basic sanitization.
     // This ensures we never return raw, potentially unsafe content.
@@ -573,8 +635,13 @@ const ChatProvider = ({ children }) => {
             messageId: messageWithId.id
           };
           
+          // Use relative URL in development to leverage Vite proxy
+          const chatUrl = import.meta.env.DEV 
+            ? '/Master_Function?action=chat' 
+            : 'https://chat.myrecruiter.ai/Master_Function?action=chat';
+          
           const data = await makeAPIRequest(
-            'https://chat.myrecruiter.ai/Master_Function?action=chat',
+            chatUrl,
             {
               method: 'POST',
               headers: {
