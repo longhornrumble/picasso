@@ -403,10 +403,8 @@ function ChatWidget() {
       {isOpen && (
         <div className="chat-container" data-input-mode={isDoubleInput ? "double" : "single"}>
           <ChatHeader onClose={() => {
-            setIsOpen(false);
-            if (config?.widget_behavior?.remember_state) {
-              localStorage.setItem('picasso_chat_state', 'false');
-            }
+            console.log('🔄 Header close clicked - calling handleToggle');
+            handleToggle(); // Use handleToggle to properly notify parent and handle state
           }} />
 
           <div ref={chatWindowRef} className="chat-window">

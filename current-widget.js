@@ -48,8 +48,8 @@ var __spreadValues = (a, b) => {
       this.setupResizeObserver();
       
       // Ensure widget starts in correct position
-      this.isOpen = false;  // Start closed
-      this.minimize();      // Apply minimized positioning
+      this.isOpen = true;   // Temporarily set to true so minimize() will run
+      this.minimize();      // Apply minimized positioning (this will set isOpen to false)
     },
     // Ensure proper viewport meta tag for mobile
     ensureViewportMeta() {

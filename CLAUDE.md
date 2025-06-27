@@ -53,35 +53,49 @@ Picasso is an iframe-based chat widget for the MyRecruiter SaaS platform. It pro
 
 **See `roadmap/build-architecture.md` for the unified build pipeline solution.**
 
-## 🚨 CRITICAL: Lambda 404 Emergency Fix
+## Recent Fixes (2025-06-26)
 
-**If you're seeing 404 errors in production:**
+### URL and Email Link Preservation Issue - RESOLVED ✅
 
-1. **Verify CloudFront Settings** (AWS Console):
-   - Go to CloudFront → Your Distribution → Behaviors
-   - Edit default behavior
-   - Cache Key and Origin Requests → Query Strings → **"All"**
-   - Save and wait 5 minutes for propagation
+**Problem**: URLs and emails were being stripped from chat messages, appearing as plain text or `[object Object]`
 
-2. **Update Picasso Immediately**:
-   ```javascript
-   // src/context/ConfigProvider.jsx
-   const configUrl = `https://chat.myrecruiter.ai/Master_Function?action=get_config&t=${tenantHash}`;
-   
-   // src/context/ChatProvider.jsx  
-   const chatUrl = `https://chat.myrecruiter.ai/Master_Function?action=chat&t=${tenantHash}`;
-   ```
+**Root Cause**: 
+1. Custom marked.js link renderer was using `DOMPurify.sanitize()` on URL strings, converting them to objects
+2. Double processing of markdown content (in ChatProvider and MessageBubble)
+3. Missing `mangle: false` option causing email obfuscation
 
-3. **Deploy Fix**:
-   ```bash
-   npm run build:production
-   npm run deploy:production
-   ```
+**Solution**:
+1. **Removed problematic custom renderer** that was sanitizing URLs incorrectly
+2. **Added `mangle: false`** to marked.js options to preserve email addresses
+3. **Created autolink extension** to convert plain URLs/emails to clickable links
+4. **Post-process HTML** to add `target="_blank"` to all links
+5. **Updated MessageBubble** to use pre-processed HTML from ChatProvider
 
-4. **Verify Fix**:
-   - Check Network tab for successful 200 responses
-   - Confirm config loads with correct structure
-   - Test chat functionality
+**Lambda Prompt Updates**:
+```python
+# In bedrock_handler.py - Added instructions to preserve markdown
+- PRESERVE ALL MARKDOWN FORMATTING: If you see [text](url) keep it as [text](url), not plain text
+- For any dates, times, or locations of events: Direct users to check the events page or contact the team
+- Never include placeholder text like [date], [time], [location], or [topic] in your responses
+```
+
+**Result**: 
+- ✅ Inline markdown links from knowledge base are preserved
+- ✅ Plain URLs and emails are auto-linked
+- ✅ All links open in new browser tabs
+- ✅ No more `[object Object]` or stripped URLs
+- ✅ Event placeholders replaced with evergreen language
+
+**Files Modified**:
+- `src/context/ChatProvider.jsx` - Fixed markdown processing and link handling
+- `src/components/chat/MessageBubble.jsx` - Use pre-processed HTML
+- `src/utils/markdownToHTML.js` - Added autolink extension
+- `vite.config.js` - Added proxy for development CORS
+- `lambda-review/lambda-review/bedrock_handler.py` - Updated prompt instructions
+
+**Commits**:
+- "Fix URL and email stripping in chat messages"
+- "Update Lambda prompt to preserve markdown formatting"
 
 ## Common Development Commands
 

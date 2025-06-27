@@ -1,5 +1,14 @@
 /* Picasso Multi-Tenant Chat Theme - Generic & Tenant Agnostic */
 
+/* === IFRAME TRANSPARENCY === */
+/* Ensure iframe body is transparent */
+body[data-iframe="true"] {
+  background: transparent !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+
 /* CSS Variables for Multi-Tenant Support */
 :root {
   /* Base System Variables (Static) */
@@ -483,20 +492,20 @@
   /* When widget is in iframe context, override positioning */
   body[data-iframe="true"] .chat-container {
     position: absolute !important; /* Use absolute positioning to fill container */
-    top: 4px !important;
-    left: 4px !important;
-    right: 4px !important;
-    bottom: 4px !important;
-    width: calc(100% - 8px) !important;
-    height: calc(100% - 8px) !important;
-    min-width: calc(100% - 8px) !important;
-    min-height: calc(100% - 8px) !important;
-    max-width: calc(100% - 8px) !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    min-width: 100% !important;
+    min-height: 100% !important;
+    max-width: 100% !important;
     margin: 0 !important;
     padding: 0 !important;
-    border: 1px solid var(--border-color, rgba(0, 0, 0, 0.08)) !important;
-    border-radius: 12px !important;
-    box-shadow: 0 1px 6px rgba(0, 0, 0, 0.08) !important;
+    border: none !important;
+    border-radius: 16px !important;
+    box-shadow: none !important;
     display: flex !important;
     flex-direction: column !important;
     overflow: hidden !important;
