@@ -140,6 +140,24 @@ Picasso is an iframe-based chat widget for the MyRecruiter SaaS platform. It pro
 - ✅ All tests passing
 - ✅ Successfully deployed to production
 
+### Chat Container Border & Shadow Visibility Issue - RESOLVED ✅ (2025-06-27)
+
+**Problem**: Chat container border only showing on left/top sides, box shadow not visible
+
+**Root Cause**: CSS conflict between absolute positioning and `width: 100%; height: 100%` on the chat container caused it to exceed its parent boundaries, clipping the right/bottom borders and shadow
+
+**Solution**: Changed chat container dimensions from `width: 100%; height: 100%` to `width: auto; height: auto`, allowing the absolute positioning constraints (`top: 0; right: 0; bottom: 0; left: 0`) to properly determine the size
+
+**Files Modified**:
+- `src/styles/theme.css` - Updated `.chat-container` rule to use `width: auto; height: auto`
+
+**Commit**: e3ea9a9
+
+**Result**:
+- ✅ All four sides of border now visible
+- ✅ Box shadow properly renders around entire container
+- ✅ Container still fills parent correctly via positioning constraints
+
 ## Common Development Commands
 
 ```bash
