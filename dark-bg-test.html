@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Picasso Widget - Dark Background Test</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #1a1a1a;
+            color: #ffffff;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            min-height: 100vh;
+            position: relative;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 20px;
+            color: #ffffff;
+        }
+
+        .test-info {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+
+        .test-info h2 {
+            margin-top: 0;
+            color: #ff6b6b;
+        }
+
+        .test-list {
+            line-height: 1.8;
+        }
+
+        .test-list li {
+            margin-bottom: 10px;
+        }
+
+        .bg-pattern {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            opacity: 0.1;
+            pointer-events: none;
+            background-image: 
+                repeating-linear-gradient(
+                    45deg,
+                    #ff6b6b,
+                    #ff6b6b 10px,
+                    transparent 10px,
+                    transparent 20px
+                ),
+                repeating-linear-gradient(
+                    -45deg,
+                    #4ecdc4,
+                    #4ecdc4 10px,
+                    transparent 10px,
+                    transparent 20px
+                );
+            z-index: -1;
+        }
+
+        .controls {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            padding: 20px;
+            z-index: 1000;
+        }
+
+        .controls button {
+            display: block;
+            width: 100%;
+            padding: 10px 20px;
+            margin-bottom: 10px;
+            background: #4ecdc4;
+            color: #1a1a1a;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .controls button:hover {
+            background: #45b7aa;
+            transform: translateY(-1px);
+        }
+
+        .controls button:last-child {
+            margin-bottom: 0;
+        }
+
+        .status {
+            margin-top: 15px;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            font-size: 14px;
+            font-family: monospace;
+        }
+
+        code {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-pattern"></div>
+    
+    <div class="container">
+        <h1>Picasso Widget - Dark Background Test</h1>
+        
+        <div class="test-info">
+            <h2>🧪 What We're Testing:</h2>
+            <ul class="test-list">
+                <li><strong>Transparency:</strong> The iframe body should be transparent - no white pixels around edges</li>
+                <li><strong>Initial State:</strong> Widget should start minimized (90x90px circular button)</li>
+                <li><strong>Close Behavior:</strong> Both header X and toggle button should close properly</li>
+                <li><strong>Dark Background:</strong> Widget should look good against dark backgrounds</li>
+            </ul>
+        </div>
+
+        <div class="test-info">
+            <h2>🔍 Things to Check:</h2>
+            <ul class="test-list">
+                <li>Look for any white pixels around the chat header when open</li>
+                <li>Check if the widget starts closed (just the circular button visible)</li>
+                <li>Test closing with both the header X button and the toggle button</li>
+                <li>Verify the toggle button doesn't get pushed outside the iframe when closing</li>
+                <li>Check if the notification badge and callout display properly</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="controls">
+        <h3 style="margin-top: 0; color: #ffffff;">Widget Controls</h3>
+        <button onclick="openWidget()">Open Widget</button>
+        <button onclick="closeWidget()">Close Widget</button>
+        <button onclick="toggleWidget()">Toggle Widget</button>
+        <button onclick="checkHealth()">Check Health</button>
+        <div class="status" id="status">Widget not loaded yet...</div>
+    </div>
+
+    <!-- Picasso Widget Script -->
+    <script src="widget.js" data-tenant="fo85e6a06dcdf4"></script>
+
+    <script>
+        // Widget control functions
+        function openWidget() {
+            if (window.PicassoWidget) {
+                window.PicassoWidget.open();
+                updateStatus('Widget opened via API');
+            }
+        }
+
+        function closeWidget() {
+            if (window.PicassoWidget) {
+                window.PicassoWidget.close();
+                updateStatus('Widget closed via API');
+            }
+        }
+
+        function toggleWidget() {
+            if (window.PicassoWidget) {
+                window.PicassoWidget.toggle();
+                updateStatus('Widget toggled via API');
+            }
+        }
+
+        function checkHealth() {
+            if (window.PicassoWidget) {
+                const health = window.PicassoWidget.health();
+                updateStatus('Health: ' + JSON.stringify(health, null, 2));
+            }
+        }
+
+        function updateStatus(message) {
+            document.getElementById('status').textContent = message;
+        }
+
+        // Listen for widget events
+        if (window.PicassoWidget) {
+            window.PicassoWidget.onEvent((event) => {
+                console.log('Widget Event:', event);
+                updateStatus(`Event: ${event.event}`);
+            });
+        }
+
+        // Initial status check
+        setTimeout(() => {
+            if (window.PicassoWidget && window.PicassoWidget.isLoaded()) {
+                updateStatus('Widget loaded and ready');
+            }
+        }, 1000);
+    </script>
+</body>
+</html>

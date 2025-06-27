@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Picasso URL and Email Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .test-section {
+            margin: 30px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+        .test-button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin: 5px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .test-button:hover {
+            background: #0056b3;
+        }
+        pre {
+            background: #f5f5f5;
+            padding: 10px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <h1>Picasso URL and Email Test</h1>
+    
+    <div class="test-section">
+        <h2>Test Messages with URLs and Emails</h2>
+        <p>Click these buttons to test if URLs and emails are preserved in the chat:</p>
+        
+        <button class="test-button" onclick="testPlainURL()">Test Plain URL</button>
+        <button class="test-button" onclick="testMarkdownURL()">Test Markdown URL</button>
+        <button class="test-button" onclick="testEmail()">Test Email</button>
+        <button class="test-button" onclick="testMixed()">Test Mixed Content</button>
+        <button class="test-button" onclick="testFosterVillage()">Test Foster Village Message</button>
+        
+        <h3>Test Content:</h3>
+        <pre id="test-content"></pre>
+    </div>
+
+    <div class="test-section">
+        <h2>Widget Control</h2>
+        <button class="test-button" onclick="PicassoWidget.open()">Open Chat</button>
+        <button class="test-button" onclick="PicassoWidget.close()">Close Chat</button>
+        <button class="test-button" onclick="PicassoWidget.toggle()">Toggle Chat</button>
+    </div>
+
+    <!-- Load Picasso Widget -->
+    <script src="./current-widget.js" data-tenant="fo85e6a06dcdf4"></script>
+    
+    <script>
+        function showTestContent(content) {
+            document.getElementById('test-content').textContent = content;
+        }
+
+        function testPlainURL() {
+            const content = "Check out our website at https://www.example.com for more information.";
+            showTestContent(content);
+            // In a real test, you would send this to the chat
+            console.log("Test content:", content);
+        }
+
+        function testMarkdownURL() {
+            const content = "Visit [our website](https://www.example.com) for details.";
+            showTestContent(content);
+            console.log("Test content:", content);
+        }
+
+        function testEmail() {
+            const content = "Contact us at support@example.com for assistance.";
+            showTestContent(content);
+            console.log("Test content:", content);
+        }
+
+        function testMixed() {
+            const content = "Email us at info@example.com or visit https://www.example.com/help";
+            showTestContent(content);
+            console.log("Test content:", content);
+        }
+
+        function testFosterVillage() {
+            const content = `Thank you for your interest in supporting Foster Village! There are several ways you can donate:
+
+To make an online donation, you can visit our giving page at https://www.fostervillageaustin.org/give. This allows you to make a one-time gift or set up a recurring monthly donation.
+
+You can also mail a gift to:
+Foster Village, Inc.  
+15400 Fitzhugh Rd.
+Dripping Springs, TX 78620
+
+If you'd like to donate stock or through a donor advised fund, please contact us at (512) 599-4144 or info@fostervillageaustin.org and we can provide details on how to complete that type of donation.`;
+            showTestContent(content);
+            console.log("Test content:", content);
+        }
+
+        // Initialize with Foster Village example
+        window.onload = () => {
+            testFosterVillage();
+        };
+    </script>
+</body>
+</html>
