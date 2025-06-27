@@ -31,7 +31,7 @@ function ChatWidget() {
   // Apply CSS variables for theming
   useCSSVariables(config);
   
-  // Chat state with localStorage persistence
+  // Chat state with sessionStorage persistence (matches conversation persistence)
   const [isOpen, setIsOpen] = useState(() => {
     const widgetConfig = config?.widget_behavior || {};
     
@@ -40,9 +40,17 @@ function ChatWidget() {
     }
     
     try {
-      const savedState = localStorage.getItem('picasso_chat_state');
-      if (savedState !== null) {
-        return JSON.parse(savedState);
+      // Use sessionStorage to match conversation persistence behavior
+      const savedState = sessionStorage.getItem('picasso_chat_state');
+      const lastActivity = sessionStorage.getItem('picasso_last_activity');
+      
+      if (savedState !== null && lastActivity) {
+        const timeSinceActivity = Date.now() - parseInt(lastActivity);
+        const SESSION_TIMEOUT = 30 * 60 * 1000; // 30 minutes
+        
+        if (timeSinceActivity < SESSION_TIMEOUT) {
+          return JSON.parse(savedState);
+        }
       }
     } catch (error) {
       console.warn('Failed to parse saved chat state:', error);
@@ -86,7 +94,8 @@ function ChatWidget() {
     
     if (config?.widget_behavior?.remember_state) {
       try {
-        localStorage.setItem('picasso_chat_state', JSON.stringify(newOpen));
+        sessionStorage.setItem('picasso_chat_state', JSON.stringify(newOpen));
+        sessionStorage.setItem('picasso_last_activity', Date.now().toString());
       } catch (e) {
         console.warn('Failed to save chat state on toggle:', e);
       }
@@ -100,9 +109,16 @@ function ChatWidget() {
       let skipAutoOpen = false;
       if (widgetConfig.remember_state) {
         try {
-          const saved = localStorage.getItem('picasso_chat_state');
-          if (saved !== null) {
-            skipAutoOpen = JSON.parse(saved) === false;
+          const saved = sessionStorage.getItem('picasso_chat_state');
+          const lastActivity = sessionStorage.getItem('picasso_last_activity');
+          
+          if (saved !== null && lastActivity) {
+            const timeSinceActivity = Date.now() - parseInt(lastActivity);
+            const SESSION_TIMEOUT = 30 * 60 * 1000; // 30 minutes
+            
+            if (timeSinceActivity < SESSION_TIMEOUT) {
+              skipAutoOpen = JSON.parse(saved) === false;
+            }
           }
         } catch (e) {
           console.warn('Failed to read saved chat state for auto-open check', e);
@@ -111,6 +127,15 @@ function ChatWidget() {
       if (!skipAutoOpen) {
         const timer = setTimeout(() => {
           setIsOpen(true);
+          // Update activity timestamp when auto-opening
+          if (widgetConfig.remember_state) {
+            try {
+              sessionStorage.setItem('picasso_chat_state', 'true');
+              sessionStorage.setItem('picasso_last_activity', Date.now().toString());
+            } catch (e) {
+              console.warn('Failed to save chat state on auto-open:', e);
+            }
+          }
         }, widgetConfig.auto_open_delay * 1000);
         return () => clearTimeout(timer);
       }
@@ -147,6 +172,7 @@ function ChatWidget() {
   // Auto-scroll refs
   const chatWindowRef = useRef(null);
   const lastMessageRef = useRef(null);
+  const hasRestoredScrollRef = useRef(false);
 
   // Get chat title
   const chat_title = config?.chat_title || 
@@ -188,6 +214,34 @@ function ChatWidget() {
       }
     }
   };
+
+  // Save scroll position when chat is closed
+  useEffect(() => {
+    if (!isOpen && chatWindowRef.current) {
+      const scrollPosition = chatWindowRef.current.scrollTop;
+      sessionStorage.setItem('picasso_scroll_position', scrollPosition.toString());
+    }
+  }, [isOpen]);
+
+  // Restore scroll position when chat opens with persisted conversation
+  useEffect(() => {
+    if (isOpen && chatWindowRef.current && !hasRestoredScrollRef.current && messages.length > 1) {
+      const savedPosition = sessionStorage.getItem('picasso_scroll_position');
+      const hasPersistedMessages = sessionStorage.getItem('picasso_messages');
+      
+      if (savedPosition) {
+        // Delay to ensure DOM is ready
+        setTimeout(() => {
+          if (chatWindowRef.current) {
+            chatWindowRef.current.scrollTop = parseInt(savedPosition);
+            hasRestoredScrollRef.current = true;
+          }
+        }, 100);
+      }
+      
+      // Silently continue conversation without indicator
+    }
+  }, [isOpen, messages.length]);
 
   // Unread message handling
   useEffect(() => {

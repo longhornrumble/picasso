@@ -73,7 +73,22 @@ async function getMarkdownParser() {
         return false;
       },
       renderer(token) {
-        return `<a href="${token.href}" target="_blank" rel="noopener noreferrer">${token.text}</a>`;
+        // Check if URL is external
+        const isExternal = (() => {
+          if (!token.href) return false;
+          if (token.href.startsWith('mailto:')) return true;
+          
+          try {
+            const linkUrl = new URL(token.href, window.location.href);
+            const currentUrl = new URL(window.location.href);
+            return linkUrl.origin !== currentUrl.origin;
+          } catch (e) {
+            return true; // Treat as external if parsing fails
+          }
+        })();
+        
+        const targetAttr = isExternal ? ' target="_blank" rel="noopener noreferrer"' : '';
+        return `<a href="${token.href}"${targetAttr}>${token.text}</a>`;
       }
     }]
   });
@@ -143,10 +158,29 @@ async function sanitizeMessage(content) {
       RETURN_TRUSTED_TYPE: false
     });
 
-    // Add target="_blank" to all links
+    // Process links to add target="_blank" only for external URLs
     const finalHtml = cleanHtml.replace(
-      /<a\s+href=/gi,
-      '<a target="_blank" rel="noopener noreferrer" href='
+      /<a\s+href="([^"]+)"/gi,
+      (match, url) => {
+        // Check if URL is external
+        const isExternal = (() => {
+          if (!url) return false;
+          if (url.startsWith('mailto:')) return true;
+          
+          try {
+            const linkUrl = new URL(url, window.location.href);
+            const currentUrl = new URL(window.location.href);
+            return linkUrl.origin !== currentUrl.origin;
+          } catch (e) {
+            return true; // Treat as external if parsing fails
+          }
+        })();
+        
+        if (isExternal) {
+          return `<a target="_blank" rel="noopener noreferrer" href="${url}"`;
+        }
+        return `<a href="${url}"`;
+      }
     );
 
     console.log('🔍 After DOMPurify.sanitize:', finalHtml);
@@ -169,7 +203,60 @@ export const getChatContext = () => ChatContext;
 const ChatProvider = ({ children }) => {
   const { config: tenantConfig } = useConfig();
   
-  const [messages, setMessages] = useState([]);
+  // Session persistence constants
+  const STORAGE_KEYS = {
+    MESSAGES: 'picasso_messages',
+    SESSION_ID: 'picasso_session_id',
+    LAST_ACTIVITY: 'picasso_last_activity'
+  };
+  const SESSION_TIMEOUT = 30 * 60 * 1000; // 30 minutes
+  
+  // Initialize or retrieve session ID
+  const getOrCreateSessionId = () => {
+    const stored = sessionStorage.getItem(STORAGE_KEYS.SESSION_ID);
+    const lastActivity = sessionStorage.getItem(STORAGE_KEYS.LAST_ACTIVITY);
+    
+    // Check if session is still valid (within timeout)
+    if (stored && lastActivity) {
+      const timeSinceActivity = Date.now() - parseInt(lastActivity);
+      if (timeSinceActivity < SESSION_TIMEOUT) {
+        return stored;
+      }
+    }
+    
+    // Create new session
+    const newSessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    sessionStorage.setItem(STORAGE_KEYS.SESSION_ID, newSessionId);
+    sessionStorage.setItem(STORAGE_KEYS.LAST_ACTIVITY, Date.now().toString());
+    return newSessionId;
+  };
+  
+  const sessionIdRef = useRef(getOrCreateSessionId());
+  
+  // Load persisted messages
+  const loadPersistedMessages = () => {
+    try {
+      const stored = sessionStorage.getItem(STORAGE_KEYS.MESSAGES);
+      const lastActivity = sessionStorage.getItem(STORAGE_KEYS.LAST_ACTIVITY);
+      
+      if (stored && lastActivity) {
+        const timeSinceActivity = Date.now() - parseInt(lastActivity);
+        if (timeSinceActivity < SESSION_TIMEOUT) {
+          const messages = JSON.parse(stored);
+          errorLogger.logInfo('📂 Restored conversation from previous page', {
+            messageCount: messages.length,
+            sessionId: sessionIdRef.current
+          });
+          return messages;
+        }
+      }
+    } catch (error) {
+      errorLogger.logError(error, { context: 'loadPersistedMessages' });
+    }
+    return [];
+  };
+  
+  const [messages, setMessages] = useState(loadPersistedMessages);
   const [isTyping, setIsTyping] = useState(false);
   const [hasInitializedMessages, setHasInitializedMessages] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -177,6 +264,22 @@ const ChatProvider = ({ children }) => {
   
   const abortControllersRef = useRef(new Map());
   const retryTimeoutsRef = useRef(new Map());
+
+  // Persist messages whenever they change
+  useEffect(() => {
+    if (messages.length > 0 && hasInitializedMessages) {
+      try {
+        sessionStorage.setItem(STORAGE_KEYS.MESSAGES, JSON.stringify(messages));
+        sessionStorage.setItem(STORAGE_KEYS.LAST_ACTIVITY, Date.now().toString());
+        errorLogger.logInfo('💾 Persisted conversation state', {
+          messageCount: messages.length,
+          sessionId: sessionIdRef.current
+        });
+      } catch (error) {
+        errorLogger.logError(error, { context: 'persistMessages' });
+      }
+    }
+  }, [messages, hasInitializedMessages, STORAGE_KEYS]);
 
   // Network connectivity monitoring
   useEffect(() => {
@@ -242,20 +345,29 @@ const ChatProvider = ({ children }) => {
 
   useEffect(() => {
     if (tenantConfig && !hasInitializedMessages) {
-      errorLogger.logInfo('🎬 Setting initial welcome message');
-      const welcomeActions = generateWelcomeActions(tenantConfig);
-
-      // Sanitize welcome message async
-      sanitizeMessage(tenantConfig.welcome_message || "Hello! How can I help you today?")
-        .then(sanitizedContent => {
-          setMessages([{
-            id: "welcome",
-            role: "assistant",
-            content: sanitizedContent,
-            actions: welcomeActions
-          }]);
-          setHasInitializedMessages(true);
+      // Check if we have persisted messages
+      if (messages.length > 0) {
+        errorLogger.logInfo('🔄 Continuing previous conversation', {
+          messageCount: messages.length,
+          sessionId: sessionIdRef.current
         });
+        setHasInitializedMessages(true);
+      } else {
+        errorLogger.logInfo('🎬 Setting initial welcome message');
+        const welcomeActions = generateWelcomeActions(tenantConfig);
+
+        // Sanitize welcome message async
+        sanitizeMessage(tenantConfig.welcome_message || "Hello! How can I help you today?")
+          .then(sanitizedContent => {
+            setMessages([{
+              id: "welcome",
+              role: "assistant",
+              content: sanitizedContent,
+              actions: welcomeActions
+            }]);
+            setHasInitializedMessages(true);
+          });
+      }
     }
   }, [tenantConfig, generateWelcomeActions, hasInitializedMessages]);
 
@@ -626,7 +738,7 @@ const ChatProvider = ({ children }) => {
             messageId: messageWithId.id 
           });
           
-          const sessionId = `session_${Date.now()}`;
+          const sessionId = sessionIdRef.current;
           const requestBody = {
             tenant_hash: tenantHash,
             user_input: sanitizedUserContent, // Send sanitized content

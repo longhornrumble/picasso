@@ -133,14 +133,15 @@ describe('MessageBubble', () => {
   });
 
   it('should handle markdown content', () => {
+    // MessageBubble now expects pre-processed HTML from ChatProvider, not raw markdown
     const markdownMessage = {
       ...defaultProps,
-      content: '**Bold text** and *italic text*'
+      content: '<p><strong>Bold text</strong> and <em>italic text</em></p>'
     };
     
     render(<MessageBubble {...markdownMessage} />, { wrapper: TestWrapper });
     
-    // Look for the rendered HTML output, not the raw markdown
+    // Look for the rendered HTML output
     const strong = screen.getByText('Bold text');
     const em = screen.getByText('italic text');
     expect(strong.tagName.toLowerCase()).toBe('strong');

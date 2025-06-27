@@ -79,7 +79,10 @@ var __spreadValues = (a, b) => {
         // Improve touch interactions on mobile
         WebkitTapHighlightColor: "transparent",
         touchAction: "manipulation",
-        cursor: "pointer"
+        cursor: "pointer",
+        // Container styling - no visual effects
+        borderRadius: "50%",
+        background: "transparent" // Transparent in minimized state
       });
       
       // No additional CSS needed - positioning is handled inline
@@ -103,6 +106,22 @@ var __spreadValues = (a, b) => {
           /* Ensure it stays in visual viewport */
           transform: translateZ(0);
           -webkit-transform: translateZ(0);
+        }
+        
+        /* CRITICAL: Make iframe completely invisible - no visual styling */
+        #picasso-widget-iframe {
+          box-shadow: none !important;
+          border: none !important;
+          outline: none !important;
+          background: transparent !important;
+          background-color: transparent !important;
+          -webkit-box-shadow: none !important;
+          -moz-box-shadow: none !important;
+          opacity: 1 !important; /* Ensure iframe content is visible */
+          /* Remove any possible browser defaults */
+          -webkit-appearance: none !important;
+          -moz-appearance: none !important;
+          appearance: none !important;
         }
         
         /* Mobile fullscreen mode - override all positioning */
@@ -205,17 +224,30 @@ var __spreadValues = (a, b) => {
         src: iframeUrl,
         id: "picasso-widget-iframe",
         title: "Picasso Chat Widget",
-        allow: "camera *; microphone *; geolocation *"
+        allow: "camera *; microphone *; geolocation *",
+        frameBorder: "0" // Ensure no default frame border
         // Removed sandbox attribute to avoid security warning - iframe provides sufficient isolation
       });
       Object.assign(this.iframe.style, {
+        position: "absolute",
+        top: "0",
+        left: "0",
+        right: "0", 
+        bottom: "0",
         width: "100%",
         height: "100%",
         border: "none",
         borderRadius: "50%",
         // Start circular
-        overflow: "hidden",
-        transition: "all 0.3s ease"
+        overflow: "visible",
+        transition: "all 0.3s ease",
+        // Remove ALL visual styling from iframe
+        boxShadow: "none",
+        background: "transparent",
+        backgroundColor: "transparent",
+        outline: "none",
+        WebkitBoxShadow: "none",
+        MozBoxShadow: "none"
       });
       this.container.appendChild(this.iframe);
     },
@@ -400,16 +432,32 @@ var __spreadValues = (a, b) => {
           position: "fixed",
           top: "auto",
           left: "auto",
-          width: this.config.expandedWidth,
-          height: this.config.expandedHeight,
-          maxHeight: this.config.expandedHeight, // Ensure no height constraints
+          width: `calc(${this.config.expandedWidth} + 8px)`,
+          height: `calc(${this.config.expandedHeight} + 8px)`,
+          maxHeight: `calc(${this.config.expandedHeight} + 8px)`, // Match the height
           bottom: "20px",
           right: "20px"
         });
       }
       
+      // Update container styling for expanded state
+      Object.assign(this.container.style, {
+        borderRadius: isMobile ? "0" : "20px",
+        border: "none", // No border on container
+        background: "transparent" // Keep transparent to show shadow
+      });
+      
       Object.assign(this.iframe.style, {
-        borderRadius: isMobile ? "0" : "16px"  // Match container radius + padding
+        borderRadius: isMobile ? "0" : "16px",  // Slightly smaller than container for the inset effect
+        // Ensure iframe remains invisible
+        boxShadow: "none",
+        border: "none",
+        background: "transparent",
+        width: "100%",
+        height: "100%",
+        position: "absolute",
+        top: "0",
+        left: "0"
       });
       
       // Notify iframe of size change for responsive styling
@@ -435,14 +483,22 @@ var __spreadValues = (a, b) => {
         width: "90px",
         height: "90px",
         zIndex: this.config.zIndex,
+        // Visual styling for minimized state
+        border: "none",
+        borderRadius: "50%",
         // Ensure smooth transition back to corner
-        transition: "all 0.3s ease"
+        transition: "all 0.3s ease",
+        background: "transparent" // Keep container transparent in minimized state
       });
       
       // Reset iframe to circular button
       Object.assign(this.iframe.style, {
         borderRadius: "50%",
-        transition: "all 0.3s ease"
+        transition: "all 0.3s ease",
+        // Ensure iframe remains invisible
+        boxShadow: "none",
+        border: "none",
+        background: "transparent"
       });
       
       // Send minimize command to iframe

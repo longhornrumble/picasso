@@ -97,6 +97,49 @@ Picasso is an iframe-based chat widget for the MyRecruiter SaaS platform. It pro
 - "Fix URL and email stripping in chat messages"
 - "Update Lambda prompt to preserve markdown formatting"
 
+### Production Widget Issues - RESOLVED ✅ (2025-06-27)
+
+**Problems**:
+1. White pixels visible around chat header edges
+2. Widget iframe visible/open on page load (should start closed)
+3. Different behavior between header X close vs toggle close
+
+**Root Causes**:
+1. **White pixels**: Iframe body lacked transparent background, showing through the 4px padding
+2. **Start state**: Widget initialization had guard clause preventing `minimize()` from running
+3. **Close behavior**: Header close directly set state instead of calling `handleToggle()`
+
+**Solutions**:
+1. **Added transparent background** to iframe body in theme.css
+2. **Fixed initialization** by applying minimized styles directly (removed problematic `minimize()` call)
+3. **Updated header close** to use `handleToggle()` for consistent parent notification
+
+**Additional Fix - Cache Issue**:
+- **Problem**: Client saw postMessage errors and 404s for old asset files
+- **Cause**: Browser cached old `widget-frame.html` with outdated asset hashes
+- **Solution**: Client cleared browser cache (hard refresh)
+
+**Files Modified**:
+- `src/styles/theme.css` - Added `body[data-iframe="true"] { background: transparent }`
+- `current-widget.js` - Fixed widget initialization
+- `src/components/chat/ChatWidget.jsx` - Header close now uses `handleToggle()`
+
+**Tests Updated**:
+- `src/utils/__tests__/markdownToHTML.test.js` - Updated to expect target="_blank"
+- `src/components/chat/__tests__/MessageBubble.test.jsx` - Updated to expect pre-processed HTML
+
+**Deployment**:
+- Production deployment: 2025-06-27_01-07-53
+- Git tag: `deploy-prod-2025-06-27_01-07-53`
+- CloudFront invalidation: I8PL1SYA1II0I1BHVM41KYUDYV
+
+**Result**:
+- ✅ No white pixels around widget edges
+- ✅ Widget starts properly minimized
+- ✅ Both close methods behave consistently
+- ✅ All tests passing
+- ✅ Successfully deployed to production
+
 ## Common Development Commands
 
 ```bash
