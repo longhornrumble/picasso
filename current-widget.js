@@ -105,6 +105,32 @@ var __spreadValues = (a, b) => {
           -webkit-transform: translateZ(0);
         }
         
+        /* Mobile fullscreen mode - override all positioning */
+        #picasso-widget-container[data-mobile-fullscreen="true"] {
+          position: fixed !important;
+          top: 0 !important;
+          left: 0 !important;
+          right: 0 !important;
+          bottom: 0 !important;
+          width: 100vw !important;
+          width: 100% !important;
+          height: 100vh !important;
+          height: 100% !important;
+          transform: none !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          border: none !important;
+          max-width: none !important;
+          max-height: none !important;
+        }
+        
+        /* Ensure iframe fills container in mobile fullscreen */
+        #picasso-widget-container[data-mobile-fullscreen="true"] #picasso-widget-iframe {
+          width: 100% !important;
+          height: 100% !important;
+          border-radius: 0 !important;
+        }
+        
         /* Fix for iOS Safari viewport issues */
         @supports (-webkit-touch-callout: none) {
           #picasso-widget-container {
@@ -167,6 +193,7 @@ var __spreadValues = (a, b) => {
       }
       
       // Store the expected origin for security validation
+      // Always use the iframe's domain for postMessage, not the script's domain
       this.widgetOrigin = widgetDomain;
       
       // Use staging-specific HTML file if in staging mode
@@ -250,6 +277,16 @@ var __spreadValues = (a, b) => {
       
       this.container.addEventListener("click", handleContainerClick);
       this.container.addEventListener("touchend", handleContainerClick);
+      
+      // Handle orientation changes on mobile
+      window.addEventListener("orientationchange", () => {
+        setTimeout(() => {
+          if (this.isOpen) {
+            console.log("📱 Orientation changed, updating layout");
+            this.expand(); // Re-calculate dimensions
+          }
+        }, 100); // Small delay to ensure new dimensions are available
+      });
     },
     // Handle PRD-compliant PICASSO_EVENT messages
     handlePicassoEvent(data) {
@@ -320,6 +357,12 @@ var __spreadValues = (a, b) => {
       
       if (isMobile) {
         iframeSize = 'mobile';
+        // Use window.innerHeight for accurate mobile viewport
+        const mobileHeight = window.innerHeight + 'px';
+        
+        // Set data attribute for CSS targeting
+        this.container.setAttribute('data-mobile-fullscreen', 'true');
+        
         Object.assign(this.container.style, {
           position: "fixed",
           top: "0",
@@ -327,12 +370,13 @@ var __spreadValues = (a, b) => {
           bottom: "0",
           right: "0",
           width: "100vw",
-          height: "100vh",
-          height: "100dvh", // Dynamic viewport height for mobile browsers
+          height: mobileHeight,
+          maxHeight: mobileHeight,
           zIndex: this.config.zIndex + 1e3
         });
       } else if (isTablet) {
         iframeSize = 'tablet';
+        this.container.removeAttribute('data-mobile-fullscreen');
         // For tablets, scale responsively between mobile and desktop sizes
         // Use 40-60% of screen width, capped at desktop width (360px)
         const responsiveWidth = Math.max(360, Math.min(480, window.innerWidth * 0.5));
@@ -350,6 +394,7 @@ var __spreadValues = (a, b) => {
         });
       } else {
         iframeSize = 'desktop';
+        this.container.removeAttribute('data-mobile-fullscreen');
         // Force exact dimensions for desktop mode
         Object.assign(this.container.style, {
           position: "fixed",
@@ -376,6 +421,9 @@ var __spreadValues = (a, b) => {
     minimize() {
       if (!this.isOpen) return;
       this.isOpen = false;
+      
+      // Remove mobile fullscreen attribute
+      this.container.removeAttribute('data-mobile-fullscreen');
       
       // Reset all positioning to ensure proper anchoring
       Object.assign(this.container.style, {
@@ -477,6 +525,12 @@ var __spreadValues = (a, b) => {
             const isTablet = window.innerWidth > 768 && window.innerWidth <= 1200;
             
             if (isMobile) {
+              // Use window.innerHeight for accurate mobile viewport
+              const mobileHeight = window.innerHeight + 'px';
+              
+              // Set data attribute for CSS targeting
+              this.container.setAttribute('data-mobile-fullscreen', 'true');
+              
               Object.assign(this.container.style, {
                 position: "fixed",
                 top: "0",
@@ -484,10 +538,11 @@ var __spreadValues = (a, b) => {
                 bottom: "0",
                 right: "0",
                 width: "100vw",
-                height: "100vh",
-                height: "100dvh" // Dynamic viewport height for mobile browsers
+                height: mobileHeight,
+                maxHeight: mobileHeight
               });
             } else if (isTablet) {
+              this.container.removeAttribute('data-mobile-fullscreen');
               // For tablets, scale responsively between mobile and desktop sizes
               // Use 40-60% of screen width, capped at desktop width (360px)
               const responsiveWidth = Math.max(360, Math.min(480, window.innerWidth * 0.5));
@@ -504,6 +559,7 @@ var __spreadValues = (a, b) => {
                 right: "20px"
               });
             } else {
+              this.container.removeAttribute('data-mobile-fullscreen');
               Object.assign(this.container.style, {
                 position: "fixed",
                 top: "auto",
