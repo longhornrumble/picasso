@@ -6,7 +6,8 @@ body[data-iframe="true"] {
   background: transparent !important;
   margin: 0 !important;
   padding: 0 !important;
-  overflow: hidden !important;
+  overflow: visible !important;
+  box-sizing: border-box !important;
 }
 
 /* CSS Variables for Multi-Tenant Support */
@@ -496,16 +497,16 @@ body[data-iframe="true"] {
     left: 0 !important;
     right: 0 !important;
     bottom: 0 !important;
-    width: 100% !important;
-    height: 100% !important;
-    min-width: 100% !important;
-    min-height: 100% !important;
-    max-width: 100% !important;
+    width: auto !important;
+    height: auto !important;
+    min-width: unset !important;
+    min-height: unset !important;
+    max-width: unset !important;
     margin: 0 !important;
     padding: 0 !important;
-    border: none !important;
+    border: 1px solid var(--border-color, rgba(0, 0, 0, 0.08));
     border-radius: 16px !important;
-    box-shadow: none !important;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.04);
     display: flex !important;
     flex-direction: column !important;
     overflow: hidden !important;
@@ -1814,22 +1815,25 @@ body[data-iframe="true"].chat-open #root {
   height: 100% !important;
   min-height: 100% !important; /* Use container height, not viewport */
   position: relative !important; /* Provide containing block for absolute positioned chat */
-  overflow: hidden !important; /* Prevent overflow */
+  overflow: visible !important; /* Allow shadow overflow */
+  padding: 0 !important; /* Root should not have padding */
+  margin: 0 !important;
 }
 
 /* In iframe context, chat container should fill available space */
 body[data-iframe="true"].chat-open .chat-container {
   position: absolute !important;
-  top: 0 !important;
-  left: 0 !important;
-  right: 0 !important;
-  bottom: 0 !important;
-  width: 100% !important;
-  height: 100% !important;
+  top: 3px !important;
+  left: 3px !important;
+  right: 3px !important;
+  bottom: 3px !important;
+  width: auto !important;
+  height: auto !important;
   max-width: none !important;
   max-height: none !important;
   /* Keep border radius for non-mobile */
-  border: none !important;
+  border: 1px solid var(--border-color, rgba(0, 0, 0, 0.08)) !important;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.04) !important;
   margin: 0 !important;
   /* Remove fixed positioning since we're in an iframe */
   position: absolute !important;

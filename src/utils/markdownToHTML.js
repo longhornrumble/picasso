@@ -1,6 +1,25 @@
 import { marked } from 'marked';
 import { sanitizeHTML } from './security';
 
+// Helper function to check if URL is external
+function isExternalUrl(url) {
+  if (!url) return false;
+  
+  // Handle mailto links
+  if (url.startsWith('mailto:')) return true;
+  
+  try {
+    const linkUrl = new URL(url, window.location.href);
+    const currentUrl = new URL(window.location.href);
+    
+    // Compare origins (protocol + domain + port)
+    return linkUrl.origin !== currentUrl.origin;
+  } catch (e) {
+    // If URL parsing fails, treat as external for safety
+    return true;
+  }
+}
+
 // Configure marked to process markdown within HTML
 marked.setOptions({
   breaks: true,
@@ -48,7 +67,9 @@ marked.use({
       return false;
     },
     renderer(token) {
-      return `<a href="${token.href}" target="_blank" rel="noopener noreferrer">${token.text}</a>`;
+      const isExternal = isExternalUrl(token.href);
+      const targetAttr = isExternal ? ' target="_blank" rel="noopener noreferrer"' : '';
+      return `<a href="${token.href}"${targetAttr}>${token.text}</a>`;
     }
   }]
 });
@@ -75,10 +96,16 @@ export function markdownToHTML(markdown) {
     // Sanitize the HTML to prevent XSS attacks using enhanced security
     const sanitizedHtml = sanitizeHTML(html);
     
-    // Add target="_blank" to all links
+    // Process links to add target="_blank" only for external URLs
     const finalHtml = sanitizedHtml.replace(
-      /<a\s+href=/gi,
-      '<a target="_blank" rel="noopener noreferrer" href='
+      /<a\s+href="([^"]+)"/gi,
+      (match, url) => {
+        const isExternal = isExternalUrl(url);
+        if (isExternal) {
+          return `<a target="_blank" rel="noopener noreferrer" href="${url}"`;
+        }
+        return `<a href="${url}"`;
+      }
     );
     
     console.log('🔍 markdownToHTML - After sanitize:', finalHtml);

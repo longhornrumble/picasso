@@ -234,7 +234,7 @@ export function useCSSVariables(config) {
       /* === ENHANCED SHADOW SYSTEM === */
       '--bubble-shadow': branding.bubble_shadow || '0 1px 3px rgba(0, 0, 0, 0.1)',
       '--bubble-shadow-hover': branding.bubble_shadow_hover || '0 2px 8px rgba(0, 0, 0, 0.15)',
-      '--primary-shadow': branding.primary_shadow || generatePrimaryShadow(branding.primary_color),
+      '--primary-shadow': document.body.getAttribute('data-iframe') === 'true' ? 'none' : (branding.primary_shadow || generatePrimaryShadow(branding.primary_color)),
       '--primary-shadow-light': branding.primary_shadow_light || generatePrimaryShadowLight(branding.primary_color),
       '--primary-shadow-hover': branding.primary_shadow_hover || generatePrimaryShadowHover(branding.primary_color),
       '--container-shadow': branding.container_shadow || '0 10px 25px rgba(0, 0, 0, 0.1)',

@@ -48,11 +48,27 @@ describe('markdownToHTML', () => {
     expect(result).toContain('text');
   });
 
-  it('should convert links to HTML', () => {
+  it('should convert external links to HTML with target="_blank"', () => {
     const markdown = '[Link text](https://example.com)';
     const result = markdownToHTML(markdown);
-    expect(result).toContain('<a href="https://example.com"');
+    expect(result).toContain('<a target="_blank" rel="noopener noreferrer" href="https://example.com"');
     expect(result).toContain('>Link text</a>');
+  });
+
+  it('should convert internal links to HTML without target="_blank"', () => {
+    // Mock window.location for testing
+    const originalLocation = window.location;
+    delete window.location;
+    window.location = { href: 'http://localhost:3000/page1' };
+    
+    const markdown = '[Internal link](/page2)';
+    const result = markdownToHTML(markdown);
+    expect(result).toContain('<a href="/page2"');
+    expect(result).not.toContain('target="_blank"');
+    expect(result).toContain('>Internal link</a>');
+    
+    // Restore window.location
+    window.location = originalLocation;
   });
 
   it('should convert code blocks to HTML', () => {
