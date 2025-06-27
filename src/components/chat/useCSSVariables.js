@@ -215,7 +215,7 @@ export function useCSSVariables(config) {
       '--callout-border-radius': ensurePixelUnit(branding.callout_border_radius || branding.border_radius || '12px'),
       '--callout-padding': branding.callout_padding || '14px 18px',
       '--callout-min-width': ensurePixelUnit(branding.callout_min_width || '160px'),
-      '--callout-max-width': ensurePixelUnit(branding.callout_max_width || '320px'),
+      '--callout-max-width': branding.callout_max_width ? ensurePixelUnit(branding.callout_max_width) : 'none',
       '--callout-font-size': ensurePixelUnit(branding.callout_font_size || '14px'),
       '--callout-text-color': branding.callout_text_color || branding.font_color || '#374151',
       '--callout-main-weight': branding.callout_main_weight || '600',
