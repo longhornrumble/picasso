@@ -140,6 +140,33 @@ Picasso is an iframe-based chat widget for the MyRecruiter SaaS platform. It pro
 - ✅ All tests passing
 - ✅ Successfully deployed to production
 
+### Badge Count Persistence Issue - RESOLVED ✅ (2025-06-27)
+
+**Problem**: When users clicked internal links (same domain), the page would refresh and the unread message badge would show the total message count instead of only unread messages.
+
+**Root Cause**: 
+- Internal links correctly open in the same tab for better UX
+- Session data (messages, session ID) was persisted to sessionStorage
+- But `lastReadMessageIndex` was only stored in React state
+- On page refresh, `lastReadMessageIndex` reset to -1, making all messages appear unread
+
+**Solution**:
+1. **Added sessionStorage persistence** for `lastReadMessageIndex`
+2. **Initialize from saved state** on component mount (respects 30-minute session timeout)
+3. **Save index when closing chat** via the toggle button
+4. **Update saved index when opening chat** to mark all messages as read
+
+**Implementation** (ChatWidget.jsx):
+- Initialize `lastReadMessageIndex` from sessionStorage if session is valid
+- Save to `picasso_last_read_index` key when chat state changes
+- Maintains consistency with existing session persistence behavior
+
+**Result**:
+- ✅ Badge shows only truly unread messages after page refresh
+- ✅ Internal links continue to open in same tab (good UX)
+- ✅ Session state fully preserved across refreshes
+- ✅ Callout behavior more predictable with accurate message counts
+
 ### Chat Container Border & Shadow Visibility Issue - RESOLVED ✅ (2025-06-27)
 
 **Problem**: Chat container border only showing on left/top sides, box shadow not visible
