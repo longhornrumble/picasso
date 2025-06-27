@@ -66,7 +66,28 @@ function ChatWidget() {
   const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
   
   // Track last read message and user interaction
-  const [lastReadMessageIndex, setLastReadMessageIndex] = useState(0);
+  const [lastReadMessageIndex, setLastReadMessageIndex] = useState(() => {
+    // Initialize from sessionStorage if available
+    if (config?.widget_behavior?.remember_state) {
+      try {
+        const savedState = sessionStorage.getItem('picasso_chat_state');
+        const lastActivity = sessionStorage.getItem('picasso_last_activity');
+        const savedReadIndex = sessionStorage.getItem('picasso_last_read_index');
+        
+        if (savedState !== null && lastActivity && savedReadIndex !== null) {
+          const timeSinceActivity = Date.now() - parseInt(lastActivity);
+          const SESSION_TIMEOUT = 30 * 60 * 1000; // 30 minutes
+          
+          if (timeSinceActivity < SESSION_TIMEOUT) {
+            return parseInt(savedReadIndex) || 0;
+          }
+        }
+      } catch (error) {
+        console.warn('Failed to parse saved read index:', error);
+      }
+    }
+    return 0;
+  });
   const [hasOpenedChat, setHasOpenedChat] = useState(false);
   
   // 🔧 FIX: Add ref to track if callout was auto-dismissed
@@ -96,6 +117,10 @@ function ChatWidget() {
       try {
         sessionStorage.setItem('picasso_chat_state', JSON.stringify(newOpen));
         sessionStorage.setItem('picasso_last_activity', Date.now().toString());
+        // Save the last read index when closing
+        if (!newOpen) {
+          sessionStorage.setItem('picasso_last_read_index', lastReadMessageIndex.toString());
+        }
       } catch (e) {
         console.warn('Failed to save chat state on toggle:', e);
       }
@@ -249,6 +274,15 @@ function ChatWidget() {
       setUnreadCount(0);
       setLastReadMessageIndex(messages.length);
       setHasOpenedChat(true);
+      
+      // Update saved read index when opening chat
+      if (config?.widget_behavior?.remember_state) {
+        try {
+          sessionStorage.setItem('picasso_last_read_index', messages.length.toString());
+        } catch (e) {
+          console.warn('Failed to save last read index:', e);
+        }
+      }
     } else {
       const newBotMessages = messages.slice(lastReadMessageIndex).filter(msg => 
         msg.role === "assistant" || msg.role === "bot"
