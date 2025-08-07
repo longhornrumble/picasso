@@ -202,7 +202,7 @@ function ChatWidget() {
   // Get chat title
   const chat_title = config?.chat_title || 
                     config?.branding?.chat_title || 
-                    (config?.tenant_id === "FOS402334" ? "Foster Village" : "Chat");
+                    "Chat";
 
   // Auto-scroll function
   const scrollToLatestMessage = () => {

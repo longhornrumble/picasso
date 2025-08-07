@@ -375,7 +375,7 @@ const ChatProvider = ({ children }) => {
     return tenantConfig?.tenant_hash || 
            tenantConfig?.metadata?.tenantHash || 
            window.PicassoConfig?.tenant ||
-           'fo85e6a06dcdf4';
+           environmentConfig.getDefaultTenantHash();
   };
 
   const makeAPIRequest = async (url, options, retries = 3) => {
@@ -924,7 +924,7 @@ ChatProvider.defaultProps = {
 if (import.meta.env.DEV) {
   if (typeof window !== 'undefined') {
     window.testChatAPI = async (message, tenantHash) => {
-      const hash = tenantHash || 'fo85e6a06dcdf4';
+      const hash = tenantHash || environmentConfig.getDefaultTenantHash();
       errorLogger.logInfo('🧪 Testing chat API...', { message, tenantHash: hash });
       
       try {

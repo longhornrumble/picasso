@@ -106,6 +106,7 @@ const ENVIRONMENTS = {
     CONFIG_ENDPOINT: 'https://chat.myrecruiter.ai/Master_Function?action=get_config',
     CHAT_ENDPOINT: 'https://chat.myrecruiter.ai/Master_Function?action=chat',
     ERROR_REPORTING_ENDPOINT: 'https://chat.myrecruiter.ai/Master_Function?action=log_error',
+    DEFAULT_TENANT_HASH: 'my87674d777bf9', // MyRecruiter default tenant for development
     
     // Development-specific settings
     ENABLE_HOT_RELOAD: true,
@@ -126,6 +127,7 @@ const ENVIRONMENTS = {
     CONFIG_ENDPOINT: 'https://staging-chat.myrecruiter.ai/Master_Function?action=get_config',
     CHAT_ENDPOINT: 'https://staging-chat.myrecruiter.ai/Master_Function?action=chat',
     ERROR_REPORTING_ENDPOINT: 'https://staging-chat.myrecruiter.ai/Master_Function?action=log_error',
+    DEFAULT_TENANT_HASH: 'my87674d777bf9', // MyRecruiter default tenant for staging
     
     // Staging-specific settings
     ENABLE_HOT_RELOAD: false,
@@ -147,6 +149,7 @@ const ENVIRONMENTS = {
     CONFIG_ENDPOINT: 'https://chat.myrecruiter.ai/Master_Function?action=get_config',
     CHAT_ENDPOINT: 'https://chat.myrecruiter.ai/Master_Function?action=chat',
     ERROR_REPORTING_ENDPOINT: 'https://chat.myrecruiter.ai/Master_Function?action=log_error',
+    DEFAULT_TENANT_HASH: 'my87674d777bf9', // MyRecruiter default tenant for production
     
     // Production-specific settings
     ENABLE_HOT_RELOAD: false,
@@ -234,6 +237,9 @@ export const config = {
   isDevelopment: () => currentEnv === 'development',
   isStaging: () => currentEnv === 'staging',
   isProduction: () => currentEnv === 'production',
+  
+  // Get default tenant hash for current environment
+  getDefaultTenantHash: () => ENVIRONMENTS[currentEnv].DEFAULT_TENANT_HASH,
   
   // Logging helper that respects environment log level
   log: (level, message, ...args) => {

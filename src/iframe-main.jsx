@@ -159,6 +159,12 @@ function setupCommandListener() {
           }
           break;
           
+        case 'MINIMIZE':
+          console.log('📡 Received MINIMIZE command');
+          document.body.classList.remove('chat-open');
+          notifyParentEvent('CHAT_CLOSED');
+          break;
+          
         default:
           console.log('❓ Unknown command:', action);
       }
@@ -234,7 +240,7 @@ function initializeWidget() {
     
     // Get tenant hash from URL or use default
     const urlParams = new URLSearchParams(window.location.search);
-    const tenantHash = urlParams.get('t') || 'fo85e6a06dcdf4';
+    const tenantHash = urlParams.get('t') || environmentConfig.getDefaultTenantHash();
     console.log('🔑 Using tenant hash:', tenantHash);
     
     // Set up config for iframe mode to use live API

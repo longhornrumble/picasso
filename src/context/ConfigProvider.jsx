@@ -51,12 +51,12 @@ const ConfigProvider = ({ children }) => {
         return window.PicassoConfig.tenant;
       }
 
-      console.warn('⚠️ No valid tenant hash found, using development fallback');
-      return 'fo85e6a06dcdf4'; // Development fallback
+      console.warn('⚠️ No valid tenant hash found, using environment default');
+      return environmentConfig.getDefaultTenantHash();
       
     } catch (error) {
       console.warn('Hash extraction failed:', error);
-      return 'fo85e6a06dcdf4'; // Development fallback
+      return environmentConfig.getDefaultTenantHash();
     }
   };
 
@@ -361,7 +361,7 @@ if (typeof window !== 'undefined') {
 
   // Test health check action
   window.testHealthCheck = async (tenantHash) => {
-    const hash = tenantHash || 'fo85e6a06dcdf4';
+    const hash = tenantHash || environmentConfig.getDefaultTenantHash();
     console.log('🧪 Testing health check action...');
     
     try {
@@ -390,7 +390,7 @@ if (typeof window !== 'undefined') {
 
   // Test config loading from S3
   window.testConfigLoad = async (tenantHash) => {
-    const hash = tenantHash || 'fo85e6a06dcdf4';
+    const hash = tenantHash || environmentConfig.getDefaultTenantHash();
     console.log('🧪 Testing S3/CloudFront config load...');
     
     try {
@@ -423,7 +423,7 @@ if (typeof window !== 'undefined') {
 
   // Test chat action
   window.testChatAction = async (tenantHash, userInput = "Hello") => {
-    const hash = tenantHash || 'fo85e6a06dcdf4';
+    const hash = tenantHash || environmentConfig.getDefaultTenantHash();
     console.log('🧪 Testing chat action...');
     
     try {
