@@ -981,91 +981,7 @@ const ChatProvider = ({ children }) => {
     if (message.role === "user" && !message.skipBotResponse && !message.uploadState) {
       const tenantHash = getTenantHash();
       
-      // Try streaming first if available, fallback to HTTP
-      if (streamingEnabled) {
-        errorLogger.logInfo('🌊 Attempting streaming response', {
-          messageId: messageWithId.id,
-          tenantHash: tenantHash.slice(0, 8) + '...'
-        });
-        
-        const attemptStreaming = async () => {
-          try {
-            const streamingUtils = await getStreamingUtils();
-            if (!streamingUtils) {
-              throw new Error('Streaming utilities not available');
-            }
-
-            const streamingEndpoint = environmentConfig.getStreamingUrl(tenantHash);
-            
-            setIsTyping(true);
-            
-            // Create placeholder message for streaming
-            const streamingMessageId = `streaming_${Date.now()}_${Math.random()}`;
-            const streamingMessage = {
-              id: streamingMessageId,
-              role: "assistant",
-              content: "",
-              timestamp: new Date().toISOString(),
-              metadata: {
-                streaming: true,
-                messageId: messageWithId.id
-              }
-            };
-            
-            // Add streaming message to UI
-            setMessages(prev => [...prev, streamingMessage]);
-            setCurrentStreamingMessage({
-              ...streamingMessage,
-              fallbackToHttp: () => {
-                // Remove streaming message and try HTTP
-                setMessages(prev => prev.filter(msg => msg.id !== streamingMessageId));
-                setCurrentStreamingMessage(null);
-                makeHTTPAPICall();
-              }
-            });
-            
-            // Initialize streaming hook dynamically
-            const streamingHook = streamingUtils.useStreaming({
-              streamingEndpoint,
-              tenantHash,
-              onMessage: streamingConfigRef.current.onMessage,
-              onComplete: streamingConfigRef.current.onComplete,
-              onError: streamingConfigRef.current.onError
-            });
-            
-            // Start streaming
-            await streamingHook.startStreaming({
-              userInput: sanitizedUserContent,
-              sessionId: sessionIdRef.current
-            });
-            
-            streamingHookRef.current = streamingHook;
-            
-          } catch (error) {
-            errorLogger.logWarning('🔄 Streaming failed - falling back to HTTP', {
-              error: error.message,
-              messageId: messageWithId.id
-            });
-            
-            // Clean up and fallback
-            setCurrentStreamingMessage(null);
-            setIsTyping(false);
-            makeHTTPAPICall();
-          }
-        };
-        
-        attemptStreaming();
-      } else {
-        // Use HTTP directly if streaming is not available
-        errorLogger.logInfo('📡 Using HTTP response (streaming not available)', {
-          streamingEnabled,
-          streamingHookAvailable: !!streamingHookRef.current,
-          messageId: messageWithId.id
-        });
-        
-        makeHTTPAPICall();
-      }
-      
+      // Define HTTP API call function first to avoid hoisting issues
       const makeHTTPAPICall = async () => {
         errorLogger.logInfo('✅ Making HTTP chat request via actions API');
         setIsTyping(true);
@@ -1077,12 +993,21 @@ const ChatProvider = ({ children }) => {
           });
           
           const sessionId = sessionIdRef.current;
+          
+          // Get conversation context for memory persistence
+          const conversationContext = conversationManagerRef.current ? 
+            conversationManagerRef.current.getConversationContext() : 
+            null;
+          
           const requestBody = {
             tenant_hash: tenantHash,
             user_input: sanitizedUserContent, // Send sanitized content
             session_id: sessionId,
             files: message.files || [],
-            messageId: messageWithId.id
+            messageId: messageWithId.id,
+            
+            // Add conversation context for server-side memory
+            conversation_context: conversationContext
           };
           
           // Use the environment configuration for proper endpoint URL with tenant hash
@@ -1168,20 +1093,34 @@ const ChatProvider = ({ children }) => {
           
           setMessages(prev => [...prev, botMessage]);
           
-          // Add bot message to conversation manager for persistence
+          // Update conversation manager with complete conversation state
           try {
             if (conversationManagerRef.current) {
-              const success = conversationManagerRef.current.addMessage(botMessage);
-              if (!success) {
-                errorLogger.logWarning('Failed to add bot message to conversation manager', {
-                  messageId: botMessage.id,
-                  sessionId: data.session_id
-                });
-              }
+              // Use the new updateFromChatResponse method for comprehensive state management
+              conversationManagerRef.current.updateFromChatResponse(
+                data, // Full chat response
+                messageWithId, // User message
+                botMessage // Bot response
+              );
+              
+              // Update conversation metadata
+              const metadata = conversationManagerRef.current.getMetadata();
+              setConversationMetadata({
+                conversationId: conversationManagerRef.current.conversationId,
+                messageCount: metadata.messageCount,
+                hasBeenSummarized: metadata.hasBeenSummarized,
+                canLoadHistory: true
+              });
+              
+              errorLogger.logInfo('🔄 Conversation state updated from chat response', {
+                conversationId: conversationManagerRef.current.conversationId,
+                totalMessages: metadata.messageCount,
+                sessionId: data.session_id
+              });
             }
           } catch (error) {
             errorLogger.logError(error, {
-              context: 'conversation_manager_bot_message',
+              context: 'conversation_manager_update_from_chat_response',
               messageId: botMessage.id
             });
           }
@@ -1230,6 +1169,91 @@ const ChatProvider = ({ children }) => {
           setIsTyping(false);
         }
       };
+      
+      // Try streaming first if available, fallback to HTTP
+      if (streamingEnabled) {
+        errorLogger.logInfo('🌊 Attempting streaming response', {
+          messageId: messageWithId.id,
+          tenantHash: tenantHash.slice(0, 8) + '...'
+        });
+        
+        const attemptStreaming = async () => {
+          try {
+            const streamingUtils = await getStreamingUtils();
+            if (!streamingUtils) {
+              throw new Error('Streaming utilities not available');
+            }
+
+            const streamingEndpoint = environmentConfig.getStreamingUrl(tenantHash);
+            
+            setIsTyping(true);
+            
+            // Create placeholder message for streaming
+            const streamingMessageId = `streaming_${Date.now()}_${Math.random()}`;
+            const streamingMessage = {
+              id: streamingMessageId,
+              role: "assistant",
+              content: "",
+              timestamp: new Date().toISOString(),
+              metadata: {
+                streaming: true,
+                messageId: messageWithId.id
+              }
+            };
+            
+            // Add streaming message to UI
+            setMessages(prev => [...prev, streamingMessage]);
+            setCurrentStreamingMessage({
+              ...streamingMessage,
+              fallbackToHttp: () => {
+                // Remove streaming message and try HTTP
+                setMessages(prev => prev.filter(msg => msg.id !== streamingMessageId));
+                setCurrentStreamingMessage(null);
+                makeHTTPAPICall();
+              }
+            });
+            
+            // Initialize streaming hook dynamically
+            const streamingHook = streamingUtils.useStreaming({
+              streamingEndpoint,
+              tenantHash,
+              onMessage: streamingConfigRef.current.onMessage,
+              onComplete: streamingConfigRef.current.onComplete,
+              onError: streamingConfigRef.current.onError
+            });
+            
+            // Start streaming
+            await streamingHook.startStreaming({
+              userInput: sanitizedUserContent,
+              sessionId: sessionIdRef.current
+            });
+            
+            streamingHookRef.current = streamingHook;
+            
+          } catch (error) {
+            errorLogger.logWarning('🔄 Streaming failed - falling back to HTTP', {
+              error: error.message,
+              messageId: messageWithId.id
+            });
+            
+            // Clean up and fallback
+            setCurrentStreamingMessage(null);
+            setIsTyping(false);
+            makeHTTPAPICall();
+          }
+        };
+        
+        attemptStreaming();
+      } else {
+        // Use HTTP directly if streaming is not available
+        errorLogger.logInfo('📡 Using HTTP response (streaming not available)', {
+          streamingEnabled,
+          streamingHookAvailable: !!streamingHookRef.current,
+          messageId: messageWithId.id
+        });
+        
+        makeHTTPAPICall();
+      }
     }
   }, [tenantConfig, retryMessage]);
 

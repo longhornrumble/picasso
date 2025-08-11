@@ -52,6 +52,14 @@ except ImportError as e:
     logger.warning(f"⚠️ audit_logger not available: {e}")
     AUDIT_LOGGER_AVAILABLE = False
 
+try:
+    from conversation_handler import handle_conversation_action
+    CONVERSATION_HANDLER_AVAILABLE = True
+    logger.info("✅ conversation_handler module loaded successfully")
+except ImportError as e:
+    logger.warning(f"⚠️ conversation_handler not available: {e}")
+    CONVERSATION_HANDLER_AVAILABLE = False
+
 def get_security_context(event, context):
     """Extract security context from request for monitoring"""
     headers = event.get("headers", {}) or {}
@@ -133,6 +141,10 @@ def lambda_handler(event, context):
             logger.info("✅ Handling action=state_clear")
             return handle_state_clear_action_wrapper(event, tenant_hash, security_context)
         
+        elif action == "conversation":
+            logger.info("✅ Handling action=conversation")
+            return handle_conversation_action_wrapper(event, context, security_context)
+        
         # Legacy support: hash without action (defaults to get_config)
         elif http_method == "GET" and tenant_hash and not action:
             logger.info("✅ Handling legacy hash request (defaulting to get_config)")
@@ -148,7 +160,7 @@ def lambda_handler(event, context):
             return cors_response(400, {
                 "error": "Invalid request format",
                 "expected_format": "?action=ACTION&t=HASH",
-                "valid_actions": ["get_config", "chat", "health_check", "cache_status", "clear_cache", "state_clear"],
+                "valid_actions": ["get_config", "chat", "health_check", "cache_status", "clear_cache", "state_clear", "conversation"],
                 "received": {
                     "method": http_method,
                     "action": action,
@@ -609,6 +621,39 @@ def handle_state_clear_action_wrapper(event, tenant_hash, security_context):
         logger.error(f"❌ State clear action failed: {str(e)}")
         return cors_response(500, {
             "error": "State clear processing failed",
+            "details": str(e)
+        })
+
+def handle_conversation_action_wrapper(event, context, security_context):
+    """Wrapper for conversation action with audit integration"""
+    try:
+        if not CONVERSATION_HANDLER_AVAILABLE:
+            logger.error("conversation_handler module not available")
+            return cors_response(503, {
+                "error": "Conversation service unavailable",
+                "details": "Conversation handler module not available"
+            })
+        
+        logger.info("💬 Processing conversation action")
+        
+        # Call conversation handler
+        response = handle_conversation_action(event, context)
+        return ensure_cors_headers(response)
+        
+    except Exception as e:
+        logger.error(f"❌ Conversation action failed: {str(e)}")
+        
+        # Audit failure if possible
+        if AUDIT_LOGGER_AVAILABLE:
+            audit_logger.log_audit_event(
+                tenant_id="unknown",
+                event_type='CONVERSATION_ERROR',
+                session_id=security_context.get('request_id'),
+                context={'error': str(e)[:200]}
+            )
+        
+        return cors_response(500, {
+            "error": "Conversation processing failed",
             "details": str(e)
         })
 
