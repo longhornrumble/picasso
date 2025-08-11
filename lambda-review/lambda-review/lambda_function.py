@@ -35,6 +35,25 @@ except ImportError as e:
     logger.warning(f"⚠️ intent_router not available: {e}")
     INTENT_ROUTER_AVAILABLE = False
 
+# Security monitoring removed - implementing basic audit trails in Phase 2
+SECURITY_MONITOR_AVAILABLE = False
+
+def get_security_context(event, context):
+    """Extract security context from request for monitoring"""
+    headers = event.get("headers", {}) or {}
+    request_context = event.get("requestContext", {})
+    
+    return {
+        "source_ip": (
+            request_context.get("identity", {}).get("sourceIp") or 
+            headers.get("X-Forwarded-For", "").split(',')[0].strip() or
+            headers.get("X-Real-IP") or
+            "unknown"
+        ),
+        "user_agent": headers.get("User-Agent", "unknown"),
+        "request_id": context.aws_request_id if context else "unknown"
+    }
+
 def lambda_handler(event, context):
     """
     Master Lambda Handler - Pure Hash + Action System
@@ -42,6 +61,7 @@ def lambda_handler(event, context):
     """
     try:
         logger.info("📥 Master Function triggered with Universal Widget support")
+        security_context = get_security_context(event, context)
         
         # Handle OPTIONS requests first (CORS preflight)
         http_method = get_http_method(event)
@@ -59,7 +79,7 @@ def lambda_handler(event, context):
         # PURE ACTION ROUTING SYSTEM
         if action == "get_config":
             logger.info("✅ Handling action=get_config")
-            return handle_get_config_action(tenant_hash)
+            return handle_get_config_action(tenant_hash, security_context)
         
         elif action == "health_check":
             logger.info("✅ Handling action=health_check")
@@ -108,10 +128,12 @@ def lambda_handler(event, context):
             "request_id": context.aws_request_id if context else "unknown"
         })
 
-def handle_get_config_action(tenant_hash):
-    """Handle action=get_config - pure hash-based"""
+def handle_get_config_action(tenant_hash, security_context):
+    """Handle action=get_config - pure hash-based with security monitoring"""
     try:
         if not tenant_hash:
+            # Log invalid request attempt
+            logger.warning(f"SECURITY_EVENT: Missing tenant hash in config request from {security_context.get('source_ip', 'unknown')}")
             return cors_response(400, {
                 "error": "Missing tenant hash",
                 "usage": "GET ?action=get_config&t=HASH"
@@ -121,20 +143,51 @@ def handle_get_config_action(tenant_hash):
         
         if not TENANT_CONFIG_AVAILABLE:
             logger.warning("tenant_config module not available, using S3 fallback")
-            return handle_s3_config_fallback(tenant_hash)
+            return handle_s3_config_fallback(tenant_hash, security_context)
         
         # Use tenant config module
-        config = get_config_for_tenant_by_hash(tenant_hash)
-        
-        if config:
-            logger.info(f"[{tenant_hash[:8]}...] ✅ Config loaded successfully")
-            return cors_response(200, config)
-        else:
-            logger.warning(f"[{tenant_hash[:8]}...] Config not found, using S3 fallback")
-            return handle_s3_config_fallback(tenant_hash)
+        try:
+            config = get_config_for_tenant_by_hash(tenant_hash)
+            
+            if config:
+                logger.info(f"[{tenant_hash[:8]}...] ✅ Config loaded successfully")
+                
+                # Log successful config access
+                logger.info(f"SECURITY_ACCESS: Successful config access for {tenant_hash[:8]}... from {security_context.get('source_ip', 'unknown')}")
+                
+                return cors_response(200, config)
+            else:
+                # 🛡️ SECURITY: No fallback for security - return 404 for invalid tenant hash
+                logger.error(f"[{tenant_hash[:8]}...] ❌ SECURITY: Tenant hash not authorized")
+                
+                # Log unauthorized access attempt
+                logger.error(f"SECURITY_EVENT: Unauthorized config request for {tenant_hash[:8]}... from {security_context.get('source_ip', 'unknown')}")
+                
+                return cors_response(404, {
+                    "error": "Tenant configuration not found",
+                    "message": "The requested tenant hash is not authorized or does not exist"
+                })
+        except ValueError as e:
+            # Handle invalid tenant hash validation errors as 404
+            if "Invalid tenant hash" in str(e):
+                logger.error(f"[{tenant_hash[:8]}...] ❌ SECURITY: Invalid tenant hash format")
+                
+                # Log invalid hash attempt
+                logger.error(f"SECURITY_EVENT: Invalid hash attempt {tenant_hash[:8]}... from {security_context.get('source_ip', 'unknown')}")
+                
+                return cors_response(404, {
+                    "error": "Tenant configuration not found",
+                    "message": "The requested tenant hash is not authorized or does not exist"
+                })
+            else:
+                raise  # Re-raise other ValueError types
             
     except Exception as e:
         logger.error(f"[{tenant_hash[:8]}...] ❌ get_config action failed: {str(e)}")
+        
+        # Log security configuration access failure
+        logger.error(f"SECURITY_EVENT: Config access failed for {tenant_hash[:8]}... from {security_context.get('source_ip', 'unknown')}: {str(e)}")
+        
         return cors_response(500, {
             "error": "Config loading failed",
             "details": str(e)
@@ -158,6 +211,22 @@ def handle_chat_action(event, tenant_hash):
                 "error": "Missing tenant hash",
                 "usage": "POST ?action=chat&t=HASH or include tenant_hash in body"
             })
+        
+        # 🛡️ SECURITY: Validate tenant hash for chat requests
+        try:
+            from tenant_config_loader import is_valid_tenant_hash, log_security_event
+            
+            if not is_valid_tenant_hash(tenant_hash):
+                logger.error(f"[{tenant_hash[:8]}...] ❌ SECURITY: Invalid tenant hash in chat request")
+                log_security_event("chat_invalid_hash", tenant_hash)
+                return cors_response(403, {
+                    "error": "Unauthorized tenant access",
+                    "message": "The provided tenant hash is not authorized"
+                })
+        except ImportError:
+            # Fallback validation if tenant_config_loader not available
+            if not tenant_hash or len(tenant_hash) < 10:
+                return cors_response(400, {"error": "Invalid tenant hash format"})
         
         logger.info(f"[{tenant_hash[:8]}...] 💬 Processing chat action")
         
@@ -276,9 +345,55 @@ def handle_cache_clear_action(tenant_hash):
             "details": str(e)
         })
 
-def handle_s3_config_fallback(tenant_hash):
-    """Direct S3 config loading fallback - pure hash-based"""
+def handle_s3_config_fallback(tenant_hash, security_context):
+    """Direct S3 config loading fallback - pure hash-based with security monitoring"""
     try:
+        # 🛡️ SECURITY: Apply strict validation (with fallback if import fails)
+        hash_is_valid = False
+        try:
+            from tenant_config_loader import is_valid_tenant_hash, log_security_event
+            hash_is_valid = is_valid_tenant_hash(tenant_hash)
+            if not hash_is_valid:
+                logger.error(f"[{tenant_hash[:8]}...] ❌ SECURITY: Invalid tenant hash in S3 fallback")
+                log_security_event("s3_fallback_invalid_hash", tenant_hash)
+        except ImportError:
+            # 🛡️ SECURITY: Fallback validation if tenant_config_loader unavailable
+            logger.warning("tenant_config_loader not available for validation, using strict fallback")
+            # Apply same validation logic as tenant_config_loader with dynamic S3 check
+            import re
+            TENANT_HASH_PATTERN = re.compile(r'^[a-zA-Z0-9]{10,20}$')
+            
+            # Basic format validation
+            format_valid = (
+                tenant_hash and 
+                isinstance(tenant_hash, str) and 
+                len(tenant_hash) >= 10 and len(tenant_hash) <= 20 and
+                TENANT_HASH_PATTERN.match(tenant_hash)
+            )
+            
+            # Dynamic S3 mapping file validation
+            if format_valid:
+                try:
+                    mapping_key = f"{MAPPINGS_PREFIX}/{tenant_hash}.json"
+                    s3.head_object(Bucket=S3_BUCKET, Key=mapping_key)
+                    hash_is_valid = True
+                    logger.info(f"[{tenant_hash[:8]}...] ✅ Hash validation passed via fallback method")
+                except ClientError as e:
+                    if e.response['Error']['Code'] == 'NoSuchKey':
+                        logger.warning(f"[{tenant_hash[:8]}...] ⚠️ Hash validation failed - no mapping file (fallback)")
+                    hash_is_valid = False
+                except Exception as e:
+                    logger.error(f"[{tenant_hash[:8]}...] ❌ Error during fallback hash validation: {str(e)}")
+                    hash_is_valid = False
+            else:
+                hash_is_valid = False
+        
+        if not hash_is_valid:
+            return cors_response(404, {
+                "error": "Tenant configuration not found", 
+                "message": "The requested tenant hash is not authorized or does not exist"
+            })
+        
         # Resolve hash to get tenant information
         mapping_key = f"{MAPPINGS_PREFIX}/{tenant_hash}.json"
         

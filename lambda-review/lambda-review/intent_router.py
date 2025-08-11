@@ -44,10 +44,14 @@ def route_intent(event, config=None):
             except Exception as e:
                 logger.warning(f"[{tenant_hash[:8]}...] ⚠️ Could not load config: {e}")
         
-        # Fallback config if none available
+        # 🛡️ SECURITY: NO fallback config for healthcare compliance
+        # Invalid tenant hashes must return 404, never fallback configurations
         if not config:
-            logger.warning(f"[{tenant_hash[:8]}...] Using fallback config")
-            config = get_fallback_config(tenant_hash)
+            logger.error(f"[{tenant_hash[:8]}...] ❌ SECURITY: Tenant configuration not found - blocking access")
+            if "sessionState" in event:
+                return format_lex_markdown_response("Tenant configuration not found", {})
+            else:
+                return format_http_error(404, "Tenant configuration not found", "The requested tenant hash is not authorized or does not exist")
         
         tone = config.get("tone_prompt", "You are a helpful assistant.")
         logger.info(f"[{tenant_hash[:8]}...] 🎨 Using tone: {tone[:40]}...")
@@ -176,16 +180,8 @@ def build_session_attributes_hash(tenant_hash, prompt_index, topic):
         "cloudfront_domain": "chat.myrecruiter.ai"
     }
 
-def get_fallback_config(tenant_hash):
-    """Generate fallback config - dynamic, no hardcoded customer names"""
-    
-    return {
-        "tenant_hash": tenant_hash,
-        "tone_prompt": "You are a helpful and friendly assistant.",
-        "chat_title": "Chat",
-        "welcome_message": "Hello! How can I help you today?",
-        "aws": {
-            "model_id": "anthropic.claude-3-sonnet-20240229-v1:0",
-            "aws_region": "us-east-1"
-        }
-    }
+# 🛡️ SECURITY: Fallback config function REMOVED for healthcare compliance
+# Invalid tenant hashes must return 404, never fallback configurations
+# This prevents unauthorized access to ANY tenant data or chat functionality
+
+# REMOVED: get_fallback_config() - All invalid hashes must be blocked with 404
