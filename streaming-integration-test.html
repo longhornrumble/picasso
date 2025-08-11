@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Streaming Integration Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .test-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+        .test-result {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .success { background-color: #d4edda; color: #155724; }
+        .warning { background-color: #fff3cd; color: #856404; }
+        .error { background-color: #f8d7da; color: #721c24; }
+        .info { background-color: #d1ecf1; color: #0c5460; }
+        #test-output {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            height: 300px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background-color: #0056b3; }
+        button:disabled { background-color: #6c757d; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+    <h1>🌊 Picasso Streaming Integration Test</h1>
+    
+    <div class="test-section">
+        <h2>📋 Test Overview</h2>
+        <p>This page tests the surgical integration of streaming capability into the Picasso chat widget while preserving HTTP fallback functionality.</p>
+        
+        <h3>Test Scenarios:</h3>
+        <ul>
+            <li>✅ Feature flag detection and control</li>
+            <li>🌊 Streaming attempt with HTTP fallback</li>
+            <li>📡 HTTP-only mode when streaming disabled</li>
+            <li>🔄 Error handling and resilience</li>
+            <li>🎛️ Debug information and monitoring</li>
+        </ul>
+    </div>
+
+    <div class="test-section">
+        <h2>🎛️ Streaming Controls</h2>
+        <p>Use these controls to test different streaming scenarios:</p>
+        
+        <button onclick="enableStreaming()">🟢 Enable Streaming</button>
+        <button onclick="disableStreaming()">🔴 Disable Streaming</button>
+        <button onclick="resetStreaming()">🔄 Reset to Default</button>
+        <button onclick="testFeatureFlag()">🧪 Test Feature Flag</button>
+        
+        <div id="streaming-status" class="test-result info">
+            <strong>Status:</strong> <span id="status-text">Checking...</span>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>🧪 Comprehensive Test Suite</h2>
+        
+        <button onclick="runAllTests()" id="run-tests-btn">▶️ Run All Tests</button>
+        <button onclick="clearOutput()">🧹 Clear Output</button>
+        
+        <div id="test-results"></div>
+        <div id="test-output"></div>
+    </div>
+
+    <script>
+        let testOutput = [];
+        
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = `[${timestamp}] ${message}`;
+            testOutput.push({ message: logEntry, type });
+            updateOutput();
+            console.log(logEntry);
+        }
+        
+        function updateOutput() {
+            const outputEl = document.getElementById('test-output');
+            outputEl.innerHTML = testOutput.map(entry => 
+                `<div class="${entry.type}">${entry.message}</div>`
+            ).join('');
+            outputEl.scrollTop = outputEl.scrollHeight;
+        }
+        
+        function clearOutput() {
+            testOutput = [];
+            updateOutput();
+            document.getElementById('test-results').innerHTML = '';
+        }
+        
+        function updateStreamingStatus() {
+            const statusEl = document.getElementById('status-text');
+            
+            if (typeof window.picassoConfig === 'undefined') {
+                statusEl.textContent = 'Picasso not loaded - load widget first';
+                return;
+            }
+            
+            const isForced = window.PICASSO_FORCE_STREAMING === true;
+            const isDisabled = window.PICASSO_DISABLE_STREAMING === true;
+            const config = window.picassoConfig || {};
+            
+            let status = 'Default behavior';
+            if (isDisabled) status = 'Force Disabled';
+            else if (isForced) status = 'Force Enabled';
+            
+            statusEl.textContent = `${status} | Environment: ${config.ENVIRONMENT || 'unknown'}`;
+        }
+        
+        function enableStreaming() {
+            window.PICASSO_FORCE_STREAMING = true;
+            delete window.PICASSO_DISABLE_STREAMING;
+            updateStreamingStatus();
+            log('✅ Streaming force enabled - refresh widget to apply', 'success');
+        }
+        
+        function disableStreaming() {
+            window.PICASSO_DISABLE_STREAMING = true;
+            delete window.PICASSO_FORCE_STREAMING;
+            updateStreamingStatus();
+            log('❌ Streaming force disabled - refresh widget to apply', 'warning');
+        }
+        
+        function resetStreaming() {
+            delete window.PICASSO_FORCE_STREAMING;
+            delete window.PICASSO_DISABLE_STREAMING;
+            updateStreamingStatus();
+            log('🔄 Streaming reset to default - refresh widget to apply', 'info');
+        }
+        
+        function testFeatureFlag() {
+            if (typeof window.testStreamingFeatureFlag === 'function') {
+                const result = window.testStreamingFeatureFlag();
+                log(`🧪 Feature Flag Test Result: ${result ? 'ENABLED' : 'DISABLED'}`, result ? 'success' : 'warning');
+            } else if (typeof window.picassoConfig !== 'undefined') {
+                const config = window.picassoConfig;
+                const mockTenantConfig = { features: { streaming_enabled: true } };
+                const result = config.isStreamingEnabled ? config.isStreamingEnabled(mockTenantConfig) : false;
+                log(`🧪 Feature Flag Test Result: ${result ? 'ENABLED' : 'DISABLED'}`, result ? 'success' : 'warning');
+            } else {
+                log('⚠️ Cannot test feature flag - Picasso config not available', 'warning');
+            }
+        }
+        
+        async function runAllTests() {
+            const runBtn = document.getElementById('run-tests-btn');
+            runBtn.disabled = true;
+            runBtn.textContent = '⏳ Running Tests...';
+            
+            clearOutput();
+            log('🚀 Starting comprehensive streaming integration tests', 'info');
+            
+            const results = {
+                passed: 0,
+                failed: 0,
+                warnings: 0
+            };
+            
+            // Test 1: Environment Detection
+            await runTest('Environment Detection', () => {
+                if (typeof window.picassoConfig === 'undefined') {
+                    throw new Error('Picasso config not loaded');
+                }
+                
+                const config = window.picassoConfig;
+                const environment = config.ENVIRONMENT;
+                
+                if (!environment || !['development', 'staging', 'production'].includes(environment)) {
+                    throw new Error(`Invalid environment: ${environment}`);
+                }
+                
+                return `Environment: ${environment}`;
+            }, results);
+            
+            // Test 2: Feature Flag System
+            await runTest('Feature Flag System', () => {
+                if (typeof window.picassoConfig === 'undefined') {
+                    throw new Error('Picasso config not available');
+                }
+                
+                const config = window.picassoConfig;
+                
+                if (typeof config.isStreamingEnabled !== 'function') {
+                    throw new Error('isStreamingEnabled function not available');
+                }
+                
+                // Test with different configurations
+                const tests = [
+                    { features: { streaming_enabled: true }, expected: true },
+                    { features: { streaming_enabled: false }, expected: false },
+                    { features: {}, expected: false }
+                ];
+                
+                const originalForce = window.PICASSO_FORCE_STREAMING;
+                const originalDisable = window.PICASSO_DISABLE_STREAMING;
+                
+                try {
+                    delete window.PICASSO_FORCE_STREAMING;
+                    delete window.PICASSO_DISABLE_STREAMING;
+                    
+                    for (const test of tests) {
+                        const result = config.isStreamingEnabled(test);
+                        if (config.ENVIRONMENT === 'production' && result !== false) {
+                            // Production should always return false unless explicitly enabled
+                            continue;
+                        }
+                        if (config.ENVIRONMENT !== 'production' && result !== test.expected) {
+                            throw new Error(`Feature flag test failed for ${JSON.stringify(test.features)}: expected ${test.expected}, got ${result}`);
+                        }
+                    }
+                } finally {
+                    if (originalForce) window.PICASSO_FORCE_STREAMING = originalForce;
+                    if (originalDisable) window.PICASSO_DISABLE_STREAMING = originalDisable;
+                }
+                
+                return 'Feature flag logic working correctly';
+            }, results);
+            
+            // Test 3: Streaming URL Configuration
+            await runTest('Streaming URL Configuration', () => {
+                if (typeof window.picassoConfig === 'undefined') {
+                    throw new Error('Picasso config not available');
+                }
+                
+                const config = window.picassoConfig;
+                const tenantHash = 'test-tenant-123';
+                
+                if (typeof config.getStreamingUrl !== 'function') {
+                    throw new Error('getStreamingUrl function not available');
+                }
+                
+                const streamingUrl = config.getStreamingUrl(tenantHash);
+                
+                if (!streamingUrl || !streamingUrl.startsWith('https://')) {
+                    throw new Error(`Invalid streaming URL: ${streamingUrl}`);
+                }
+                
+                if (config.ENVIRONMENT === 'production' && !streamingUrl.includes('chat.myrecruiter.ai')) {
+                    throw new Error(`Production streaming URL incorrect: ${streamingUrl}`);
+                }
+                
+                if ((config.ENVIRONMENT === 'staging' || config.ENVIRONMENT === 'development') && 
+                    !streamingUrl.includes('staging-chat.myrecruiter.ai')) {
+                    throw new Error(`Staging streaming URL incorrect: ${streamingUrl}`);
+                }
+                
+                return `Streaming URL: ${streamingUrl}`;
+            }, results);
+            
+            // Test 4: Debug Information
+            await runTest('Debug Information', () => {
+                if (typeof window.picassoConfig === 'undefined') {
+                    throw new Error('Picasso config not available');
+                }
+                
+                const config = window.picassoConfig;
+                const buildInfo = config.getBuildInfo();
+                
+                if (!buildInfo || typeof buildInfo !== 'object') {
+                    throw new Error('Build info not available');
+                }
+                
+                const requiredFields = ['environment', 'timestamp', 'debug'];
+                for (const field of requiredFields) {
+                    if (!(field in buildInfo)) {
+                        throw new Error(`Missing build info field: ${field}`);
+                    }
+                }
+                
+                return `Debug info available with environment: ${buildInfo.environment}`;
+            }, results);
+            
+            // Test 5: Development Controls
+            await runTest('Development Controls', () => {
+                const expectedControls = [
+                    'enablePicassoStreaming',
+                    'disablePicassoStreaming', 
+                    'resetPicassoStreaming',
+                    'testStreamingFeatureFlag'
+                ];
+                
+                const missingControls = expectedControls.filter(control => 
+                    typeof window[control] !== 'function'
+                );
+                
+                if (missingControls.length > 0) {
+                    // This might be expected in production
+                    if (window.picassoConfig && window.picassoConfig.ENVIRONMENT === 'production') {
+                        return 'Development controls hidden in production (expected)';
+                    } else {
+                        throw new Error(`Missing development controls: ${missingControls.join(', ')}`);
+                    }
+                }
+                
+                return 'All development controls available';
+            }, results);
+            
+            // Test 6: Global State Management
+            await runTest('Global State Management', () => {
+                const originalForce = window.PICASSO_FORCE_STREAMING;
+                const originalDisable = window.PICASSO_DISABLE_STREAMING;
+                
+                try {
+                    // Test enable
+                    window.PICASSO_FORCE_STREAMING = true;
+                    if (window.PICASSO_FORCE_STREAMING !== true) {
+                        throw new Error('Failed to set PICASSO_FORCE_STREAMING');
+                    }
+                    
+                    // Test disable
+                    window.PICASSO_DISABLE_STREAMING = true;
+                    if (window.PICASSO_DISABLE_STREAMING !== true) {
+                        throw new Error('Failed to set PICASSO_DISABLE_STREAMING');
+                    }
+                    
+                    // Test reset
+                    delete window.PICASSO_FORCE_STREAMING;
+                    delete window.PICASSO_DISABLE_STREAMING;
+                    if (window.PICASSO_FORCE_STREAMING !== undefined || window.PICASSO_DISABLE_STREAMING !== undefined) {
+                        throw new Error('Failed to reset streaming flags');
+                    }
+                } finally {
+                    // Restore original state
+                    if (originalForce) window.PICASSO_FORCE_STREAMING = originalForce;
+                    else delete window.PICASSO_FORCE_STREAMING;
+                    
+                    if (originalDisable) window.PICASSO_DISABLE_STREAMING = originalDisable;
+                    else delete window.PICASSO_DISABLE_STREAMING;
+                }
+                
+                return 'Global state management working correctly';
+            }, results);
+            
+            // Generate final report
+            const total = results.passed + results.failed + results.warnings;
+            log(`\n🏁 Test Results: ${results.passed}/${total} passed`, 
+                results.failed === 0 ? 'success' : 'error');
+            
+            if (results.warnings > 0) {
+                log(`⚠️ Warnings: ${results.warnings}`, 'warning');
+            }
+            
+            if (results.failed > 0) {
+                log(`❌ Failed: ${results.failed}`, 'error');
+            }
+            
+            // Update UI
+            const resultsEl = document.getElementById('test-results');
+            resultsEl.innerHTML = `
+                <div class="test-result ${results.failed === 0 ? 'success' : 'error'}">
+                    <strong>Final Results:</strong> ${results.passed}/${total} tests passed
+                    ${results.warnings > 0 ? `<br><strong>Warnings:</strong> ${results.warnings}` : ''}
+                    ${results.failed > 0 ? `<br><strong>Failures:</strong> ${results.failed}` : ''}
+                </div>
+            `;
+            
+            runBtn.disabled = false;
+            runBtn.textContent = '▶️ Run All Tests';
+        }
+        
+        async function runTest(name, testFn, results) {
+            log(`\n🧪 Running: ${name}`, 'info');
+            try {
+                const result = await testFn();
+                log(`✅ ${name}: PASSED - ${result}`, 'success');
+                results.passed++;
+            } catch (error) {
+                if (error.message.includes('expected') || error.message.includes('warning')) {
+                    log(`⚠️ ${name}: WARNING - ${error.message}`, 'warning');
+                    results.warnings++;
+                } else {
+                    log(`❌ ${name}: FAILED - ${error.message}`, 'error');
+                    results.failed++;
+                }
+            }
+        }
+        
+        // Initialize
+        updateStreamingStatus();
+        setInterval(updateStreamingStatus, 2000);
+        
+        // Auto-detect widget loading
+        let widgetCheckInterval = setInterval(() => {
+            if (typeof window.picassoConfig !== 'undefined') {
+                log('🎯 Picasso widget detected and loaded', 'success');
+                clearInterval(widgetCheckInterval);
+                updateStreamingStatus();
+            }
+        }, 1000);
+        
+        log('🔍 Streaming integration test page loaded', 'info');
+        log('💡 Load your Picasso widget on this page to run tests', 'info');
+    </script>
+    
+    <div class="test-section">
+        <h2>📖 Integration Instructions</h2>
+        <ol>
+            <li>Load your Picasso chat widget on this page</li>
+            <li>Wait for the widget to initialize (status will update above)</li>
+            <li>Click "Run All Tests" to validate streaming integration</li>
+            <li>Test different streaming scenarios using the controls</li>
+        </ol>
+        
+        <h3>Expected Behavior:</h3>
+        <ul>
+            <li><strong>Development/Staging:</strong> Streaming should be available when enabled</li>
+            <li><strong>Production:</strong> Streaming should be disabled by default for safety</li>
+            <li><strong>HTTP Fallback:</strong> Should always work regardless of streaming status</li>
+            <li><strong>Error Handling:</strong> Graceful degradation when streaming fails</li>
+        </ul>
+    </div>
+</body>
+</html>

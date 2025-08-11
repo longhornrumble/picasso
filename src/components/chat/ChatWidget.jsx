@@ -4,12 +4,14 @@ import { MessagesSquare, X } from "lucide-react";
 import { useChat } from "../../hooks/useChat";
 import { useConfig } from "../../hooks/useConfig";
 import { useCSSVariables } from "./useCSSVariables";
+import { initializeMobileCompatibility } from "../../utils/mobileCompatibility";
 import ChatHeader from "./ChatHeader";
 import InputBar from "./InputBar";
 import ChatFooter from "./ChatFooter";
 import AttachmentMenu from "./AttachmentMenu";
 import MessageBubble from "./MessageBubble";
 import TypingIndicator from "./TypingIndicator";
+import StateManagementPanel from "./StateManagementPanel";
 
 function ChatWidget() {
   const { messages, isTyping } = useChat();
@@ -64,6 +66,7 @@ function ChatWidget() {
   const [showCallout, setShowCallout] = useState(false);
   const [calloutDismissed, setCalloutDismissed] = useState(false);
   const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
+  const [showStateManagement, setShowStateManagement] = useState(false);
   
   // Track last read message and user interaction
   const [lastReadMessageIndex, setLastReadMessageIndex] = useState(() => {
@@ -108,10 +111,26 @@ function ChatWidget() {
   // Persist chat open/close on toggle
   const handleToggle = () => {
     const newOpen = !isOpen;
+    
+    // Update state immediately
     setIsOpen(newOpen);
+    
+    // Manually update body class immediately for iframe communication
+    // This ensures the widget-frame.html SIZE_CHANGE message is sent at the right time
+    if (newOpen) {
+      document.body.classList.add("chat-open");
+    } else {
+      document.body.classList.remove("chat-open");
+    }
     
     // Notify parent of state change (PRD requirement)
     notifyParentEvent(newOpen ? 'CHAT_OPENED' : 'CHAT_CLOSED');
+    
+    // Notify parent of size change for iframe container adjustment
+    notifyParentEvent('SIZE_CHANGE', {
+      isOpen: newOpen,
+      size: newOpen ? { width: 360, height: 640 } : { width: 90, height: 90 }
+    });
     
     if (config?.widget_behavior?.remember_state) {
       try {
@@ -167,7 +186,7 @@ function ChatWidget() {
     }
   }, [config?.widget_behavior, isOpen, config?.tenant_id]);
 
-  // Add/remove chat-open class
+  // Add/remove chat-open class immediately for iframe communication
   useEffect(() => {
     if (isOpen) {
       document.body.classList.add("chat-open");
@@ -405,6 +424,18 @@ function ChatWidget() {
     }
   }, [isOpen, hasOpenedChat]);
 
+  // Initial size notification when widget loads
+  useEffect(() => {
+    // Send initial size when component mounts
+    if (window.parent && window.parent !== window) {
+      notifyParentEvent('SIZE_CHANGE', {
+        isOpen: isOpen,
+        size: isOpen ? { width: 360, height: 640 } : { width: 90, height: 90 },
+        initial: true
+      });
+    }
+  }, []); // Run once on mount
+
   // Debug logging including callout text detection
   console.log('ChatWidget render - state:', { 
     isOpen,
@@ -490,10 +521,13 @@ function ChatWidget() {
       {/* Chat container - Show when open */}
       {isOpen && (
         <div className="chat-container" data-input-mode={isDoubleInput ? "double" : "single"}>
-          <ChatHeader onClose={() => {
-            console.log('🔄 Header close clicked - calling handleToggle');
-            handleToggle(); // Use handleToggle to properly notify parent and handle state
-          }} />
+          <ChatHeader 
+            onClose={() => {
+              console.log('🔄 Header close clicked - calling handleToggle');
+              handleToggle(); // Use handleToggle to properly notify parent and handle state
+            }}
+            onOpenSettings={() => setShowStateManagement(true)}
+          />
 
           <div ref={chatWindowRef} className="chat-window">
             <div className="chat-header-spacer" />
@@ -530,6 +564,12 @@ function ChatWidget() {
           </div>
         </div>
       )}
+
+      {/* Phase 3.4: State Management Panel */}
+      <StateManagementPanel 
+        isOpen={showStateManagement} 
+        onClose={() => setShowStateManagement(false)} 
+      />
     </div>
   );
 }

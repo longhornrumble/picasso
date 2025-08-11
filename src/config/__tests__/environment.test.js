@@ -184,14 +184,14 @@ describe('Environment Configuration', () => {
   });
 
   it('should detect staging environment from hostname', async () => {
-    global.window.location.hostname = 'staging-chat.myrecruiter.ai';
+    global.window.location.hostname = 'staging.example.com'; // Generic staging hostname
     vi.resetModules();
     
     const { config: freshConfig } = await import('../environment');
     config = freshConfig;
     
     expect(config.ENVIRONMENT).toBe('staging');
-    expect(config.API_BASE_URL).toBe('https://staging-chat.myrecruiter.ai');
+    expect(config.API_BASE_URL).toBe('https://kgvc8xnewf.execute-api.us-east-1.amazonaws.com/primary');
     expect(config.LOG_LEVEL).toBe('info');
   });
 

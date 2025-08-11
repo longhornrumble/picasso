@@ -9,8 +9,16 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [
       react({
+        // Enhanced React plugin configuration to prevent preamble detection issues
         fastRefresh: true,
         include: "**/*.{jsx,tsx}",
+        babel: {
+          plugins: []
+        },
+        // Ensure proper JSX runtime configuration
+        jsxRuntime: 'automatic',
+        // Include all React files explicitly to prevent preamble detection failures
+        jsxImportSource: 'react'
       }),
     ],
 
@@ -24,7 +32,7 @@ export default defineConfig(({ mode }) => {
         'X-Content-Type-Options': 'nosniff',
         'Referrer-Policy': 'strict-origin-when-cross-origin',
         'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=()',
-        'Content-Security-Policy': "frame-ancestors 'self' http://localhost:* https://localhost:*"
+        'Content-Security-Policy': "frame-ancestors 'self' http://localhost:* https://localhost:* file:"
       },
       proxy: {
         '/Master_Function': {
@@ -139,6 +147,14 @@ export default defineConfig(({ mode }) => {
     
     optimizeDeps: {
       include: ['react', 'react-dom', 'marked', 'dompurify', 'prop-types'],
+      // Force pre-bundling of React dependencies to prevent runtime preamble issues
+      force: false,
+      entries: ['src/main.jsx', 'src/iframe-main.jsx'],
+      esbuildOptions: {
+        // Ensure JSX is handled correctly by esbuild
+        jsx: 'automatic',
+        jsxDev: !isProduction
+      }
     },
   };
 });

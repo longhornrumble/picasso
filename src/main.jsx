@@ -32,12 +32,44 @@ function createWidgetIframe() {
     <div style="position: fixed; bottom: 20px; right: 20px; z-index: 9999;">
       <iframe 
         src="widget-frame.html" 
-        style="width: 60px; height: 60px; border: none; border-radius: 50%;"
+        style="width: 90px; height: 90px; border: none; border-radius: 50%;"
         id="picasso-widget-iframe"
         title="Picasso Chat Widget">
       </iframe>
     </div>
   `;
+  
+  // Set up message listener for iframe communication
+  setupMessageListener();
+}
+
+function setupMessageListener() {
+  window.addEventListener('message', (event) => {
+    const iframe = document.getElementById('picasso-widget-iframe');
+    
+    // Only handle messages from our iframe
+    if (!iframe || event.source !== iframe.contentWindow) return;
+    
+    if (event.data && event.data.type === 'PICASSO_EVENT') {
+      if (event.data.event === 'SIZE_CHANGE') {
+        const size = event.data.payload.size;
+        const isOpen = event.data.payload.isOpen;
+        
+        console.log('📐 Widget size change:', size, 'isOpen:', isOpen);
+        
+        // Adjust iframe size based on widget state
+        if (isOpen) {
+          iframe.style.width = '360px';
+          iframe.style.height = '640px';
+          iframe.style.borderRadius = '16px'; // Rounded corners when expanded
+        } else {
+          iframe.style.width = '90px';
+          iframe.style.height = '90px';
+          iframe.style.borderRadius = '50%'; // Circular when minimized
+        }
+      }
+    }
+  });
 }
 
 // This script runs on the host page, so we initialize the iframe.

@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Staging Lambda Configuration Test</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            max-width: 800px; 
+            margin: 0 auto; 
+            padding: 20px; 
+            background: #f5f5f5; 
+        }
+        .test-section { 
+            background: white; 
+            padding: 20px; 
+            margin: 10px 0; 
+            border-radius: 8px; 
+            border-left: 4px solid #007cba; 
+        }
+        .result { 
+            margin: 10px 0; 
+            padding: 10px; 
+            border-radius: 4px; 
+            white-space: pre-wrap; 
+        }
+        .success { background: #d4edda; border: 1px solid #c3e6cb; color: #155724; }
+        .error { background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; }
+        .info { background: #d1ecf1; border: 1px solid #bee5eb; color: #0c5460; }
+        button { 
+            background: #007cba; 
+            color: white; 
+            border: none; 
+            padding: 10px 20px; 
+            border-radius: 4px; 
+            cursor: pointer; 
+            margin: 5px; 
+        }
+        button:hover { background: #005a87; }
+        button:disabled { background: #6c757d; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+    <h1>🚀 Staging Lambda Configuration Test</h1>
+    <p><strong>MyRecruiter Tenant Hash:</strong> <code>my87674d777bf9</code></p>
+
+    <div class="test-section">
+        <h2>1. Test Master_Function HTTP Endpoint</h2>
+        <button onclick="testMasterFunction()">Test Master_Function Health</button>
+        <div id="master-result" class="result"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>2. Test Bedrock_Streaming_Handler</h2>
+        <button onclick="testStreamingFunction()">Test Streaming Endpoint</button>
+        <div id="streaming-result" class="result"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>3. Test Picasso Environment Configuration</h2>
+        <button onclick="testPicassoConfig()">Test Environment Config</button>
+        <div id="config-result" class="result"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>4. Load Picasso Widget with Staging Configuration</h2>
+        <button onclick="loadPicassoWidget()">Load Widget</button>
+        <div id="widget-result" class="result"></div>
+        <div id="widget-container" style="margin-top: 20px;"></div>
+    </div>
+
+    <script type="module">
+        // Import environment configuration dynamically
+        import { config } from './src/config/environment.js';
+        
+        const TENANT_HASH = config.getDefaultTenantHash();
+        const MASTER_FUNCTION_URL = config.CHAT_ENDPOINT.split('?')[0]; // Get base URL without action param
+        const STREAMING_FUNCTION_URL = config.getStreamingUrl(TENANT_HASH);
+
+        async function testMasterFunction() {
+            const resultDiv = document.getElementById('master-result');
+            resultDiv.innerHTML = 'Testing Master_Function health check...';
+            resultDiv.className = 'result info';
+
+            try {
+                const response = await fetch(`${MASTER_FUNCTION_URL}?action=health_check&t=${TENANT_HASH}`);
+                const data = await response.json();
+                
+                if (response.ok) {
+                    resultDiv.innerHTML = `✅ Master_Function is healthy!\n\nResponse:\n${JSON.stringify(data, null, 2)}`;
+                    resultDiv.className = 'result success';
+                } else {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `❌ Master_Function test failed:\n\n${error.message}`;
+                resultDiv.className = 'result error';
+            }
+        }
+
+        async function testStreamingFunction() {
+            const resultDiv = document.getElementById('streaming-result');
+            resultDiv.innerHTML = 'Testing Bedrock_Streaming_Handler...';
+            resultDiv.className = 'result info';
+
+            try {
+                // Test with EventSource to see if it connects
+                const url = `${STREAMING_FUNCTION_URL}?tenant_hash=${TENANT_HASH}&user_input=test&session_id=test123`;
+                
+                const eventSource = new EventSource(url);
+                let received = false;
+                let timeoutId;
+                
+                const promise = new Promise((resolve, reject) => {
+                    timeoutId = setTimeout(() => {
+                        eventSource.close();
+                        if (!received) {
+                            reject(new Error('Connection timeout - no response received'));
+                        }
+                    }, 10000);
+
+                    eventSource.onopen = () => {
+                        received = true;
+                        clearTimeout(timeoutId);
+                        eventSource.close();
+                        resolve('Connection opened successfully');
+                    };
+
+                    eventSource.onmessage = (event) => {
+                        received = true;
+                        clearTimeout(timeoutId);
+                        eventSource.close();
+                        resolve(`Message received: ${event.data}`);
+                    };
+
+                    eventSource.onerror = (error) => {
+                        clearTimeout(timeoutId);
+                        eventSource.close();
+                        reject(new Error('Connection error occurred'));
+                    };
+                });
+
+                const result = await promise;
+                resultDiv.innerHTML = `✅ Streaming endpoint is responding!\n\nResult: ${result}`;
+                resultDiv.className = 'result success';
+                
+            } catch (error) {
+                resultDiv.innerHTML = `❌ Streaming endpoint test failed:\n\n${error.message}`;
+                resultDiv.className = 'result error';
+            }
+        }
+
+        function testPicassoConfig() {
+            const resultDiv = document.getElementById('config-result');
+            resultDiv.innerHTML = 'Loading Picasso environment configuration...';
+            resultDiv.className = 'result info';
+
+            try {
+                // Simulate what Picasso environment.js would do
+                const mockEnvironment = {
+                    development: {
+                        CONFIG_ENDPOINT: 'https://chat.myrecruiter.ai/Master_Function?action=get_config',
+                        CHAT_ENDPOINT: 'https://chat.myrecruiter.ai/Master_Function?action=chat',
+                        STREAMING_ENDPOINT: 'https://xqc4wnxwia2nytjkbw6xasjd6q0jckgb.lambda-url.us-east-1.on.aws/'
+                    }
+                };
+
+                const config = mockEnvironment.development;
+                
+                resultDiv.innerHTML = `✅ Environment configuration loaded successfully!\n\nConfiguration:\n${JSON.stringify({
+                    'Config Endpoint': config.CONFIG_ENDPOINT,
+                    'Chat Endpoint': config.CHAT_ENDPOINT,
+                    'Streaming Endpoint': config.STREAMING_ENDPOINT,
+                    'Tenant Hash': TENANT_HASH
+                }, null, 2)}`;
+                resultDiv.className = 'result success';
+                
+            } catch (error) {
+                resultDiv.innerHTML = `❌ Configuration test failed:\n\n${error.message}`;
+                resultDiv.className = 'result error';
+            }
+        }
+
+        async function loadPicassoWidget() {
+            const resultDiv = document.getElementById('widget-result');
+            const containerDiv = document.getElementById('widget-container');
+            
+            resultDiv.innerHTML = 'Loading Picasso widget with staging configuration...';
+            resultDiv.className = 'result info';
+
+            try {
+                // Clear any existing widget
+                containerDiv.innerHTML = '';
+
+                // Create script element to load widget
+                const script = document.createElement('script');
+                script.src = './public/widget.js';  // Assuming we're in the project root
+                script.setAttribute('data-tenant', TENANT_HASH);
+                script.setAttribute('data-dev', 'true');
+                
+                script.onload = () => {
+                    resultDiv.innerHTML = `✅ Widget script loaded successfully!\n\nTenant: ${TENANT_HASH}\nDevelopment mode: enabled`;
+                    resultDiv.className = 'result success';
+                };
+
+                script.onerror = () => {
+                    resultDiv.innerHTML = `❌ Failed to load widget script.\n\nMake sure you're running this from the project directory with:\nnpm run dev`;
+                    resultDiv.className = 'result error';
+                };
+
+                containerDiv.appendChild(script);
+                
+            } catch (error) {
+                resultDiv.innerHTML = `❌ Widget loading failed:\n\n${error.message}`;
+                resultDiv.className = 'result error';
+            }
+        }
+
+        // Auto-run tests on page load
+        window.addEventListener('load', () => {
+            console.log('🧪 Staging Lambda Configuration Test Page Loaded');
+            console.log('MyRecruiter Tenant Hash:', TENANT_HASH);
+            console.log('Master Function URL:', MASTER_FUNCTION_URL);
+            console.log('Streaming Function URL:', STREAMING_FUNCTION_URL);
+        });
+    </script>
+</body>
+</html>

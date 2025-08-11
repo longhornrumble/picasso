@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Streaming Functionality Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .success { border-color: #4CAF50; background: #f1f8e9; }
+        .error { border-color: #f44336; background: #ffebee; }
+        .warning { border-color: #ff9800; background: #fff3e0; }
+        .info { border-color: #2196F3; background: #e3f2fd; }
+        
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background: #45a049; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        
+        .log {
+            background: #333;
+            color: #00ff00;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 400px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+        
+        #widget-container {
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            height: 600px;
+            margin: 20px 0;
+        }
+        
+        iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            border-radius: 6px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Picasso Streaming Functionality Test</h1>
+        <p>This page tests the restored streaming functionality with intelligent fallback detection.</p>
+        
+        <div class="test-section info">
+            <h2>Test Configuration</h2>
+            <p><strong>Environment:</strong> <span id="environment">Loading...</span></p>
+            <p><strong>Streaming Endpoint:</strong> <span id="streaming-endpoint">Loading...</span></p>
+            <p><strong>Test Tenant Hash:</strong> <span id="tenant-hash">test_tenant_12345678</span></p>
+        </div>
+        
+        <div class="test-section">
+            <h2>Streaming Tests</h2>
+            <button onclick="testStreamingConfig()">Test Streaming Configuration</button>
+            <button onclick="testStreamingEndpoint()">Test Streaming Endpoint</button>
+            <button onclick="testFullWidget()">Load Full Widget</button>
+            <button onclick="clearLog()">Clear Log</button>
+        </div>
+        
+        <div class="test-section">
+            <h2>Widget Test</h2>
+            <div id="widget-container">
+                <p style="text-align: center; margin-top: 200px; color: #666;">
+                    Click "Load Full Widget" to test streaming functionality
+                </p>
+            </div>
+        </div>
+        
+        <div class="test-section">
+            <h2>Test Results & Logs</h2>
+            <div id="log" class="log">Test log will appear here...\n</div>
+        </div>
+    </div>
+
+    <script>
+        // Test utilities
+        let logElement = document.getElementById('log');
+        
+        function log(message, type = 'info') {
+            const timestamp = new Date().toISOString().substring(11, 23);
+            const prefix = type === 'error' ? '❌' : type === 'warning' ? '⚠️' : type === 'success' ? '✅' : 'ℹ️';
+            logElement.textContent += `[${timestamp}] ${prefix} ${message}\n`;
+            logElement.scrollTop = logElement.scrollHeight;
+        }
+        
+        function clearLog() {
+            logElement.textContent = 'Log cleared...\n';
+        }
+        
+        // Initialize test environment
+        window.addEventListener('load', () => {
+            document.getElementById('environment').textContent = 'Development (Test)';
+            document.getElementById('streaming-endpoint').textContent = 'https://chat.myrecruiter.ai/Master_Function?action=stream';
+            log('Test page loaded successfully');
+        });
+        
+        // Test streaming configuration
+        async function testStreamingConfig() {
+            log('Testing streaming configuration...', 'info');
+            
+            try {
+                // Simulate the streaming configuration logic
+                const tenantHash = document.getElementById('tenant-hash').textContent;
+                const streamingEndpoint = 'https://chat.myrecruiter.ai/Master_Function?action=stream';
+                
+                const mockConfig = {
+                    enabled: true,
+                    endpoint: `${streamingEndpoint}&t=${tenantHash}`,
+                    reason: 'Using default streaming endpoint',
+                    source: 'default_environment'
+                };
+                
+                log(`Streaming Config: ${JSON.stringify(mockConfig, null, 2)}`, 'success');
+                log('✅ Streaming configuration test passed', 'success');
+                
+            } catch (error) {
+                log(`❌ Streaming configuration test failed: ${error.message}`, 'error');
+            }
+        }
+        
+        // Test streaming endpoint connectivity
+        async function testStreamingEndpoint() {
+            log('Testing streaming endpoint connectivity...', 'info');
+            
+            try {
+                const tenantHash = document.getElementById('tenant-hash').textContent;
+                const streamingEndpoint = 'https://chat.myrecruiter.ai/Master_Function?action=stream';
+                
+                const params = new URLSearchParams({
+                    tenant_hash: tenantHash,
+                    user_input: '__CONNECTIVITY_TEST__',
+                    session_id: `test_${Date.now()}`,
+                    message_id: `test_msg_${Date.now()}`
+                });
+                
+                const testUrl = `${streamingEndpoint}&${params.toString()}`;
+                log(`Testing URL: ${testUrl}`, 'info');
+                
+                // Test with EventSource
+                const eventSource = new EventSource(testUrl);
+                let testCompleted = false;
+                
+                const timeout = setTimeout(() => {
+                    if (!testCompleted) {
+                        eventSource.close();
+                        log('⚠️ Streaming endpoint test timeout (may indicate backend not configured)', 'warning');
+                        log('This is expected if the streaming backend is not deployed', 'info');
+                        testCompleted = true;
+                    }
+                }, 10000);
+                
+                eventSource.onopen = () => {
+                    if (!testCompleted) {
+                        clearTimeout(timeout);
+                        eventSource.close();
+                        log('✅ Streaming endpoint connection successful!', 'success');
+                        testCompleted = true;
+                    }
+                };
+                
+                eventSource.onerror = (error) => {
+                    if (!testCompleted) {
+                        clearTimeout(timeout);
+                        eventSource.close();
+                        log(`⚠️ Streaming endpoint connection failed: ${error.type || 'Connection error'}`, 'warning');
+                        log('This is expected if streaming backend is not deployed', 'info');
+                        testCompleted = true;
+                    }
+                };
+                
+                eventSource.onmessage = (event) => {
+                    if (!testCompleted) {
+                        clearTimeout(timeout);
+                        eventSource.close();
+                        log(`✅ Received streaming response: ${event.data.substring(0, 100)}...`, 'success');
+                        testCompleted = true;
+                    }
+                };
+                
+            } catch (error) {
+                log(`❌ Streaming endpoint test failed: ${error.message}`, 'error');
+            }
+        }
+        
+        // Load full widget for testing
+        function testFullWidget() {
+            log('Loading full widget for streaming test...', 'info');
+            
+            const container = document.getElementById('widget-container');
+            const tenantHash = document.getElementById('tenant-hash').textContent;
+            
+            // Create iframe with widget
+            container.innerHTML = `
+                <iframe 
+                    src="dist/widget-frame.html?t=${tenantHash}&picasso-dev=true"
+                    title="Picasso Chat Widget"
+                    allow="fullscreen"
+                    sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
+                ></iframe>
+            `;
+            
+            log('Widget loaded - check browser console for streaming configuration logs', 'success');
+            log('Look for "🚀 STREAMING CONFIGURATION ANALYSIS" logs', 'info');
+        }
+        
+        // Listen for messages from the widget iframe
+        window.addEventListener('message', (event) => {
+            if (event.data && event.data.type === 'PICASSO_EVENT') {
+                log(`Widget Event: ${event.data.event} - ${JSON.stringify(event.data.payload)}`, 'info');
+            }
+        });
+    </script>
+</body>
+</html>

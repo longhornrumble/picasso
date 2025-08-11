@@ -1,0 +1,14 @@
+{
+  "Parameters": {
+    "Environment": "staging",
+    "CloudFrontDomain": "staging-chat.myrecruiter.ai",
+    "S3Bucket": "myrecruiter-picasso-staging",
+    "JwtSecretKeyName": "picasso/staging/jwt/signing-key"
+  },
+  "Tags": {
+    "Environment": "staging",
+    "Project": "PICASSO",
+    "Purpose": "function-url-migration",
+    "CostCenter": "healthcare-ai-staging"
+  }
+}

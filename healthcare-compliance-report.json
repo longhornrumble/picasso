@@ -1,0 +1,225 @@
+{
+  "timestamp": "2025-08-10T20:55:27.219Z",
+  "environment": "post-deployment",
+  "compliance_status": "NON_COMPLIANT",
+  "pass_rate": 16.666666666666664,
+  "required_rate": 95,
+  "critical_failures": {
+    "passed": 1,
+    "failed": 5,
+    "total": 6,
+    "details": [
+      {
+        "test": "Cross-tenant access security - staging",
+        "passed": false,
+        "blockRate": 20,
+        "required": 100,
+        "details": [
+          {
+            "hash": "fake123456789",
+            "status": 200,
+            "blocked": false,
+            "response_size": 1269
+          },
+          {
+            "hash": "invalid_hash",
+            "status": 200,
+            "blocked": false,
+            "response_size": 1262
+          },
+          {
+            "hash": "malicious_tenant",
+            "status": 200,
+            "blocked": false,
+            "response_size": 1290
+          },
+          {
+            "hash": "00000000000000",
+            "status": 200,
+            "blocked": false,
+            "response_size": 1276
+          },
+          {
+            "hash": "",
+            "status": 400,
+            "blocked": true,
+            "response_size": 74
+          }
+        ]
+      },
+      {
+        "test": "Hash input validation - staging",
+        "passed": false,
+        "validationRate": 30,
+        "required": 90,
+        "details": [
+          {
+            "input": null,
+            "status": 400,
+            "rejected": true
+          },
+          {
+            "status": 400,
+            "rejected": true
+          },
+          {
+            "input": "",
+            "status": 400,
+            "rejected": true
+          },
+          {
+            "input": " ",
+            "status": 500,
+            "rejected": false
+          },
+          {
+            "input": "a",
+            "status": 500,
+            "rejected": false
+          },
+          {
+            "input": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            "status": 200,
+            "rejected": false
+          },
+          {
+            "input": "invalid-chars!@#",
+            "status": 200,
+            "rejected": false
+          },
+          {
+            "input": "<script>alert(1)</script>",
+            "status": 200,
+            "rejected": false
+          },
+          {
+            "input": "../../../etc/passwd",
+            "status": 200,
+            "rejected": false
+          },
+          {
+            "input": "SELECT * FROM users",
+            "status": 200,
+            "rejected": false
+          }
+        ]
+      },
+      {
+        "test": "Chat endpoint response - staging",
+        "passed": false,
+        "statusCode": 400,
+        "responseSize": 0,
+        "hasContent": false,
+        "responseValid": false
+      },
+      {
+        "test": "Cross-tenant access security - production",
+        "passed": true,
+        "blockRate": 100,
+        "required": 100,
+        "details": [
+          {
+            "hash": "fake123456789",
+            "status": 500,
+            "blocked": true,
+            "response_size": 68
+          },
+          {
+            "hash": "invalid_hash",
+            "status": 500,
+            "blocked": true,
+            "response_size": 68
+          },
+          {
+            "hash": "malicious_tenant",
+            "status": 500,
+            "blocked": true,
+            "response_size": 68
+          },
+          {
+            "hash": "00000000000000",
+            "status": 500,
+            "blocked": true,
+            "response_size": 68
+          },
+          {
+            "hash": "",
+            "status": 400,
+            "blocked": true,
+            "response_size": 74
+          }
+        ]
+      },
+      {
+        "test": "Hash input validation - production",
+        "passed": false,
+        "validationRate": 30,
+        "required": 90,
+        "details": [
+          {
+            "input": null,
+            "status": 400,
+            "rejected": true
+          },
+          {
+            "status": 400,
+            "rejected": true
+          },
+          {
+            "input": "",
+            "status": 400,
+            "rejected": true
+          },
+          {
+            "input": " ",
+            "status": 500,
+            "rejected": false
+          },
+          {
+            "input": "a",
+            "status": 500,
+            "rejected": false
+          },
+          {
+            "input": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            "status": 500,
+            "rejected": false
+          },
+          {
+            "input": "invalid-chars!@#",
+            "status": 500,
+            "rejected": false
+          },
+          {
+            "input": "<script>alert(1)</script>",
+            "status": 500,
+            "rejected": false
+          },
+          {
+            "input": "../../../etc/passwd",
+            "status": 500,
+            "rejected": false
+          },
+          {
+            "input": "SELECT * FROM users",
+            "status": 500,
+            "rejected": false
+          }
+        ]
+      },
+      {
+        "test": "Chat endpoint response - production",
+        "passed": false,
+        "statusCode": 400,
+        "responseSize": 0,
+        "hasContent": false,
+        "responseValid": false
+      }
+    ]
+  },
+  "next_steps": [
+    "Fix remaining failures",
+    "Re-deploy security patches",
+    "Re-run validation"
+  ]
+}

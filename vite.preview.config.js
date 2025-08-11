@@ -13,7 +13,7 @@ export default defineConfig({
       // Allow iframe embedding from same origin
       'X-Frame-Options': 'SAMEORIGIN',
       // Allow embedding from localhost
-      'Content-Security-Policy': "frame-ancestors 'self' http://localhost:* https://localhost:* http://127.0.0.1:* https://127.0.0.1:*"
+      'Content-Security-Policy': "frame-ancestors 'self' http://localhost:* https://localhost:* http://127.0.0.1:* https://127.0.0.1:* file:"
     },
   },
   
@@ -25,7 +25,7 @@ export default defineConfig({
       // Allow iframe embedding from same origin
       'X-Frame-Options': 'SAMEORIGIN',
       // Allow embedding from localhost
-      'Content-Security-Policy': "frame-ancestors 'self' http://localhost:* https://localhost:* http://127.0.0.1:* https://127.0.0.1:*"
+      'Content-Security-Policy': "frame-ancestors 'self' http://localhost:* https://localhost:* http://127.0.0.1:* https://127.0.0.1:* file:"
     },
   }
 });

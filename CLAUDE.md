@@ -338,7 +338,7 @@ Host Page
    - Position: bottom-right, bottom-left, top-right, top-left
 
 2. **Tenant Identification**
-   - Hash in script tag: `data-tenant="fo85e6a06dcdf4"`
+   - Hash in script tag: `data-tenant="HASH"`
    - URL parameter: `?tenant=HASH`
    - Configuration endpoint: `/v1/widget/config/{hash}`
 
@@ -457,7 +457,7 @@ GET https://chat.myrecruiter.ai/Master_Function?action=get_config&t={tenant_hash
 // Chat endpoint
 POST https://chat.myrecruiter.ai/Master_Function?action=chat&t={tenant_hash}
 Body: {
-  "tenant_hash": "fo85e6a06dcdf4",
+  "tenant_hash": "HASH",
   "user_input": "Hello, how can I get help?",
   "session_id": "session_123456",
   "context": {} // optional
@@ -560,11 +560,16 @@ Prevent white screen crashes:
 
 ### Key URLs and Values
 ```javascript
-// REPLACE THESE IN CODE:
+// DYNAMIC VALUES FROM ENVIRONMENT.JS:
+DEFAULT_TENANT_HASH = "my87674d777bf9" // MyRecruiter default tenant
 CLOUDFRONT_URL = "https://your-actual-cloudfront.com"
 API_GATEWAY_URL = "https://your-actual-api-gateway.com"
 S3_BUCKET = "your-actual-bucket-name"
-TEST_TENANT_HASH = "your-test-tenant-hash"
+
+// TENANT DETECTION LOGIC:
+// 1. URL parameter: ?tenant=HASH
+// 2. Fallback: environment.js DEFAULT_TENANT_HASH
+// 3. Methods: getTenantHashFromURL(), getDefaultTenantHash(), getTenantHash()
 ```
 
 ### If Something Goes Wrong
@@ -684,7 +689,7 @@ TEST_TENANT_HASH = "your-test-tenant-hash"
 **Lean Configs**: Foster Village's config is only 84 lines because it relies on defaults:
 ```json
 {
-  "tenant_hash": "fo85e6a06dcdf4",
+  "tenant_hash": "HASH",
   "branding": {
     "primary_color": "#2db8be",  // Only what's different
     "logo_url": "..."            // Only what's needed

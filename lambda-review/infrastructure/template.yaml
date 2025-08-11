@@ -48,24 +48,22 @@ Resources:
       TableName: !Sub '${Environment}-conversation-summaries'
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
-        - AttributeName: tenantId
-          AttributeType: S
         - AttributeName: sessionId
+          AttributeType: S
+        - AttributeName: tenantId
           AttributeType: S
       KeySchema:
-        - AttributeName: tenantId
-          KeyType: HASH
         - AttributeName: sessionId
-          KeyType: RANGE
+          KeyType: HASH
       GlobalSecondaryIndexes:
-        - IndexName: sessionId-index
+        - IndexName: tenantId-index
           KeySchema:
-            - AttributeName: sessionId
+            - AttributeName: tenantId
               KeyType: HASH
           Projection:
             ProjectionType: ALL
       TimeToLiveSpecification:
-        AttributeName: expiresAt
+        AttributeName: expires_at
         Enabled: true
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: !If [IsProduction, true, false]
@@ -94,7 +92,7 @@ Resources:
         - AttributeName: timestamp
           KeyType: RANGE
       TimeToLiveSpecification:
-        AttributeName: expiresAt
+        AttributeName: expires_at
         Enabled: true
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: !If [IsProduction, true, false]

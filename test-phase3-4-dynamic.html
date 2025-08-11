@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phase 3.4 State Management UI - Dynamic Test</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: system-ui, -apple-system, sans-serif;
+            background: #f8fafc;
+        }
+        
+        .test-header {
+            background: #3b82f6;
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        
+        .test-header h1 {
+            margin: 0 0 8px 0;
+            font-size: 24px;
+        }
+        
+        .test-header p {
+            margin: 0;
+            opacity: 0.9;
+        }
+        
+        .test-controls {
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        
+        .test-controls label {
+            font-weight: 600;
+            color: #374151;
+        }
+        
+        .test-controls select {
+            padding: 8px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            background: white;
+            color: #374151;
+            cursor: pointer;
+        }
+        
+        .test-controls button {
+            padding: 8px 16px;
+            background: #10b981;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        
+        .test-controls button:hover {
+            background: #059669;
+        }
+        
+        .tenant-info {
+            background: #f0f9ff;
+            border: 1px solid #0ea5e9;
+            border-radius: 6px;
+            padding: 12px;
+            font-size: 13px;
+            color: #0c4a6e;
+        }
+        
+        .test-instructions {
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .test-instructions h2 {
+            margin: 0 0 12px 0;
+            color: #374151;
+        }
+        
+        .test-instructions ul {
+            margin: 0;
+            padding-left: 20px;
+        }
+        
+        .test-instructions li {
+            margin: 8px 0;
+            color: #6b7280;
+        }
+        
+        .feature-highlight {
+            color: #059669;
+            font-weight: 600;
+        }
+        
+        iframe {
+            width: 90px;
+            height: 90px;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            background: white;
+            transition: width 0.3s ease, height 0.3s ease;
+        }
+        
+        @media (max-width: 768px) {
+            body {
+                padding: 10px;
+            }
+            
+            iframe {
+                height: 500px;
+            }
+            
+            .test-controls {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="test-header">
+        <h1>🚀 PICASSO Phase 3.4: State Management UI - Dynamic Test</h1>
+        <p>Testing with MyRecruiter's tenant configuration and dynamic environment detection</p>
+    </div>
+    
+    <div class="test-controls">
+        <label for="tenantSelect">Test Tenant:</label>
+        <select id="tenantSelect">
+            <option value="my87674d777bf9">MyRecruiter (Default)</option>
+            <option value="">No Tenant (Default Fallback)</option>
+            <option value="custom">Custom Tenant Hash...</option>
+        </select>
+        
+        <div class="tenant-info" id="tenantInfo">
+            Using MyRecruiter's default tenant: my87674d777bf9
+        </div>
+        
+        <button onclick="updateIframe()">Update Test</button>
+    </div>
+    
+    <div class="test-instructions">
+        <h2>✅ Dynamic Test Features</h2>
+        <ul>
+            <li>🎯 <span class="feature-highlight">MyRecruiter Default Tenant</span> - Uses my87674d777bf9 from environment.js</li>
+            <li>🔄 <span class="feature-highlight">Dynamic Tenant Switching</span> - Test with different tenant configurations</li>
+            <li>📱 <span class="feature-highlight">Environment Detection</span> - Automatically detects development/staging/production</li>
+            <li>⚙️ <span class="feature-highlight">Fallback Logic</span> - Tests both URL parameter and default tenant scenarios</li>
+        </ul>
+        
+        <h2>🧪 State Management Panel Testing</h2>
+        <ul>
+            <li>Click the <span class="feature-highlight">chat toggle button</span> to open the widget</li>
+            <li>Look for the new <span class="feature-highlight">⚙️ settings button</span> in the chat header</li>
+            <li>Click settings to open the <span class="feature-highlight">State Management Panel</span></li>
+            <li>Test all three tabs: <strong>History</strong>, <strong>Settings</strong>, <strong>Data</strong></li>
+            <li>Try the <span class="feature-highlight">"Clear All Messages"</span> feature with audit logging</li>
+            <li>Test the <span class="feature-highlight">"Download Conversations"</span> export functionality</li>
+            <li>Check <span class="feature-highlight">PWA installation</span> controls on mobile</li>
+        </ul>
+    </div>
+    
+    <iframe 
+        id="testIframe"
+        src="http://localhost:5174/?tenant=my87674d777bf9" 
+        title="Picasso Chat Widget - Phase 3.4 State Management UI">
+    </iframe>
+    
+    <div class="test-instructions" style="margin-top: 20px;">
+        <h2>🎯 Environment Integration Features</h2>
+        <ul>
+            <li>✅ <span class="feature-highlight">Dynamic tenant detection</span> from URL params with environment.js fallback</li>
+            <li>✅ <span class="feature-highlight">MyRecruiter default tenant</span> (my87674d777bf9) from environment configuration</li>
+            <li>✅ <span class="feature-highlight">Multi-environment support</span> - development, staging, production endpoints</li>
+            <li>✅ <span class="feature-highlight">Audit system integration</span> with proper tenant hash routing</li>
+            <li>✅ <span class="feature-highlight">Configuration API calls</span> using dynamic tenant resolution</li>
+        </ul>
+    </div>
+
+    <script>
+        // Dynamic iframe URL updating
+        function updateIframe() {
+            const select = document.getElementById('tenantSelect');
+            const iframe = document.getElementById('testIframe');
+            const info = document.getElementById('tenantInfo');
+            
+            let tenantHash = select.value;
+            let infoText = '';
+            
+            if (tenantHash === 'custom') {
+                tenantHash = prompt('Enter custom tenant hash:');
+                if (!tenantHash) {
+                    tenantHash = 'my87674d777bf9';
+                }
+                infoText = `Using custom tenant: ${tenantHash}`;
+            } else if (tenantHash === '') {
+                iframe.src = 'http://localhost:5174/';
+                infoText = 'No tenant specified - will use environment.js default (my87674d777bf9)';
+            } else {
+                infoText = `Using MyRecruiter's default tenant: ${tenantHash}`;
+            }
+            
+            if (tenantHash && tenantHash !== '') {
+                iframe.src = `http://localhost:5174/?tenant=${tenantHash}`;
+            }
+            
+            info.textContent = infoText;
+        }
+        
+        // Initialize
+        document.getElementById('tenantSelect').addEventListener('change', updateIframe);
+        
+        // Iframe message handling for proper widget sizing
+        window.addEventListener('message', function(event) {
+            const iframe = document.getElementById('testIframe');
+            
+            // Only handle messages from our iframe
+            if (!iframe || event.source !== iframe.contentWindow) return;
+            
+            if (event.data && event.data.type === 'PICASSO_EVENT') {
+                const iframe = document.getElementById('testIframe');
+                
+                if (event.data.event === 'SIZE_CHANGE') {
+                    const size = event.data.payload.size;
+                    const isOpen = event.data.payload.isOpen;
+                    
+                    console.log('📐 Widget size change:', size, 'isOpen:', isOpen);
+                    
+                    // Adjust iframe size based on widget state
+                    if (isOpen) {
+                        iframe.style.width = '360px';
+                        iframe.style.height = '640px';
+                    } else {
+                        iframe.style.width = '90px';
+                        iframe.style.height = '90px';
+                    }
+                }
+                
+                if (event.data.event === 'CALLOUT_STATE_CHANGE') {
+                    console.log('💬 Callout state change:', event.data.payload);
+                }
+            }
+        });
+        
+        // Debug info
+        console.log(`
+🛠️  PHASE 3.4 DYNAMIC TEST PAGE
+Environment Detection: Auto-detects from browser
+Default Tenant: my87674d777bf9 (MyRecruiter)
+Fallback Logic: URL param → environment.js default
+State Management: Full Phase 3.4 implementation
+Iframe Communication: SIZE_CHANGE and CALLOUT_STATE_CHANGE handled
+        `);
+    </script>
+</body>
+</html>

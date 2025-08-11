@@ -1,0 +1,85 @@
+# Testing requirements for PICASSO tenant inference system
+
+# Core testing framework
+pytest>=7.4.0
+pytest-cov>=4.1.0
+pytest-xdist>=3.3.0  # Parallel test execution
+pytest-mock>=3.11.0
+pytest-timeout>=2.1.0
+
+# Test reporting and coverage
+coverage>=7.2.0
+pytest-html>=3.2.0
+pytest-json-report>=1.5.0
+
+# Performance and load testing
+pytest-benchmark>=4.0.0
+pytest-profiling>=1.7.0
+
+# Security testing
+pytest-security>=1.0.0
+
+# AWS mocking and testing
+moto>=4.2.0
+boto3>=1.28.0
+botocore>=1.31.0
+
+# JWT testing
+PyJWT>=2.8.0
+cryptography>=41.0.0
+
+# HTTP and network testing
+requests-mock>=1.11.0
+responses>=0.23.0
+
+# Data generation and fixtures
+faker>=19.0.0
+factory-boy>=3.3.0
+
+# Healthcare-specific testing utilities
+hypothesis>=6.82.0  # Property-based testing
+
+# Performance monitoring
+psutil>=5.9.0
+memory-profiler>=0.61.0
+
+# Code quality and linting
+flake8>=6.0.0
+pylint>=2.17.0
+black>=23.7.0
+isort>=5.12.0
+
+# Documentation testing
+doctest>=2.8.0
+
+# Async testing support (for future expansion)
+pytest-asyncio>=0.21.0
+
+# Environment and configuration testing
+python-dotenv>=1.0.0
+
+# Healthcare compliance testing
+# (Custom packages would go here if available)
+
+# Parallel execution utilities
+concurrent-futures>=3.1.1
+
+# JSON schema validation for API testing
+jsonschema>=4.18.0
+
+# Time-based testing utilities
+freezegun>=1.2.0
+
+# Network simulation for timeout testing
+network-delay>=0.1.0
+
+# Database testing (if needed for future expansion)
+pytest-postgresql>=4.1.1
+pytest-redis>=3.0.0
+
+# Logging testing utilities
+testfixtures>=7.2.0
+
+# XML/HTML parsing for response validation
+beautifulsoup4>=4.12.0
+lxml>=4.9.0

@@ -28,6 +28,14 @@ except ImportError as e:
     TENANT_CONFIG_AVAILABLE = False
 
 try:
+    from tenant_inference import resolveTenant, handle_inference_failure, generate_streaming_token
+    TENANT_INFERENCE_AVAILABLE = True
+    logger.info("✅ tenant_inference module loaded successfully")
+except ImportError as e:
+    logger.warning(f"⚠️ tenant_inference not available: {e}")
+    TENANT_INFERENCE_AVAILABLE = False
+
+try:
     from intent_router import route_intent
     INTENT_ROUTER_AVAILABLE = True
     logger.info("✅ intent_router module loaded successfully")
@@ -35,8 +43,14 @@ except ImportError as e:
     logger.warning(f"⚠️ intent_router not available: {e}")
     INTENT_ROUTER_AVAILABLE = False
 
-# Security monitoring removed - implementing basic audit trails in Phase 2
-SECURITY_MONITOR_AVAILABLE = False
+# Initialize audit logger
+try:
+    from audit_logger import audit_logger
+    AUDIT_LOGGER_AVAILABLE = True
+    logger.info("✅ audit_logger module loaded successfully")
+except ImportError as e:
+    logger.warning(f"⚠️ audit_logger not available: {e}")
+    AUDIT_LOGGER_AVAILABLE = False
 
 def get_security_context(event, context):
     """Extract security context from request for monitoring"""
@@ -56,11 +70,11 @@ def get_security_context(event, context):
 
 def lambda_handler(event, context):
     """
-    Master Lambda Handler - Pure Hash + Action System
-    NO parameters, NO tenant IDs, NO hardcoded customer names
+    Master Lambda Handler - Enhanced with Tenant Inference System
+    Bulletproof security with backward compatibility
     """
     try:
-        logger.info("📥 Master Function triggered with Universal Widget support")
+        logger.info("📥 Master Function triggered with Enhanced Tenant Inference")
         security_context = get_security_context(event, context)
         
         # Handle OPTIONS requests first (CORS preflight)
@@ -69,17 +83,31 @@ def lambda_handler(event, context):
             logger.info("🚀 Handling OPTIONS preflight request")
             return cors_response(200, "")
         
-        # Get query parameters
+        # Enhanced tenant inference (replaces simple hash extraction)
+        tenant_info = None
+        if TENANT_INFERENCE_AVAILABLE:
+            tenant_result = resolveTenant(event)
+            if tenant_result and not tenant_result.get('error'):
+                tenant_info = tenant_result
+                logger.info(f"✅ Tenant inferred via {tenant_info.get('source', 'unknown')}")
+            elif tenant_result and tenant_result.get('error'):
+                logger.error(f"🚨 Tenant inference failed: {tenant_result.get('error')}")
+                return cors_response(tenant_result.get('status_code', 403), {
+                    "error": tenant_result.get('error'),
+                    "failure_id": tenant_result.get('failure_id')
+                })
+        
+        # Backward compatibility - fall back to query parameter
         query_params = event.get("queryStringParameters") or {}
         action = query_params.get("action")
-        tenant_hash = query_params.get("t")
+        tenant_hash = tenant_info.get('tenant_hash') if tenant_info else query_params.get("t")
         
         logger.info(f"🔍 Request details - Method: {http_method}, Action: {action}, Hash: {tenant_hash[:8] + '...' if tenant_hash else 'None'}")
         
-        # PURE ACTION ROUTING SYSTEM
+        # ENHANCED ACTION ROUTING SYSTEM with Tenant Inference
         if action == "get_config":
             logger.info("✅ Handling action=get_config")
-            return handle_get_config_action(tenant_hash, security_context)
+            return handle_get_config_action(tenant_hash, security_context, tenant_info)
         
         elif action == "health_check":
             logger.info("✅ Handling action=health_check")
@@ -95,7 +123,15 @@ def lambda_handler(event, context):
         
         elif action == "chat":
             logger.info("✅ Handling action=chat")
-            return handle_chat_action(event, tenant_hash)
+            return handle_chat_action(event, tenant_hash, tenant_info)
+            
+        elif action == "generate_jwt":
+            logger.info("✅ Handling action=generate_jwt")
+            return handle_generate_jwt_action(tenant_hash, query_params, tenant_info)
+        
+        elif action == "state_clear":
+            logger.info("✅ Handling action=state_clear")
+            return handle_state_clear_action_wrapper(event, tenant_hash, security_context)
         
         # Legacy support: hash without action (defaults to get_config)
         elif http_method == "GET" and tenant_hash and not action:
@@ -112,7 +148,7 @@ def lambda_handler(event, context):
             return cors_response(400, {
                 "error": "Invalid request format",
                 "expected_format": "?action=ACTION&t=HASH",
-                "valid_actions": ["get_config", "chat", "health_check", "cache_status", "clear_cache"],
+                "valid_actions": ["get_config", "chat", "health_check", "cache_status", "clear_cache", "state_clear"],
                 "received": {
                     "method": http_method,
                     "action": action,
@@ -122,18 +158,41 @@ def lambda_handler(event, context):
             
     except Exception as e:
         logger.exception("❌ Critical error in lambda_handler")
-        return cors_response(500, {
-            "error": "Internal server error",
-            "details": str(e),
-            "request_id": context.aws_request_id if context else "unknown"
-        })
+        # Enhanced error handling with tenant inference fallback
+        if TENANT_INFERENCE_AVAILABLE:
+            failure_result = handle_inference_failure("system_error", {
+                "error": str(e),
+                "request_id": context.aws_request_id if context else "unknown"
+            })
+            return cors_response(failure_result.get('status_code', 500), {
+                "error": failure_result.get('error'),
+                "failure_id": failure_result.get('failure_id')
+            })
+        else:
+            return cors_response(500, {
+                "error": "Internal server error",
+                "details": str(e),
+                "request_id": context.aws_request_id if context else "unknown"
+            })
 
-def handle_get_config_action(tenant_hash, security_context):
+def handle_get_config_action(tenant_hash, security_context, tenant_info=None):
     """Handle action=get_config - pure hash-based with security monitoring"""
     try:
         if not tenant_hash:
             # Log invalid request attempt
             logger.warning(f"SECURITY_EVENT: Missing tenant hash in config request from {security_context.get('source_ip', 'unknown')}")
+            
+            # Audit unauthorized access attempt
+            if AUDIT_LOGGER_AVAILABLE:
+                audit_logger.log_unauthorized_access(
+                    tenant_id="unknown",
+                    session_id=security_context.get('request_id'),
+                    resource="config",
+                    action="get_config",
+                    source_ip=security_context.get('source_ip'),
+                    reason="missing_tenant_hash"
+                )
+            
             return cors_response(400, {
                 "error": "Missing tenant hash",
                 "usage": "GET ?action=get_config&t=HASH"
@@ -162,6 +221,17 @@ def handle_get_config_action(tenant_hash, security_context):
                 
                 # Log unauthorized access attempt
                 logger.error(f"SECURITY_EVENT: Unauthorized config request for {tenant_hash[:8]}... from {security_context.get('source_ip', 'unknown')}")
+                
+                # Audit unauthorized access attempt
+                if AUDIT_LOGGER_AVAILABLE:
+                    audit_logger.log_unauthorized_access(
+                        tenant_id=tenant_hash,
+                        session_id=security_context.get('request_id'),
+                        resource="config",
+                        action="get_config",
+                        source_ip=security_context.get('source_ip'),
+                        reason="tenant_not_authorized"
+                    )
                 
                 return cors_response(404, {
                     "error": "Tenant configuration not found",
@@ -193,7 +263,7 @@ def handle_get_config_action(tenant_hash, security_context):
             "details": str(e)
         })
 
-def handle_chat_action(event, tenant_hash):
+def handle_chat_action(event, tenant_hash, tenant_info=None):
     """Handle action=chat - pure hash-based"""
     try:
         # Extract tenant hash from body if not in query params
@@ -345,6 +415,74 @@ def handle_cache_clear_action(tenant_hash):
             "details": str(e)
         })
 
+def handle_generate_jwt_action(tenant_hash, query_params, tenant_info=None):
+    """Handle action=generate_jwt with enhanced tenant inference"""
+    try:
+        if not tenant_hash:
+            return cors_response(400, {
+                "error": "Missing tenant hash",
+                "usage": "GET ?action=generate_jwt&t=HASH&purpose=PURPOSE"
+            })
+        
+        logger.info(f"[{tenant_hash[:8]}...] 🔑 Processing generate_jwt action")
+        
+        # Enhanced security validation using tenant inference
+        if tenant_info:
+            # Tenant already validated through inference system
+            logger.info(f"[{tenant_hash[:8]}...] ✅ Using validated tenant from inference: {tenant_info.get('source')}")
+        else:
+            # Fallback validation for backward compatibility
+            if not TENANT_CONFIG_AVAILABLE:
+                return cors_response(503, {
+                    "error": "Tenant validation service unavailable"
+                })
+            
+            try:
+                config = get_config_for_tenant_by_hash(tenant_hash)
+                if not config:
+                    logger.error(f"[{tenant_hash[:8]}...] ❌ SECURITY: Invalid tenant hash for JWT generation")
+                    return cors_response(404, {
+                        "error": "Tenant configuration not found",
+                        "message": "The requested tenant hash is not authorized"
+                    })
+            except Exception as e:
+                logger.error(f"[{tenant_hash[:8]}...] ❌ Tenant validation failed: {str(e)}")
+                return cors_response(403, {
+                    "error": "Tenant validation failed",
+                    "message": "Unable to validate tenant authorization"
+                })
+        
+        # Generate JWT using enhanced system
+        if TENANT_INFERENCE_AVAILABLE:
+            jwt_result = generate_streaming_token()
+            if jwt_result:
+                # Add tenant context to JWT result
+                jwt_result['tenant_hash'] = tenant_hash[:8] + '...'  # Partial for logging
+                jwt_result['inference_source'] = tenant_info.get('source') if tenant_info else 'config_fallback'
+                
+                logger.info(f"[{tenant_hash[:8]}...] ✅ JWT generated via enhanced system")
+                return cors_response(200, jwt_result)
+            else:
+                logger.error(f"[{tenant_hash[:8]}...] ❌ JWT generation failed")
+                return cors_response(500, {
+                    "error": "JWT generation failed",
+                    "message": "Unable to generate streaming token"
+                })
+        else:
+            # Fallback to basic JWT generation
+            logger.warning(f"[{tenant_hash[:8]}...] ⚠️ Using fallback JWT generation")
+            return cors_response(503, {
+                "error": "Enhanced JWT service unavailable",
+                "message": "Tenant inference system not available"
+            })
+        
+    except Exception as e:
+        logger.error(f"❌ JWT generation action failed: {str(e)}")
+        return cors_response(500, {
+            "error": "JWT generation failed",
+            "details": str(e)
+        })
+
 def handle_s3_config_fallback(tenant_hash, security_context):
     """Direct S3 config loading fallback - pure hash-based with security monitoring"""
     try:
@@ -429,6 +567,48 @@ def handle_s3_config_fallback(tenant_hash, security_context):
         logger.error(f"[{tenant_hash[:8]}...] ❌ S3 fallback failed: {str(e)}")
         return cors_response(500, {
             "error": "Config loading failed",
+            "details": str(e)
+        })
+
+def handle_state_clear_action_wrapper(event, tenant_hash, security_context):
+    """Wrapper for state clear action with audit integration"""
+    try:
+        if not tenant_hash:
+            # Audit unauthorized access attempt
+            if AUDIT_LOGGER_AVAILABLE:
+                audit_logger.log_unauthorized_access(
+                    tenant_id="unknown",
+                    session_id=security_context.get('request_id'),
+                    resource="state_clear",
+                    action="state_clear",
+                    source_ip=security_context.get('source_ip'),
+                    reason="missing_tenant_hash"
+                )
+            
+            return cors_response(400, {
+                "error": "Missing tenant hash",
+                "usage": "POST ?action=state_clear&t=HASH with body: {\"clear_type\": \"full|cache_only|session\"}"
+            })
+        
+        logger.info(f"[{tenant_hash[:8]}...] 🧹 Processing state_clear action")
+        
+        # Import state clear handler
+        try:
+            from state_clear_handler import handle_state_clear_action
+            response = handle_state_clear_action(event, None)
+            return ensure_cors_headers(response)
+            
+        except ImportError:
+            logger.error("state_clear_handler module not available")
+            return cors_response(503, {
+                "error": "State clear service unavailable",
+                "details": "State clear handler module not available"
+            })
+        
+    except Exception as e:
+        logger.error(f"❌ State clear action failed: {str(e)}")
+        return cors_response(500, {
+            "error": "State clear processing failed",
             "details": str(e)
         })
 

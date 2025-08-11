@@ -87,7 +87,10 @@ var __spreadValues = (a, b) => {
       let pathPrefix = '';
       if (devMode) {
         // In dev mode, use Vite dev server port (5174) for widget frame
-        widgetDomain = `${window.location.protocol}//${window.location.hostname}:5174`;
+        // Force http protocol for local development (fixes file:// protocol issues)
+        const protocol = 'http:';
+        const hostname = window.location.hostname || 'localhost';
+        widgetDomain = `${protocol}//${hostname}:5174`;
       } else {
         widgetDomain = "https://chat.myrecruiter.ai";
         if (isStaging) {

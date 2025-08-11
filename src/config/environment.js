@@ -106,6 +106,7 @@ const ENVIRONMENTS = {
     CONFIG_ENDPOINT: 'https://chat.myrecruiter.ai/Master_Function?action=get_config',
     CHAT_ENDPOINT: 'https://chat.myrecruiter.ai/Master_Function?action=chat',
     ERROR_REPORTING_ENDPOINT: 'https://chat.myrecruiter.ai/Master_Function?action=log_error',
+    STREAMING_ENDPOINT: null, // Disabled in development to avoid CORS issues
     DEFAULT_TENANT_HASH: 'my87674d777bf9', // MyRecruiter default tenant for development
     
     // Development-specific settings
@@ -115,18 +116,20 @@ const ENVIRONMENTS = {
     MOCK_RESPONSES: false,
     REQUEST_TIMEOUT: 30000, // 30 seconds for debugging
     RETRY_ATTEMPTS: 1,
-    CORS_ENABLED: true
+    CORS_ENABLED: true,
+    STREAMING_DISABLED_REASON: 'CORS issues with staging endpoint'
   },
   staging: {
-    API_BASE_URL: 'https://staging-chat.myrecruiter.ai',
-    CHAT_API_URL: 'https://staging-chat.myrecruiter.ai',
+    API_BASE_URL: 'https://kgvc8xnewf.execute-api.us-east-1.amazonaws.com/primary',
+    CHAT_API_URL: 'https://kgvc8xnewf.execute-api.us-east-1.amazonaws.com/primary',
     ASSET_BASE_URL: 'https://picassostaging.s3.amazonaws.com',
     S3_BUCKET: 'picassostaging',
-    WIDGET_DOMAIN: 'https://staging-chat.myrecruiter.ai',
+    WIDGET_DOMAIN: 'https://chat.myrecruiter.ai',
     DEBUG: true,
-    CONFIG_ENDPOINT: 'https://staging-chat.myrecruiter.ai/Master_Function?action=get_config',
-    CHAT_ENDPOINT: 'https://staging-chat.myrecruiter.ai/Master_Function?action=chat',
-    ERROR_REPORTING_ENDPOINT: 'https://staging-chat.myrecruiter.ai/Master_Function?action=log_error',
+    CONFIG_ENDPOINT: 'https://kgvc8xnewf.execute-api.us-east-1.amazonaws.com/primary/staging/Master_Function?action=get_config',
+    CHAT_ENDPOINT: 'https://kgvc8xnewf.execute-api.us-east-1.amazonaws.com/primary/staging/Master_Function?action=chat',
+    ERROR_REPORTING_ENDPOINT: 'https://kgvc8xnewf.execute-api.us-east-1.amazonaws.com/primary/staging/Master_Function?action=log_error',
+    STREAMING_ENDPOINT: 'https://kgvc8xnewf.execute-api.us-east-1.amazonaws.com/primary/staging/Bedrock_Streaming_Handler',
     DEFAULT_TENANT_HASH: 'my87674d777bf9', // MyRecruiter default tenant for staging
     
     // Staging-specific settings
@@ -149,6 +152,7 @@ const ENVIRONMENTS = {
     CONFIG_ENDPOINT: 'https://chat.myrecruiter.ai/Master_Function?action=get_config',
     CHAT_ENDPOINT: 'https://chat.myrecruiter.ai/Master_Function?action=chat',
     ERROR_REPORTING_ENDPOINT: 'https://chat.myrecruiter.ai/Master_Function?action=log_error',
+    STREAMING_ENDPOINT: null, // Production streaming not configured - requires explicit setup
     DEFAULT_TENANT_HASH: 'my87674d777bf9', // MyRecruiter default tenant for production
     
     // Production-specific settings
@@ -241,6 +245,26 @@ export const config = {
   // Get default tenant hash for current environment
   getDefaultTenantHash: () => ENVIRONMENTS[currentEnv].DEFAULT_TENANT_HASH,
   
+  // Get tenant hash from URL parameters
+  getTenantHashFromURL: () => {
+    if (typeof window !== 'undefined') {
+      try {
+        const urlParams = new URLSearchParams(window.location.search);
+        return urlParams.get('tenant');
+      } catch (error) {
+        console.warn('⚠️ Error getting tenant hash from URL:', error);
+        return null;
+      }
+    }
+    return null;
+  },
+  
+  // Get tenant hash with fallback to default
+  getTenantHash: () => {
+    const urlTenant = config.getTenantHashFromURL();
+    return urlTenant || config.getDefaultTenantHash();
+  },
+  
   // Logging helper that respects environment log level
   log: (level, message, ...args) => {
     const levels = { debug: 0, info: 1, warn: 2, error: 3 };
@@ -287,6 +311,63 @@ export const config = {
   // Dynamic widget domain (auto-detects port in development)
   getWidgetDomain: () => getWidgetDomain(),
   
+  // Streaming endpoint configuration
+  getStreamingUrl: (tenantHash) => {
+    if (!tenantHash) {
+      throw new Error('getStreamingUrl: tenantHash is required');
+    }
+    
+    // Use configured streaming endpoint from environment
+    return ENVIRONMENTS[currentEnv].STREAMING_ENDPOINT || 
+           `https://chat.myrecruiter.ai/Bedrock_Streaming_Handler`;
+  },
+  
+  // Streaming feature flag evaluation
+  isStreamingEnabled: (tenantConfig) => {
+    // Global kill switch (for emergency disable)
+    if (typeof window !== 'undefined' && window.PICASSO_DISABLE_STREAMING === true) {
+      return false;
+    }
+    
+    // Environment-based enablement (staging-only by default, disabled in development due to CORS)
+    const environmentAllowsStreaming = currentEnv === 'staging';
+    
+    if (!environmentAllowsStreaming) {
+      return false;
+    }
+    
+    // Tenant-specific feature flags
+    if (tenantConfig?.features?.streaming_enabled === true ||
+        tenantConfig?.features?.streaming === true ||
+        tenantConfig?.features?.eventSource === true) {
+      return true;
+    }
+    
+    // Development override
+    if (currentEnv === 'development' && (
+        typeof window !== 'undefined' && window.PICASSO_FORCE_STREAMING === true
+      )) {
+      return true;
+    }
+    
+    // URL parameter override (for testing)
+    if (typeof window !== 'undefined') {
+      try {
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('streaming') === 'true') {
+          return true;
+        }
+        if (urlParams.get('streaming') === 'false') {
+          return false;
+        }
+      } catch {
+        // Ignore URL parsing errors
+      }
+    }
+    
+    return false;
+  },
+  
   // Version and build info
   getBuildInfo: () => ({
     environment: currentEnv,
@@ -314,13 +395,51 @@ if (config.isDevelopment()) {
       }
     };
     
+    // Streaming control functions
+    window.enablePicassoStreaming = () => {
+      window.PICASSO_FORCE_STREAMING = true;
+      console.log('✅ Streaming enabled - refresh to apply');
+    };
+    
+    window.disablePicassoStreaming = () => {
+      window.PICASSO_DISABLE_STREAMING = true;
+      console.log('❌ Streaming disabled - refresh to apply');
+    };
+    
+    window.resetPicassoStreaming = () => {
+      delete window.PICASSO_FORCE_STREAMING;
+      delete window.PICASSO_DISABLE_STREAMING;
+      console.log('🔄 Streaming reset to default behavior - refresh to apply');
+    };
+    
+    window.testStreamingFeatureFlag = (tenantConfig) => {
+      const isEnabled = config.isStreamingEnabled(tenantConfig);
+      console.log('🧪 Streaming Feature Flag Test:', {
+        enabled: isEnabled,
+        environment: currentEnv,
+        tenantFeatures: tenantConfig?.features || {},
+        globalOverrides: {
+          forced: window.PICASSO_FORCE_STREAMING,
+          disabled: window.PICASSO_DISABLE_STREAMING
+        }
+      });
+      return isEnabled;
+    };
+    
     console.log(`
 🛠️  PICASSO DEVELOPMENT MODE ACTIVE
 Environment: ${currentEnv}
+Streaming: DISABLED (${ENVIRONMENTS[currentEnv].STREAMING_DISABLED_REASON || 'Environment default'})
 Debug Commands:
-  window.picassoConfig      - View current config
+  window.picassoConfig              - View current config
   window.switchPicassoEnv('staging') - Switch environments
-  config.log('info', 'message')      - Environment-aware logging
+  config.log('info', 'message')     - Environment-aware logging
+  
+🌊 Streaming Control:
+  window.enablePicassoStreaming()   - Force enable streaming
+  window.disablePicassoStreaming()  - Force disable streaming  
+  window.resetPicassoStreaming()    - Reset to default behavior
+  window.testStreamingFeatureFlag() - Test feature flag logic
 `);
   }
 }

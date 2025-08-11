@@ -85,7 +85,7 @@ const ConfigProvider = ({ children }) => {
         }
       }
 
-      console.log(`🔄 Fetching config from S3/CloudFront`, {
+      console.log(`🔄 Fetching config from Lambda Master_Function`, {
         hash: tenantHash.slice(0, 8) + '...',
         force,
         url: configUrl
@@ -101,27 +101,24 @@ const ConfigProvider = ({ children }) => {
 
       console.log('📡 Response status:', response.status);
 
-      // If primary endpoint fails with 404, try legacy endpoint
+      // If primary endpoint fails with 404, it means the tenant hash is invalid
       if (response.status === 404) {
-        console.warn('⚠️ Primary config endpoint returned 404, trying legacy endpoint...');
-        const legacyUrl = `https://chat.myrecruiter.ai/v1/widget/config/${tenantHash}`;
-        response = await fetch(legacyUrl, environmentConfig.getRequestConfig({
-          method: 'GET',
-          cache: 'no-cache'
-        }));
-        console.log('📡 Legacy response status:', response.status);
+        console.warn('⚠️ Tenant configuration not found - invalid or unauthorized tenant hash');
+        // Don't try fallback endpoints for security - fail closed
       }
 
       if (response.status === 404) {
-        // Handle missing tenant gracefully
+        // Handle missing tenant gracefully with fallback
         console.warn('⚠️ Tenant config not found (404), using fallback');
         return { config: getFallbackConfig(tenantHash), changed: true };
       }
 
       if (!response.ok) {
-        // For S3, we might get different error responses
+        // Handle different error responses from Lambda
         if (response.status === 403) {
-          console.error('❌ Access denied to S3 config');
+          console.error('❌ Access denied - invalid tenant hash');
+        } else if (response.status === 500) {
+          console.error('❌ Lambda function error');
         }
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
@@ -129,9 +126,9 @@ const ConfigProvider = ({ children }) => {
       // Get new config data
       const newConfig = await response.json();
       
-      // Get version info from S3 headers
-      const version = response.headers.get('x-amz-version-id') || 
-                     response.headers.get('etag') || 
+      // Get version info from Lambda response headers
+      const version = response.headers.get('etag') || 
+                     response.headers.get('x-version-id') || 
                      Date.now().toString();
       
       // Update metadata
@@ -147,7 +144,7 @@ const ConfigProvider = ({ children }) => {
       };
       sessionStorage.setItem(`picasso-config-${tenantHash}`, JSON.stringify(cacheData));
 
-      console.log('✅ Config loaded successfully from S3/CloudFront', {
+      console.log('✅ Config loaded successfully from Lambda Master_Function', {
         hash: tenantHash.slice(0, 8) + '...',
         chatTitle: newConfig.chat_title,
         hasBranding: !!newConfig.branding,
@@ -169,7 +166,7 @@ const ConfigProvider = ({ children }) => {
     setError(null);
     
     try {
-      console.log(`🔍 Loading config for hash: ${tenantHash.slice(0, 8)}... via S3/CloudFront`);
+      console.log(`🔍 Loading config for hash: ${tenantHash.slice(0, 8)}... via Lambda Master_Function`);
       
       // Load config using pure hash + action API
       const result = await fetchConfigWithCacheCheck(tenantHash, true);
@@ -180,7 +177,7 @@ const ConfigProvider = ({ children }) => {
         console.log('🎉 Config loaded successfully:', {
           chatTitle: result.config.chat_title,
           hash: tenantHash.slice(0, 8) + '...',
-          apiType: 's3-cloudfront'
+          apiType: 'lambda-master-function'
         });
       }
     } catch (error) {
@@ -287,7 +284,7 @@ const ConfigProvider = ({ children }) => {
       metadata: {
         source: "fallback",
         generated_at: Date.now(),
-        apiType: "s3-cloudfront"
+        apiType: "lambda-master-function"
       }
     };
   };
@@ -335,7 +332,7 @@ const ConfigProvider = ({ children }) => {
       etag: configMetadata.current.etag,
       tenantHash: configMetadata.current.tenantHash,
       lastModified: configMetadata.current.lastModified,
-      apiType: 's3-cloudfront'
+      apiType: 'lambda-master-function'
     },
     features: {
       uploads: config?.features?.uploads || false,
@@ -388,27 +385,26 @@ if (typeof window !== 'undefined') {
     }
   };
 
-  // Test config loading from S3
+  // Test config loading from Lambda Master_Function
   window.testConfigLoad = async (tenantHash) => {
     const hash = tenantHash || environmentConfig.getDefaultTenantHash();
-    console.log('🧪 Testing S3/CloudFront config load...');
+    console.log('🧪 Testing Lambda Master_Function config load...');
     
     try {
-      const configLoadUrl = `https://your-cloudfront.com/tenants/${hash}/config.json`;
-      const response = await fetch(configLoadUrl, {
+      const configLoadUrl = environmentConfig.getConfigUrl(hash);
+      const response = await fetch(configLoadUrl, environmentConfig.getRequestConfig({
         method: 'GET',
-        mode: 'cors',
         cache: 'no-cache'
-      });
+      }));
       
       if (response.ok) {
         const config = await response.json();
-        console.log('✅ S3 Config Load:', {
+        console.log('✅ Lambda Config Load:', {
           chatTitle: config.chat_title,
           hasBranding: !!config.branding,
           hasFeatures: !!config.features,
           tenantHash: config.tenant_hash,
-          version: response.headers.get('x-amz-version-id') || response.headers.get('etag')
+          version: response.headers.get('etag') || response.headers.get('x-version-id')
         });
         return config;
       } else {
@@ -456,14 +452,14 @@ if (typeof window !== 'undefined') {
   };
 
   console.log(`
-🛠️  PICASSO S3/CLOUDFRONT CONFIG COMMANDS:
+🛠️  PICASSO LAMBDA MASTER_FUNCTION COMMANDS:
    testHealthCheck()             - Test action=health_check
-   testConfigLoad()              - Test S3/CloudFront config  
+   testConfigLoad()              - Test Lambda config load  
    testChatAction()              - Test action=chat
    refreshPicassoConfig()        - Force refresh config
    
-   CONFIG SOURCE: S3/CloudFront CDN
-   ✅ Public configs, version checking, 2-minute cache
+   CONFIG SOURCE: Lambda Master_Function
+   ✅ Hash-based auth, tenant inference, 2-minute cache
   `);
 
   console.log(`
