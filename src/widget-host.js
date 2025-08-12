@@ -72,7 +72,7 @@ import { config as environmentConfig } from './config/environment.js';
                       document.currentScript?.getAttribute('data-dev') === 'true' ||
                       document.querySelector('script[src*="widget.js"][data-dev="true"]');
       
-      const isLocal = devMode || ['localhost', '127.0.0.1'].includes(window.location.hostname);
+      const isLocal = devMode || (['localhost', '127.0.0.1'].includes(window.location.hostname) && import.meta.env.DEV);
       
       const widgetDomain = devMode ? 
         `http://localhost:5173` : 
