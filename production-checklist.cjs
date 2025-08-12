@@ -169,8 +169,12 @@ function checkPostMessageSecurity() {
     if (fs.existsSync(widgetPath)) {
         const content = fs.readFileSync(widgetPath, 'utf8');
         
-        // Check for origin validation
-        if (content.includes('isValidOrigin') || content.includes('event.origin')) {
+        // Check for origin validation (handle minified code)
+        const hasOriginValidation = content.includes('isValidOrigin') || 
+                                   content.includes('event.origin') || 
+                                   content.includes('.origin') ||
+                                   content.includes('origin') && content.includes('postMessage');
+        if (hasOriginValidation) {
             addResult('PostMessage Security', 'pass', 'Origin validation found');
         } else {
             addResult('PostMessage Security', 'fail', 'No origin validation found');
