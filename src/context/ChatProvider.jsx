@@ -1,4 +1,4 @@
-import React, { createContext, useState, useCallback, useEffect, useRef } from "react";
+import React, { createContext, useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { useConfig } from "../hooks/useConfig";
 import { config as environmentConfig } from '../config/environment';
 import PropTypes from "prop-types";
@@ -297,11 +297,12 @@ const ChatProvider = ({ children }) => {
     return [];
   };
   
-  const [messages, setMessages] = useState(loadPersistedMessages);
+  // PERFORMANCE: Use lazy initial state to avoid repeated function calls
+  const [messages, setMessages] = useState(() => loadPersistedMessages());
   const [isTyping, setIsTyping] = useState(false);
   const [hasInitializedMessages, setHasInitializedMessages] = useState(false);
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
-  const [pendingRetries, setPendingRetries] = useState(new Map());
+  const [isOnline, setIsOnline] = useState(() => navigator.onLine);
+  const [pendingRetries, setPendingRetries] = useState(() => new Map());
   
   // Streaming-related state
   const [streamingAvailable, setStreamingAvailable] = useState(false);
@@ -312,21 +313,41 @@ const ChatProvider = ({ children }) => {
   const abortControllersRef = useRef(new Map());
   const retryTimeoutsRef = useRef(new Map());
 
-  // Persist messages whenever they change
-  useEffect(() => {
-    if (messages.length > 0 && hasInitializedMessages) {
-      try {
-        sessionStorage.setItem(STORAGE_KEYS.MESSAGES, JSON.stringify(messages));
-        sessionStorage.setItem(STORAGE_KEYS.LAST_ACTIVITY, Date.now().toString());
-        errorLogger.logInfo('💾 Persisted conversation state', {
-          messageCount: messages.length,
-          sessionId: sessionIdRef.current
-        });
-      } catch (error) {
-        errorLogger.logError(error, { context: 'persistMessages' });
+  // PERFORMANCE: Debounced message persistence to avoid excessive storage writes
+  const debouncedPersistMessages = useRef(
+    debounce((messages, hasInitializedMessages) => {
+      if (messages.length > 0 && hasInitializedMessages) {
+        try {
+          sessionStorage.setItem(STORAGE_KEYS.MESSAGES, JSON.stringify(messages));
+          sessionStorage.setItem(STORAGE_KEYS.LAST_ACTIVITY, Date.now().toString());
+          errorLogger.logInfo('💾 Persisted conversation state', {
+            messageCount: messages.length,
+            sessionId: sessionIdRef.current
+          });
+        } catch (error) {
+          errorLogger.logError(error, { context: 'persistMessages' });
+        }
       }
-    }
-  }, [messages, hasInitializedMessages, STORAGE_KEYS]);
+    }, 1000) // Debounce for 1 second
+  ).current;
+  
+  // Persist messages whenever they change (debounced)
+  useEffect(() => {
+    debouncedPersistMessages(messages, hasInitializedMessages);
+  }, [messages, hasInitializedMessages, debouncedPersistMessages]);
+  
+  // PERFORMANCE: Simple debounce utility
+  function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+      const later = () => {
+        clearTimeout(timeout);
+        func(...args);
+      };
+      clearTimeout(timeout);
+      timeout = setTimeout(later, wait);
+    };
+  }
 
   // Phase 3.2: Initialize conversation manager
   useEffect(() => {
@@ -420,7 +441,7 @@ const ChatProvider = ({ children }) => {
     };
   }, [pendingRetries]);
 
-  // Cleanup on unmount
+  // Cleanup on unmount - PERFORMANCE: Also clear token cache
   useEffect(() => {
     return () => {
       // Abort all ongoing requests
@@ -435,22 +456,34 @@ const ChatProvider = ({ children }) => {
       
       abortControllersRef.current.clear();
       retryTimeoutsRef.current.clear();
+      
+      // PERFORMANCE: Clear all caches to prevent memory leaks
+      tokenCacheRef.current.clear();
+      requestCacheRef.current.clear();
+      
+      // Clear memory config cache
+      if (window._configMemoryCache) {
+        delete window._configMemoryCache;
+      }
     };
   }, []);
 
-  const generateWelcomeActions = useCallback((config) => {
-    if (!config) return [];
-    
-    const actionChipsConfig = config.action_chips || {};
-    
-    if (!actionChipsConfig.enabled || !actionChipsConfig.show_on_welcome) {
-      return [];
-    }
-    
-    const chips = actionChipsConfig.default_chips || [];
-    const maxDisplay = actionChipsConfig.max_display || 3;
-    
-    return chips.slice(0, maxDisplay);
+  // PERFORMANCE: Memoize welcome actions to prevent unnecessary recalculation
+  const generateWelcomeActions = useMemo(() => {
+    return (config) => {
+      if (!config) return [];
+      
+      const actionChipsConfig = config.action_chips || {};
+      
+      if (!actionChipsConfig.enabled || !actionChipsConfig.show_on_welcome) {
+        return [];
+      }
+      
+      const chips = actionChipsConfig.default_chips || [];
+      const maxDisplay = actionChipsConfig.max_display || 3;
+      
+      return chips.slice(0, maxDisplay);
+    };
   }, []);
 
   useEffect(() => {
@@ -611,6 +644,109 @@ const ChatProvider = ({ children }) => {
       checkStreamingAvailability();
     }
   }, [tenantConfig, hasInitializedMessages, checkStreamingAvailability]);
+
+  // JWT/Function URL integration methods - PERFORMANCE OPTIMIZED
+  // Token cache to avoid regenerating tokens for same session
+  const tokenCacheRef = useRef(new Map());
+  const TOKEN_CACHE_DURATION = 300000; // 5 minutes
+  
+  const generateStreamingToken = async (userInput, sessionId) => {
+    const startTime = performance.now();
+    
+    try {
+      const tenantHash = getTenantHash();
+      
+      // PERFORMANCE: Check cache first to avoid API call
+      const cacheKey = `${tenantHash}_${sessionId}`;
+      const cached = tokenCacheRef.current.get(cacheKey);
+      if (cached && (Date.now() - cached.timestamp) < TOKEN_CACHE_DURATION) {
+        const cacheTime = performance.now() - startTime;
+        errorLogger.logInfo('⚡ JWT token retrieved from cache', {
+          cacheTime: cacheTime.toFixed(2) + 'ms',
+          sessionId
+        });
+        return {
+          jwt: cached.jwt,
+          streamingUrl: cached.streamingUrl
+        };
+      }
+      
+      const tokenEndpoint = environmentConfig.getChatUrl(tenantHash);
+      
+      errorLogger.logInfo('🔐 Generating streaming JWT token', {
+        tenantHash: tenantHash.slice(0, 8) + '...',
+        sessionId,
+        endpoint: tokenEndpoint
+      });
+      
+      // PERFORMANCE: Use AbortController with shorter timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout instead of default
+      
+      const response = await fetch(`${tokenEndpoint}&action=generate_stream_token`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({
+          session_id: sessionId,
+          user_input: userInput,
+          tenant_hash: tenantHash
+        }),
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) {
+        throw new Error(`Token generation failed: ${response.status} ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      
+      if (!data.jwt || !data.streaming_url) {
+        throw new Error('Invalid token response: missing jwt or streaming_url');
+      }
+      
+      // PERFORMANCE: Cache the token for reuse
+      tokenCacheRef.current.set(cacheKey, {
+        jwt: data.jwt,
+        streamingUrl: data.streaming_url,
+        timestamp: Date.now()
+      });
+      
+      // Clean up old cache entries to prevent memory leaks
+      if (tokenCacheRef.current.size > 10) {
+        const oldestKey = tokenCacheRef.current.keys().next().value;
+        tokenCacheRef.current.delete(oldestKey);
+      }
+      
+      const totalTime = performance.now() - startTime;
+      errorLogger.logInfo('✅ Streaming JWT token generated successfully', {
+        generationTime: totalTime.toFixed(2) + 'ms',
+        hasJWT: !!data.jwt,
+        hasStreamingURL: !!data.streaming_url,
+        sessionId,
+        targetMet: totalTime < 200 ? '✅' : '⚠️ (PRD target: <200ms)'
+      });
+      
+      return {
+        jwt: data.jwt,
+        streamingUrl: data.streaming_url
+      };
+      
+    } catch (error) {
+      const totalTime = performance.now() - startTime;
+      errorLogger.logError(error, {
+        context: 'jwt_token_generation',
+        generationTime: totalTime.toFixed(2) + 'ms',
+        sessionId,
+        userInput: userInput.substring(0, 50) + '...'
+      });
+      throw error;
+    }
+  };
 
   const makeAPIRequest = async (url, options, retries = 3) => {
     const messageId = options.body ? JSON.parse(options.body).messageId : null;
@@ -1184,7 +1320,23 @@ const ChatProvider = ({ children }) => {
               throw new Error('Streaming utilities not available');
             }
 
-            const streamingEndpoint = environmentConfig.getStreamingUrl(tenantHash);
+            // Step 1: Generate JWT token for streaming
+            errorLogger.logInfo('🔐 Starting JWT/Function URL streaming flow', {
+              messageId: messageWithId.id,
+              tenantHash: tenantHash.slice(0, 8) + '...'
+            });
+            
+            let tokenData;
+            try {
+              tokenData = await generateStreamingToken(sanitizedUserContent, sessionIdRef.current);
+            } catch (tokenError) {
+              errorLogger.logWarning('🔐 JWT token generation failed - falling back to HTTP', {
+                error: tokenError.message,
+                messageId: messageWithId.id
+              });
+              makeHTTPAPICall();
+              return;
+            }
             
             setIsTyping(true);
             
@@ -1197,7 +1349,8 @@ const ChatProvider = ({ children }) => {
               timestamp: new Date().toISOString(),
               metadata: {
                 streaming: true,
-                messageId: messageWithId.id
+                messageId: messageWithId.id,
+                jwtAuth: true
               }
             };
             
@@ -1213,25 +1366,27 @@ const ChatProvider = ({ children }) => {
               }
             });
             
-            // Initialize streaming hook dynamically
+            // Step 2: Initialize streaming hook with JWT authentication
             const streamingHook = streamingUtils.useStreaming({
-              streamingEndpoint,
+              streamingEndpoint: tokenData.streamingUrl, // Use Function URL from token response
               tenantHash,
+              jwt: tokenData.jwt, // Pass JWT for authentication
               onMessage: streamingConfigRef.current.onMessage,
               onComplete: streamingConfigRef.current.onComplete,
               onError: streamingConfigRef.current.onError
             });
             
-            // Start streaming
+            // Step 3: Start streaming with JWT authentication
             await streamingHook.startStreaming({
               userInput: sanitizedUserContent,
-              sessionId: sessionIdRef.current
+              sessionId: sessionIdRef.current,
+              jwt: tokenData.jwt // Include JWT in streaming parameters
             });
             
             streamingHookRef.current = streamingHook;
             
           } catch (error) {
-            errorLogger.logWarning('🔄 Streaming failed - falling back to HTTP', {
+            errorLogger.logWarning('🔄 JWT/Function URL streaming failed - falling back to HTTP', {
               error: error.message,
               messageId: messageWithId.id
             });
@@ -1285,6 +1440,8 @@ const ChatProvider = ({ children }) => {
     streamingAvailable,
     streamingEnabled,
     currentStreamingMessage,
+    // JWT/Function URL methods
+    generateStreamingToken,
     // Phase 3.2: Conversation persistence
     conversationMetadata,
     // Phase 3.3: Mobile compatibility and PWA features
@@ -1302,7 +1459,9 @@ const ChatProvider = ({ children }) => {
         available: streamingAvailable,
         enabled: streamingEnabled,
         hookInitialized: !!streamingHookRef.current,
-        currentMessage: currentStreamingMessage?.id || null
+        currentMessage: currentStreamingMessage?.id || null,
+        jwtAuthEnabled: true,
+        authFlow: 'jwt-function-url'
       }
     }
   };

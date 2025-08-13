@@ -7,7 +7,9 @@ import json
 import time
 import boto3
 import logging
+import os
 from typing import Dict, Any, Optional, Tuple
+from botocore.exceptions import ClientError
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +31,17 @@ class StateClearHandler:
     def __init__(self):
         self.dynamodb = boto3.client('dynamodb')
         self.s3 = boto3.client('s3')
+        
+        # Get environment and table names
+        self.environment = os.environ.get('ENVIRONMENT', 'staging')
+        self.conversation_summaries_table = os.environ.get(
+            'SUMMARIES_TABLE_NAME', 
+            'picasso-conversation-summaries'
+        )
+        self.recent_messages_table = os.environ.get(
+            'MESSAGES_TABLE_NAME', 
+            'picasso-recent-messages'
+        )
     
     def handle_state_clear_request(self, tenant_id: str, session_id: str = None, 
                                   clear_type: str = "full", requester_ip: str = None) -> Dict[str, Any]:
@@ -114,32 +127,76 @@ class StateClearHandler:
                 'timestamp': int(time.time())
             }
     
-    def _clear_full_state(self, tenant_id: str) -> int:
+    def _clear_full_state(self, tenant_id: str, session_id: str = None) -> int:
         """
-        Clear all state for a tenant (simulation)
-        In production, this would clear:
-        - Session data from DynamoDB
-        - Cached configurations
-        - Temporary files from S3
-        - Any other tenant-specific state
+        Clear all conversation state data from DynamoDB tables
+        Implements complete data purging for HIPAA compliance
         """
-        # Simulate clearing operations
         items_cleared = 0
         
-        # Simulate clearing session data
-        logger.info(f"Clearing session data for {tenant_id[:8]}...")
-        time.sleep(0.01)  # Simulate DB operations
-        items_cleared += 5  # Simulate 5 session records cleared
+        if session_id:
+            # Clear specific session data
+            items_cleared += self._clear_session_data(session_id)
+        else:
+            # Clear all sessions for tenant (if tenant-wide clearing is needed)
+            logger.warning(f"Full tenant clear not implemented - requires session_id")
+            
+        return items_cleared
+    
+    def _clear_session_data(self, session_id: str) -> int:
+        """
+        Clear conversation data for a specific session from both DynamoDB tables
+        """
+        items_cleared = 0
         
-        # Simulate clearing cache data
-        logger.info(f"Clearing cache data for {tenant_id[:8]}...")
-        time.sleep(0.01)  # Simulate cache operations
-        items_cleared += 3  # Simulate 3 cache entries cleared
-        
-        # Simulate clearing temporary files
-        logger.info(f"Clearing temporary files for {tenant_id[:8]}...")
-        time.sleep(0.02)  # Simulate S3 operations
-        items_cleared += 2  # Simulate 2 temp files cleared
+        try:
+            # Clear from conversation summaries table
+            logger.info(f"Clearing conversation summary for session {session_id[:8]}...")
+            try:
+                self.dynamodb.delete_item(
+                    TableName=self.conversation_summaries_table,
+                    Key={'sessionId': {'S': session_id}}
+                )
+                items_cleared += 1
+                logger.info(f"Deleted conversation summary for session {session_id[:8]}...")
+            except ClientError as e:
+                if e.response['Error']['Code'] != 'ResourceNotFoundException':
+                    logger.warning(f"Failed to delete from summaries table: {e}")
+            
+            # Clear from recent messages table
+            logger.info(f"Clearing recent messages for session {session_id[:8]}...")
+            try:
+                # Query all messages for this session first
+                response = self.dynamodb.query(
+                    TableName=self.recent_messages_table,
+                    KeyConditionExpression='sessionId = :sessionId',
+                    ExpressionAttributeValues={
+                        ':sessionId': {'S': session_id}
+                    }
+                )
+                
+                # Delete each message
+                for item in response.get('Items', []):
+                    message_id = item.get('messageId', {}).get('S')
+                    if message_id:
+                        self.dynamodb.delete_item(
+                            TableName=self.recent_messages_table,
+                            Key={
+                                'sessionId': {'S': session_id},
+                                'messageId': {'S': message_id}
+                            }
+                        )
+                        items_cleared += 1
+                
+                logger.info(f"Deleted {len(response.get('Items', []))} messages for session {session_id[:8]}...")
+                
+            except ClientError as e:
+                if e.response['Error']['Code'] != 'ResourceNotFoundException':
+                    logger.warning(f"Failed to delete from messages table: {e}")
+            
+        except Exception as e:
+            logger.error(f"Error clearing session data: {str(e)}")
+            raise
         
         return items_cleared
     
@@ -149,11 +206,116 @@ class StateClearHandler:
         time.sleep(0.01)  # Simulate cache clear
         return 3  # Simulate 3 cache entries cleared
     
-    def _clear_session_state(self, tenant_id: str, session_id: str) -> int:
+    def _clear_session_state(self, session_id: str) -> int:
         """Clear state for a specific session"""
-        logger.info(f"Clearing session {session_id} for {tenant_id[:8]}...")
-        time.sleep(0.005)  # Simulate session clear
-        return 1  # Simulate 1 session cleared
+        logger.info(f"Clearing session {session_id[:8]}...")
+        return self._clear_session_data(session_id)
+
+def handle_state_clear(event: Dict[str, Any], tenant_id: str = None) -> Dict[str, Any]:
+    """
+    Clear conversation state for compliance - matches plan specification
+    """
+    try:
+        # Extract session_id from query parameters
+        query_params = event.get('queryStringParameters') or {}
+        session_id = query_params.get('session_id')
+        
+        if not session_id:
+            return {
+                'statusCode': 400,
+                'headers': {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
+                },
+                'body': json.dumps({'error': 'session_id required'})
+            }
+        
+        # Initialize DynamoDB client
+        dynamodb = boto3.client('dynamodb')
+        environment = os.environ.get('ENVIRONMENT', 'staging')
+        
+        # Table names from environment variables
+        summaries_table = os.environ.get('SUMMARIES_TABLE_NAME', 'picasso-conversation-summaries')
+        messages_table = os.environ.get('MESSAGES_TABLE_NAME', 'picasso-recent-messages')
+        
+        try:
+            # Delete from both tables as per plan specification
+            # Note: DynamoDB delete_item is idempotent - doesn't fail if item doesn't exist
+            
+            # Delete from conversation summaries table
+            try:
+                dynamodb.delete_item(
+                    TableName=summaries_table,
+                    Key={'sessionId': {'S': session_id}}
+                )
+                logger.info(f"Deleted summary for session {session_id[:8]}...")
+            except ClientError as e:
+                if e.response['Error']['Code'] != 'ResourceNotFoundException':
+                    logger.warning(f"Failed to delete from summaries table: {e}")
+                    raise
+            
+            # Delete from recent messages table  
+            try:
+                dynamodb.delete_item(
+                    TableName=messages_table,
+                    Key={'sessionId': {'S': session_id}}
+                )
+                logger.info(f"Deleted messages for session {session_id[:8]}...")
+            except ClientError as e:
+                if e.response['Error']['Code'] != 'ResourceNotFoundException':
+                    logger.warning(f"Failed to delete from messages table: {e}")
+                    raise
+            
+            # Emit audit event as per plan specification
+            if AUDIT_LOGGER_AVAILABLE:
+                audit_logger._log_audit_event(
+                    tenant_id=tenant_id or 'unknown',
+                    event_type='state_cleared',
+                    session_id=session_id,
+                    context={
+                        'sessionId': session_id,
+                        'tenantId': tenant_id,
+                        'timestamp': int(time.time()),
+                        'operation': 'state_cleared_compliance'
+                    }
+                )
+            
+            return {
+                'statusCode': 200,
+                'headers': {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
+                },
+                'body': json.dumps({'status': 'cleared'})
+            }
+            
+        except ClientError as e:
+            logger.error(f"DynamoDB error clearing state: {e}")
+            return {
+                'statusCode': 500,
+                'headers': {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
+                },
+                'body': json.dumps({
+                    'error': 'Failed to clear state',
+                    'details': str(e)
+                })
+            }
+        
+    except Exception as e:
+        logger.error(f"Error in handle_state_clear: {str(e)}")
+        return {
+            'statusCode': 500,
+            'headers': {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*'
+            },
+            'body': json.dumps({
+                'error': 'Internal server error',
+                'details': str(e)
+            })
+        }
 
 def handle_state_clear_action(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """

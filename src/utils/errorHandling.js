@@ -38,6 +38,10 @@ export const ERROR_TYPES = {
   VALIDATION_ERROR: 'validation_error',
   RENDER_ERROR: 'render_error',
   CONFIG_ERROR: 'config_error',
+  JWT_ERROR: 'jwt_error',
+  JWT_EXPIRED_ERROR: 'jwt_expired_error',
+  JWT_VALIDATION_ERROR: 'jwt_validation_error',
+  FUNCTION_URL_ERROR: 'function_url_error',
   UNKNOWN_ERROR: 'unknown_error'
 };
 
@@ -125,6 +129,53 @@ export const classifyError = (error, response = null) => {
     };
   }
   
+  // JWT and authentication errors
+  if (error.message.includes('JWT') || error.message.includes('jwt')) {
+    if (error.message.includes('expired') || error.message.includes('expir')) {
+      return {
+        type: ERROR_TYPES.JWT_EXPIRED_ERROR,
+        category: ERROR_CATEGORY.AUTHENTICATION,
+        severity: ERROR_SEVERITY.MEDIUM,
+        retryable: true // Can retry with new token
+      };
+    }
+    
+    if (error.message.includes('invalid') || error.message.includes('validation')) {
+      return {
+        type: ERROR_TYPES.JWT_VALIDATION_ERROR,
+        category: ERROR_CATEGORY.AUTHENTICATION,
+        severity: ERROR_SEVERITY.HIGH,
+        retryable: false
+      };
+    }
+    
+    if (error.message.includes('Token generation failed')) {
+      return {
+        type: ERROR_TYPES.JWT_ERROR,
+        category: ERROR_CATEGORY.AUTHENTICATION,
+        severity: ERROR_SEVERITY.HIGH,
+        retryable: true
+      };
+    }
+    
+    return {
+      type: ERROR_TYPES.JWT_ERROR,
+      category: ERROR_CATEGORY.AUTHENTICATION,
+      severity: ERROR_SEVERITY.HIGH,
+      retryable: false
+    };
+  }
+  
+  // Function URL errors
+  if (error.message.includes('Function URL') || error.message.includes('function_url')) {
+    return {
+      type: ERROR_TYPES.FUNCTION_URL_ERROR,
+      category: ERROR_CATEGORY.API,
+      severity: ERROR_SEVERITY.HIGH,
+      retryable: true
+    };
+  }
+  
   // Default unknown error
   return {
     type: ERROR_TYPES.UNKNOWN_ERROR,
@@ -147,6 +198,10 @@ export const shouldRetry = (errorClassification, attempt, _maxRetries = 3) => {
     [ERROR_TYPES.TIMEOUT_ERROR]: 3,
     [ERROR_TYPES.RATE_LIMIT_ERROR]: 2,
     [ERROR_TYPES.SERVER_ERROR]: 3,
+    [ERROR_TYPES.JWT_ERROR]: 2,
+    [ERROR_TYPES.JWT_EXPIRED_ERROR]: 1, // Only retry once for expired tokens
+    [ERROR_TYPES.JWT_VALIDATION_ERROR]: 0, // Never retry validation errors
+    [ERROR_TYPES.FUNCTION_URL_ERROR]: 2,
     [ERROR_TYPES.UNKNOWN_ERROR]: 1
   };
   
@@ -163,6 +218,10 @@ export const getBackoffDelay = (errorClassification, attempt, baseDelay = 1000) 
     [ERROR_TYPES.TIMEOUT_ERROR]: 2000,
     [ERROR_TYPES.RATE_LIMIT_ERROR]: 5000,
     [ERROR_TYPES.SERVER_ERROR]: 2000,
+    [ERROR_TYPES.JWT_ERROR]: 1500,
+    [ERROR_TYPES.JWT_EXPIRED_ERROR]: 500, // Quick retry for expired tokens
+    [ERROR_TYPES.JWT_VALIDATION_ERROR]: 0, // No retry delay
+    [ERROR_TYPES.FUNCTION_URL_ERROR]: 2000,
     [ERROR_TYPES.UNKNOWN_ERROR]: 1000
   };
   
@@ -188,6 +247,10 @@ export const getUserFriendlyMessage = (errorClassification, attempt = 1) => {
     [ERROR_TYPES.VALIDATION_ERROR]: "The information provided is invalid. Please check and try again.",
     [ERROR_TYPES.RENDER_ERROR]: "There was a problem displaying the chat. Please refresh the page.",
     [ERROR_TYPES.CONFIG_ERROR]: "There's a configuration issue. Please contact support.",
+    [ERROR_TYPES.JWT_ERROR]: "Authentication failed. Please try again.",
+    [ERROR_TYPES.JWT_EXPIRED_ERROR]: "Your session has expired. Please try again.",
+    [ERROR_TYPES.JWT_VALIDATION_ERROR]: "Authentication validation failed. Please refresh and try again.",
+    [ERROR_TYPES.FUNCTION_URL_ERROR]: "Chat service connection failed. Please try again.",
     [ERROR_TYPES.UNKNOWN_ERROR]: "Something unexpected happened. Please try again."
   };
   

@@ -137,6 +137,10 @@ def lambda_handler(event, context):
             logger.info("✅ Handling action=generate_jwt")
             return handle_generate_jwt_action(tenant_hash, query_params, tenant_info)
         
+        elif action == "generate_stream_token":
+            logger.info("✅ Handling action=generate_stream_token")
+            return handle_generate_stream_token_action(tenant_hash, query_params, tenant_info)
+        
         elif action == "state_clear":
             logger.info("✅ Handling action=state_clear")
             return handle_state_clear_action_wrapper(event, tenant_hash, security_context)
@@ -160,7 +164,7 @@ def lambda_handler(event, context):
             return cors_response(400, {
                 "error": "Invalid request format",
                 "expected_format": "?action=ACTION&t=HASH",
-                "valid_actions": ["get_config", "chat", "health_check", "cache_status", "clear_cache", "state_clear", "conversation"],
+                "valid_actions": ["get_config", "chat", "health_check", "cache_status", "clear_cache", "generate_jwt", "generate_stream_token", "state_clear", "conversation"],
                 "received": {
                     "method": http_method,
                     "action": action,
@@ -495,6 +499,81 @@ def handle_generate_jwt_action(tenant_hash, query_params, tenant_info=None):
             "details": str(e)
         })
 
+def handle_generate_stream_token_action(tenant_hash, query_params, tenant_info=None):
+    """Handle action=generate_stream_token with enhanced tenant inference and secure token generation"""
+    try:
+        if not tenant_hash:
+            return cors_response(400, {
+                "error": "Missing tenant hash",
+                "usage": "GET ?action=generate_stream_token&t=HASH&session_id=SESSION"
+            })
+        
+        logger.info(f"[{tenant_hash[:8]}...] 🔐 Processing generate_stream_token action")
+        
+        # Enhanced security validation using tenant inference
+        if tenant_info:
+            # Tenant already validated through inference system
+            logger.info(f"[{tenant_hash[:8]}...] ✅ Using validated tenant from inference: {tenant_info.get('source')}")
+        else:
+            # Fallback validation for backward compatibility
+            if not TENANT_CONFIG_AVAILABLE:
+                return cors_response(503, {
+                    "error": "Tenant validation service unavailable"
+                })
+            
+            try:
+                config = get_config_for_tenant_by_hash(tenant_hash)
+                if not config:
+                    logger.error(f"[{tenant_hash[:8]}...] ❌ SECURITY: Invalid tenant hash for streaming token generation")
+                    return cors_response(404, {
+                        "error": "Tenant configuration not found",
+                        "message": "The requested tenant hash is not authorized"
+                    })
+            except Exception as e:
+                logger.error(f"[{tenant_hash[:8]}...] ❌ Tenant validation failed: {str(e)}")
+                return cors_response(403, {
+                    "error": "Tenant validation failed",
+                    "message": "Unable to validate tenant authorization"
+                })
+        
+        # Generate secure streaming token using enhanced system
+        if TENANT_INFERENCE_AVAILABLE:
+            # Extract session_id from query parameters
+            session_id = query_params.get('session_id')
+            
+            # Use tenant_id from tenant_info if available, otherwise use tenant_hash
+            actual_tenant_id = tenant_info.get('tenant_hash') if tenant_info else tenant_hash
+            
+            # Use the generate_streaming_token function from tenant_inference
+            streaming_token_result = generate_streaming_token(tenant_id=actual_tenant_id, session_id=session_id)
+            if streaming_token_result:
+                # Add tenant context to token result
+                streaming_token_result['tenant_hash'] = tenant_hash[:8] + '...'  # Partial for logging
+                streaming_token_result['inference_source'] = tenant_info.get('source') if tenant_info else 'config_fallback'
+                
+                logger.info(f"[{tenant_hash[:8]}...] ✅ Streaming token generated via enhanced system")
+                return cors_response(200, streaming_token_result)
+            else:
+                logger.error(f"[{tenant_hash[:8]}...] ❌ Streaming token generation failed")
+                return cors_response(500, {
+                    "error": "Streaming token generation failed",
+                    "message": "Unable to generate secure streaming token"
+                })
+        else:
+            # Fallback to basic token generation
+            logger.warning(f"[{tenant_hash[:8]}...] ⚠️ Using fallback streaming token generation")
+            return cors_response(503, {
+                "error": "Enhanced streaming token service unavailable",
+                "message": "Tenant inference system not available"
+            })
+        
+    except Exception as e:
+        logger.error(f"❌ Streaming token generation action failed: {str(e)}")
+        return cors_response(500, {
+            "error": "Streaming token generation failed",
+            "details": str(e)
+        })
+
 def handle_s3_config_fallback(tenant_hash, security_context):
     """Direct S3 config loading fallback - pure hash-based with security monitoring"""
     try:
@@ -606,8 +685,8 @@ def handle_state_clear_action_wrapper(event, tenant_hash, security_context):
         
         # Import state clear handler
         try:
-            from state_clear_handler import handle_state_clear_action
-            response = handle_state_clear_action(event, None)
+            from state_clear_handler import handle_state_clear
+            response = handle_state_clear(event, tenant_hash)
             return ensure_cors_headers(response)
             
         except ImportError:

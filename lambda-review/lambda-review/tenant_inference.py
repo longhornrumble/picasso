@@ -547,49 +547,130 @@ def handle_inference_failure(reason, context):
         'status_code': 403
     }
 
-def generate_streaming_token():
-    """
-    Enhanced token issuance with kid/jti
-    """
+def infer_tenant_from_request(event):
+    """Securely determine tenant from request context"""
+    try:
+        # Check host header
+        host = event.get('headers', {}).get('host', '')
+        
+        # Check API Gateway domain mapping
+        domain_name = event.get('requestContext', {}).get('domainName', '')
+        
+        # Tenant inference logic (never trust client input)
+        if 'staging' in host:
+            return lookup_staging_tenant(domain_name)
+        
+        return lookup_production_tenant(domain_name)
+        
+    except Exception as e:
+        logger.error(f"SECURITY: Tenant inference from request failed: {str(e)}")
+        return None
+
+def lookup_staging_tenant(domain_name):
+    """Lookup tenant for staging environment"""
+    try:
+        # Load tenant registry for staging domain mapping
+        registry = loadTenantRegistry()
+        
+        # Find tenant by staging domain
+        staging_domains = {
+            'staging.chat.myrecruiter.ai': 'tenant123hash',
+            'staging.secure.example.org': 'tenant456hash',
+            'staging.healthcare.ai': 'medical789hash'
+        }
+        
+        tenant_hash = staging_domains.get(domain_name)
+        if tenant_hash and tenant_hash in registry.get('hashes', set()):
+            return {
+                'tenant_hash': tenant_hash,
+                'source': 'staging_domain',
+                'domain': domain_name
+            }
+        
+        return None
+        
+    except Exception as e:
+        logger.error(f"SECURITY: Staging tenant lookup failed: {str(e)}")
+        return None
+
+def lookup_production_tenant(domain_name):
+    """Lookup tenant for production environment"""
+    try:
+        # Load tenant registry for production domain mapping
+        registry = loadTenantRegistry()
+        
+        # Find tenant by production domain
+        production_domains = {
+            'chat.myrecruiter.ai': 'tenant123hash',
+            'secure.example.org': 'tenant456hash',
+            'healthcare.ai': 'medical789hash'
+        }
+        
+        tenant_hash = production_domains.get(domain_name)
+        if tenant_hash and tenant_hash in registry.get('hashes', set()):
+            return {
+                'tenant_hash': tenant_hash,
+                'source': 'production_domain',
+                'domain': domain_name
+            }
+        
+        return None
+        
+    except Exception as e:
+        logger.error(f"SECURITY: Production tenant lookup failed: {str(e)}")
+        return None
+
+def generate_streaming_token(tenant_id=None, session_id=None):
+    """Generate short-lived JWT for streaming with Function URL"""
     try:
         # Get signing key with rotation support
         signing_key = _get_signing_key()
         if not signing_key:
             raise ValueError("Signing key unavailable")
         
-        # Generate unique identifiers
-        session_id = _generate_session_id()
+        # Generate unique identifiers if not provided
+        if not session_id:
+            session_id = _generate_session_id()
+        if not tenant_id:
+            tenant_id = 'inferred'  # Will be set by caller
+        
         jti = _generate_jti()
         
-        # Build payload with enhanced security
+        # Build payload with enhanced security and 15-minute expiration
         current_time = datetime.utcnow()
         payload = {
             'sessionId': session_id,
+            'tenantId': tenant_id,
             'purpose': 'stream',
             'iat': int(current_time.timestamp()),
-            'exp': int((current_time + timedelta(minutes=15)).timestamp()),
+            'exp': int((current_time + timedelta(minutes=15)).timestamp()),  # 15 minutes
             'iss': f'picasso-{ENVIRONMENT}',
             'aud': 'streaming-function',
             'jti': jti,
-            'kid': 'default',  # Key ID for rotation
-            'tenant_scope': 'inferred'  # Mark as tenant-inferred
+            'kid': 'default'  # Key ID for rotation
         }
         
         # Generate token
         jwt_token = jwt.encode(payload, signing_key, algorithm='HS256')
         
+        # Get Function URL from environment
+        function_url = os.environ.get('BEDROCK_STREAMING_FUNCTION_URL', 'https://function-url-not-configured.lambda-url.us-east-1.on.aws/')
+        
         # Audit JWT generation
         if AUDIT_LOGGER_AVAILABLE:
             audit_logger.log_jwt_generated(
-                tenant_id=payload.get('tenant_scope', 'unknown'),
+                tenant_id=tenant_id,
                 session_id=session_id,
                 purpose='stream',
                 expires_in=900
             )
         
+        # Return token with function URL (per plan specification)
         return {
             'jwt_token': jwt_token,
+            'function_url': function_url,
             'session_id': session_id,
+            'tenant_id': tenant_id,
             'expires_in': 900,  # 15 minutes
             'jti': jti,
             'purpose': 'stream'
@@ -743,6 +824,48 @@ def _resolve_config_tenant(tenant_hash, request_context):
     except Exception as e:
         logger.error(f"SECURITY: Config tenant resolution failed: {str(e)}")
         return None
+
+def _resolve_tenant_from_hash_s3(tenant_hash):
+    """Resolve tenant from S3 mapping for testing compatibility"""
+    try:
+        # Load tenant registry
+        registry = loadTenantRegistry()
+        
+        # Check if hash exists in registry
+        if tenant_hash in registry.get('hashes', set()):
+            return tenant_hash
+        
+        return None
+        
+    except Exception as e:
+        logger.error(f"SECURITY: S3 tenant resolution failed: {str(e)}")
+        return None
+
+def validate_jwt_token(token):
+    """Simple JWT validation for testing compatibility"""
+    try:
+        # Get signing key
+        signing_key = _get_signing_key()
+        if not signing_key:
+            return None, "Signing key unavailable"
+        
+        # Decode and validate token
+        payload = jwt.decode(token, signing_key, algorithms=['HS256'])
+        
+        # Basic validation
+        required_fields = ['sessionId', 'tenantId', 'purpose', 'exp', 'iat']
+        for field in required_fields:
+            if not payload.get(field):
+                return None, f"Missing field: {field}"
+        
+        return payload, None
+        
+    except jwt.ExpiredSignatureError:
+        return None, "Token expired"
+    except jwt.InvalidTokenError as e:
+        return None, f"Invalid token: {str(e)}"
+    except Exception as e:
+        return None, f"Validation error: {str(e)}"
 
 def _find_tenant_by_path(path, registry, request_context):
     """Find tenant by path with security validation"""

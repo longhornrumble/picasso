@@ -55,62 +55,28 @@ def lambda_handler(event, context):
         if event.get('requestContext', {}).get('http', {}).get('method') == 'OPTIONS':
             return cors_response(200, "")
         
-        # Validate JWT token from headers
-        headers = event.get('headers', {})
-        jwt_token = headers.get('x-jwt-token') or headers.get('Authorization', '').replace('Bearer ', '')
+        # Validate JWT token using the new validation function
+        jwt_validation_result = validate_streaming_jwt(event)
         
-        if not jwt_token:
-            logger.warning("❌ Missing JWT token in streaming request")
+        if not jwt_validation_result['valid']:
+            logger.warning(f"❌ JWT validation failed: {jwt_validation_result['error']}")
             
             # Log unauthorized access attempt
             if SECURITY_MONITOR_AVAILABLE:
                 log_unauthorized_access_attempt(
                     tenant_hash=None,
                     access_type="streaming_request",
-                    reason="missing_jwt_token",
+                    reason=f"jwt_validation_failed_{jwt_validation_result['error']}",
                     **security_context
                 )
             
-            return error_response(401, "Missing JWT token", 
-                               "Include JWT token in x-jwt-token header or Authorization: Bearer header")
+            return error_response(401, "JWT validation failed", jwt_validation_result['error'])
         
-        # Validate JWT and extract tenant info
-        payload = validate_jwt_token(jwt_token, security_context)
-        if not payload:
-            logger.warning("❌ Invalid JWT token provided to streaming handler")
-            
-            # Log JWT validation failure
-            if SECURITY_MONITOR_AVAILABLE:
-                log_jwt_validation_failure(
-                    reason="invalid_or_expired_token",
-                    token_hash=jwt_token,
-                    **security_context
-                )
-            
-            return error_response(401, "Invalid JWT token", 
-                               "Token may be expired, malformed, or using incorrect signing key")
-        
-        tenant_id = payload.get('tenantId')
-        session_id = payload.get('sessionId')
-        purpose = payload.get('purpose')
+        tenant_id = jwt_validation_result['tenantId']
+        session_id = jwt_validation_result['sessionId']
+        purpose = 'stream'  # Verified by validate_streaming_jwt
         
         logger.info(f"✅ JWT validated for streaming - Tenant: {tenant_id[:8]}..., Session: {session_id[:12]}..., Purpose: {purpose}")
-        
-        # Ensure token is for streaming purpose
-        if purpose != 'stream':
-            logger.warning(f"❌ Token purpose '{purpose}' not authorized for streaming")
-            
-            # Log unauthorized streaming access attempt
-            if SECURITY_MONITOR_AVAILABLE:
-                log_unauthorized_access_attempt(
-                    tenant_hash=tenant_id,
-                    access_type="streaming_request",
-                    reason=f"invalid_token_purpose_{purpose}",
-                    **security_context
-                )
-            
-            return error_response(403, "Token not authorized for streaming", 
-                               f"Token purpose '{purpose}' invalid. Expected 'stream'")
         
         # Check for potential rate limiting (basic implementation)
         if should_rate_limit(tenant_id, security_context):
@@ -165,6 +131,43 @@ def should_rate_limit(tenant_id, security_context):
     except Exception as e:
         logger.error(f"❌ Rate limiting check failed: {str(e)}")
         return False
+
+def validate_streaming_jwt(event):
+    """Validate JWT token from Authorization header"""
+    auth_header = event.get('headers', {}).get('authorization', '')
+    
+    if not auth_header.startswith('Bearer '):
+        return {'valid': False, 'error': 'Missing Bearer token'}
+    
+    token = auth_header[7:]  # Remove 'Bearer ' prefix
+    
+    try:
+        # Get signing key from Secrets Manager
+        secret_response = secrets_client.get_secret_value(SecretId=JWT_SECRET_KEY_NAME)
+        secret_data = json.loads(secret_response['SecretString'])
+        signing_key = secret_data.get('signingKey')
+        
+        if not signing_key:
+            return {'valid': False, 'error': 'Signing key unavailable'}
+        
+        payload = jwt.decode(token, signing_key, algorithms=['HS256'], options={'verify_aud': False})
+        
+        # Verify token purpose
+        if payload.get('purpose') != 'stream':
+            return {'valid': False, 'error': 'Invalid token purpose'}
+            
+        return {
+            'valid': True,
+            'sessionId': payload['sessionId'],
+            'tenantId': payload['tenantId']
+        }
+    except jwt.ExpiredSignatureError:
+        return {'valid': False, 'error': 'Token expired'}
+    except jwt.InvalidTokenError:
+        return {'valid': False, 'error': 'Invalid token'}
+    except Exception as e:
+        logger.error(f"JWT validation error: {str(e)}")
+        return {'valid': False, 'error': 'Validation failed'}
 
 def validate_jwt_token(token, security_context):
     """Validate JWT token using AWS Secrets Manager key with security monitoring"""
@@ -417,16 +420,17 @@ def generate_sse_streaming_response(user_input, tenant_id, session_id, config, c
         # Log performance metrics
         logger.info(f"⚡ Streaming performance - First token: {first_token_time:.3f}s, Total: {completion_time:.3f}s, Tokens: {token_count}")
         
-        # Return SSE response
+        # Return SSE response with proper headers for browser compatibility
         return {
             'statusCode': 200,
             'headers': {
-                'Content-Type': 'text/plain; charset=utf-8',
+                'Content-Type': 'text/event-stream',
                 'Cache-Control': 'no-cache',
                 'Connection': 'keep-alive',
                 'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Headers': 'Content-Type,x-jwt-token,Authorization',
+                'Access-Control-Allow-Headers': 'Content-Type,Authorization,x-jwt-token',
                 'Access-Control-Allow-Methods': 'POST,OPTIONS',
+                'Access-Control-Expose-Headers': 'x-session-id,x-first-token-ms,x-total-tokens',
                 'x-session-id': session_id,
                 'x-first-token-ms': str(int(first_token_time * 1000)) if first_token_time else '0',
                 'x-total-tokens': str(token_count)
@@ -639,8 +643,9 @@ def error_response(status_code, error, details=None):
         'headers': {
             'Content-Type': 'application/json',
             'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Headers': 'Content-Type,x-jwt-token,Authorization',
-            'Access-Control-Allow-Methods': 'POST,OPTIONS'
+            'Access-Control-Allow-Headers': 'Content-Type,Authorization,x-jwt-token',
+            'Access-Control-Allow-Methods': 'POST,OPTIONS',
+            'Access-Control-Expose-Headers': 'x-session-id,x-first-token-ms,x-total-tokens'
         },
         'body': json.dumps(error_body)
     }
@@ -651,8 +656,9 @@ def cors_response(status_code, body):
         'statusCode': status_code,
         'headers': {
             'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Headers': 'Content-Type,x-jwt-token,Authorization',
+            'Access-Control-Allow-Headers': 'Content-Type,Authorization,x-jwt-token',
             'Access-Control-Allow-Methods': 'POST,OPTIONS',
+            'Access-Control-Expose-Headers': 'x-session-id,x-first-token-ms,x-total-tokens',
             'Access-Control-Max-Age': '86400'
         },
         'body': body if isinstance(body, str) else json.dumps(body)
