@@ -183,9 +183,19 @@ export class ServiceWorkerManager {
       return false;
     }
     
+    // Disable service worker for staging builds to avoid path issues
+    const environment = typeof __ENVIRONMENT__ !== 'undefined' ? __ENVIRONMENT__ : 'production';
+    if (environment === 'staging') {
+      console.log('🚫 Service Worker disabled for staging environment');
+      return false;
+    }
+    
     try {
-      this.registration = await navigator.serviceWorker.register('/sw.js', {
-        scope: '/'
+      // Determine the correct service worker path based on environment
+      const swPath = environment === 'development' ? '/sw.js' : `${import.meta.env.BASE_URL}sw.js`;
+      
+      this.registration = await navigator.serviceWorker.register(swPath, {
+        scope: environment === 'development' ? '/' : import.meta.env.BASE_URL
       });
       
       console.log('🔧 Service Worker registered successfully');

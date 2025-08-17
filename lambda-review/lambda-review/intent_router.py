@@ -17,7 +17,7 @@ except ImportError as e:
     logger.warning(f"⚠️ tenant_config_loader not available: {e}")
     TENANT_CONFIG_AVAILABLE = False
 
-def route_intent(event, config=None):
+def route_intent(event, config=None, conversation_context=None):
     try:
         logger.info("📨 Routing intent request")
         
@@ -28,6 +28,33 @@ def route_intent(event, config=None):
 
         logger.info(f"[{tenant_hash[:8] if tenant_hash else 'unknown'}...] Session ID: {session_id}")
         logger.info(f"[{tenant_hash[:8] if tenant_hash else 'unknown'}...] User input: {user_input[:40]}...")
+        
+        # Use passed conversation_context or try to extract it from the event body
+        if conversation_context:
+            logger.info(f"[{tenant_hash[:8]}...] 📝 Using passed conversation context: {len(conversation_context.get('messages', []))} messages")
+        else:
+            try:
+                body = event.get("body", "{}")
+                if isinstance(body, str):
+                    body = json.loads(body)
+                
+                # Get conversation context from request
+                request_context = body.get('conversation_context', {})
+                # Check for both 'recentMessages' and 'messages' keys
+                messages = request_context.get('recentMessages', request_context.get('messages', []))
+                if request_context and messages:
+                    conversation_context = {
+                        'messages': messages,
+                        'recentMessages': messages,  # Support both formats
+                        'session_id': body.get('session_id'),
+                        'conversation_id': body.get('conversation_id'),
+                        'turn': body.get('turn', 0)
+                    }
+                    logger.info(f"[{tenant_hash[:8]}...] 📝 Extracted conversation context from request body: {len(messages)} messages")
+                else:
+                    logger.info(f"[{tenant_hash[:8]}...] 📝 No conversation context found in request body")
+            except Exception as e:
+                logger.warning(f"Could not extract conversation context from body: {e}")
 
         if not tenant_hash or not user_input:
             logger.warning(f"❌ Missing tenant_hash or user_input")
@@ -57,8 +84,12 @@ def route_intent(event, config=None):
         logger.info(f"[{tenant_hash[:8]}...] 🎨 Using tone: {tone[:40]}...")
 
         kb_context, sources = retrieve_kb_chunks(user_input, config)
-        prompt = build_prompt(user_input, kb_context, tone)
-        logger.info(f"[{tenant_hash[:8]}...] 🧠 Prompt built. Submitting to Claude...")
+        prompt = build_prompt(user_input, kb_context, tone, conversation_context)
+        
+        if conversation_context and conversation_context.get('messages'):
+            logger.info(f"[{tenant_hash[:8]}...] 🧠 Prompt built with {len(conversation_context['messages'])} conversation messages. Submitting to Claude...")
+        else:
+            logger.info(f"[{tenant_hash[:8]}...] 🧠 Prompt built without conversation history. Submitting to Claude...")
 
         response_text = call_claude_with_prompt(prompt, config)
         logger.info(f"[{tenant_hash[:8]}...] ✅ Claude response received")

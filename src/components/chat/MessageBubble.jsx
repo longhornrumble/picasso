@@ -1,5 +1,5 @@
-// MessageBubble.jsx - Enhanced with S3 Logo Support
-import React, { useState } from "react";
+// MessageBubble.jsx - PERFORMANCE OPTIMIZED: Enhanced with S3 Logo Support and React.memo
+import React, { useState, useCallback, useMemo } from "react";
 import { useConfig } from "../../hooks/useConfig";
 import { useChat } from "../../hooks/useChat";
 import { config as environmentConfig } from '../../config/environment';
@@ -45,7 +45,6 @@ export default function MessageBubble({ role, content, files = [], actions = [],
   };
 
   const handleAvatarError = () => {
-    console.log('❌ Avatar failed to load:', avatarSrc);
     setAvatarError(true);
   };
 

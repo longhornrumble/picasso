@@ -1,6 +1,6 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
-import { ConfigProvider } from './context/ConfigProvider.jsx';
+import { ConfigProvider } from './context/ConfigProvider.js';
 import { ChatProvider } from './context/ChatProvider.jsx';
 import ChatWidget from './components/chat/ChatWidget.jsx';
 import { CSSVariablesProvider } from './components/chat/useCSSVariables.js';
@@ -57,8 +57,10 @@ function getAllowedOrigins() {
   if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
     origins.push('http://localhost:5173');
     origins.push('http://localhost:3000');
+    origins.push('http://localhost:8000'); // Add esbuild dev server port
     origins.push('http://127.0.0.1:5173');
     origins.push('http://127.0.0.1:3000');
+    origins.push('http://127.0.0.1:8000'); // Add esbuild dev server port
   }
   
   // In production, only allow specific domains
@@ -131,12 +133,16 @@ function setupCommandListener() {
         case 'OPEN_CHAT':
           console.log('📡 Received OPEN_CHAT command');
           document.body.classList.add('chat-open');
+          // Dispatch custom event to notify React component
+          window.dispatchEvent(new CustomEvent('picasso-open-chat'));
           notifyParentEvent('CHAT_OPENED');
           break;
           
         case 'CLOSE_CHAT':
           console.log('📡 Received CLOSE_CHAT command');
           document.body.classList.remove('chat-open');
+          // Dispatch custom event to notify React component
+          window.dispatchEvent(new CustomEvent('picasso-close-chat'));
           notifyParentEvent('CHAT_CLOSED');
           break;
           
@@ -289,7 +295,7 @@ function initializeWidget() {
         console.log('🔄 Fetching config from:', configUrl);
         
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+        const timeoutId = setTimeout(() => controller.abort(), 3000); // PERFORMANCE: 3 second timeout for faster failure detection
         
         const response = await fetch(configUrl, {
           method: 'GET',
@@ -393,11 +399,11 @@ function initializeWidget() {
     root.render(
       <ErrorBoundary>
         <ConfigProvider>
-          <ChatProvider>
-            <CSSVariablesProvider>
+          <CSSVariablesProvider>
+            <ChatProvider>
               <ChatWidget />
-            </CSSVariablesProvider>
-          </ChatProvider>
+            </ChatProvider>
+          </CSSVariablesProvider>
         </ConfigProvider>
       </ErrorBoundary>
     );

@@ -2,7 +2,6 @@ import os
 import json
 import logging
 import boto3
-import requests
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -67,23 +66,57 @@ def retrieve_kb_chunks(user_input, config):
         logger.error(f"❌ KB retrieval failed: {str(e)}", exc_info=True)
         return "", []
 
-def build_prompt(user_input, query_results, tenant_tone):
-    logger.info(f"🧩 Building prompt with tone and retrieved content")
+def build_prompt(user_input, query_results, tenant_tone, conversation_context=None):
+    logger.info(f"🧩 Building prompt with tone, retrieved content, and conversation context")
+    
+    # Build conversation history section
+    conversation_history = ""
+    if conversation_context:
+        # Support both 'recentMessages' and 'messages' formats
+        messages = conversation_context.get('recentMessages') or conversation_context.get('messages') or conversation_context.get('previous_messages', [])
+        
+        if messages:
+            logger.info(f"🔗 Including {len(messages)} messages in conversation history")
+            history_lines = []
+            for msg in messages:
+                role = msg.get('role', 'unknown')
+                content = msg.get('content', msg.get('text', ''))
+                
+                # Skip empty messages
+                if not content or content.strip() == '':
+                    continue
+                    
+                if role == 'user':
+                    history_lines.append(f"User: {content}")
+                elif role == 'assistant':
+                    history_lines.append(f"Assistant: {content}")
+            
+            if history_lines:
+                conversation_history = f"""
+PREVIOUS CONVERSATION:
+{chr(10).join(history_lines)}
+
+REMEMBER: The user's name and any personal information they've shared should be remembered and used in your response when appropriate.
+
+"""
+        else:
+            logger.info("🔍 No messages found in conversation context")
     
     if not query_results:
         return f"""{tenant_tone}
 
-I don't have information about this topic in my knowledge base. Would you like me to connect you with someone who can help?
+{conversation_history}I don't have information about this topic in my knowledge base. Would you like me to connect you with someone who can help?
 
-User Question: {user_input}
+Current User Question: {user_input}
 """.strip()
     
     return f"""{tenant_tone}
 
 You are a virtual assistant answering the questions of website visitors. You are always couteous and respectful and respponsd if you are an employee of the organization. Your replace words like they or their with our, which conveys that are a representative of the team. You are answering a user's question using information from a knowledge base. Your job is to provide a helpful, natural response based on the information provided below.
 
-ESSENTIAL INSTRUCTIONS:
+{conversation_history}ESSENTIAL INSTRUCTIONS:
 - Answer the user's question using only the information from the knowledge base results below
+- Use the previous conversation context to provide personalized and coherent responses
 - Include ALL contact information exactly as it appears: phone numbers, email addresses, websites, and links
 - PRESERVE ALL MARKDOWN FORMATTING: If you see [text](url) keep it as [text](url), not plain text
 - Do not modify, shorten, or reformat any URLs, emails, or phone numbers
@@ -97,7 +130,7 @@ ESSENTIAL INSTRUCTIONS:
 KNOWLEDGE BASE INFORMATION:
 {query_results}
 
-USER QUESTION: {user_input}
+CURRENT USER QUESTION: {user_input}
 
 Important: ALWAYS include complete URLs exactly as they appear in the search results. When you see a URL like https://example.com/page, include the FULL URL, not just "their website" or "example.com". If the URL appears as a markdown link [text](url), preserve the markdown format.
 
@@ -148,7 +181,7 @@ def lambda_handler(event, context):
         # Retrieve knowledge base chunks
         query_results, sources = retrieve_kb_chunks(user_input, config)
         
-        # Build prompt
+        # Build prompt (no conversation context in direct lambda handler calls)
         prompt = build_prompt(user_input, query_results, tenant_tone)
         
         # Call Claude

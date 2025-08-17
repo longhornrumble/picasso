@@ -1,0 +1,73 @@
+{
+  "$schema": "../schemas/environment.schema.json",
+  "environment": "production",
+  "version": "2.0.0",
+  "buildTimestamp": 1736001234567,
+  "api": {
+    "baseUrl": "https://chat.myrecruiter.ai",
+    "timeout": 10000,
+    "retries": 3,
+    "rateLimit": {
+      "requests": 100,
+      "window": 60000
+    },
+    "headers": {
+      "Content-Type": "application/json",
+      "Accept": "application/json",
+      "X-Environment": "production"
+    }
+  },
+  "cdn": {
+    "assetsUrl": "https://picassocode.s3.amazonaws.com",
+    "fontsUrl": "https://fonts.googleapis.com",
+    "imagesUrl": "https://picassocode.s3.amazonaws.com/images",
+    "version": "2.0.0",
+    "cacheBusting": true
+  },
+  "security": {
+    "enforceHTTPS": true,
+    "allowInsecure": false,
+    "corsOrigins": [
+      "https://chat.myrecruiter.ai",
+      "https://myrecruiter.ai"
+    ],
+    "cspNonce": "prod-nonce-2024",
+    "frameAncestors": [
+      "'self'",
+      "https://myrecruiter.ai"
+    ],
+    "cookieSettings": {
+      "secure": true,
+      "sameSite": "strict",
+      "httpOnly": true
+    }
+  },
+  "logging": {
+    "level": "error",
+    "enableConsole": false,
+    "enableRemote": true,
+    "remoteEndpoint": "https://chat.myrecruiter.ai/logs",
+    "sanitizeErrors": true,
+    "maxLogSize": 1048576
+  },
+  "performance": {
+    "enableMetrics": true,
+    "enableTracing": false,
+    "sampleRate": 0.1,
+    "metricsEndpoint": "https://chat.myrecruiter.ai/metrics",
+    "maxBundleSize": 524288,
+    "lazyLoading": true,
+    "cacheStrategy": "localStorage"
+  },
+  "features": {
+    "streamingEnabled": true,
+    "fileUploadsEnabled": true,
+    "darkModeEnabled": true,
+    "mobileOptimized": true,
+    "a11yEnhanced": true,
+    "analyticsEnabled": true,
+    "errorReportingEnabled": true,
+    "performanceMonitoring": true,
+    "experimentalFeatures": false
+  }
+}

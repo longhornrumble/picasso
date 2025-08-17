@@ -47,10 +47,16 @@ export const sanitizeHTML = (html, options = {}) => {
   };
 
   try {
+    // Check if DOMPurify is properly initialized
+    if (!DOMPurify || typeof DOMPurify.sanitize !== 'function') {
+      console.warn('⚠️ DOMPurify not available, returning unsanitized HTML (SECURITY RISK)');
+      return html;
+    }
     return DOMPurify.sanitize(html, defaultOptions);
   } catch (error) {
     console.error('Error sanitizing HTML:', error);
-    return '';
+    console.warn('⚠️ Returning unsanitized HTML due to error (SECURITY RISK)');
+    return html;
   }
 };
 

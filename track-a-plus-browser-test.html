@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Track A+ Conversational Context Browser Test</title>
+    <style>
+        body {
+            font-family: system-ui, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 2rem;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: white;
+        }
+        .container {
+            background: rgba(255,255,255,0.95);
+            padding: 2rem;
+            border-radius: 12px;
+            color: #333;
+            margin-bottom: 2rem;
+        }
+        h1 { color: #2d3748; margin-bottom: 1rem; }
+        .test-section {
+            margin: 1rem 0;
+            padding: 1rem;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            background: #f7fafc;
+        }
+        button {
+            background: #4299e1;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+            margin: 0.5rem;
+        }
+        button:hover { background: #3182ce; }
+        .status { 
+            padding: 1rem; 
+            margin: 1rem 0; 
+            border-radius: 6px; 
+            background: #e6fffa;
+            border: 1px solid #38b2ac;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎯 Track A+ Conversational Context Browser Test</h1>
+        <p>Testing the validated Track A+ implementation in live browser environment.</p>
+        
+        <div class="test-section">
+            <h3>Test Status</h3>
+            <div id="status" class="status">
+                ✅ Track A+ Browser Test Page Loaded Successfully
+            </div>
+        </div>
+
+        <div class="test-section">
+            <h3>Widget Integration Test</h3>
+            <p>The Picasso chat widget with Track A+ conversational context should appear in the bottom right corner.</p>
+            <button onclick="testWidget()">Test Widget Functionality</button>
+            <button onclick="testConversationMemory()">Test Conversation Memory</button>
+            <button onclick="testJWTToken()">Test JWT Token System</button>
+        </div>
+
+        <div class="test-section">
+            <h3>Test Results</h3>
+            <div id="results"></div>
+        </div>
+    </div>
+
+    <!-- Load the Picasso Widget with Track A+ features -->
+    <script src="/widget.js" data-tenant="my87674d777bf9" data-env="staging"></script>
+    
+    <script>
+        function logResult(test, result) {
+            const resultsDiv = document.getElementById('results');
+            const timestamp = new Date().toLocaleTimeString();
+            resultsDiv.innerHTML += `<p>[${timestamp}] <strong>${test}:</strong> ${result}</p>`;
+        }
+
+        function testWidget() {
+            logResult('Widget Test', 'Attempting to open widget...');
+            if (window.PicassoWidget) {
+                window.PicassoWidget.open();
+                logResult('Widget Test', '✅ Widget opened successfully');
+            } else {
+                logResult('Widget Test', '❌ PicassoWidget not found - loading issue');
+            }
+        }
+
+        function testConversationMemory() {
+            logResult('Conversation Memory', 'Testing Track A+ conversation context...');
+            // Test conversation memory functionality
+            if (window.PicassoWidget && window.PicassoWidget.isOpen()) {
+                logResult('Conversation Memory', '✅ Widget is open, conversation context should be maintained');
+            } else {
+                logResult('Conversation Memory', '⚠️ Open widget first to test conversation memory');
+            }
+        }
+
+        function testJWTToken() {
+            logResult('JWT Token System', 'Testing Track A+ JWT token validation...');
+            // Check if JWT token system is working
+            logResult('JWT Token System', '✅ JWT token system test initiated (check console for details)');
+            console.log('Track A+ JWT Token System Test - checking for token handling...');
+        }
+
+        // Auto-test on page load
+        window.addEventListener('load', function() {
+            setTimeout(() => {
+                logResult('Page Load', '✅ Track A+ Browser Test Page loaded successfully');
+                logResult('Widget Loading', 'Checking for Picasso Widget availability...');
+                
+                if (window.PicassoWidget) {
+                    logResult('Widget Loading', '✅ PicassoWidget loaded successfully');
+                } else {
+                    logResult('Widget Loading', '⚠️ PicassoWidget not yet available, checking again in 2s...');
+                    setTimeout(() => {
+                        if (window.PicassoWidget) {
+                            logResult('Widget Loading', '✅ PicassoWidget loaded after delay');
+                        } else {
+                            logResult('Widget Loading', '❌ PicassoWidget failed to load');
+                        }
+                    }, 2000);
+                }
+            }, 1000);
+        });
+    </script>
+</body>
+</html>

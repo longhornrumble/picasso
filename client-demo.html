@@ -175,7 +175,13 @@
   </div>
 
   <!-- The actual Picasso widget embed - this is all a client needs! -->
-  <script src="http://localhost:52794/widget.js" data-tenant="fo85e6a06dcdf4"></script>
+  <script src="http://localhost:5175/widget.js" data-tenant="my87674d777bf9" data-env="staging"></script>
+  <script>
+    // Force staging environment override for testing
+    if (!window.location.search.includes('picasso-env')) {
+      window.location.href = window.location.href + '?picasso-env=staging';
+    }
+  </script>
 
   <script>
     let widget = null;

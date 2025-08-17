@@ -1,17 +1,19 @@
-// src/context/ConfigProvider.jsx - FIXED Pure Hash + Action System
-import React, { createContext, useState, useEffect, useRef } from 'react';
+import { createContext, useState, useEffect, useRef, useContext } from 'react';
 import { config as environmentConfig } from '../config/environment';
 
 const ConfigContext = createContext();
-
-// Function to get the context for hooks
-export const getConfigContext = () => ConfigContext;
 
 // Export provider as named export
 const ConfigProvider = ({ children }) => {
   const [config, setConfig] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  
+  // RACE CONDITION FIX: Add initialization lock
+  const initializationLockRef = useRef({
+    isInitializing: false,
+    initializationPromise: null
+  });
   
   // Track config metadata for change detection
   const configMetadata = useRef({
@@ -162,34 +164,51 @@ const ConfigProvider = ({ children }) => {
 
   // Load tenant config using NEW hash + action system
   const loadTenantConfig = async (tenantHash) => {
-    setLoading(true);
-    setError(null);
-    
-    try {
-      console.log(`🔍 Loading config for hash: ${tenantHash.slice(0, 8)}... via Lambda Master_Function`);
-      
-      // Load config using pure hash + action API
-      const result = await fetchConfigWithCacheCheck(tenantHash, true);
-      
-      if (result.config) {
-        setConfig(result.config);
-        configMetadata.current.tenantHash = tenantHash;
-        console.log('🎉 Config loaded successfully:', {
-          chatTitle: result.config.chat_title,
-          hash: tenantHash.slice(0, 8) + '...',
-          apiType: 'lambda-master-function'
-        });
-      }
-    } catch (error) {
-      console.error('❌ Failed to load config:', error);
-      setError(error.message);
-      
-      // Use fallback config
-      console.log('🔧 Using fallback config');
-      setConfig(getFallbackConfig(tenantHash));
-    } finally {
-      setLoading(false);
+    // RACE CONDITION FIX: Check if already initializing
+    if (initializationLockRef.current.isInitializing) {
+      console.log('🔒 Config initialization already in progress, waiting...');
+      return await initializationLockRef.current.initializationPromise;
     }
+    
+    // Set initialization lock
+    initializationLockRef.current.isInitializing = true;
+    const initPromise = (async () => {
+      setLoading(true);
+      setError(null);
+      
+      try {
+        console.log(`🔍 Loading config for hash: ${tenantHash.slice(0, 8)}... via Lambda Master_Function`);
+        
+        // Load config using pure hash + action API
+        const result = await fetchConfigWithCacheCheck(tenantHash, true);
+        
+        if (result.config) {
+          setConfig(result.config);
+          configMetadata.current.tenantHash = tenantHash;
+          console.log('🎉 Config loaded successfully:', {
+            chatTitle: result.config.chat_title,
+            hash: tenantHash.slice(0, 8) + '...',
+            apiType: 'lambda-master-function'
+          });
+        }
+      } catch (error) {
+        console.error('❌ Failed to load config:', error);
+        setError(error.message);
+        
+        // Use fallback config
+        console.log('🔧 Using fallback config');
+        setConfig(getFallbackConfig(tenantHash));
+      } finally {
+        setLoading(false);
+        // Release initialization lock
+        initializationLockRef.current.isInitializing = false;
+        initializationLockRef.current.initializationPromise = null;
+      }
+    })();
+    
+    // Store the promise for concurrent calls
+    initializationLockRef.current.initializationPromise = initPromise;
+    return await initPromise;
   };
 
   // Periodic config update checker
@@ -471,11 +490,20 @@ if (typeof window !== 'undefined') {
 
 // Hook for manual config refresh in components
 export function useConfigRefresh() {
-  const context = React.useContext(ConfigContext);
+  const context = useContext(ConfigContext);
   if (!context) {
     throw new Error('useConfigRefresh must be used within a ConfigProvider');
   }
   return context.refreshConfig;
+}
+
+// Hook to use the config context
+export function useConfig() {
+  const context = useContext(ConfigContext);
+  if (!context) {
+    throw new Error('useConfig must be used within a ConfigProvider');
+  }
+  return context;
 }
 
 // Export only the provider

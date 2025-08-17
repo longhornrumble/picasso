@@ -234,8 +234,11 @@ const ChatProvider = ({ children }) => {
   };
   const SESSION_TIMEOUT = 30 * 60 * 1000; // 30 minutes
   
-  // Initialize or retrieve session ID
-  const getOrCreateSessionId = () => {
+  // Initialize refs early to avoid "before initialization" errors
+  const conversationManagerRef = useRef(null);
+  
+  // 🔧 FIX: Enhanced session validation and memory purge
+  const validateAndPurgeSession = () => {
     const stored = sessionStorage.getItem(STORAGE_KEYS.SESSION_ID);
     const lastActivity = sessionStorage.getItem(STORAGE_KEYS.LAST_ACTIVITY);
     
@@ -243,21 +246,97 @@ const ChatProvider = ({ children }) => {
     if (stored && lastActivity) {
       const timeSinceActivity = Date.now() - parseInt(lastActivity);
       if (timeSinceActivity < SESSION_TIMEOUT) {
+        // Session is valid, update activity and continue using it
+        sessionStorage.setItem(STORAGE_KEYS.LAST_ACTIVITY, Date.now().toString());
+        console.log('🔍 Session validation: Using existing valid session', stored.slice(0, 12) + '...');
         return stored;
+      } else {
+        // Session expired, perform memory purge
+        console.log('🧹 Session validation: Session expired, performing memory purge');
+        performMemoryPurge();
       }
     }
     
-    // Create new session
+    // Create new session after purge or if no session exists
     const newSessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     sessionStorage.setItem(STORAGE_KEYS.SESSION_ID, newSessionId);
     sessionStorage.setItem(STORAGE_KEYS.LAST_ACTIVITY, Date.now().toString());
+    console.log('🔍 Session validation: Created new session', newSessionId.slice(0, 12) + '...');
     return newSessionId;
+  };
+
+  // Memory purge mechanism for expired sessions
+  const performMemoryPurge = () => {
+    console.log('🧹 Performing comprehensive memory purge for new session');
+    
+    try {
+      // Clear all session storage related to conversation state
+      const keysToRemove = [
+        STORAGE_KEYS.SESSION_ID,
+        STORAGE_KEYS.MESSAGES, 
+        STORAGE_KEYS.LAST_ACTIVITY,
+        'picasso_jwt_token',
+        'picasso_conversation_id',
+        'picasso_state_token',
+        'picasso_chat_state',
+        'picasso_last_read_index',
+        'picasso_scroll_position'
+      ];
+      
+      keysToRemove.forEach(key => {
+        if (sessionStorage.getItem(key)) {
+          sessionStorage.removeItem(key);
+          console.log(`🧹 Purged session storage key: ${key}`);
+        }
+      });
+
+      // Clear any conversation manager references (check if ref exists first)
+      if (typeof conversationManagerRef !== 'undefined' && conversationManagerRef?.current) {
+        console.log('🧹 Clearing existing conversation manager during purge');
+        try {
+          conversationManagerRef.current.clearStateToken();
+          conversationManagerRef.current = null;
+        } catch (error) {
+          console.warn('🧹 Error clearing conversation manager during purge:', error);
+          conversationManagerRef.current = null; // Force clear
+        }
+      }
+      
+      errorLogger.logInfo('✅ Memory purge completed successfully');
+    } catch (error) {
+      errorLogger.logError(error, {
+        context: 'memory_purge',
+        action: 'session_validation'
+      });
+    }
+  };
+
+  // Initialize or retrieve session ID with validation
+  const getOrCreateSessionId = () => {
+    return validateAndPurgeSession();
   };
   
   const sessionIdRef = useRef(getOrCreateSessionId());
   
+  // 🔧 FIX: Session validation on page refresh/reload
+  useEffect(() => {
+    // Validate session on component mount (page refresh)
+    const currentSessionId = sessionIdRef.current;
+    const storedSessionId = sessionStorage.getItem(STORAGE_KEYS.SESSION_ID);
+    
+    if (currentSessionId !== storedSessionId) {
+      console.log('🚨 Session mismatch detected on mount, performing validation');
+      const validSessionId = validateAndPurgeSession();
+      sessionIdRef.current = validSessionId;
+    } else {
+      // Update activity timestamp for valid session
+      sessionStorage.setItem(STORAGE_KEYS.LAST_ACTIVITY, Date.now().toString());
+      console.log('🔍 Session validated on mount:', currentSessionId.slice(0, 12) + '...');
+    }
+  }, []); // Run once on mount
+  
   // Phase 3.2: Conversation Manager Integration
-  const conversationManagerRef = useRef(null);
+  // conversationManagerRef is now declared at the top to avoid initialization errors
   const [conversationMetadata, setConversationMetadata] = useState({
     conversationId: null,
     messageCount: 0,
@@ -301,6 +380,11 @@ const ChatProvider = ({ children }) => {
   const [messages, setMessages] = useState(() => loadPersistedMessages());
   const [isTyping, setIsTyping] = useState(false);
   const [hasInitializedMessages, setHasInitializedMessages] = useState(false);
+  
+  // Set global flag when messages exist for ConfigProvider to check
+  useEffect(() => {
+    window.picassoChatHasMessages = messages.length > 0;
+  }, [messages]);
   const [isOnline, setIsOnline] = useState(() => navigator.onLine);
   const [pendingRetries, setPendingRetries] = useState(() => new Map());
   
@@ -349,68 +433,189 @@ const ChatProvider = ({ children }) => {
     };
   }
 
+  // RACE CONDITION FIX: Add initialization state tracking
+  const [isInitialized, setIsInitialized] = useState(false);
+  const initializationLockRef = useRef({
+    isInitializing: false,
+    initializationPromise: null
+  });
+
   // Phase 3.2: Initialize conversation manager
   useEffect(() => {
-    if (!tenantConfig?.tenant_hash) return;
+    console.log('🔍 Conversation manager useEffect triggered:', {
+      hasTenantHash: !!tenantConfig?.tenant_hash,
+      isInitialized,
+      hasExistingManager: !!conversationManagerRef.current
+    });
+    
+    if (!tenantConfig?.tenant_hash) {
+      console.log('❌ No tenant hash, skipping conversation manager initialization');
+      return;
+    }
+    
+    // Check if we already have a valid conversation manager for this session
+    if (conversationManagerRef.current) {
+      const currentSessionId = sessionIdRef.current;
+      const managerSessionId = conversationManagerRef.current.sessionId;
+      
+      if (managerSessionId === currentSessionId) {
+        console.log('✅ Valid conversation manager already exists for this session');
+        return;
+      }
+    }
+    
+    if (isInitialized) {
+      console.log('❌ Already initialized, skipping conversation manager initialization');
+      return; // Prevent re-initialization
+    }
     
     const initializeConversationManager = async () => {
-      try {
-        const tenantHash = tenantConfig.tenant_hash;
-        const sessionId = sessionIdRef.current;
-        
-        // Create conversation manager
-        conversationManagerRef.current = createConversationManager(tenantHash, sessionId);
-        
-        // Update conversation metadata
-        const metadata = conversationManagerRef.current.getMetadata();
-        setConversationMetadata({
-          conversationId: conversationManagerRef.current.conversationId,
-          messageCount: metadata.messageCount,
-          hasBeenSummarized: metadata.hasBeenSummarized,
-          canLoadHistory: true
-        });
-        
-        errorLogger.logInfo('✅ Conversation manager initialized', {
-          conversationId: conversationManagerRef.current.conversationId,
-          tenantHash: tenantHash.slice(0, 8) + '...'
-        });
-
-        // Phase 3.3: Initialize mobile compatibility features
-        initializeMobileCompatibility(conversationManagerRef.current)
-          .then((mobileCompat) => {
-            if (mobileCompat) {
-              mobileCompatibilityRef.current = mobileCompat;
-              setMobileFeatures({
-                isInitialized: true,
-                isPWAInstallable: mobileCompat.pwaInstaller?.deferredPrompt !== null,
-                isOfflineCapable: 'serviceWorker' in navigator,
-                isMobileSafari: /iPad|iPhone|iPod/.test(navigator.userAgent) && /^((?!chrome|android).)*safari/i.test(navigator.userAgent)
-              });
-              
-              errorLogger.logInfo('✅ Mobile compatibility features initialized', {
-                serviceWorker: 'serviceWorker' in navigator,
-                pwaInstallable: mobileCompat.pwaInstaller?.deferredPrompt !== null,
-                isMobileSafari: /iPad|iPhone|iPod/.test(navigator.userAgent)
-              });
-            }
-          })
-          .catch((error) => {
-            errorLogger.logError(error, {
-              context: 'mobile_compatibility_init',
-              tenantHash: tenantHash.slice(0, 8) + '...'
-            });
-          });
-        
-      } catch (error) {
-        errorLogger.logError(error, {
-          context: 'conversation_manager_init',
-          tenantHash: tenantConfig?.tenant_hash?.slice(0, 8) + '...'
-        });
+      // RACE CONDITION FIX: Check if already initializing
+      if (initializationLockRef.current.isInitializing) {
+        console.log('🔒 Chat initialization already in progress, waiting...');
+        return await initializationLockRef.current.initializationPromise;
       }
+      
+      // Set initialization lock
+      initializationLockRef.current.isInitializing = true;
+      const initPromise = (async () => {
+        try {
+          const tenantHash = tenantConfig.tenant_hash;
+          const sessionId = sessionIdRef.current;
+        
+          // 🔧 FIXED: Enhanced duplicate prevention with session validation
+          if (conversationManagerRef.current) {
+            // Check if existing manager is for the same session
+            const existingSession = conversationManagerRef.current.sessionId;
+            if (existingSession === sessionId) {
+              console.log('🔍 Conversation manager already exists for current session, skipping creation');
+              return;
+            } else {
+              console.log('🧹 Session mismatch detected, clearing old conversation manager');
+              try {
+                conversationManagerRef.current.clearStateToken();
+                conversationManagerRef.current = null;
+              } catch (error) {
+                console.warn('🧹 Error clearing old conversation manager:', error);
+                conversationManagerRef.current = null; // Force clear
+              }
+            }
+          }
+          
+          // 🔧 FIX: Final session validation before creating conversation manager
+          const currentStoredSession = sessionStorage.getItem(STORAGE_KEYS.SESSION_ID);
+          if (sessionId !== currentStoredSession) {
+            console.log('🚨 Session ID mismatch during initialization, re-validating');
+            const validSessionId = validateAndPurgeSession();
+            sessionIdRef.current = validSessionId;
+            return; // Exit and let the effect re-run with correct session
+          }
+          
+          // 🔧 FIX: Force clear any existing conversation state that might cause conflicts
+          console.log('🧹 Performing pre-initialization conversation cleanup');
+          try {
+            sessionStorage.removeItem('picasso_conversation_id');
+            sessionStorage.removeItem('picasso_state_token');
+            sessionStorage.removeItem('picasso_jwt_token');
+          } catch (e) {
+            console.warn('🧹 Error during conversation cleanup:', e);
+          }
+
+          // Create conversation manager
+          console.log('🔍 Creating conversation manager with:', {
+            tenantHash: tenantHash.slice(0, 8) + '...',
+            sessionId,
+            conversationEndpointAvailable: environmentConfig.CONVERSATION_ENDPOINT_AVAILABLE
+          });
+          
+          conversationManagerRef.current = createConversationManager(tenantHash, sessionId);
+          
+          console.log('🔍 Conversation manager created (initialization happens automatically in constructor)');
+          
+          // Wait a moment for automatic initialization to complete
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
+          // Update conversation metadata
+          const metadata = conversationManagerRef.current.getMetadata();
+          setConversationMetadata({
+            conversationId: conversationManagerRef.current.conversationId,
+            messageCount: metadata.messageCount,
+            hasBeenSummarized: metadata.hasBeenSummarized,
+            canLoadHistory: true
+          });
+          
+          errorLogger.logInfo('✅ Conversation manager initialized', {
+            conversationId: conversationManagerRef.current.conversationId,
+            tenantHash: tenantHash.slice(0, 8) + '...',
+            isInitialized: conversationManagerRef.current.isInitialized,
+            hasStateToken: !!conversationManagerRef.current.stateToken
+          });
+
+          // Phase 3.3: Initialize mobile compatibility features SEQUENTIALLY
+          const mobileCompat = await initializeMobileCompatibility(conversationManagerRef.current);
+          if (mobileCompat) {
+            mobileCompatibilityRef.current = mobileCompat;
+            setMobileFeatures({
+              isInitialized: true,
+              isPWAInstallable: mobileCompat.pwaInstaller?.deferredPrompt !== null,
+              isOfflineCapable: 'serviceWorker' in navigator,
+              isMobileSafari: /iPad|iPhone|iPod/.test(navigator.userAgent) && /^((?!chrome|android).)*safari/i.test(navigator.userAgent)
+            });
+            
+            errorLogger.logInfo('✅ Mobile compatibility features initialized', {
+              serviceWorker: 'serviceWorker' in navigator,
+              pwaInstallable: mobileCompat.pwaInstaller?.deferredPrompt !== null,
+              isMobileSafari: /iPad|iPhone|iPod/.test(navigator.userAgent)
+            });
+          }
+          
+          // Mark initialization as complete
+          setIsInitialized(true);
+          errorLogger.logInfo('🎉 Chat initialization completed successfully', {
+            tenantHash: tenantHash.slice(0, 8) + '...',
+            sessionId: sessionId
+          });
+          
+        } catch (error) {
+          errorLogger.logError(error, {
+            context: 'conversation_manager_init',
+            tenantHash: tenantConfig?.tenant_hash?.slice(0, 8) + '...'
+          });
+        } finally {
+          // Release initialization lock
+          initializationLockRef.current.isInitializing = false;
+          initializationLockRef.current.initializationPromise = null;
+        }
+      })();
+      
+      // Store the promise for concurrent calls
+      initializationLockRef.current.initializationPromise = initPromise;
+      return await initPromise;
     };
     
     initializeConversationManager();
-  }, [tenantConfig]);
+  }, [tenantConfig?.tenant_hash, isInitialized]);
+
+  // 🔧 FIX: Cleanup conversation manager on unmount to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      console.log('🧹 ChatProvider unmounting, cleaning up conversation manager');
+      if (conversationManagerRef.current) {
+        try {
+          conversationManagerRef.current.clearStateToken();
+          conversationManagerRef.current = null;
+        } catch (error) {
+          console.warn('🧹 Error during unmount cleanup:', error);
+        }
+      }
+      
+      // Clear initialization lock
+      initializationLockRef.current = {
+        isInitializing: false,
+        initializationPromise: null
+      };
+    };
+  }, []);
 
   // Network connectivity monitoring
   useEffect(() => {
@@ -487,7 +692,8 @@ const ChatProvider = ({ children }) => {
   }, []);
 
   useEffect(() => {
-    if (tenantConfig && !hasInitializedMessages) {
+    // RACE CONDITION FIX: Wait for initialization before setting up messages
+    if (tenantConfig && !hasInitializedMessages && isInitialized) {
       // Check if we have persisted messages
       if (messages.length > 0) {
         errorLogger.logInfo('🔄 Continuing previous conversation', {
@@ -512,7 +718,7 @@ const ChatProvider = ({ children }) => {
           });
       }
     }
-  }, [tenantConfig, generateWelcomeActions, hasInitializedMessages]);
+  }, [tenantConfig, generateWelcomeActions, hasInitializedMessages, isInitialized]);
 
   const getTenantHash = () => {
     return tenantConfig?.tenant_hash || 
@@ -638,12 +844,12 @@ const ChatProvider = ({ children }) => {
     };
   }, [currentStreamingMessage]);
 
-  // Check streaming availability when tenant config loads
+  // Check streaming availability when tenant config loads and initialization is complete
   useEffect(() => {
-    if (tenantConfig && !hasInitializedMessages) {
+    if (tenantConfig && !hasInitializedMessages && isInitialized) {
       checkStreamingAvailability();
     }
-  }, [tenantConfig, hasInitializedMessages, checkStreamingAvailability]);
+  }, [tenantConfig, hasInitializedMessages, isInitialized, checkStreamingAvailability]);
 
   // JWT/Function URL integration methods - PERFORMANCE OPTIMIZED
   // Token cache to avoid regenerating tokens for same session
@@ -1047,6 +1253,15 @@ const ChatProvider = ({ children }) => {
   }, [pendingRetries]);
 
   const addMessage = useCallback(async (message) => {
+    // RACE CONDITION FIX: Prevent API calls until initialization is complete
+    if (message.role === "user" && !isInitialized) {
+      errorLogger.logWarning('⚠️ Blocking message send - chat not yet initialized', {
+        messageContent: message.content?.substring(0, 50) + '...',
+        isInitialized
+      });
+      return;
+    }
+    
     // Track time to first message
     if (message.role === "user" && messages.filter(m => m.role === "user").length === 0) {
       performanceMonitor.measure('time_to_first_message', () => {
@@ -1130,10 +1345,35 @@ const ChatProvider = ({ children }) => {
           
           const sessionId = sessionIdRef.current;
           
-          // Get conversation context for memory persistence
-          const conversationContext = conversationManagerRef.current ? 
-            conversationManagerRef.current.getConversationContext() : 
+          // Get conversation context and state token for memory persistence
+          const conversationManager = conversationManagerRef.current;
+          
+          // CRITICAL: Wait for ConversationManager to have state token before proceeding
+          if (conversationManager && conversationManager.waitForReady) {
+            console.log('⏳ Waiting for ConversationManager to be ready with state token...');
+            await conversationManager.waitForReady();
+          }
+          
+          const conversationContext = conversationManager ? 
+            conversationManager.getConversationContext() : 
             null;
+          
+          // Get state token for authorization
+          const stateToken = conversationManager?.stateToken;
+          
+          // Enhanced debugging to understand state token issue
+          console.log('🔍 Detailed state token debug:', {
+            hasManager: !!conversationManager,
+            managerIsInitialized: conversationManager?.isInitialized,
+            rawStateToken: conversationManager?.stateToken,
+            stateTokenValue: stateToken ? 'exists' : 'missing',
+            stateTokenType: typeof stateToken,
+            stateTokenLength: stateToken ? stateToken.length : 0,
+            stateTokenTruthy: !!stateToken,
+            stateTokenContent: stateToken ? stateToken.substring(0, 20) + '...' : 'none',
+            conversationId: conversationManager?.conversationId,
+            turn: conversationManager?.turn
+          });
           
           const requestBody = {
             tenant_hash: tenantHash,
@@ -1143,20 +1383,61 @@ const ChatProvider = ({ children }) => {
             messageId: messageWithId.id,
             
             // Add conversation context for server-side memory
-            conversation_context: conversationContext
+            conversation_context: conversationContext,
+            
+            // Include conversation ID and turn for state tracking
+            conversation_id: conversationManager?.conversationId,
+            turn: conversationManager?.turn
           };
+          
+          // Build headers with state token if available
+          const headers = {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          };
+          
+          console.log('🔍 Pre-header check:', {
+            stateTokenExists: !!stateToken,
+            stateTokenValue: stateToken,
+            willAddAuth: !!stateToken && stateToken !== 'undefined' && stateToken !== 'null'
+          });
+          
+          if (stateToken && stateToken !== 'undefined' && stateToken !== 'null') {
+            headers['Authorization'] = `Bearer ${stateToken}`;
+            console.log('✅ Authorization header added:', {
+              headerValue: headers['Authorization'].substring(0, 30) + '...',
+              conversationId: conversationManager?.conversationId,
+              turn: conversationManager?.turn
+            });
+            errorLogger.logInfo('🔑 Including state token in chat request', {
+              hasToken: true,
+              conversationId: conversationManager?.conversationId,
+              turn: conversationManager?.turn
+            });
+          } else {
+            console.log('⚠️ No Authorization header added:', {
+              reason: !stateToken ? 'no token' : 
+                     stateToken === 'undefined' ? 'token is string "undefined"' :
+                     stateToken === 'null' ? 'token is string "null"' : 'unknown',
+              tokenValue: stateToken
+            });
+          }
           
           // Use the environment configuration for proper endpoint URL with tenant hash
           const chatUrl = environmentConfig.getChatUrl(tenantHash);
+          
+          console.log('🚀 Sending request with headers:', {
+            url: chatUrl,
+            hasAuthHeader: !!headers['Authorization'],
+            authHeaderPreview: headers['Authorization'] ? headers['Authorization'].substring(0, 30) + '...' : 'none',
+            allHeaders: Object.keys(headers)
+          });
           
           const data = await makeAPIRequest(
             chatUrl,
             {
               method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
-              },
+              headers,
               body: JSON.stringify(requestBody)
             },
             3 // Number of retries
@@ -1232,12 +1513,23 @@ const ChatProvider = ({ children }) => {
           // Update conversation manager with complete conversation state
           try {
             if (conversationManagerRef.current) {
+              console.log('🔍 About to update conversation manager with:', {
+                hasConversationManager: !!conversationManagerRef.current,
+                conversationId: conversationManagerRef.current.conversationId,
+                hasStateToken: !!conversationManagerRef.current.stateToken,
+                isInitialized: conversationManagerRef.current.isInitialized,
+                userMessageId: messageWithId.id,
+                botMessageId: botMessage.id
+              });
+              
               // Use the new updateFromChatResponse method for comprehensive state management
-              conversationManagerRef.current.updateFromChatResponse(
+              await conversationManagerRef.current.updateFromChatResponse(
                 data, // Full chat response
                 messageWithId, // User message
                 botMessage // Bot response
               );
+              
+              console.log('🔍 Conversation manager update completed');
               
               // Update conversation metadata
               const metadata = conversationManagerRef.current.getMetadata();
@@ -1253,6 +1545,8 @@ const ChatProvider = ({ children }) => {
                 totalMessages: metadata.messageCount,
                 sessionId: data.session_id
               });
+            } else {
+              console.log('⚠️ No conversation manager available for state update');
             }
           } catch (error) {
             errorLogger.logError(error, {
@@ -1410,7 +1704,7 @@ const ChatProvider = ({ children }) => {
         makeHTTPAPICall();
       }
     }
-  }, [tenantConfig, retryMessage]);
+  }, [tenantConfig, retryMessage, isInitialized]);
 
   const updateMessage = useCallback((messageId, updates) => {
     setMessages(prev => 
@@ -1421,9 +1715,50 @@ const ChatProvider = ({ children }) => {
   }, []);
 
   const clearMessages = useCallback(() => {
-    errorLogger.logInfo('🗑️ Manually clearing messages');
+    errorLogger.logInfo('🗑️ Manually clearing messages and conversation state');
     setMessages([]);
     setHasInitializedMessages(false);
+    
+    // Clear conversation manager state and tokens
+    try {
+      if (conversationManagerRef.current) {
+        console.log('🧹 Clearing conversation manager state and tokens');
+        
+        // Clear server-side conversation state
+        conversationManagerRef.current.clearConversation();
+        
+        // Clear local tokens and session storage
+        conversationManagerRef.current.clearStateToken();
+        
+        // Reset conversation metadata
+        setConversationMetadata({
+          conversationId: null,
+          messageCount: 0,
+          hasBeenSummarized: false,
+          canLoadHistory: false
+        });
+        
+        errorLogger.logInfo('✅ Conversation state cleared successfully');
+      }
+      
+      // 🔧 FIX: Also perform memory purge when clearing messages
+      console.log('🧹 Performing memory purge as part of clear messages');
+      performMemoryPurge();
+      
+      // Force a new session ID to prevent conflicts
+      const newSessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      sessionStorage.setItem(STORAGE_KEYS.SESSION_ID, newSessionId);
+      sessionStorage.setItem(STORAGE_KEYS.LAST_ACTIVITY, Date.now().toString());
+      sessionIdRef.current = newSessionId;
+      
+      console.log('🔍 New session created after clear:', newSessionId.slice(0, 12) + '...');
+      
+    } catch (error) {
+      errorLogger.logError(error, {
+        context: 'clear_conversation_state',
+        action: 'clearMessages'
+      });
+    }
   }, []);
 
   const value = {
@@ -1466,10 +1801,10 @@ const ChatProvider = ({ children }) => {
     }
   };
 
-  return (
-    <ChatContext.Provider value={value}>
-      {children}
-    </ChatContext.Provider>
+  return React.createElement(
+    ChatContext.Provider,
+    { value },
+    children
   );
 };
 
@@ -1485,7 +1820,7 @@ ChatProvider.defaultProps = {
 // --- Test Utilities ---
 // These are for development and debugging purposes.
 // They will not be included in the production build if tree-shaking is configured correctly.
-if (import.meta.env.DEV) {
+if (typeof import.meta !== 'undefined' && import.meta.env?.DEV) {
   if (typeof window !== 'undefined') {
     window.testChatAPI = async (message, tenantHash) => {
       const hash = tenantHash || environmentConfig.getDefaultTenantHash();

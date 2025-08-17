@@ -1,0 +1,311 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://chat.myrecruiter.ai/schemas/environment.schema.json",
+  "title": "Environment Configuration Schema",
+  "description": "Schema for environment-specific configuration with security validation and feature flags",
+  "type": "object",
+  "properties": {
+    "environment": {
+      "type": "string",
+      "enum": ["development", "staging", "production"],
+      "description": "Target deployment environment"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+(-[a-zA-Z0-9]+)?$",
+      "description": "Semantic version string"
+    },
+    "buildTimestamp": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Unix timestamp of build creation"
+    },
+    "api": {
+      "type": "object",
+      "properties": {
+        "baseUrl": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://",
+          "description": "Base URL for API endpoints (HTTPS required)"
+        },
+        "timeout": {
+          "type": "number",
+          "minimum": 1000,
+          "maximum": 300000,
+          "description": "Request timeout in milliseconds (1s-5min)"
+        },
+        "retries": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10,
+          "description": "Maximum retry attempts"
+        },
+        "rateLimit": {
+          "type": "object",
+          "properties": {
+            "requests": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 10000,
+              "description": "Maximum requests per window"
+            },
+            "window": {
+              "type": "number",
+              "minimum": 1000,
+              "maximum": 3600000,
+              "description": "Time window in milliseconds"
+            }
+          },
+          "required": ["requests", "window"],
+          "additionalProperties": false
+        },
+        "headers": {
+          "type": "object",
+          "patternProperties": {
+            "^[A-Za-z-]+$": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "description": "Default HTTP headers"
+        }
+      },
+      "required": ["baseUrl", "timeout", "retries", "rateLimit", "headers"],
+      "additionalProperties": false
+    },
+    "cdn": {
+      "type": "object",
+      "properties": {
+        "assetsUrl": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://",
+          "description": "CDN URL for static assets"
+        },
+        "fontsUrl": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://",
+          "description": "CDN URL for font assets"
+        },
+        "imagesUrl": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://",
+          "description": "CDN URL for image assets"
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$",
+          "description": "CDN cache version"
+        },
+        "cacheBusting": {
+          "type": "boolean",
+          "description": "Enable cache busting parameters"
+        }
+      },
+      "required": ["assetsUrl", "version", "cacheBusting"],
+      "additionalProperties": false
+    },
+    "security": {
+      "type": "object",
+      "properties": {
+        "enforceHTTPS": {
+          "type": "boolean",
+          "description": "Enforce HTTPS for all connections"
+        },
+        "allowInsecure": {
+          "type": "boolean",
+          "description": "Allow insecure connections (development only)"
+        },
+        "corsOrigins": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "uri"
+          },
+          "description": "Allowed CORS origins"
+        },
+        "cspNonce": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9+/]+=*$",
+          "description": "Content Security Policy nonce"
+        },
+        "frameAncestors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Allowed frame ancestors for CSP"
+        },
+        "cookieSettings": {
+          "type": "object",
+          "properties": {
+            "secure": {
+              "type": "boolean",
+              "description": "Require secure cookies"
+            },
+            "sameSite": {
+              "type": "string",
+              "enum": ["strict", "lax", "none"],
+              "description": "SameSite cookie attribute"
+            },
+            "httpOnly": {
+              "type": "boolean",
+              "description": "HttpOnly cookie attribute"
+            }
+          },
+          "required": ["secure", "sameSite", "httpOnly"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["enforceHTTPS", "allowInsecure", "corsOrigins", "frameAncestors", "cookieSettings"],
+      "additionalProperties": false
+    },
+    "logging": {
+      "type": "object",
+      "properties": {
+        "level": {
+          "type": "string",
+          "enum": ["debug", "info", "warn", "error", "silent"],
+          "description": "Minimum log level"
+        },
+        "enableConsole": {
+          "type": "boolean",
+          "description": "Enable console logging"
+        },
+        "enableRemote": {
+          "type": "boolean",
+          "description": "Enable remote logging"
+        },
+        "remoteEndpoint": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://",
+          "description": "Remote logging endpoint"
+        },
+        "sanitizeErrors": {
+          "type": "boolean",
+          "description": "Sanitize error messages"
+        },
+        "maxLogSize": {
+          "type": "number",
+          "minimum": 1024,
+          "maximum": 10485760,
+          "description": "Maximum log size in bytes"
+        }
+      },
+      "required": ["level", "enableConsole", "enableRemote", "sanitizeErrors", "maxLogSize"],
+      "additionalProperties": false
+    },
+    "performance": {
+      "type": "object",
+      "properties": {
+        "enableMetrics": {
+          "type": "boolean",
+          "description": "Enable performance metrics collection"
+        },
+        "enableTracing": {
+          "type": "boolean",
+          "description": "Enable distributed tracing"
+        },
+        "sampleRate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Performance sampling rate (0-1)"
+        },
+        "metricsEndpoint": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://",
+          "description": "Metrics collection endpoint"
+        },
+        "maxBundleSize": {
+          "type": "number",
+          "minimum": 51200,
+          "maximum": 5242880,
+          "description": "Maximum bundle size in bytes"
+        },
+        "lazyLoading": {
+          "type": "boolean",
+          "description": "Enable lazy loading"
+        },
+        "cacheStrategy": {
+          "type": "string",
+          "enum": ["memory", "localStorage", "sessionStorage", "none"],
+          "description": "Client-side caching strategy"
+        }
+      },
+      "required": ["enableMetrics", "enableTracing", "sampleRate", "maxBundleSize", "lazyLoading", "cacheStrategy"],
+      "additionalProperties": false
+    },
+    "features": {
+      "type": "object",
+      "properties": {
+        "streamingEnabled": {
+          "type": "boolean",
+          "description": "Enable streaming chat responses"
+        },
+        "fileUploadsEnabled": {
+          "type": "boolean",
+          "description": "Enable file upload functionality"
+        },
+        "darkModeEnabled": {
+          "type": "boolean",
+          "description": "Enable dark mode theme"
+        },
+        "mobileOptimized": {
+          "type": "boolean",
+          "description": "Enable mobile optimizations"
+        },
+        "a11yEnhanced": {
+          "type": "boolean",
+          "description": "Enable accessibility enhancements"
+        },
+        "analyticsEnabled": {
+          "type": "boolean",
+          "description": "Enable analytics tracking"
+        },
+        "errorReportingEnabled": {
+          "type": "boolean",
+          "description": "Enable error reporting"
+        },
+        "performanceMonitoring": {
+          "type": "boolean",
+          "description": "Enable performance monitoring"
+        },
+        "experimentalFeatures": {
+          "type": "boolean",
+          "description": "Enable experimental features"
+        }
+      },
+      "required": [
+        "streamingEnabled",
+        "fileUploadsEnabled", 
+        "darkModeEnabled",
+        "mobileOptimized",
+        "a11yEnhanced",
+        "analyticsEnabled",
+        "errorReportingEnabled",
+        "performanceMonitoring",
+        "experimentalFeatures"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": ["environment", "version", "buildTimestamp", "api", "cdn", "security", "logging", "performance", "features"],
+  "additionalProperties": false,
+  "definitions": {
+    "secureUrl": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https://"
+    },
+    "httpHeader": {
+      "type": "string",
+      "pattern": "^[A-Za-z-]+$"
+    }
+  }
+}

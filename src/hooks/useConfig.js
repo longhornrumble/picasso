@@ -1,9 +1,2 @@
-import { useContext } from 'react';
-import { getConfigContext } from '../context/ConfigProvider';
-
-export const useConfig = () => {
-  const ConfigContext = getConfigContext();
-  return useContext(ConfigContext);
-};
-
-export default useConfig; 
+// Re-export useConfig from ConfigProvider to maintain compatibility
+export { useConfig as default, useConfig } from '../context/ConfigProvider.js'; 

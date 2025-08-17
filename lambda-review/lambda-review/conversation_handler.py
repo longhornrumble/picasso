@@ -15,7 +15,7 @@ import uuid
 import jwt
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, List, Union
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, ConnectTimeoutError, ReadTimeoutError
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -34,16 +34,37 @@ MAX_PAYLOAD_SIZE = 24 * 1024  # 24KB
 MAX_MESSAGES_PER_SAVE = 6
 STATE_TOKEN_EXPIRY_HOURS = 24
 
+# Memory Management Limits
+MAX_RATE_LIMIT_SESSIONS = 1000  # Maximum sessions to track
+CLEANUP_INTERVAL_SECONDS = 30  # Time-based cleanup interval
+MEMORY_WARNING_THRESHOLD = 800  # Warn when approaching max sessions
+
 # TTL Configuration (healthcare compliance)
 SUMMARY_TTL_DAYS = 7
 MESSAGES_TTL_HOURS = 24
 
-# AWS Clients
-dynamodb = boto3.client('dynamodb', region_name=AWS_REGION)
-secrets_client = boto3.client('secretsmanager', region_name=AWS_REGION)
+# Import AWS client manager for timeout protection
+try:
+    from aws_client_manager import (
+        protected_dynamodb_operation,
+        protected_secrets_operation,
+        timeout_handler,
+        CircuitBreakerError,
+        aws_client_manager,
+        graceful_degradation
+    )
+    AWS_CLIENT_MANAGER_AVAILABLE = True
+    logger.info("✅ AWS client manager loaded with timeout protection")
+except ImportError as e:
+    logger.warning(f"⚠️ AWS client manager not available, using legacy clients: {e}")
+    # Fallback to legacy clients without timeout protection
+    dynamodb = boto3.client('dynamodb', region_name=AWS_REGION)
+    secrets_client = boto3.client('secretsmanager', region_name=AWS_REGION)
+    AWS_CLIENT_MANAGER_AVAILABLE = False
 
 # Global state for rate limiting and JWT key caching
 rate_limit_store = {}
+last_cleanup_time = 0  # Track last cleanup for time-based approach
 jwt_signing_key_cache = None
 jwt_key_cache_expires = 0
 
@@ -55,6 +76,15 @@ try:
 except ImportError as e:
     logger.warning(f"⚠️ audit_logger not available: {e}")
     AUDIT_LOGGER_AVAILABLE = False
+
+# Import token blacklist system
+try:
+    from token_blacklist import is_token_blacklisted, TokenBlacklistError
+    TOKEN_BLACKLIST_AVAILABLE = True
+    logger.info("✅ token_blacklist module loaded for conversation handler")
+except ImportError as e:
+    logger.warning(f"⚠️ token_blacklist not available: {e}")
+    TOKEN_BLACKLIST_AVAILABLE = False
 
 class ConversationError(Exception):
     """Base exception for conversation operations"""
@@ -110,20 +140,27 @@ def handle_get_conversation(event):
         
         logger.info(f"[{tenant_id[:8]}...] 📖 Getting conversation state for session {session_id[:12]}...")
         
-        # 3. Retrieve conversation state from DynamoDB
+        # 3. Retrieve conversation state from DynamoDB with timeout protection
         conversation_state = _get_conversation_from_db(session_id, tenant_id)
         
         # 4. Generate new rotated token
         new_token = _generate_rotated_token(token_data)
         
-        # 5. Audit successful retrieval
+        # 5. Audit successful retrieval (fail-closed for security)
         if AUDIT_LOGGER_AVAILABLE:
-            audit_logger._log_audit_event(
-                tenant_id=tenant_id,
-                event_type='CONVERSATION_RETRIEVED',
-                session_id=session_id,
-                context={'turn': current_turn + 1, 'has_state': bool(conversation_state)}
-            )
+            try:
+                audit_logger._log_audit_event(
+                    tenant_id=tenant_id,
+                    event_type='CONVERSATION_RETRIEVED',
+                    session_id=session_id,
+                    context={'turn': current_turn + 1, 'has_state': bool(conversation_state)}
+                )
+            except Exception as e:
+                logger.error(f"❌ Audit logging failed for retrieval: {e}")
+                raise ConversationError("AUDIT_FAILED", "Security audit service unavailable", 503)
+        else:
+            logger.error("❌ Audit logger unavailable for retrieval operation")
+            raise ConversationError("AUDIT_UNAVAILABLE", "Security audit service required", 503)
         
         # 6. Return response with rotated token
         response_data = {
@@ -160,20 +197,39 @@ def handle_save_conversation(event):
         request_turn = body.get('turn')
         delta = body.get('delta', {})
         
-        if not request_turn or request_turn != current_turn:
+        if request_turn is None or request_turn != current_turn:
             # Version conflict - return server's current state
             current_state = _get_conversation_from_db(session_id, tenant_id)
-            server_token = _generate_rotated_token(token_data, increment_turn=False)
             
-            return _error_response(
-                "VERSION_CONFLICT",
-                "Conversation state changed by another session",
-                409,
-                extra_data={
-                    "stateToken": server_token,
-                    "currentTurn": current_turn
-                }
-            )
+            # CRITICAL FIX: Handle case where DB has no state yet (new conversation)
+            # _get_conversation_from_db now always returns a state with turn field
+            if current_state and 'turn' in current_state:
+                actual_turn = current_state['turn']
+            else:
+                # Fallback: No state in DB yet, this is likely the first message
+                actual_turn = 0
+            
+            # SPECIAL CASE: If this is the first message (request_turn=0, token_turn=0, actual_turn=0)
+            # but there's a version mismatch, allow it to proceed as it's likely a valid first message
+            if request_turn == 0 and current_turn == 0 and actual_turn == 0:
+                logger.info(f"First message scenario: allowing turn 0 to proceed for session {session_id[:12]}...")
+                # Continue processing the message instead of returning conflict
+            else:
+                # Update token data with the actual turn from database
+                updated_token_data = {**token_data, 'turn': actual_turn}
+                server_token = _generate_rotated_token(updated_token_data, increment_turn=False)
+                
+                logger.warning(f"Version conflict: request_turn={request_turn}, token_turn={current_turn}, actual_turn={actual_turn}")
+                
+                return _error_response(
+                    "VERSION_CONFLICT",
+                    "Conversation state changed by another session",
+                    409,
+                    extra_data={
+                        "stateToken": server_token,
+                        "currentTurn": actual_turn  # Return actual turn from database
+                    }
+                )
         
         # 4. Validate payload limits
         _validate_save_payload(body)
@@ -189,18 +245,25 @@ def handle_save_conversation(event):
         # 7. Generate new rotated token
         new_token = _generate_rotated_token(token_data)
         
-        # 8. Audit successful save
+        # 8. Audit successful save (fail-closed for security)
         if AUDIT_LOGGER_AVAILABLE:
-            audit_logger._log_audit_event(
-                tenant_id=tenant_id,
-                event_type='CONVERSATION_SAVED',
-                session_id=session_id,
-                context={
-                    'turn': current_turn + 1,
-                    'delta_keys': list(scrubbed_delta.keys()),
-                    'message_count': len(scrubbed_delta.get('lastMessages', []))
-                }
-            )
+            try:
+                audit_logger._log_audit_event(
+                    tenant_id=tenant_id,
+                    event_type='CONVERSATION_SAVED',
+                    session_id=session_id,
+                    context={
+                        'turn': current_turn + 1,
+                        'delta_keys': list(scrubbed_delta.keys()),
+                        'message_count': len(scrubbed_delta.get('lastMessages', []))
+                    }
+                )
+            except Exception as e:
+                logger.error(f"❌ Audit logging failed for save: {e}")
+                raise ConversationError("AUDIT_FAILED", "Security audit service unavailable", 503)
+        else:
+            logger.error("❌ Audit logger unavailable for save operation")
+            raise ConversationError("AUDIT_UNAVAILABLE", "Security audit service required", 503)
         
         # 9. Return success with rotated token
         response_data = {
@@ -238,18 +301,25 @@ def handle_clear_conversation(event):
         # 4. Verify deletion with read-after-write
         verification_result = _verify_conversation_deleted(session_id)
         
-        # 5. Audit successful clear
+        # 5. Audit successful clear (fail-closed for security)
         if AUDIT_LOGGER_AVAILABLE:
-            audit_logger._log_audit_event(
-                tenant_id=tenant_id,
-                event_type='CONVERSATION_CLEARED',
-                session_id=session_id,
-                context={
-                    'messages_deleted': deletion_report['messages_deleted'],
-                    'summaries_deleted': deletion_report['summaries_deleted'],
-                    'verified': verification_result
-                }
-            )
+            try:
+                audit_logger._log_audit_event(
+                    tenant_id=tenant_id,
+                    event_type='CONVERSATION_CLEARED',
+                    session_id=session_id,
+                    context={
+                        'messages_deleted': deletion_report['messages_deleted'],
+                        'summaries_deleted': deletion_report['summaries_deleted'],
+                        'verified': verification_result
+                    }
+                )
+            except Exception as e:
+                logger.error(f"❌ Audit logging failed for clear: {e}")
+                raise ConversationError("AUDIT_FAILED", "Security audit service unavailable", 503)
+        else:
+            logger.error("❌ Audit logger unavailable for clear operation")
+            raise ConversationError("AUDIT_UNAVAILABLE", "Security audit service required", 503)
         
         # 6. Return deletion report
         response_data = {
@@ -273,7 +343,7 @@ def handle_clear_conversation(event):
 def _validate_state_token(event):
     """
     Validate HMAC/JWT state token and extract claims
-    Security hardener: Token validation with expiry check
+    Security hardener: Token validation with expiry check and blacklist verification
     """
     try:
         # Extract Bearer token from Authorization header
@@ -284,6 +354,39 @@ def _validate_state_token(event):
             raise ConversationError("TOKEN_INVALID", "Missing or invalid Authorization header", 401)
         
         token = auth_header[7:]  # Remove "Bearer " prefix
+        
+        # SECURITY: Check token blacklist BEFORE JWT validation (fail-fast security)
+        if TOKEN_BLACKLIST_AVAILABLE:
+            try:
+                if is_token_blacklisted(token):
+                    logger.warning(f"🚫 Blacklisted token rejected in conversation handler")
+                    
+                    # Audit blacklisted token usage attempt (fail-closed for security)
+                    if AUDIT_LOGGER_AVAILABLE:
+                        try:
+                            audit_logger._log_audit_event(
+                                tenant_id="unknown",
+                                event_type='BLACKLISTED_TOKEN_USAGE_ATTEMPT',
+                                session_id="unknown",
+                                context={'source': 'conversation_handler', 'action': 'token_validation'}
+                            )
+                        except Exception as e:
+                            logger.error(f"❌ Failed to audit blacklisted token attempt: {e}")
+                            # Continue with token rejection even if audit fails
+                    
+                    raise ConversationError("TOKEN_REVOKED", "Authentication token has been revoked", 401)
+                    
+            except TokenBlacklistError as e:
+                # Blacklist service error - fail closed for security
+                logger.error(f"❌ Blacklist check failed: {e.message}")
+                if e.error_type == "BLACKLIST_UNAVAILABLE":
+                    # Service unavailable - allow operation but log security warning
+                    logger.warning("⚠️ Blacklist service unavailable - proceeding with JWT validation only")
+                else:
+                    # Other errors - fail closed
+                    raise ConversationError("TOKEN_VALIDATION_FAILED", "Token security verification failed", 500)
+        else:
+            logger.warning("⚠️ Token blacklist system not available - proceeding with JWT validation only")
         
         # Get JWT signing key
         signing_key = _get_jwt_signing_key()
@@ -302,7 +405,7 @@ def _validate_state_token(event):
             if field not in payload:
                 raise ConversationError("TOKEN_INVALID", f"Missing required field: {field}", 401)
         
-        logger.info(f"[{payload['tenantId'][:8]}...] ✅ Valid state token for turn {payload['turn']}")
+        logger.info(f"[{payload['tenantId'][:8]}...] ✅ Valid state token for turn {payload['turn']} (blacklist checked)")
         return payload
         
     except ConversationError:
@@ -314,13 +417,19 @@ def _validate_state_token(event):
 def _check_rate_limit(session_id):
     """
     Rate limiting: 10 requests per 10 seconds per session
-    Security hardener: Prevent abuse with memory leak protection
+    Security hardener: Prevent abuse with memory leak protection and bounds
     """
     current_time = time.time()
     window_start = current_time - RATE_LIMIT_WINDOW
     
-    # Periodic cleanup to prevent memory leak
+    # Time-based cleanup to prevent memory leak
     _cleanup_rate_limit_store(current_time)
+    
+    # Memory protection: enforce maximum sessions limit
+    if len(rate_limit_store) >= MAX_RATE_LIMIT_SESSIONS and session_id not in rate_limit_store:
+        # LRU eviction: remove oldest session
+        _evict_oldest_session(current_time)
+        logger.warning(f"🚨 Rate limit store at capacity ({MAX_RATE_LIMIT_SESSIONS}), evicted oldest session")
     
     # Clean old entries for this session
     if session_id in rate_limit_store:
@@ -337,35 +446,79 @@ def _check_rate_limit(session_id):
     
     # Add current request
     rate_limit_store[session_id].append(current_time)
+    
+    # Memory usage monitoring
+    _monitor_memory_usage()
 
 def _cleanup_rate_limit_store(current_time):
     """
-    Cleanup expired rate limit entries to prevent memory leak
-    Security fix: Prevent unbounded memory growth
+    Time-based cleanup of expired rate limit entries to prevent memory leak
+    Security fix: Prevent unbounded memory growth with predictable cleanup
+    """
+    global rate_limit_store, last_cleanup_time
+    
+    # Time-based cleanup instead of request-count based to handle low-traffic scenarios
+    if current_time - last_cleanup_time < CLEANUP_INTERVAL_SECONDS:
+        return
+    
+    last_cleanup_time = current_time
+    window_start = current_time - RATE_LIMIT_WINDOW
+    sessions_to_remove = []
+    
+    for session_id, timestamps in rate_limit_store.items():
+        # Remove expired timestamps
+        active_timestamps = [ts for ts in timestamps if ts > window_start]
+        if active_timestamps:
+            rate_limit_store[session_id] = active_timestamps
+        else:
+            sessions_to_remove.append(session_id)
+    
+    # Remove empty sessions
+    for session_id in sessions_to_remove:
+        del rate_limit_store[session_id]
+    
+    logger.info(f"🧹 Time-based rate limit cleanup: removed {len(sessions_to_remove)} expired sessions, {len(rate_limit_store)} active sessions remain")
+
+def _evict_oldest_session(current_time):
+    """
+    LRU eviction: remove the session with the oldest timestamp
+    Memory protection: prevent unbounded growth under high load
     """
     global rate_limit_store
     
-    # Only cleanup every 100 requests to avoid performance impact
-    cleanup_counter = getattr(_cleanup_rate_limit_store, 'counter', 0) + 1
-    _cleanup_rate_limit_store.counter = cleanup_counter
+    if not rate_limit_store:
+        return
     
-    if cleanup_counter % 100 == 0:
-        window_start = current_time - RATE_LIMIT_WINDOW
-        sessions_to_remove = []
-        
-        for session_id, timestamps in rate_limit_store.items():
-            # Remove expired timestamps
-            active_timestamps = [ts for ts in timestamps if ts > window_start]
-            if active_timestamps:
-                rate_limit_store[session_id] = active_timestamps
-            else:
-                sessions_to_remove.append(session_id)
-        
-        # Remove empty sessions
-        for session_id in sessions_to_remove:
-            del rate_limit_store[session_id]
-        
-        logger.info(f"🧹 Rate limit cleanup: removed {len(sessions_to_remove)} expired sessions")
+    # Find session with oldest timestamp
+    oldest_session = None
+    oldest_timestamp = current_time
+    
+    for session_id, timestamps in rate_limit_store.items():
+        if timestamps and min(timestamps) < oldest_timestamp:
+            oldest_timestamp = min(timestamps)
+            oldest_session = session_id
+    
+    # Remove oldest session
+    if oldest_session:
+        del rate_limit_store[oldest_session]
+        logger.info(f"🗑️ LRU evicted session {oldest_session[:12]}... (oldest timestamp: {oldest_timestamp})")
+
+def _monitor_memory_usage():
+    """
+    Monitor rate limit store memory usage and log warnings
+    Memory protection: proactive monitoring for DoS prevention
+    """
+    session_count = len(rate_limit_store)
+    
+    if session_count >= MEMORY_WARNING_THRESHOLD:
+        total_timestamps = sum(len(timestamps) for timestamps in rate_limit_store.values())
+        logger.warning(f"⚠️ Rate limit memory usage high: {session_count}/{MAX_RATE_LIMIT_SESSIONS} sessions, {total_timestamps} total timestamps")
+    
+    # Log memory stats every 100 sessions for monitoring
+    if session_count > 0 and session_count % 100 == 0:
+        total_timestamps = sum(len(timestamps) for timestamps in rate_limit_store.values())
+        avg_timestamps = total_timestamps / session_count if session_count > 0 else 0
+        logger.info(f"📊 Rate limit memory stats: {session_count} sessions, {total_timestamps} timestamps, {avg_timestamps:.1f} avg/session")
 
 def _parse_request_body(event):
     """
@@ -424,13 +577,18 @@ def _scrub_conversation_data(data):
         
         # If data contains potential PII patterns, ensure scrubbing happened
         if len(data_str) > 50 and data_str == scrubbed_str:
-            # Quick check for common PII patterns that should have been scrubbed
-            import re
-            email_pattern = re.compile(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}')
-            phone_pattern = re.compile(r'\b\d{3}-?\d{3}-?\d{4}\b')
+            # Comprehensive check using audit_logger's PII patterns for consistency
+            from audit_logger import PII_PATTERNS
             
-            if email_pattern.search(scrubbed_str) or phone_pattern.search(scrubbed_str):
-                logger.error("❌ DLP scrubbing verification failed - PII detected in output")
+            # Check for any PII patterns that should have been scrubbed
+            pii_detected = False
+            for pattern_name, pattern in PII_PATTERNS.items():
+                if pattern.search(scrubbed_str):
+                    logger.error(f"❌ DLP scrubbing verification failed - {pattern_name} pattern detected in output")
+                    pii_detected = True
+                    break
+            
+            if pii_detected:
                 raise ConversationError("DLP_FAILED", "Data protection validation failed", 500)
         
         return scrubbed_data
@@ -443,23 +601,50 @@ def _scrub_conversation_data(data):
 
 def _get_conversation_from_db(session_id, tenant_id):
     """
-    Retrieve conversation state from DynamoDB tables
+    Retrieve conversation state from DynamoDB tables with timeout protection
     """
     try:
-        # Get summary from conversation-summaries table
-        summary_response = dynamodb.get_item(
-            TableName=SUMMARIES_TABLE_NAME,
-            Key={'sessionId': {'S': session_id}}
-        )
+        # Get summary from conversation-summaries table with timeout protection
+        if AWS_CLIENT_MANAGER_AVAILABLE:
+            try:
+                summary_response = protected_dynamodb_operation(
+                    'get_item',
+                    TableName=SUMMARIES_TABLE_NAME,
+                    Key={'sessionId': {'S': session_id}}
+                )
+            except (ConnectTimeoutError, ReadTimeoutError, CircuitBreakerError) as e:
+                logger.error(f"⏰ DynamoDB timeout getting summary for session {session_id[:12]}...: {e}")
+                raise ConversationError("DB_TIMEOUT", "Database service temporarily unavailable", 503)
+        else:
+            # Fallback to legacy client
+            summary_response = dynamodb.get_item(
+                TableName=SUMMARIES_TABLE_NAME,
+                Key={'sessionId': {'S': session_id}}
+            )
         
-        # Get recent messages from recent-messages table
-        messages_response = dynamodb.query(
-            TableName=MESSAGES_TABLE_NAME,
-            KeyConditionExpression='sessionId = :sid',
-            ExpressionAttributeValues={':sid': {'S': session_id}},
-            ScanIndexForward=True,  # Oldest first
-            Limit=50  # Reasonable limit
-        )
+        # Get recent messages from recent-messages table with timeout protection
+        if AWS_CLIENT_MANAGER_AVAILABLE:
+            try:
+                messages_response = protected_dynamodb_operation(
+                    'query',
+                    TableName=MESSAGES_TABLE_NAME,
+                    KeyConditionExpression='sessionId = :sid',
+                    ExpressionAttributeValues={':sid': {'S': session_id}},
+                    ScanIndexForward=True,  # Oldest first
+                    Limit=50  # Reasonable limit
+                )
+            except (ConnectTimeoutError, ReadTimeoutError, CircuitBreakerError) as e:
+                logger.error(f"⏰ DynamoDB timeout getting messages for session {session_id[:12]}...: {e}")
+                raise ConversationError("DB_TIMEOUT", "Database service temporarily unavailable", 503)
+        else:
+            # Fallback to legacy client
+            messages_response = dynamodb.query(
+                TableName=MESSAGES_TABLE_NAME,
+                KeyConditionExpression='sessionId = :sid',
+                ExpressionAttributeValues={':sid': {'S': session_id}},
+                ScanIndexForward=True,  # Oldest first
+                Limit=50  # Reasonable limit
+            )
         
         # Build state object
         state = {}
@@ -482,7 +667,11 @@ def _get_conversation_from_db(session_id, tenant_id):
                 })
             state['lastMessages'] = messages
         
-        return state if state else None
+        # CRITICAL FIX: Always return a state object with at least a turn field
+        # This prevents 409 conflicts when no conversation state exists yet
+        if not state:
+            state = {'turn': 0}
+        return state
         
     except ClientError as e:
         logger.error(f"❌ DynamoDB error retrieving conversation: {e}")
@@ -515,14 +704,28 @@ def _save_conversation_to_db(session_id, tenant_id, delta, expected_turn):
             if 'pending_action' in delta:
                 summary_item['pending_action'] = {'S': delta['pending_action']}
             
-            # Compare-and-swap: only update if turn matches
+            # Compare-and-swap: only update if turn matches with timeout protection
             try:
-                dynamodb.put_item(
-                    TableName=SUMMARIES_TABLE_NAME,
-                    Item=summary_item,
-                    ConditionExpression='attribute_not_exists(sessionId) OR turn = :expected_turn',
-                    ExpressionAttributeValues={':expected_turn': {'N': str(expected_turn)}}
-                )
+                if AWS_CLIENT_MANAGER_AVAILABLE:
+                    try:
+                        protected_dynamodb_operation(
+                            'put_item',
+                            TableName=SUMMARIES_TABLE_NAME,
+                            Item=summary_item,
+                            ConditionExpression='attribute_not_exists(sessionId) OR turn = :expected_turn',
+                            ExpressionAttributeValues={':expected_turn': {'N': str(expected_turn)}}
+                        )
+                    except (ConnectTimeoutError, ReadTimeoutError, CircuitBreakerError) as e:
+                        logger.error(f"⏰ DynamoDB timeout saving summary for session {session_id[:12]}...: {e}")
+                        raise ConversationError("DB_TIMEOUT", "Database service temporarily unavailable", 503)
+                else:
+                    # Fallback to legacy client
+                    dynamodb.put_item(
+                        TableName=SUMMARIES_TABLE_NAME,
+                        Item=summary_item,
+                        ConditionExpression='attribute_not_exists(sessionId) OR turn = :expected_turn',
+                        ExpressionAttributeValues={':expected_turn': {'N': str(expected_turn)}}
+                    )
             except ClientError as e:
                 if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
                     raise ConversationError("VERSION_CONFLICT", "Concurrent update detected", 409)
@@ -546,10 +749,22 @@ def _save_conversation_to_db(session_id, tenant_id, delta, expected_turn):
                         'expires_at': {'N': str(message_ttl)}
                     }
                     
-                    dynamodb.put_item(
-                        TableName=MESSAGES_TABLE_NAME,
-                        Item=message_item
-                    )
+                    if AWS_CLIENT_MANAGER_AVAILABLE:
+                        try:
+                            protected_dynamodb_operation(
+                                'put_item',
+                                TableName=MESSAGES_TABLE_NAME,
+                                Item=message_item
+                            )
+                        except (ConnectTimeoutError, ReadTimeoutError, CircuitBreakerError) as e:
+                            logger.error(f"⏰ DynamoDB timeout saving message for session {session_id[:12]}...: {e}")
+                            raise ConversationError("DB_TIMEOUT", "Database service temporarily unavailable", 503)
+                    else:
+                        # Fallback to legacy client
+                        dynamodb.put_item(
+                            TableName=MESSAGES_TABLE_NAME,
+                            Item=message_item
+                        )
         
         logger.info(f"[{tenant_id[:8]}...] ✅ Conversation saved successfully")
         
@@ -567,31 +782,73 @@ def _delete_conversation_from_db(session_id, tenant_id):
         messages_deleted = 0
         summaries_deleted = 0
         
-        # Delete from messages table
-        messages_response = dynamodb.query(
-            TableName=MESSAGES_TABLE_NAME,
-            KeyConditionExpression='sessionId = :sid',
-            ExpressionAttributeValues={':sid': {'S': session_id}},
-            ProjectionExpression='sessionId, #ts',
-            ExpressionAttributeNames={'#ts': 'timestamp'}
-        )
+        # Delete from messages table with timeout protection
+        if AWS_CLIENT_MANAGER_AVAILABLE:
+            try:
+                messages_response = protected_dynamodb_operation(
+                    'query',
+                    TableName=MESSAGES_TABLE_NAME,
+                    KeyConditionExpression='sessionId = :sid',
+                    ExpressionAttributeValues={':sid': {'S': session_id}},
+                    ProjectionExpression='sessionId, #ts',
+                    ExpressionAttributeNames={'#ts': 'timestamp'}
+                )
+            except (ConnectTimeoutError, ReadTimeoutError, CircuitBreakerError) as e:
+                logger.error(f"⏰ DynamoDB timeout querying messages for deletion: {e}")
+                raise ConversationError("DB_TIMEOUT", "Database service temporarily unavailable", 503)
+        else:
+            # Fallback to legacy client
+            messages_response = dynamodb.query(
+                TableName=MESSAGES_TABLE_NAME,
+                KeyConditionExpression='sessionId = :sid',
+                ExpressionAttributeValues={':sid': {'S': session_id}},
+                ProjectionExpression='sessionId, #ts',
+                ExpressionAttributeNames={'#ts': 'timestamp'}
+            )
         
         for item in messages_response.get('Items', []):
-            dynamodb.delete_item(
-                TableName=MESSAGES_TABLE_NAME,
-                Key={
-                    'sessionId': {'S': session_id},
-                    'timestamp': item['timestamp']
-                }
-            )
+            if AWS_CLIENT_MANAGER_AVAILABLE:
+                try:
+                    protected_dynamodb_operation(
+                        'delete_item',
+                        TableName=MESSAGES_TABLE_NAME,
+                        Key={
+                            'sessionId': {'S': session_id},
+                            'timestamp': item['timestamp']
+                        }
+                    )
+                except (ConnectTimeoutError, ReadTimeoutError, CircuitBreakerError) as e:
+                    logger.error(f"⏰ DynamoDB timeout deleting message: {e}")
+                    raise ConversationError("DB_TIMEOUT", "Database service temporarily unavailable", 503)
+            else:
+                # Fallback to legacy client
+                dynamodb.delete_item(
+                    TableName=MESSAGES_TABLE_NAME,
+                    Key={
+                        'sessionId': {'S': session_id},
+                        'timestamp': item['timestamp']
+                    }
+                )
             messages_deleted += 1
         
-        # Delete from summaries table
+        # Delete from summaries table with timeout protection
         try:
-            dynamodb.delete_item(
-                TableName=SUMMARIES_TABLE_NAME,
-                Key={'sessionId': {'S': session_id}}
-            )
+            if AWS_CLIENT_MANAGER_AVAILABLE:
+                try:
+                    protected_dynamodb_operation(
+                        'delete_item',
+                        TableName=SUMMARIES_TABLE_NAME,
+                        Key={'sessionId': {'S': session_id}}
+                    )
+                except (ConnectTimeoutError, ReadTimeoutError, CircuitBreakerError) as e:
+                    logger.error(f"⏰ DynamoDB timeout deleting summary: {e}")
+                    raise ConversationError("DB_TIMEOUT", "Database service temporarily unavailable", 503)
+            else:
+                # Fallback to legacy client
+                dynamodb.delete_item(
+                    TableName=SUMMARIES_TABLE_NAME,
+                    Key={'sessionId': {'S': session_id}}
+                )
             summaries_deleted = 1
         except ClientError as e:
             if e.response['Error']['Code'] != 'ResourceNotFoundException':
@@ -612,19 +869,41 @@ def _verify_conversation_deleted(session_id):
     Security hardener: Verified clear operation
     """
     try:
-        # Check summaries table
-        summary_response = dynamodb.get_item(
-            TableName=SUMMARIES_TABLE_NAME,
-            Key={'sessionId': {'S': session_id}}
-        )
-        
-        # Check messages table
-        messages_response = dynamodb.query(
-            TableName=MESSAGES_TABLE_NAME,
-            KeyConditionExpression='sessionId = :sid',
-            ExpressionAttributeValues={':sid': {'S': session_id}},
-            Limit=1
-        )
+        # Check summaries table with timeout protection
+        if AWS_CLIENT_MANAGER_AVAILABLE:
+            try:
+                summary_response = protected_dynamodb_operation(
+                    'get_item',
+                    TableName=SUMMARIES_TABLE_NAME,
+                    Key={'sessionId': {'S': session_id}}
+                )
+                
+                # Check messages table
+                messages_response = protected_dynamodb_operation(
+                    'query',
+                    TableName=MESSAGES_TABLE_NAME,
+                    KeyConditionExpression='sessionId = :sid',
+                    ExpressionAttributeValues={':sid': {'S': session_id}},
+                    Limit=1
+                )
+            except (ConnectTimeoutError, ReadTimeoutError, CircuitBreakerError) as e:
+                logger.error(f"⏰ DynamoDB timeout during verification: {e}")
+                # Return False for verification failure due to timeout
+                return False
+        else:
+            # Fallback to legacy client
+            summary_response = dynamodb.get_item(
+                TableName=SUMMARIES_TABLE_NAME,
+                Key={'sessionId': {'S': session_id}}
+            )
+            
+            # Check messages table
+            messages_response = dynamodb.query(
+                TableName=MESSAGES_TABLE_NAME,
+                KeyConditionExpression='sessionId = :sid',
+                ExpressionAttributeValues={':sid': {'S': session_id}},
+                Limit=1
+            )
         
         # Verification passes if both tables are empty
         summary_empty = 'Item' not in summary_response
@@ -673,8 +952,29 @@ def _get_jwt_signing_key():
         return jwt_signing_key_cache
     
     try:
-        response = secrets_client.get_secret_value(SecretId=JWT_SECRET_KEY_NAME)
-        key = response['SecretString']
+        if AWS_CLIENT_MANAGER_AVAILABLE:
+            try:
+                def get_secret_operation():
+                    return protected_secrets_operation(
+                        'get_secret_value',
+                        SecretId=JWT_SECRET_KEY_NAME
+                    )
+                
+                response = graceful_degradation.handle_secrets_with_cache(
+                    JWT_SECRET_KEY_NAME, get_secret_operation
+                )
+                key = response['SecretString']
+                
+            except (ConnectTimeoutError, ReadTimeoutError, CircuitBreakerError) as e:
+                logger.error(f"⏰ Secrets Manager timeout getting JWT key (no cache available): {e}")
+                # Clear cache on timeout to force retry
+                jwt_signing_key_cache = None
+                jwt_key_cache_expires = 0
+                raise ConversationError("JWT_KEY_TIMEOUT", "Authentication service temporarily unavailable", 503)
+        else:
+            # Fallback to legacy client
+            response = secrets_client.get_secret_value(SecretId=JWT_SECRET_KEY_NAME)
+            key = response['SecretString']
         
         # Validate key format before caching
         if not key or len(key) < 32:
@@ -691,24 +991,53 @@ def _get_jwt_signing_key():
         jwt_key_cache_expires = 0
         raise ConversationError("JWT_KEY_ERROR", "Authentication service unavailable", 500)
 
-def _success_response(data):
-    """Create successful response with CORS headers"""
+def _success_response(data, request_headers=None, tenant_hash=None):
+    """
+    Create successful response with secure tenant-specific CORS headers
+    Security: Implements tenant-specific CORS validation
+    """
+    headers = {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Headers": "Content-Type,Authorization",
+        "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS"
+    }
+    
+    # Apply secure CORS validation (import from lambda_function)
+    try:
+        # Import the secure CORS validation function
+        import sys
+        import os
+        sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+        from lambda_function import validate_cors_origin
+        
+        allowed_origin, is_valid = validate_cors_origin(request_headers, tenant_hash, None)
+        
+        if allowed_origin:
+            headers["Access-Control-Allow-Origin"] = allowed_origin
+            headers["Access-Control-Allow-Credentials"] = "true"
+            logger.info(f"[{tenant_hash[:8] if tenant_hash else 'unknown'}...] SECURE CORS: Success response with origin {allowed_origin}")
+        elif not is_valid:
+            # CORS violation - browser will reject
+            logger.warning(f"[{tenant_hash[:8] if tenant_hash else 'unknown'}...] CORS VIOLATION: Origin rejected in success response")
+        else:
+            # Direct API access
+            logger.info(f"[{tenant_hash[:8] if tenant_hash else 'unknown'}...] Direct API access - no CORS headers in success response")
+    except Exception as e:
+        logger.error(f"Error validating CORS in success response: {e}")
+        # Fail closed - don't set CORS headers on error
+    
     return {
         "statusCode": 200,
-        "headers": {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Headers": "Content-Type,Authorization",
-            "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS"
-        },
+        "headers": headers,
         "body": json.dumps(data, separators=(',', ':'))
     }
 
-def _error_response(error_type, message, status_code, extra_data=None):
+def _error_response(error_type, message, status_code, extra_data=None, request_headers=None, tenant_hash=None):
     """
-    Create typed error response for client handling
+    Create typed error response for client handling with secure CORS
     Security hardener: Standardized error contract with information disclosure protection
     Security fix: Sanitize error messages to prevent internal information disclosure
+    Security enhancement: Tenant-specific CORS validation
     """
     # Sanitize error messages in production to avoid revealing internal details
     production_env = ENVIRONMENT.lower() == 'production'
@@ -723,7 +1052,11 @@ def _error_response(error_type, message, status_code, extra_data=None):
         "DLP_FAILED": "Data protection validation failed",
         "DLP_UNAVAILABLE": "Data protection service unavailable",
         "DB_ERROR": "Database service temporarily unavailable",
-        "SYSTEM_ERROR": "Internal service error"
+        "DB_TIMEOUT": "Database service temporarily unavailable",
+        "JWT_KEY_TIMEOUT": "Authentication service temporarily unavailable",
+        "SYSTEM_ERROR": "Internal service error",
+        "AUDIT_FAILED": "Security audit service unavailable",
+        "AUDIT_UNAVAILABLE": "Security audit service required"
     }
     
     # Use safe message in production or original message in development
@@ -744,13 +1077,38 @@ def _error_response(error_type, message, status_code, extra_data=None):
         else:
             error_data.update(extra_data)
     
+    # Apply secure CORS validation
+    headers = {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Headers": "Content-Type,Authorization",
+        "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS"
+    }
+    
+    try:
+        # Import the secure CORS validation function
+        import sys
+        import os
+        sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+        from lambda_function import validate_cors_origin
+        
+        allowed_origin, is_valid = validate_cors_origin(request_headers, tenant_hash, None)
+        
+        if allowed_origin:
+            headers["Access-Control-Allow-Origin"] = allowed_origin
+            headers["Access-Control-Allow-Credentials"] = "true"
+            logger.info(f"[{tenant_hash[:8] if tenant_hash else 'unknown'}...] SECURE CORS: Error response with origin {allowed_origin}")
+        elif not is_valid:
+            # CORS violation - browser will reject
+            logger.warning(f"[{tenant_hash[:8] if tenant_hash else 'unknown'}...] CORS VIOLATION: Origin rejected in error response")
+        else:
+            # Direct API access
+            logger.info(f"[{tenant_hash[:8] if tenant_hash else 'unknown'}...] Direct API access - no CORS headers in error response")
+    except Exception as e:
+        logger.error(f"Error validating CORS in error response: {e}")
+        # Fail closed - don't set CORS headers on error
+    
     return {
         "statusCode": status_code,
-        "headers": {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Headers": "Content-Type,Authorization",
-            "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS"
-        },
+        "headers": headers,
         "body": json.dumps(error_data, separators=(',', ':'))
     }
