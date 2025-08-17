@@ -13,6 +13,9 @@ import {
 } from "../utils/errorHandling";
 import { createConversationManager } from "../utils/conversationManager";
 import { initializeMobileCompatibility } from "../utils/mobileCompatibility";
+import { createLogger } from "../utils/logger";
+
+const logger = createLogger('ChatProvider');
 
 // Streaming functionality imports (lazy loaded for performance)
 let streamingUtils = null;
@@ -122,7 +125,7 @@ async function getMarkdownParser() {
   // const renderer = new marked.Renderer();
   
   // renderer.link = (href, title, text) => {
-  //   console.log('🔗 Link renderer - href:', href, 'title:', title, 'text:', text);
+  //   logger.debug('Link renderer - href:', href, 'title:', title, 'text:', text);
   //   // Don't use DOMPurify on URLs - just ensure it's a string
   //   const cleanHref = String(href || '');
   //   const cleanTitle = title ? DOMPurify.sanitize(title) : '';
@@ -154,12 +157,12 @@ async function sanitizeMessage(content) {
     return '';
   }
 
-  console.log('🔍 sanitizeMessage - Input content:', content);
+  logger.debug('sanitizeMessage - Input content:', content);
 
   try {
     const { marked, DOMPurify } = await getMarkdownParser();
     const html = marked.parse(content);
-    console.log('🔍 After marked.parse:', html);
+    logger.debug('After marked.parse:', html);
     
     const cleanHtml = DOMPurify.sanitize(html, {
       ALLOWED_TAGS: [
@@ -206,7 +209,7 @@ async function sanitizeMessage(content) {
       }
     );
 
-    console.log('🔍 After DOMPurify.sanitize:', finalHtml);
+    logger.debug('After DOMPurify.sanitize:', finalHtml);
     return finalHtml;
   } catch (error) {
     // In case of a markdown parsing error, fall back to basic sanitization.
@@ -248,11 +251,11 @@ const ChatProvider = ({ children }) => {
       if (timeSinceActivity < SESSION_TIMEOUT) {
         // Session is valid, update activity and continue using it
         sessionStorage.setItem(STORAGE_KEYS.LAST_ACTIVITY, Date.now().toString());
-        console.log('🔍 Session validation: Using existing valid session', stored.slice(0, 12) + '...');
+        logger.debug('Session validation: Using existing valid session', stored.slice(0, 12) + '...');
         return stored;
       } else {
         // Session expired, perform memory purge
-        console.log('🧹 Session validation: Session expired, performing memory purge');
+        logger.debug('Session validation: Session expired, performing memory purge');
         performMemoryPurge();
       }
     }
@@ -261,13 +264,13 @@ const ChatProvider = ({ children }) => {
     const newSessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     sessionStorage.setItem(STORAGE_KEYS.SESSION_ID, newSessionId);
     sessionStorage.setItem(STORAGE_KEYS.LAST_ACTIVITY, Date.now().toString());
-    console.log('🔍 Session validation: Created new session', newSessionId.slice(0, 12) + '...');
+    logger.debug('Session validation: Created new session', newSessionId.slice(0, 12) + '...');
     return newSessionId;
   };
 
   // Memory purge mechanism for expired sessions
   const performMemoryPurge = () => {
-    console.log('🧹 Performing comprehensive memory purge for new session');
+    logger.debug('Performing comprehensive memory purge for new session');
     
     try {
       // Clear all session storage related to conversation state
@@ -286,18 +289,18 @@ const ChatProvider = ({ children }) => {
       keysToRemove.forEach(key => {
         if (sessionStorage.getItem(key)) {
           sessionStorage.removeItem(key);
-          console.log(`🧹 Purged session storage key: ${key}`);
+          logger.debug(`Purged session storage key: ${key}`);
         }
       });
 
       // Clear any conversation manager references (check if ref exists first)
       if (typeof conversationManagerRef !== 'undefined' && conversationManagerRef?.current) {
-        console.log('🧹 Clearing existing conversation manager during purge');
+        logger.debug('Clearing existing conversation manager during purge');
         try {
           conversationManagerRef.current.clearStateToken();
           conversationManagerRef.current = null;
         } catch (error) {
-          console.warn('🧹 Error clearing conversation manager during purge:', error);
+          logger.warn('🧹 Error clearing conversation manager during purge:', error);
           conversationManagerRef.current = null; // Force clear
         }
       }
@@ -325,13 +328,13 @@ const ChatProvider = ({ children }) => {
     const storedSessionId = sessionStorage.getItem(STORAGE_KEYS.SESSION_ID);
     
     if (currentSessionId !== storedSessionId) {
-      console.log('🚨 Session mismatch detected on mount, performing validation');
+      logger.debug('Session mismatch detected on mount, performing validation');
       const validSessionId = validateAndPurgeSession();
       sessionIdRef.current = validSessionId;
     } else {
       // Update activity timestamp for valid session
       sessionStorage.setItem(STORAGE_KEYS.LAST_ACTIVITY, Date.now().toString());
-      console.log('🔍 Session validated on mount:', currentSessionId.slice(0, 12) + '...');
+      logger.debug('Session validated on mount:', currentSessionId.slice(0, 12) + '...');
     }
   }, []); // Run once on mount
   
@@ -442,14 +445,14 @@ const ChatProvider = ({ children }) => {
 
   // Phase 3.2: Initialize conversation manager
   useEffect(() => {
-    console.log('🔍 Conversation manager useEffect triggered:', {
+    logger.debug('🔍 Conversation manager useEffect triggered:', {
       hasTenantHash: !!tenantConfig?.tenant_hash,
       isInitialized,
       hasExistingManager: !!conversationManagerRef.current
     });
     
     if (!tenantConfig?.tenant_hash) {
-      console.log('❌ No tenant hash, skipping conversation manager initialization');
+      logger.debug('❌ No tenant hash, skipping conversation manager initialization');
       return;
     }
     
@@ -459,20 +462,20 @@ const ChatProvider = ({ children }) => {
       const managerSessionId = conversationManagerRef.current.sessionId;
       
       if (managerSessionId === currentSessionId) {
-        console.log('✅ Valid conversation manager already exists for this session');
+        logger.debug('✅ Valid conversation manager already exists for this session');
         return;
       }
     }
     
     if (isInitialized) {
-      console.log('❌ Already initialized, skipping conversation manager initialization');
+      logger.debug('❌ Already initialized, skipping conversation manager initialization');
       return; // Prevent re-initialization
     }
     
     const initializeConversationManager = async () => {
       // RACE CONDITION FIX: Check if already initializing
       if (initializationLockRef.current.isInitializing) {
-        console.log('🔒 Chat initialization already in progress, waiting...');
+        logger.debug('🔒 Chat initialization already in progress, waiting...');
         return await initializationLockRef.current.initializationPromise;
       }
       
@@ -488,15 +491,15 @@ const ChatProvider = ({ children }) => {
             // Check if existing manager is for the same session
             const existingSession = conversationManagerRef.current.sessionId;
             if (existingSession === sessionId) {
-              console.log('🔍 Conversation manager already exists for current session, skipping creation');
+              logger.debug('🔍 Conversation manager already exists for current session, skipping creation');
               return;
             } else {
-              console.log('🧹 Session mismatch detected, clearing old conversation manager');
+              logger.debug('🧹 Session mismatch detected, clearing old conversation manager');
               try {
                 conversationManagerRef.current.clearStateToken();
                 conversationManagerRef.current = null;
               } catch (error) {
-                console.warn('🧹 Error clearing old conversation manager:', error);
+                logger.warn('🧹 Error clearing old conversation manager:', error);
                 conversationManagerRef.current = null; // Force clear
               }
             }
@@ -505,24 +508,24 @@ const ChatProvider = ({ children }) => {
           // 🔧 FIX: Final session validation before creating conversation manager
           const currentStoredSession = sessionStorage.getItem(STORAGE_KEYS.SESSION_ID);
           if (sessionId !== currentStoredSession) {
-            console.log('🚨 Session ID mismatch during initialization, re-validating');
+            logger.debug('🚨 Session ID mismatch during initialization, re-validating');
             const validSessionId = validateAndPurgeSession();
             sessionIdRef.current = validSessionId;
             return; // Exit and let the effect re-run with correct session
           }
           
           // 🔧 FIX: Force clear any existing conversation state that might cause conflicts
-          console.log('🧹 Performing pre-initialization conversation cleanup');
+          logger.debug('🧹 Performing pre-initialization conversation cleanup');
           try {
             sessionStorage.removeItem('picasso_conversation_id');
             sessionStorage.removeItem('picasso_state_token');
             sessionStorage.removeItem('picasso_jwt_token');
           } catch (e) {
-            console.warn('🧹 Error during conversation cleanup:', e);
+            logger.warn('🧹 Error during conversation cleanup:', e);
           }
 
           // Create conversation manager
-          console.log('🔍 Creating conversation manager with:', {
+          logger.debug('🔍 Creating conversation manager with:', {
             tenantHash: tenantHash.slice(0, 8) + '...',
             sessionId,
             conversationEndpointAvailable: environmentConfig.CONVERSATION_ENDPOINT_AVAILABLE
@@ -530,7 +533,7 @@ const ChatProvider = ({ children }) => {
           
           conversationManagerRef.current = createConversationManager(tenantHash, sessionId);
           
-          console.log('🔍 Conversation manager created (initialization happens automatically in constructor)');
+          logger.debug('🔍 Conversation manager created (initialization happens automatically in constructor)');
           
           // Wait a moment for automatic initialization to complete
           await new Promise(resolve => setTimeout(resolve, 100));
@@ -599,13 +602,13 @@ const ChatProvider = ({ children }) => {
   // 🔧 FIX: Cleanup conversation manager on unmount to prevent memory leaks
   useEffect(() => {
     return () => {
-      console.log('🧹 ChatProvider unmounting, cleaning up conversation manager');
+      logger.debug('🧹 ChatProvider unmounting, cleaning up conversation manager');
       if (conversationManagerRef.current) {
         try {
           conversationManagerRef.current.clearStateToken();
           conversationManagerRef.current = null;
         } catch (error) {
-          console.warn('🧹 Error during unmount cleanup:', error);
+          logger.warn('🧹 Error during unmount cleanup:', error);
         }
       }
       
@@ -1350,7 +1353,7 @@ const ChatProvider = ({ children }) => {
           
           // CRITICAL: Wait for ConversationManager to have state token before proceeding
           if (conversationManager && conversationManager.waitForReady) {
-            console.log('⏳ Waiting for ConversationManager to be ready with state token...');
+            logger.debug('⏳ Waiting for ConversationManager to be ready with state token...');
             await conversationManager.waitForReady();
           }
           
@@ -1362,7 +1365,7 @@ const ChatProvider = ({ children }) => {
           const stateToken = conversationManager?.stateToken;
           
           // Enhanced debugging to understand state token issue
-          console.log('🔍 Detailed state token debug:', {
+          logger.debug('🔍 Detailed state token debug:', {
             hasManager: !!conversationManager,
             managerIsInitialized: conversationManager?.isInitialized,
             rawStateToken: conversationManager?.stateToken,
@@ -1396,7 +1399,7 @@ const ChatProvider = ({ children }) => {
             'Accept': 'application/json'
           };
           
-          console.log('🔍 Pre-header check:', {
+          logger.debug('🔍 Pre-header check:', {
             stateTokenExists: !!stateToken,
             stateTokenValue: stateToken,
             willAddAuth: !!stateToken && stateToken !== 'undefined' && stateToken !== 'null'
@@ -1404,7 +1407,7 @@ const ChatProvider = ({ children }) => {
           
           if (stateToken && stateToken !== 'undefined' && stateToken !== 'null') {
             headers['Authorization'] = `Bearer ${stateToken}`;
-            console.log('✅ Authorization header added:', {
+            logger.debug('✅ Authorization header added:', {
               headerValue: headers['Authorization'].substring(0, 30) + '...',
               conversationId: conversationManager?.conversationId,
               turn: conversationManager?.turn
@@ -1415,7 +1418,7 @@ const ChatProvider = ({ children }) => {
               turn: conversationManager?.turn
             });
           } else {
-            console.log('⚠️ No Authorization header added:', {
+            logger.debug('⚠️ No Authorization header added:', {
               reason: !stateToken ? 'no token' : 
                      stateToken === 'undefined' ? 'token is string "undefined"' :
                      stateToken === 'null' ? 'token is string "null"' : 'unknown',
@@ -1426,7 +1429,7 @@ const ChatProvider = ({ children }) => {
           // Use the environment configuration for proper endpoint URL with tenant hash
           const chatUrl = environmentConfig.getChatUrl(tenantHash);
           
-          console.log('🚀 Sending request with headers:', {
+          logger.debug('🚀 Sending request with headers:', {
             url: chatUrl,
             hasAuthHeader: !!headers['Authorization'],
             authHeaderPreview: headers['Authorization'] ? headers['Authorization'].substring(0, 30) + '...' : 'none',
@@ -1513,7 +1516,7 @@ const ChatProvider = ({ children }) => {
           // Update conversation manager with complete conversation state
           try {
             if (conversationManagerRef.current) {
-              console.log('🔍 About to update conversation manager with:', {
+              logger.debug('🔍 About to update conversation manager with:', {
                 hasConversationManager: !!conversationManagerRef.current,
                 conversationId: conversationManagerRef.current.conversationId,
                 hasStateToken: !!conversationManagerRef.current.stateToken,
@@ -1529,7 +1532,7 @@ const ChatProvider = ({ children }) => {
                 botMessage // Bot response
               );
               
-              console.log('🔍 Conversation manager update completed');
+              logger.debug('🔍 Conversation manager update completed');
               
               // Update conversation metadata
               const metadata = conversationManagerRef.current.getMetadata();
@@ -1546,7 +1549,7 @@ const ChatProvider = ({ children }) => {
                 sessionId: data.session_id
               });
             } else {
-              console.log('⚠️ No conversation manager available for state update');
+              logger.debug('⚠️ No conversation manager available for state update');
             }
           } catch (error) {
             errorLogger.logError(error, {
@@ -1722,7 +1725,7 @@ const ChatProvider = ({ children }) => {
     // Clear conversation manager state and tokens
     try {
       if (conversationManagerRef.current) {
-        console.log('🧹 Clearing conversation manager state and tokens');
+        logger.debug('🧹 Clearing conversation manager state and tokens');
         
         // Clear server-side conversation state
         conversationManagerRef.current.clearConversation();
@@ -1742,7 +1745,7 @@ const ChatProvider = ({ children }) => {
       }
       
       // 🔧 FIX: Also perform memory purge when clearing messages
-      console.log('🧹 Performing memory purge as part of clear messages');
+      logger.debug('🧹 Performing memory purge as part of clear messages');
       performMemoryPurge();
       
       // Force a new session ID to prevent conflicts
@@ -1751,7 +1754,7 @@ const ChatProvider = ({ children }) => {
       sessionStorage.setItem(STORAGE_KEYS.LAST_ACTIVITY, Date.now().toString());
       sessionIdRef.current = newSessionId;
       
-      console.log('🔍 New session created after clear:', newSessionId.slice(0, 12) + '...');
+      logger.debug('🔍 New session created after clear:', newSessionId.slice(0, 12) + '...');
       
     } catch (error) {
       errorLogger.logError(error, {

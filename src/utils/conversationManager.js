@@ -7,6 +7,9 @@
 
 import { config as environmentConfig } from '../config/environment';
 import { errorLogger, performanceMonitor } from './errorHandling';
+import { createLogger } from './logger';
+
+const logger = createLogger('ConversationManager');
 
 // Constants for conversation management
 const CONVERSATION_CONFIG = {
@@ -74,13 +77,13 @@ export class ConversationManager {
       const timeSinceLastAttempt = now - this.lastInitializationAttempt;
       
       if (this.initializationInProgress) {
-        console.log('⏳ Initialization already in progress, skipping duplicate call');
+        logger.debug('⏳ Initialization already in progress, skipping duplicate call');
         return { success: false, error: 'Initialization already in progress' };
       }
       
       if (timeSinceLastAttempt < this.initializationDebounceTime && this.lastInitializationAttempt > 0) {
         const waitTime = Math.ceil((this.initializationDebounceTime - timeSinceLastAttempt) / 1000);
-        console.log(`⏱️ Too soon after last initialization attempt, wait ${waitTime}s`);
+        logger.debug(`⏱️ Too soon after last initialization attempt, wait ${waitTime}s`);
         return { success: false, error: `Rate limited - wait ${waitTime} seconds` };
       }
       
@@ -98,22 +101,22 @@ export class ConversationManager {
         this.conversationId = this.generateConversationId();
       }
       
-      console.log('🔄 Initializing session with server to get state token');
+      logger.debug('🔄 Initializing session with server to get state token');
       const initResult = await this.initializeWithServer();
       
       if (!initResult.success) {
-        console.log('⚠️ Failed to get state token from server, conversation memory will be limited');
+        logger.debug('⚠️ Failed to get state token from server, conversation memory will be limited');
         // Continue anyway with local storage
       }
       
       // After getting state token, try to restore conversation if we had one
       if (hadExistingToken && this.stateToken) {
         const serverConversation = await this.loadConversationFromServer();
-        console.log('🔍 Server conversation response:', serverConversation);
+        logger.debug('🔍 Server conversation response:', serverConversation);
         if (serverConversation && serverConversation.conversation) {
-          console.log('🔍 Before applyServerState - conversationId:', this.conversationId);
+          logger.debug('🔍 Before applyServerState - conversationId:', this.conversationId);
           this.applyServerState(serverConversation);
-          console.log('🔍 After applyServerState - conversationId:', this.conversationId);
+          logger.debug('🔍 After applyServerState - conversationId:', this.conversationId);
           
           errorLogger.logInfo('📂 Restored conversation from server', {
             conversationId: this.conversationId,
@@ -263,7 +266,7 @@ export class ConversationManager {
     const startTime = Date.now();
     let iterationCount = 0;
     
-    console.log('⏳ waitForReady started:', {
+    logger.debug('⏳ waitForReady started:', {
       currentIsInitialized: this.isInitialized,
       currentStateToken: !!this.stateToken,
       initializationInProgress: this.initializationInProgress
@@ -273,7 +276,7 @@ export class ConversationManager {
       iterationCount++;
       
       if (Date.now() - startTime > timeout) {
-        console.warn('⚠️ ConversationManager initialization timeout - proceeding without state token', {
+        logger.warn('⚠️ ConversationManager initialization timeout - proceeding without state token', {
           iterations: iterationCount,
           finalState: {
             isInitialized: this.isInitialized,
@@ -286,13 +289,13 @@ export class ConversationManager {
       
       // Check if initialization is in progress
       if (!this.initializationInProgress && !this.isInitialized) {
-        console.log('🔄 Triggering initialization from waitForReady');
+        logger.debug('🔄 Triggering initialization from waitForReady');
         await this.initializeConversation();
       }
       
       // Log progress every 10 iterations
       if (iterationCount % 10 === 0) {
-        console.log('⏳ Still waiting...', {
+        logger.debug('⏳ Still waiting...', {
           iteration: iterationCount,
           elapsed: Date.now() - startTime,
           isInitialized: this.isInitialized,
@@ -303,7 +306,7 @@ export class ConversationManager {
       await new Promise(resolve => setTimeout(resolve, 100));
     }
     
-    console.log('✅ ConversationManager ready after waitForReady:', {
+    logger.debug('✅ ConversationManager ready after waitForReady:', {
       iterations: iterationCount,
       elapsed: Date.now() - startTime,
       hasStateToken: !!this.stateToken,
@@ -440,7 +443,7 @@ export class ConversationManager {
     try {
       // CRITICAL FIX: Check if conversation endpoint is available before attempting
       if (!environmentConfig.CONVERSATION_ENDPOINT_AVAILABLE) {
-        console.log('⚠️ Conversation endpoint not deployed - using local storage only');
+        logger.debug('⚠️ Conversation endpoint not deployed - using local storage only');
         return {
           success: false,
           error: 'Conversation endpoint not available - using local fallback',
@@ -448,7 +451,7 @@ export class ConversationManager {
         };
       }
       
-      console.log('🔍 Initializing conversation with server:', {
+      logger.debug('🔍 Initializing conversation with server:', {
         tenantHash: this.tenantHash.slice(0, 8) + '...',
         sessionId: this.sessionId,
         conversationEndpointAvailable: environmentConfig.CONVERSATION_ENDPOINT_AVAILABLE,
@@ -457,7 +460,7 @@ export class ConversationManager {
       
       // Step 1: Initialize session to get state token
       const initSessionEndpoint = this.getInitSessionEndpoint();
-      console.log('🔑 Calling init_session endpoint:', initSessionEndpoint);
+      logger.debug('🔑 Calling init_session endpoint:', initSessionEndpoint);
       
       const initResponse = await fetch(initSessionEndpoint, {
         method: 'POST',
@@ -470,11 +473,11 @@ export class ConversationManager {
         })
       });
       
-      console.log('📡 init_session response status:', initResponse.status);
+      logger.debug('📡 init_session response status:', initResponse.status);
       
       if (!initResponse.ok) {
         const errorData = await initResponse.json().catch(() => ({}));
-        console.error('❌ init_session failed:', {
+        logger.error('❌ init_session failed:', {
           status: initResponse.status,
           statusText: initResponse.statusText,
           errorData,
@@ -484,14 +487,14 @@ export class ConversationManager {
       }
       
       const sessionData = await initResponse.json();
-      console.log('✅ init_session successful:', {
+      logger.debug('✅ init_session successful:', {
         hasStateToken: !!sessionData.state_token,
         turn: sessionData.turn,
         sessionId: sessionData.session_id
       });
       
       // CRITICAL: Properly initialize state from server response
-      console.log('🔑 Setting state token from init_session response:', {
+      logger.debug('🔑 Setting state token from init_session response:', {
         receivedToken: sessionData.state_token ? sessionData.state_token.substring(0, 20) + '...' : 'none',
         hasToken: !!sessionData.state_token,
         tokenType: typeof sessionData.state_token
@@ -503,10 +506,10 @@ export class ConversationManager {
       // CRITICAL FIX: Set conversationId from init_session response
       if (sessionData.session_id) {
         this.conversationId = sessionData.session_id;
-        console.log('🔧 Set conversationId from init_session:', this.conversationId);
+        logger.debug('🔧 Set conversationId from init_session:', this.conversationId);
       }
       
-      console.log('🔧 State properly initialized:', {
+      logger.debug('🔧 State properly initialized:', {
         stateToken: !!this.stateToken,
         turn: this.turn,
         conversationId: this.conversationId
@@ -525,7 +528,7 @@ export class ConversationManager {
       };
       
     } catch (error) {
-      console.error('💥 init_session completely failed:', {
+      logger.error('💥 init_session completely failed:', {
         error: error.message,
         tenantHash: this.tenantHash.slice(0, 8) + '...',
         endpoint: this.getInitSessionEndpoint(),
@@ -537,7 +540,7 @@ export class ConversationManager {
         tenantHash: this.metadata.tenantHash
       });
       
-      console.log(`⚠️ Session initialization failed - ${error.message}, generating local session token`);
+      logger.debug(`⚠️ Session initialization failed - ${error.message}, generating local session token`);
       
       // Generate a local session token so conversation saving can continue
       const localToken = `local_${this.tenantHash.slice(0, 8)}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -545,7 +548,7 @@ export class ConversationManager {
       this.turn = 0;
       this.saveStateToken();
       
-      console.log('🔧 Generated local session token for conversation continuity:', {
+      logger.debug('🔧 Generated local session token for conversation continuity:', {
         hasLocalToken: !!this.stateToken,
         localTokenPreview: this.stateToken.substring(0, 30) + '...',
         tokenValue: this.stateToken,
@@ -566,7 +569,7 @@ export class ConversationManager {
     try {
       if (!this.stateToken || this.stateToken === 'undefined' || this.stateToken === 'null') {
         // No valid state token, can't load from server
-        console.log('🔍 No valid state token available, skipping server conversation load');
+        logger.debug('🔍 No valid state token available, skipping server conversation load');
         return null;
       }
 
@@ -588,7 +591,7 @@ export class ConversationManager {
         }
         if (response.status === 409) {
           // Version conflict - clear token and let initialization handle it
-          console.log('⚠️ Conversation state conflict - clearing stale token');
+          logger.debug('⚠️ Conversation state conflict - clearing stale token');
           this.clearStateToken();
           return null;
         }
@@ -614,7 +617,7 @@ export class ConversationManager {
   }
   
   applyServerState(serverResponse) {
-    console.log('🔍 applyServerState received:', {
+    logger.debug('🔍 applyServerState received:', {
       serverResponse,
       hasState: !!(serverResponse && serverResponse.state),
       hasConversation: !!(serverResponse && serverResponse.conversation),
@@ -623,7 +626,7 @@ export class ConversationManager {
     });
     
     if (!serverResponse) {
-      console.log('🔍 applyServerState early return - no serverResponse');
+      logger.debug('🔍 applyServerState early return - no serverResponse');
       return;
     }
     
@@ -631,22 +634,22 @@ export class ConversationManager {
     const sessionId = serverResponse.sessionId || serverResponse.conversation?.session_id;
     const { state, stateToken } = serverResponse;
     
-    console.log('🔍 applyServerState extracted values:', { sessionId, hasState: !!state, hasStateToken: !!stateToken });
+    logger.debug('🔍 applyServerState extracted values:', { sessionId, hasState: !!state, hasStateToken: !!stateToken });
     
     // 🔧 FIX: Always apply sessionId and stateToken, even if state is null (new conversations)
     if (sessionId) {
       this.conversationId = sessionId;
-      console.log('🔧 Applied sessionId as conversationId:', sessionId);
+      logger.debug('🔧 Applied sessionId as conversationId:', sessionId);
     }
     
     if (stateToken) {
       this.stateToken = stateToken;
-      console.log('🔧 Applied stateToken from server');
+      logger.debug('🔧 Applied stateToken from server');
     }
     
     // Only process state if it exists (established conversations)
     if (!state) {
-      console.log('🔍 No state to apply - this is a new conversation');
+      logger.debug('🔍 No state to apply - this is a new conversation');
       return;
     }
     this.serverState = state;
@@ -700,30 +703,30 @@ export class ConversationManager {
           
           if (!this.stateToken) {
             // Only initialize if we truly don't have a state token anywhere
-            console.log('🔄 No state token found, attempting ONE-TIME initialization...');
+            logger.debug('🔄 No state token found, attempting ONE-TIME initialization...');
             
             // Check if we recently initialized (within 5 seconds)
             const now = Date.now();
             if (this.lastInitializationAttempt && (now - this.lastInitializationAttempt) < 5000) {
-              console.log('⏱️ Recently initialized, using local storage instead');
+              logger.debug('⏱️ Recently initialized, using local storage instead');
               this.saveToSessionStorage();
               return { success: true, local: true };
             }
             
             const initResult = await this.initializeWithServer();
             if (!initResult.success || !this.stateToken) {
-              console.log('⚠️ Could not get state token, falling back to local storage');
+              logger.debug('⚠️ Could not get state token, falling back to local storage');
               this.saveToSessionStorage();
               return { success: true, local: true };
             }
           } else {
-            console.log('✅ Found existing state token in storage, reusing it');
+            logger.debug('✅ Found existing state token in storage, reusing it');
           }
         }
         
         const endpoint = this.getConversationEndpoint('save');
         
-        console.log(`💾 Preparing to save conversation delta (attempt ${retryCount + 1}):`, {
+        logger.debug(`💾 Preparing to save conversation delta (attempt ${retryCount + 1}):`, {
           endpoint,
           hasStateToken: !!this.stateToken,
           stateTokenType: this.stateToken?.startsWith('local_') ? 'local' : 'server',
@@ -734,7 +737,7 @@ export class ConversationManager {
         
         // If we have a local token, just save to sessionStorage and return
         if (this.stateToken?.startsWith('local_')) {
-          console.log('📱 Using local token - saving to sessionStorage only');
+          logger.debug('📱 Using local token - saving to sessionStorage only');
           this.saveToSessionStorage();
           // CRITICAL FIX: Increment turn locally only for local-only conversations
           // This maintains consistent turn counting even without server
@@ -773,7 +776,7 @@ export class ConversationManager {
           delta: delta
         };
         
-        console.log('🔍 Attempting to save conversation delta:', {
+        logger.debug('🔍 Attempting to save conversation delta:', {
           endpoint,
           method: 'POST',
           payload,
@@ -790,7 +793,7 @@ export class ConversationManager {
           },
           body: JSON.stringify(payload)
         }).catch(fetchError => {
-          console.error('🚨 Fetch error for conversation save:', {
+          logger.error('🚨 Fetch error for conversation save:', {
             error: fetchError.message,
             endpoint,
             operation: 'save'
@@ -803,7 +806,7 @@ export class ConversationManager {
             // Version conflict - sync with server's current state and retry
             const conflictData = await response.json().catch(() => ({}));
             
-            console.log('🔄 409 conflict detected, syncing with server state:', {
+            logger.debug('🔄 409 conflict detected, syncing with server state:', {
               currentTurn: this.turn,
               serverTurn: conflictData.currentTurn,
               retryCount,
@@ -818,13 +821,13 @@ export class ConversationManager {
             
             if (typeof conflictData.currentTurn === 'number') {
               this.turn = conflictData.currentTurn;
-              console.log(`🔧 Updated turn from ${payload.turn} to ${this.turn}`);
+              logger.debug(`🔧 Updated turn from ${payload.turn} to ${this.turn}`);
             }
             
             // If we haven't exceeded retry limit, try again
             if (retryCount < maxRetries) {
               retryCount++;
-              console.log(`🔄 Retrying save with updated turn (${retryCount}/${maxRetries})`);
+              logger.debug(`🔄 Retrying save with updated turn (${retryCount}/${maxRetries})`);
               continue; // Retry the loop
             } else {
               throw new Error(`Version conflict: exceeded retry limit after ${maxRetries} attempts`);
@@ -833,7 +836,7 @@ export class ConversationManager {
           
           if (response.status === 401) {
             // Token expired - clear it and try to reinitialize
-            console.log('🔑 Token expired, clearing and will reinitialize on next attempt');
+            logger.debug('🔑 Token expired, clearing and will reinitialize on next attempt');
             this.clearStateToken();
             if (retryCount < maxRetries) {
               retryCount++;
@@ -874,7 +877,7 @@ export class ConversationManager {
         return { success: true, turn: this.turn, retriesUsed: retryCount };
         
       } catch (error) {
-        console.error(`💥 Save attempt ${retryCount + 1} failed:`, {
+        logger.error(`💥 Save attempt ${retryCount + 1} failed:`, {
           error: error.message,
           turn: this.turn,
           retryCount
@@ -896,7 +899,7 @@ export class ConversationManager {
           
           // Check if this is a network/fetch error indicating the endpoint doesn't exist
           if (error.message.includes('Failed to fetch') || error.message.includes('TypeError')) {
-            console.warn('⚠️ Conversation save endpoint not available, using sessionStorage fallback');
+            logger.warn('⚠️ Conversation save endpoint not available, using sessionStorage fallback');
           }
           
           // Always fallback to local storage
@@ -904,11 +907,11 @@ export class ConversationManager {
           
           // CRITICAL FIX: Do NOT increment turn on server failure
           // Only increment when we have a confirmed successful save
-          console.log('💾 Server save failed, using local storage without turn increment');
+          logger.debug('💾 Server save failed, using local storage without turn increment');
           
           // Don't throw error for fetch failures - just continue with local storage
           if (error.message.includes('Failed to fetch')) {
-            console.log('💾 Continuing with local storage only');
+            logger.debug('💾 Continuing with local storage only');
             return { success: true, local: true, turn: this.turn };
           }
           
@@ -917,7 +920,7 @@ export class ConversationManager {
         
         // Retry for other errors
         retryCount++;
-        console.log(`🔄 Retrying save due to error (${retryCount}/${maxRetries}): ${error.message}`);
+        logger.debug(`🔄 Retrying save due to error (${retryCount}/${maxRetries}): ${error.message}`);
         
         // Wait before retry (exponential backoff)
         await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 1000));
@@ -1074,7 +1077,7 @@ export class ConversationManager {
         
         // CRITICAL FIX: Do NOT increment turn when save fails
         // Only increment turn when server confirms successful save
-        console.log('⚠️ Server save failed, keeping turn at', this.turn, 'for retry consistency');
+        logger.debug('⚠️ Server save failed, keeping turn at', this.turn, 'for retry consistency');
       }
       
       // Always save locally as backup
