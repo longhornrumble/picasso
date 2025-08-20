@@ -1086,46 +1086,20 @@ const ChatProvider = ({ children }) => {
         setMessages(prev => [...prev, {
           id: streamingMessageId,
           role: "assistant", 
-          content: "",
+          content: "Thinking...",  // Show immediately while waiting
           timestamp: new Date().toISOString(),
           isStreaming: true
         }]);
         
-        // Start thinking indicator after 1 second to make response feel faster
-        setTimeout(() => {
-          setMessages(prev => prev.map(msg => 
-            msg.id === streamingMessageId ? {
-              ...msg,
-              content: "Thinking...",
-              isStreaming: true
-            } : msg
-          ));
-        }, 1000);
+        // No thinking indicator - show response immediately when it arrives
+        const apiStartTime = performance.now();
+        console.log(`⏱️ [${new Date().toISOString()}] Starting API call...`);
         
-        // Progress indicators to show AI is working
-        setTimeout(() => {
-          setMessages(prev => prev.map(msg => 
-            msg.id === streamingMessageId ? {
-              ...msg,
-              content: "Analyzing your question...",
-              isStreaming: true
-            } : msg
-          ));
-        }, 3000);
-        
-        setTimeout(() => {
-          setMessages(prev => prev.map(msg => 
-            msg.id === streamingMessageId ? {
-              ...msg,
-              content: "Preparing response...",
-              isStreaming: true
-            } : msg
-          ));
-        }, 6000);
         try {
           errorLogger.logInfo('🚀 Making chat API call', { 
             tenantHash: tenantHash.slice(0, 8) + '...',
-            messageId: messageWithId.id 
+            messageId: messageWithId.id,
+            startTime: new Date().toISOString()
           });
           
           const sessionId = sessionIdRef.current;
@@ -1135,8 +1109,12 @@ const ChatProvider = ({ children }) => {
           
           // CRITICAL: Wait for ConversationManager to have state token before proceeding
           if (conversationManager && conversationManager.waitForReady) {
+            const waitStartTime = performance.now();
+            console.log(`⏱️ [${new Date().toISOString()}] Waiting for ConversationManager...`);
             logger.debug('⏳ Waiting for ConversationManager to be ready with state token...');
             await conversationManager.waitForReady();
+            const waitDuration = (performance.now() - waitStartTime) / 1000;
+            console.log(`⏱️ [${new Date().toISOString()}] ConversationManager ready after ${waitDuration.toFixed(2)} seconds`);
           }
           
           const conversationContext = conversationManager ? 
@@ -1313,12 +1291,21 @@ const ChatProvider = ({ children }) => {
             }
           }
           
-          // Simulate streaming by progressively revealing content
+          // Log API response time
+          const apiEndTime = performance.now();
+          const apiDuration = (apiEndTime - apiStartTime) / 1000;
+          console.log(`⏱️ [${new Date().toISOString()}] API Response received in ${apiDuration.toFixed(2)} seconds`);
+          errorLogger.logInfo('⏱️ API Response timing', {
+            duration: `${apiDuration.toFixed(2)}s`,
+            responseLength: botContent.length
+          });
+          
+          // Simulate streaming by progressively revealing content - FAST
           const simulateStreaming = (content, actions = []) => {
             const words = content.split(' ');
             let currentContent = '';
             
-            // Start with immediate partial content
+            // Reveal words immediately without delays
             const revealWords = (index) => {
               if (index < words.length) {
                 currentContent += (index > 0 ? ' ' : '') + words[index];
@@ -1331,9 +1318,8 @@ const ChatProvider = ({ children }) => {
                   } : msg
                 ));
                 
-                // Progressive delay: faster at start, slower at end for natural feel
-                const delay = Math.min(150, 50 + (index * 2));
-                setTimeout(() => revealWords(index + 1), delay);
+                // Fast streaming - 30ms per word for visible effect without delays
+                setTimeout(() => revealWords(index + 1), 30);
               } else {
                 // Finalize message with actions
                 setMessages(prev => prev.map(msg => 
@@ -1351,11 +1337,11 @@ const ChatProvider = ({ children }) => {
               }
             };
             
-            // Start revealing words after short delay
-            setTimeout(() => revealWords(0), 300);
+            // Start revealing words IMMEDIATELY - no delay
+            revealWords(0);
           };
           
-          // Start fake streaming
+          // Start streaming immediately
           simulateStreaming(botContent, botActions);
           
           // Create bot message object for conversation manager
