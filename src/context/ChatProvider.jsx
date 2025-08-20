@@ -14,143 +14,86 @@ import {
 import { createConversationManager } from "../utils/conversationManager";
 import { initializeMobileCompatibility } from "../utils/mobileCompatibility";
 import { createLogger } from "../utils/logger";
+import { marked } from 'marked';
+import DOMPurify from 'dompurify';
+// Streaming removed - using HTTP only
 
 const logger = createLogger('ChatProvider');
 
-// Streaming functionality imports (lazy loaded for performance)
-let streamingUtils = null;
+// Initialize marked settings at module load time (for esbuild compatibility)
+marked.setOptions({
+  breaks: true,
+  gfm: true,
+  sanitize: false,
+  smartLists: true,
+  smartypants: false,
+  xhtml: false,
+  mangle: false  // Don't mangle email addresses
+});
 
-async function getStreamingUtils() {
-  if (streamingUtils) return streamingUtils;
-  
-  try {
-    const [{ useStreaming }, { quickStreamingHealthCheck }] = await Promise.all([
-      import('../hooks/useStreaming'),
-      import('../utils/streamingValidator')
-    ]);
-    
-    streamingUtils = { useStreaming, quickStreamingHealthCheck };
-    errorLogger.logInfo('✅ Streaming utilities loaded on demand');
-    return streamingUtils;
-  } catch (error) {
-    errorLogger.logError(error, { context: 'streaming_utils_load_error' });
-    return null;
-  }
-}
-
-let markdownParser = null;
-
-async function getMarkdownParser() {
-  if (markdownParser) return markdownParser;
-
-  performanceMonitor.startTimer('markdown_load');
-  const [{ marked }, { default: DOMPurify }] = await Promise.all([
-    import('marked'),
-    import('dompurify')
-  ]);
-
-  marked.setOptions({
-    breaks: true,
-    gfm: true,
-    sanitize: false,
-    smartLists: true,
-    smartypants: false,
-    xhtml: false,
-    mangle: false  // Don't mangle email addresses
-  });
-
-  // Custom extension to auto-link URLs and emails
-  marked.use({
-    extensions: [{
-      name: 'autolink',
-      level: 'inline',
-      start(src) {
-        const match = src.match(/https?:\/\/|www\.|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
-        return match ? match.index : -1;
-      },
-      tokenizer(src) {
-        const urlRegex = /^(https?:\/\/[^\s<]+[^<.,:;"')\]\s])/;
-        const wwwRegex = /^(www\.[^\s<]+[^<.,:;"')\]\s])/;
-        const emailRegex = /^([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/;
-        
-        let match;
-        if (match = urlRegex.exec(src)) {
-          return {
-            type: 'autolink',
-            raw: match[0],
-            href: match[1],
-            text: match[1]
-          };
-        } else if (match = wwwRegex.exec(src)) {
-          return {
-            type: 'autolink', 
-            raw: match[0],
-            href: 'http://' + match[1],
-            text: match[1]
-          };
-        } else if (match = emailRegex.exec(src)) {
-          return {
-            type: 'autolink',
-            raw: match[0], 
-            href: 'mailto:' + match[1],
-            text: match[1]
-          };
-        }
-        return false;
-      },
-      renderer(token) {
-        // Check if URL is external
-        const isExternal = (() => {
-          if (!token.href) return false;
-          if (token.href.startsWith('mailto:')) return true;
-          
-          try {
-            const linkUrl = new URL(token.href, window.location.href);
-            const currentUrl = new URL(window.location.href);
-            return linkUrl.origin !== currentUrl.origin;
-          } catch (e) {
-            return true; // Treat as external if parsing fails
-          }
-        })();
-        
-        const targetAttr = isExternal ? ' target="_blank" rel="noopener noreferrer"' : '';
-        return `<a href="${token.href}"${targetAttr}>${token.text}</a>`;
+// Custom extension to auto-link URLs and emails
+marked.use({
+  extensions: [{
+    name: 'autolink',
+    level: 'inline',
+    start(src) {
+      const match = src.match(/https?:\/\/|www\.|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+      return match ? match.index : -1;
+    },
+    tokenizer(src) {
+      const urlRegex = /^(https?:\/\/[^\s<]+[^<.,:;"')\]\s])/;
+      const wwwRegex = /^(www\.[^\s<]+[^<.,:;"')\]\s])/;
+      const emailRegex = /^([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/;
+      
+      let match;
+      if (match = urlRegex.exec(src)) {
+        return {
+          type: 'autolink',
+          raw: match[0],
+          href: match[1],
+          text: match[1]
+        };
+      } else if (match = wwwRegex.exec(src)) {
+        return {
+          type: 'autolink', 
+          raw: match[0],
+          href: 'http://' + match[1],
+          text: match[1]
+        };
+      } else if (match = emailRegex.exec(src)) {
+        return {
+          type: 'autolink',
+          raw: match[0], 
+          href: 'mailto:' + match[1],
+          text: match[1]
+        };
       }
-    }]
-  });
+      return false;
+    },
+    renderer(token) {
+      // Check if URL is external
+      const isExternal = (() => {
+        if (!token.href) return false;
+        if (token.href.startsWith('mailto:')) return true;
+        
+        try {
+          const linkUrl = new URL(token.href, window.location.href);
+          const currentUrl = new URL(window.location.href);
+          return linkUrl.origin !== currentUrl.origin;
+        } catch (e) {
+          return true; // Treat as external if parsing fails
+        }
+      })();
+      
+      const targetAttr = isExternal ? ' target="_blank" rel="noopener noreferrer"' : '';
+      return `<a href="${token.href}"${targetAttr}>${token.text}</a>`;
+    }
+  }]
+});
 
-  // Don't use custom renderer - it causes [object Object] issues
+// Streaming utilities are now imported statically at the top for esbuild compatibility
+// They will only be used when streaming is enabled
 
-  // Comment out custom renderer to test
-  // const renderer = new marked.Renderer();
-  
-  // renderer.link = (href, title, text) => {
-  //   logger.debug('Link renderer - href:', href, 'title:', title, 'text:', text);
-  //   // Don't use DOMPurify on URLs - just ensure it's a string
-  //   const cleanHref = String(href || '');
-  //   const cleanTitle = title ? DOMPurify.sanitize(title) : '';
-  //   const cleanText = DOMPurify.sanitize(text);
-    
-  //   return `<a href="${cleanHref}" ${cleanTitle ? `title="${cleanTitle}"` : ''} target="_blank" rel="noopener noreferrer">${cleanText}</a>`;
-  // };
-
-  // renderer.image = (href, title, text) => {
-  //   // Don't use DOMPurify on URLs - just ensure it's a string
-  //   const cleanHref = String(href || '');
-  //   const cleanTitle = title ? DOMPurify.sanitize(title) : '';
-  //   const cleanText = DOMPurify.sanitize(text);
-    
-  //   return `<img src="${cleanHref}" alt="${cleanText}" ${cleanTitle ? `title="${cleanTitle}"` : ''} style="max-width: 100%; height: auto;" loading="lazy" />`;
-  // };
-
-  // marked.use({ renderer });
-
-  markdownParser = { marked, DOMPurify };
-  performanceMonitor.endTimer('markdown_load');
-  errorLogger.logInfo('✅ Markdown parser loaded on demand');
-
-  return markdownParser;
-}
 
 async function sanitizeMessage(content) {
   if (!content || typeof content !== 'string') {
@@ -160,7 +103,7 @@ async function sanitizeMessage(content) {
   logger.debug('sanitizeMessage - Input content:', content);
 
   try {
-    const { marked, DOMPurify } = await getMarkdownParser();
+    // marked and DOMPurify are now statically imported at the top
     const html = marked.parse(content);
     logger.debug('After marked.parse:', html);
     
@@ -214,9 +157,7 @@ async function sanitizeMessage(content) {
   } catch (error) {
     // In case of a markdown parsing error, fall back to basic sanitization.
     // This ensures we never return raw, potentially unsafe content.
-    // We assume DOMPurify is available because it's part of the same dynamic import.
-    // If it's not, the outer catch will handle it.
-    const { DOMPurify } = await getMarkdownParser();
+    // DOMPurify is now statically imported at the top
     errorLogger.logError(error, { context: 'sanitizeMessage' });
     return DOMPurify.sanitize(content, { ALLOWED_TAGS: [], KEEP_CONTENT: true });
   }
@@ -251,7 +192,7 @@ const ChatProvider = ({ children }) => {
       if (timeSinceActivity < SESSION_TIMEOUT) {
         // Session is valid, update activity and continue using it
         sessionStorage.setItem(STORAGE_KEYS.LAST_ACTIVITY, Date.now().toString());
-        logger.debug('Session validation: Using existing valid session', stored.slice(0, 12) + '...');
+        // Session is valid - log less frequently to reduce console spam
         return stored;
       } else {
         // Session expired, perform memory purge
@@ -278,7 +219,6 @@ const ChatProvider = ({ children }) => {
         STORAGE_KEYS.SESSION_ID,
         STORAGE_KEYS.MESSAGES, 
         STORAGE_KEYS.LAST_ACTIVITY,
-        'picasso_jwt_token',
         'picasso_conversation_id',
         'picasso_state_token',
         'picasso_chat_state',
@@ -386,16 +326,21 @@ const ChatProvider = ({ children }) => {
   
   // Set global flag when messages exist for ConfigProvider to check
   useEffect(() => {
-    window.picassoChatHasMessages = messages.length > 0;
+    // Only count user/assistant messages, not system messages or welcome messages
+    const hasConversationMessages = messages.some(msg => 
+      (msg.role === 'user' || msg.role === 'assistant') && 
+      msg.id !== 'welcome' && 
+      msg.content && 
+      msg.content.trim() !== ''
+    );
+    window.picassoChatHasMessages = hasConversationMessages;
   }, [messages]);
   const [isOnline, setIsOnline] = useState(() => navigator.onLine);
   const [pendingRetries, setPendingRetries] = useState(() => new Map());
   
-  // Streaming-related state
-  const [streamingAvailable, setStreamingAvailable] = useState(false);
-  const [streamingEnabled, setStreamingEnabled] = useState(false);
-  const [currentStreamingMessage, setCurrentStreamingMessage] = useState(null);
-  const streamingHookRef = useRef(null);
+  // HTTP-only chat (streaming removed)
+  
+  // EventSource code removed - HTTP only
   
   const abortControllersRef = useRef(new Map());
   const retryTimeoutsRef = useRef(new Map());
@@ -436,8 +381,20 @@ const ChatProvider = ({ children }) => {
     };
   }
 
-  // RACE CONDITION FIX: Add initialization state tracking
-  const [isInitialized, setIsInitialized] = useState(false);
+  // SIMPLIFIED INITIALIZATION - HTTP only
+  const [isConversationManagerInitialized, setIsConversationManagerInitialized] = useState(false);
+  const [isChatProviderReady, setIsChatProviderReady] = useState(false);
+  
+  // Debug logging for state changes
+  useEffect(() => {
+    console.log('🔍 isConversationManagerInitialized changed:', isConversationManagerInitialized);
+  }, [isConversationManagerInitialized]);
+  
+  // Streaming debug logs removed
+  
+  useEffect(() => {
+    console.log('🔍 tenantConfig changed:', { hasTenantConfig: !!tenantConfig, configType: typeof tenantConfig });
+  }, [tenantConfig]);
   const initializationLockRef = useRef({
     isInitializing: false,
     initializationPromise: null
@@ -447,7 +404,7 @@ const ChatProvider = ({ children }) => {
   useEffect(() => {
     logger.debug('🔍 Conversation manager useEffect triggered:', {
       hasTenantHash: !!tenantConfig?.tenant_hash,
-      isInitialized,
+      isConversationManagerInitialized,
       hasExistingManager: !!conversationManagerRef.current
     });
     
@@ -467,7 +424,7 @@ const ChatProvider = ({ children }) => {
       }
     }
     
-    if (isInitialized) {
+    if (isConversationManagerInitialized) {
       logger.debug('❌ Already initialized, skipping conversation manager initialization');
       return; // Prevent re-initialization
     }
@@ -519,7 +476,6 @@ const ChatProvider = ({ children }) => {
           try {
             sessionStorage.removeItem('picasso_conversation_id');
             sessionStorage.removeItem('picasso_state_token');
-            sessionStorage.removeItem('picasso_jwt_token');
           } catch (e) {
             logger.warn('🧹 Error during conversation cleanup:', e);
           }
@@ -572,9 +528,9 @@ const ChatProvider = ({ children }) => {
             });
           }
           
-          // Mark initialization as complete
-          setIsInitialized(true);
-          errorLogger.logInfo('🎉 Chat initialization completed successfully', {
+          // Mark conversation manager initialization as complete
+          setIsConversationManagerInitialized(true);
+          errorLogger.logInfo('🎉 Conversation Manager initialization completed successfully', {
             tenantHash: tenantHash.slice(0, 8) + '...',
             sessionId: sessionId
           });
@@ -597,7 +553,7 @@ const ChatProvider = ({ children }) => {
     };
     
     initializeConversationManager();
-  }, [tenantConfig?.tenant_hash, isInitialized]);
+  }, [tenantConfig?.tenant_hash, isConversationManagerInitialized]);
 
   // 🔧 FIX: Cleanup conversation manager on unmount to prevent memory leaks
   useEffect(() => {
@@ -666,8 +622,6 @@ const ChatProvider = ({ children }) => {
       retryTimeoutsRef.current.clear();
       
       // PERFORMANCE: Clear all caches to prevent memory leaks
-      tokenCacheRef.current.clear();
-      requestCacheRef.current.clear();
       
       // Clear memory config cache
       if (window._configMemoryCache) {
@@ -696,7 +650,7 @@ const ChatProvider = ({ children }) => {
 
   useEffect(() => {
     // RACE CONDITION FIX: Wait for initialization before setting up messages
-    if (tenantConfig && !hasInitializedMessages && isInitialized) {
+    if (tenantConfig && !hasInitializedMessages && isChatProviderReady) {
       // Check if we have persisted messages
       if (messages.length > 0) {
         errorLogger.logInfo('🔄 Continuing previous conversation', {
@@ -721,7 +675,7 @@ const ChatProvider = ({ children }) => {
           });
       }
     }
-  }, [tenantConfig, generateWelcomeActions, hasInitializedMessages, isInitialized]);
+  }, [tenantConfig, generateWelcomeActions, hasInitializedMessages, isChatProviderReady]);
 
   const getTenantHash = () => {
     return tenantConfig?.tenant_hash || 
@@ -730,232 +684,19 @@ const ChatProvider = ({ children }) => {
            environmentConfig.getDefaultTenantHash();
   };
 
-  // Check if streaming is available and enabled
-  const checkStreamingAvailability = useCallback(async () => {
-    if (!tenantConfig) return;
-    
-    try {
-      const tenantHash = getTenantHash();
-      const streamingEndpoint = environmentConfig.getStreamingUrl(tenantHash);
-      
-      // Check if streaming is enabled via centralized feature flag logic
-      const isStreamingFeatureEnabled = environmentConfig.isStreamingEnabled(tenantConfig);
+  // Streaming availability check removed - HTTP only
 
-      // Only proceed if feature flag is enabled
-      if (!isStreamingFeatureEnabled) {
-        errorLogger.logInfo('🔒 Streaming disabled by feature flag', {
-          tenantHash: tenantHash.slice(0, 8) + '...',
-          environment: environmentConfig.ENVIRONMENT,
-          tenantFeatures: tenantConfig?.features || {},
-          globalOverrides: {
-            disabled: typeof window !== 'undefined' ? window.PICASSO_DISABLE_STREAMING : undefined,
-            forced: typeof window !== 'undefined' ? window.PICASSO_FORCE_STREAMING : undefined
-          }
-        });
-        return;
-      }
 
-      const streamingUtils = await getStreamingUtils();
-      if (!streamingUtils) {
-        errorLogger.logWarning('⚠️ Streaming utilities failed to load');
-        return;
-      }
+  // Streaming initialization removed - HTTP only
 
-      // Quick health check for streaming endpoint
-      const isHealthy = await streamingUtils.quickStreamingHealthCheck(tenantHash);
-      
-      if (isHealthy) {
-        setStreamingAvailable(true);
-        setStreamingEnabled(true);
-        
-        errorLogger.logInfo('✅ Streaming capability detected and enabled', {
-          endpoint: streamingEndpoint,
-          tenantHash: tenantHash.slice(0, 8) + '...',
-          environment: environmentConfig.ENVIRONMENT
-        });
-      } else {
-        errorLogger.logWarning('⚠️ Streaming endpoint health check failed - using HTTP fallback', {
-          endpoint: streamingEndpoint,
-          tenantHash: tenantHash.slice(0, 8) + '...'
-        });
-      }
-    } catch (error) {
-      errorLogger.logError(error, {
-        context: 'streaming_availability_check',
-        tenantHash: getTenantHash()?.slice(0, 8) + '...'
-      });
-    }
-  }, [tenantConfig]);
-
-  // Store streaming configuration for dynamic initialization
-  const streamingConfigRef = useRef({
-    onMessage: (content) => {
-      if (currentStreamingMessage) {
-        setMessages(prev => prev.map(msg => 
-          msg.id === currentStreamingMessage.id 
-            ? { ...msg, content: (msg.content || '') + content }
-            : msg
-        ));
-      }
-    },
-    onComplete: () => {
-      setIsTyping(false);
-      setCurrentStreamingMessage(null);
-      errorLogger.logInfo('🏁 Streaming response completed');
-    },
-    onError: (error) => {
-      errorLogger.logWarning('⚠️ Streaming failed - falling back to HTTP', {
-        error: error.message,
-        messageId: currentStreamingMessage?.id
-      });
-      
-      setIsTyping(false);
-      setCurrentStreamingMessage(null);
-      
-      // Auto-fallback to HTTP for this message
-      if (currentStreamingMessage?.fallbackToHttp) {
-        currentStreamingMessage.fallbackToHttp();
-      }
-    }
-  });
-  
-  // Update streaming config when currentStreamingMessage changes
+  // Determine overall chat provider readiness - HTTP only
   useEffect(() => {
-    streamingConfigRef.current.onMessage = (content) => {
-      if (currentStreamingMessage) {
-        setMessages(prev => prev.map(msg => 
-          msg.id === currentStreamingMessage.id 
-            ? { ...msg, content: (msg.content || '') + content }
-            : msg
-        ));
-      }
-    };
-    
-    streamingConfigRef.current.onError = (error) => {
-      errorLogger.logWarning('⚠️ Streaming failed - falling back to HTTP', {
-        error: error.message,
-        messageId: currentStreamingMessage?.id
-      });
-      
-      setIsTyping(false);
-      setCurrentStreamingMessage(null);
-      
-      // Auto-fallback to HTTP for this message
-      if (currentStreamingMessage?.fallbackToHttp) {
-        currentStreamingMessage.fallbackToHttp();
-      }
-    };
-  }, [currentStreamingMessage]);
+    console.log('🔍 Chat provider readiness check:', { 
+      conversationManager: isConversationManagerInitialized
+    });
+    setIsChatProviderReady(isConversationManagerInitialized);
+  }, [isConversationManagerInitialized]);
 
-  // Check streaming availability when tenant config loads and initialization is complete
-  useEffect(() => {
-    if (tenantConfig && !hasInitializedMessages && isInitialized) {
-      checkStreamingAvailability();
-    }
-  }, [tenantConfig, hasInitializedMessages, isInitialized, checkStreamingAvailability]);
-
-  // JWT/Function URL integration methods - PERFORMANCE OPTIMIZED
-  // Token cache to avoid regenerating tokens for same session
-  const tokenCacheRef = useRef(new Map());
-  const TOKEN_CACHE_DURATION = 300000; // 5 minutes
-  
-  const generateStreamingToken = async (userInput, sessionId) => {
-    const startTime = performance.now();
-    
-    try {
-      const tenantHash = getTenantHash();
-      
-      // PERFORMANCE: Check cache first to avoid API call
-      const cacheKey = `${tenantHash}_${sessionId}`;
-      const cached = tokenCacheRef.current.get(cacheKey);
-      if (cached && (Date.now() - cached.timestamp) < TOKEN_CACHE_DURATION) {
-        const cacheTime = performance.now() - startTime;
-        errorLogger.logInfo('⚡ JWT token retrieved from cache', {
-          cacheTime: cacheTime.toFixed(2) + 'ms',
-          sessionId
-        });
-        return {
-          jwt: cached.jwt,
-          streamingUrl: cached.streamingUrl
-        };
-      }
-      
-      const tokenEndpoint = environmentConfig.getChatUrl(tenantHash);
-      
-      errorLogger.logInfo('🔐 Generating streaming JWT token', {
-        tenantHash: tenantHash.slice(0, 8) + '...',
-        sessionId,
-        endpoint: tokenEndpoint
-      });
-      
-      // PERFORMANCE: Use AbortController with shorter timeout
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout instead of default
-      
-      const response = await fetch(`${tokenEndpoint}&action=generate_stream_token`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify({
-          session_id: sessionId,
-          user_input: userInput,
-          tenant_hash: tenantHash
-        }),
-        signal: controller.signal
-      });
-      
-      clearTimeout(timeoutId);
-      
-      if (!response.ok) {
-        throw new Error(`Token generation failed: ${response.status} ${response.statusText}`);
-      }
-      
-      const data = await response.json();
-      
-      if (!data.jwt || !data.streaming_url) {
-        throw new Error('Invalid token response: missing jwt or streaming_url');
-      }
-      
-      // PERFORMANCE: Cache the token for reuse
-      tokenCacheRef.current.set(cacheKey, {
-        jwt: data.jwt,
-        streamingUrl: data.streaming_url,
-        timestamp: Date.now()
-      });
-      
-      // Clean up old cache entries to prevent memory leaks
-      if (tokenCacheRef.current.size > 10) {
-        const oldestKey = tokenCacheRef.current.keys().next().value;
-        tokenCacheRef.current.delete(oldestKey);
-      }
-      
-      const totalTime = performance.now() - startTime;
-      errorLogger.logInfo('✅ Streaming JWT token generated successfully', {
-        generationTime: totalTime.toFixed(2) + 'ms',
-        hasJWT: !!data.jwt,
-        hasStreamingURL: !!data.streaming_url,
-        sessionId,
-        targetMet: totalTime < 200 ? '✅' : '⚠️ (PRD target: <200ms)'
-      });
-      
-      return {
-        jwt: data.jwt,
-        streamingUrl: data.streaming_url
-      };
-      
-    } catch (error) {
-      const totalTime = performance.now() - startTime;
-      errorLogger.logError(error, {
-        context: 'jwt_token_generation',
-        generationTime: totalTime.toFixed(2) + 'ms',
-        sessionId,
-        userInput: userInput.substring(0, 50) + '...'
-      });
-      throw error;
-    }
-  };
 
   const makeAPIRequest = async (url, options, retries = 3) => {
     const messageId = options.body ? JSON.parse(options.body).messageId : null;
@@ -964,7 +705,7 @@ const ChatProvider = ({ children }) => {
       for (let attempt = 1; attempt <= retries; attempt++) {
         try {
           const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 25000); // 25-second timeout (Master_Function Lambda has 30s limit)
+          const timeoutId = setTimeout(() => controller.abort(), 30000); // Reduced to 30 seconds for better UX
           
           if (messageId) {
             abortControllersRef.current.set(messageId, controller);
@@ -1257,10 +998,10 @@ const ChatProvider = ({ children }) => {
 
   const addMessage = useCallback(async (message) => {
     // RACE CONDITION FIX: Prevent API calls until initialization is complete
-    if (message.role === "user" && !isInitialized) {
+    if (message.role === "user" && !isChatProviderReady) {
       errorLogger.logWarning('⚠️ Blocking message send - chat not yet initialized', {
         messageContent: message.content?.substring(0, 50) + '...',
-        isInitialized
+        isChatProviderReady
       });
       return;
     }
@@ -1335,12 +1076,53 @@ const ChatProvider = ({ children }) => {
     if (message.role === "user" && !message.skipBotResponse && !message.uploadState) {
       const tenantHash = getTenantHash();
       
-      // Define HTTP API call function first to avoid hoisting issues
+      // Define HTTP API call function with fake streaming UX
       const makeHTTPAPICall = async () => {
-        errorLogger.logInfo('✅ Making HTTP chat request via actions API');
+        errorLogger.logInfo('✅ Making HTTP chat request with fake streaming UX');
         setIsTyping(true);
+        
+        // Create placeholder message for fake streaming
+        const streamingMessageId = `bot_${Date.now()}_${Math.random()}`;
+        setMessages(prev => [...prev, {
+          id: streamingMessageId,
+          role: "assistant", 
+          content: "",
+          timestamp: new Date().toISOString(),
+          isStreaming: true
+        }]);
+        
+        // Start thinking indicator after 1 second to make response feel faster
+        setTimeout(() => {
+          setMessages(prev => prev.map(msg => 
+            msg.id === streamingMessageId ? {
+              ...msg,
+              content: "Thinking...",
+              isStreaming: true
+            } : msg
+          ));
+        }, 1000);
+        
+        // Progress indicators to show AI is working
+        setTimeout(() => {
+          setMessages(prev => prev.map(msg => 
+            msg.id === streamingMessageId ? {
+              ...msg,
+              content: "Analyzing your question...",
+              isStreaming: true
+            } : msg
+          ));
+        }, 3000);
+        
+        setTimeout(() => {
+          setMessages(prev => prev.map(msg => 
+            msg.id === streamingMessageId ? {
+              ...msg,
+              content: "Preparing response...",
+              isStreaming: true
+            } : msg
+          ));
+        }, 6000);
         try {
-          const tenantHash = getTenantHash();
           errorLogger.logInfo('🚀 Making chat API call', { 
             tenantHash: tenantHash.slice(0, 8) + '...',
             messageId: messageWithId.id 
@@ -1360,6 +1142,17 @@ const ChatProvider = ({ children }) => {
           const conversationContext = conversationManager ? 
             conversationManager.getConversationContext() : 
             null;
+          
+          // Debug: Log what we're sending as context
+          if (conversationContext) {
+            logger.debug('📤 Sending conversation context to Lambda:', {
+              conversationId: conversationContext.conversationId,
+              turn: conversationContext.turn,
+              messageCount: conversationContext.messageCount,
+              recentMessagesCount: conversationContext.recentMessages?.length || 0,
+              recentMessages: conversationContext.recentMessages
+            });
+          }
           
           // Get state token for authorization
           const stateToken = conversationManager?.stateToken;
@@ -1466,11 +1259,32 @@ const ChatProvider = ({ children }) => {
               }
             }
             else if (data.body) {
-              const bodyData = JSON.parse(data.body);
-              botContent = await sanitizeMessage(bodyData.content || bodyData.message || botContent);
+              let bodyData = JSON.parse(data.body);
               
-              if (bodyData.actions && Array.isArray(bodyData.actions)) {
-                botActions = bodyData.actions;
+              // Handle triple-nested Lambda response structure
+              if (bodyData.statusCode && bodyData.body && typeof bodyData.body === 'string') {
+                try {
+                  const innerBodyData = JSON.parse(bodyData.body);
+                  botContent = await sanitizeMessage(innerBodyData.content || innerBodyData.message || botContent);
+                  
+                  if (innerBodyData.actions && Array.isArray(innerBodyData.actions)) {
+                    botActions = innerBodyData.actions;
+                  }
+                } catch (nestedParseError) {
+                  // Fallback to single-level parsing
+                  botContent = await sanitizeMessage(bodyData.content || bodyData.message || botContent);
+                  
+                  if (bodyData.actions && Array.isArray(bodyData.actions)) {
+                    botActions = bodyData.actions;
+                  }
+                }
+              } else {
+                // Standard single-level parsing
+                botContent = await sanitizeMessage(bodyData.content || bodyData.message || botContent);
+                
+                if (bodyData.actions && Array.isArray(bodyData.actions)) {
+                  botActions = bodyData.actions;
+                }
               }
             }
             else if (data.response) {
@@ -1499,9 +1313,55 @@ const ChatProvider = ({ children }) => {
             }
           }
           
+          // Simulate streaming by progressively revealing content
+          const simulateStreaming = (content, actions = []) => {
+            const words = content.split(' ');
+            let currentContent = '';
+            
+            // Start with immediate partial content
+            const revealWords = (index) => {
+              if (index < words.length) {
+                currentContent += (index > 0 ? ' ' : '') + words[index];
+                
+                setMessages(prev => prev.map(msg => 
+                  msg.id === streamingMessageId ? {
+                    ...msg,
+                    content: currentContent,
+                    isStreaming: index < words.length - 1
+                  } : msg
+                ));
+                
+                // Progressive delay: faster at start, slower at end for natural feel
+                const delay = Math.min(150, 50 + (index * 2));
+                setTimeout(() => revealWords(index + 1), delay);
+              } else {
+                // Finalize message with actions
+                setMessages(prev => prev.map(msg => 
+                  msg.id === streamingMessageId ? {
+                    ...msg,
+                    content: currentContent,
+                    actions: actions,
+                    isStreaming: false,
+                    metadata: {
+                      session_id: data.session_id,
+                      api_version: data.api_version || 'actions-complete'
+                    }
+                  } : msg
+                ));
+              }
+            };
+            
+            // Start revealing words after short delay
+            setTimeout(() => revealWords(0), 300);
+          };
+          
+          // Start fake streaming
+          simulateStreaming(botContent, botActions);
+          
+          // Create bot message object for conversation manager
           const botMessage = {
-            id: `bot_${Date.now()}_${Math.random()}`,
-            role: "assistant", 
+            id: streamingMessageId,
+            type: 'bot',
             content: botContent,
             actions: botActions,
             timestamp: new Date().toISOString(),
@@ -1510,8 +1370,6 @@ const ChatProvider = ({ children }) => {
               api_version: data.api_version || 'actions-complete'
             }
           };
-          
-          setMessages(prev => [...prev, botMessage]);
           
           // Update conversation manager with complete conversation state
           try {
@@ -1572,20 +1430,25 @@ const ChatProvider = ({ children }) => {
             tenantHash: getTenantHash()
           });
           
+          // Create error message object
           const errorMessage = {
             id: `error_${Date.now()}_${Math.random()}`,
             role: "assistant",
-            content: error.message, // This will be the user-friendly message
+            content: error.message,
             timestamp: new Date().toISOString(),
+            isStreaming: false,
             metadata: {
               error: error.message,
-              api_type: 'actions-chat',
+              api_type: 'http-with-fake-streaming',
               can_retry: true,
               messageId: messageWithId.id
             }
           };
           
-          setMessages(prev => [...prev, errorMessage]);
+          // Replace streaming placeholder with error
+          setMessages(prev => prev.map(msg => 
+            msg.id === streamingMessageId ? errorMessage : msg
+          ));
           
           // Add error message to conversation manager for persistence
           try {
@@ -1603,111 +1466,14 @@ const ChatProvider = ({ children }) => {
         }
       };
       
-      // Try streaming first if available, fallback to HTTP
-      if (streamingEnabled) {
-        errorLogger.logInfo('🌊 Attempting streaming response', {
-          messageId: messageWithId.id,
-          tenantHash: tenantHash.slice(0, 8) + '...'
-        });
-        
-        const attemptStreaming = async () => {
-          try {
-            const streamingUtils = await getStreamingUtils();
-            if (!streamingUtils) {
-              throw new Error('Streaming utilities not available');
-            }
-
-            // Step 1: Generate JWT token for streaming
-            errorLogger.logInfo('🔐 Starting JWT/Function URL streaming flow', {
-              messageId: messageWithId.id,
-              tenantHash: tenantHash.slice(0, 8) + '...'
-            });
-            
-            let tokenData;
-            try {
-              tokenData = await generateStreamingToken(sanitizedUserContent, sessionIdRef.current);
-            } catch (tokenError) {
-              errorLogger.logWarning('🔐 JWT token generation failed - falling back to HTTP', {
-                error: tokenError.message,
-                messageId: messageWithId.id
-              });
-              makeHTTPAPICall();
-              return;
-            }
-            
-            setIsTyping(true);
-            
-            // Create placeholder message for streaming
-            const streamingMessageId = `streaming_${Date.now()}_${Math.random()}`;
-            const streamingMessage = {
-              id: streamingMessageId,
-              role: "assistant",
-              content: "",
-              timestamp: new Date().toISOString(),
-              metadata: {
-                streaming: true,
-                messageId: messageWithId.id,
-                jwtAuth: true
-              }
-            };
-            
-            // Add streaming message to UI
-            setMessages(prev => [...prev, streamingMessage]);
-            setCurrentStreamingMessage({
-              ...streamingMessage,
-              fallbackToHttp: () => {
-                // Remove streaming message and try HTTP
-                setMessages(prev => prev.filter(msg => msg.id !== streamingMessageId));
-                setCurrentStreamingMessage(null);
-                makeHTTPAPICall();
-              }
-            });
-            
-            // Step 2: Initialize streaming hook with JWT authentication
-            const streamingHook = streamingUtils.useStreaming({
-              streamingEndpoint: tokenData.streamingUrl, // Use Function URL from token response
-              tenantHash,
-              jwt: tokenData.jwt, // Pass JWT for authentication
-              onMessage: streamingConfigRef.current.onMessage,
-              onComplete: streamingConfigRef.current.onComplete,
-              onError: streamingConfigRef.current.onError
-            });
-            
-            // Step 3: Start streaming with JWT authentication
-            await streamingHook.startStreaming({
-              userInput: sanitizedUserContent,
-              sessionId: sessionIdRef.current,
-              jwt: tokenData.jwt // Include JWT in streaming parameters
-            });
-            
-            streamingHookRef.current = streamingHook;
-            
-          } catch (error) {
-            errorLogger.logWarning('🔄 JWT/Function URL streaming failed - falling back to HTTP', {
-              error: error.message,
-              messageId: messageWithId.id
-            });
-            
-            // Clean up and fallback
-            setCurrentStreamingMessage(null);
-            setIsTyping(false);
-            makeHTTPAPICall();
-          }
-        };
-        
-        attemptStreaming();
-      } else {
-        // Use HTTP directly if streaming is not available
-        errorLogger.logInfo('📡 Using HTTP response (streaming not available)', {
-          streamingEnabled,
-          streamingHookAvailable: !!streamingHookRef.current,
-          messageId: messageWithId.id
-        });
-        
-        makeHTTPAPICall();
-      }
+      // HTTP-only chat (streaming removed)
+      errorLogger.logInfo('📡 Using HTTP response', {
+        messageId: messageWithId.id
+      });
+      
+      makeHTTPAPICall();
     }
-  }, [tenantConfig, retryMessage, isInitialized]);
+  }, [tenantConfig, retryMessage, isChatProviderReady]);
 
   const updateMessage = useCallback((messageId, updates) => {
     setMessages(prev => 
@@ -1774,33 +1540,20 @@ const ChatProvider = ({ children }) => {
     updateMessage,
     clearMessages,
     retryMessage,
-    // Streaming-related state
-    streamingAvailable,
-    streamingEnabled,
-    currentStreamingMessage,
-    // JWT/Function URL methods
-    generateStreamingToken,
     // Phase 3.2: Conversation persistence
     conversationMetadata,
     // Phase 3.3: Mobile compatibility and PWA features
     mobileFeatures,
     _debug: {
       tenantHash: getTenantHash(),
-      apiType: streamingEnabled ? 'streaming-with-http-fallback' : 'actions-only',
+      apiType: 'http-only',
       configLoaded: !!tenantConfig,
       chatEndpoint: environmentConfig.getChatUrl(getTenantHash()),
-      streamingEndpoint: streamingEnabled ? environmentConfig.getStreamingUrl(getTenantHash()) : null,
+      streamingEndpoint: null,
       environment: environmentConfig.ENVIRONMENT,
       networkStatus: isOnline ? 'online' : 'offline',
       pendingRetryCount: pendingRetries.size,
-      streamingStatus: {
-        available: streamingAvailable,
-        enabled: streamingEnabled,
-        hookInitialized: !!streamingHookRef.current,
-        currentMessage: currentStreamingMessage?.id || null,
-        jwtAuthEnabled: true,
-        authFlow: 'jwt-function-url'
-      }
+      streamingStatus: 'removed'
     }
   };
 
@@ -1814,10 +1567,6 @@ const ChatProvider = ({ children }) => {
 // PropTypes for ChatProvider
 ChatProvider.propTypes = {
   children: PropTypes.node.isRequired
-};
-
-ChatProvider.defaultProps = {
-  // No default props needed
 };
 
 // --- Test Utilities ---

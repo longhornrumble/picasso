@@ -11,10 +11,11 @@ import {
   safariSSEBehaviors, 
   getOptimalSSEConfig 
 } from './safariDetection';
-import { 
-  SSEConnectionManager, 
-  SSE_CONNECTION_STATES 
-} from './sseConnectionManager';
+// SSE imports removed during streaming surgery
+// import { 
+//   SSEConnectionManager, 
+//   SSE_CONNECTION_STATES 
+// } from './sseConnectionManager';
 
 /**
  * Mobile Safari and iOS detection utilities
@@ -430,232 +431,36 @@ export class PWAInstallManager {
  * Safari SSE Connection Manager
  * Specialized connection manager for Safari SSE compatibility
  */
+// SSE functionality removed during streaming surgery
+// Stub class maintained for compatibility
 export class SafariSSEManager {
   constructor(config = {}) {
-    this.config = {
-      streamingEndpoint: config.streamingEndpoint || '',
-      tenantHash: config.tenantHash || '',
-      enableKeepAlive: true,
-      enableBackgroundHandling: true,
-      ...config
-    };
-    
-    this.connectionManager = null;
-    this.isActive = false;
-    this.backgroundReconnectPending = false;
-    
-    // Safari-specific flags
-    this.isSafari = isSafari();
-    this.isMobileSafari = isMobileSafari();
-    this.safariVersion = this._getSafariVersion();
-    
-    // Performance monitoring
-    this.performanceMetrics = {
+    console.log('Safari SSE Manager disabled - streaming removed');
+  }
+  
+  async connect() {
+    // No-op - streaming removed
+    return Promise.resolve();
+  }
+  
+  disconnect() {
+    // No-op - streaming removed
+  }
+  
+  getState() {
+    return 'DISCONNECTED';
+  }
+  
+  getMetrics() {
+    return {
       connectionAttempts: 0,
       successfulConnections: 0,
       backgroundReconnections: 0,
       keepAlivesSent: 0,
       averageConnectionTime: 0
     };
-    
-    this._setupNetworkChangeHandling();
-  }
-  
-  /**
-   * Get Safari version for compatibility handling
-   */
-  _getSafariVersion() {
-    if (!this.isSafari) return null;
-    
-    const match = navigator.userAgent.match(/Version\/(\d+)\.(\d+)/);
-    return match ? parseFloat(`${match[1]}.${match[2]}`) : null;
-  }
-  
-  /**
-   * Setup network change event handling
-   */
-  _setupNetworkChangeHandling() {
-    if (typeof navigator !== 'undefined' && 'connection' in navigator) {
-      navigator.connection?.addEventListener('change', () => {
-        if (this.connectionManager && this.connectionManager.isConnected()) {
-          errorLogger.logInfo('Network change detected, checking connection health', {
-            context: 'safari_sse_network_change',
-            effectiveType: navigator.connection.effectiveType,
-            downlink: navigator.connection.downlink
-          });
-          
-          // Safari tends to drop connections on network changes
-          if (this.isSafari) {
-            this._handleNetworkChange();
-          }
-        }
-      });
-    }
-  }
-  
-  /**
-   * Handle network change for Safari
-   */
-  _handleNetworkChange() {
-    // Disconnect and reconnect after brief delay to handle network change
-    setTimeout(() => {
-      if (this.connectionManager && this.connectionManager.getState() === SSE_CONNECTION_STATES.CONNECTED) {
-        this.connectionManager.disconnect();
-        setTimeout(() => {
-          this.connect();
-        }, 2000); // 2 second delay for network stability
-      }
-    }, 1000);
-  }
-  
-  /**
-   * Initialize SSE connection with Safari optimizations
-   */
-  async connect() {
-    if (!this.config.streamingEndpoint) {
-      throw new Error('Streaming endpoint not configured for Safari SSE');
-    }
-    
-    try {
-      this.performanceMetrics.connectionAttempts++;
-      
-      // Create optimized SSE configuration for Safari
-      const sseConfig = getOptimalSSEConfig();
-      sseConfig.url = this.config.streamingEndpoint;
-      sseConfig.tenantHash = this.config.tenantHash;
-      
-      // Safari-specific enhancements
-      if (this.isSafari) {
-        sseConfig.enableKeepAlive = true;
-        sseConfig.enableBackgroundHandling = true;
-        
-        // Mobile Safari specific optimizations
-        if (this.isMobileSafari) {
-          sseConfig.keepAliveInterval = 30000; // 30 seconds
-          sseConfig.backgroundTabTimeout = 60000; // 1 minute
-          sseConfig.reconnectionDelay = 2000; // 2 seconds
-        }
-      }
-      
-      this.connectionManager = new SSEConnectionManager(sseConfig);
-      
-      // Setup event handlers
-      this._setupConnectionEventHandlers();
-      
-      const connectionStartTime = Date.now();
-      await this.connectionManager.connect();
-      
-      this.isActive = true;
-      this.performanceMetrics.successfulConnections++;
-      this.performanceMetrics.averageConnectionTime = 
-        (this.performanceMetrics.averageConnectionTime + (Date.now() - connectionStartTime)) / 
-        this.performanceMetrics.successfulConnections;
-      
-      errorLogger.logInfo('Safari SSE connection established', {
-        context: 'safari_sse_connected',
-        isMobileSafari: this.isMobileSafari,
-        safariVersion: this.safariVersion,
-        connectionTime: Date.now() - connectionStartTime
-      });
-      
-    } catch (error) {
-      errorLogger.logError(error, {
-        context: 'safari_sse_connection_error',
-        isMobileSafari: this.isMobileSafari,
-        endpoint: this.config.streamingEndpoint
-      });
-      throw error;
-    }
-  }
-  
-  /**
-   * Setup connection event handlers for Safari optimizations
-   */
-  _setupConnectionEventHandlers() {
-    if (!this.connectionManager) return;
-    
-    this.connectionManager.addEventListener('background_tab', () => {
-      errorLogger.logInfo('Safari SSE handling background tab', {
-        context: 'safari_sse_background'
-      });
-    });
-    
-    this.connectionManager.addEventListener('foreground_tab', () => {
-      errorLogger.logInfo('Safari SSE handling foreground tab', {
-        context: 'safari_sse_foreground'
-      });
-      
-      // Check if reconnection is needed after returning from background
-      if (this.backgroundReconnectPending) {
-        this.backgroundReconnectPending = false;
-        this.performanceMetrics.backgroundReconnections++;
-        
-        setTimeout(() => {
-          if (this.connectionManager.getState() !== SSE_CONNECTION_STATES.CONNECTED) {
-            this.connect();
-          }
-        }, 500);
-      }
-    });
-    
-    this.connectionManager.addEventListener('keep_alive', () => {
-      this.performanceMetrics.keepAlivesSent++;
-    });
-    
-    this.connectionManager.addEventListener('connection_error', (data) => {
-      // Handle Safari-specific connection errors
-      if (this.isSafari && data.reason.includes('network')) {
-        this.backgroundReconnectPending = true;
-      }
-    });
-  }
-  
-  /**
-   * Disconnect Safari SSE connection
-   */
-  disconnect() {
-    if (this.connectionManager) {
-      this.connectionManager.disconnect();
-      this.connectionManager = null;
-    }
-    
-    this.isActive = false;
-    this.backgroundReconnectPending = false;
-    
-    errorLogger.logInfo('Safari SSE disconnected', {
-      context: 'safari_sse_disconnected',
-      metrics: this.performanceMetrics
-    });
-  }
-  
-  /**
-   * Get connection state
-   */
-  getConnectionState() {
-    return this.connectionManager?.getState() || SSE_CONNECTION_STATES.DISCONNECTED;
-  }
-  
-  /**
-   * Check if connection is healthy
-   */
-  isConnectionHealthy() {
-    return this.connectionManager?.isConnected() || false;
-  }
-  
-  /**
-   * Get performance metrics
-   */
-  getPerformanceMetrics() {
-    return {
-      ...this.performanceMetrics,
-      connectionState: this.getConnectionState(),
-      isHealthy: this.isConnectionHealthy(),
-      safariVersion: this.safariVersion,
-      isMobileSafari: this.isMobileSafari
-    };
   }
 }
-
 /**
  * Background Connection Manager
  * Handles SSE connections during background tab scenarios for Safari

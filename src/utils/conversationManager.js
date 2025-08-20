@@ -50,6 +50,9 @@ export class ConversationManager {
     this.serverState = null; // Server conversation state
     this.isInitialized = false;
     
+    // Configuration for context window size
+    this.CONTEXT_WINDOW_SIZE = 10; // Increased from 5 to maintain better conversation memory
+    
     // Prevent rapid initialization calls
     this.initializationInProgress = false;
     this.lastInitializationAttempt = 0;
@@ -486,7 +489,25 @@ export class ConversationManager {
         throw new Error(`Session initialization failed: ${errorData.message || initResponse.statusText}`);
       }
       
-      const sessionData = await initResponse.json();
+      let sessionData = await initResponse.json();
+      
+      // Check if Lambda returned wrapped response (statusCode + body structure)
+      if (sessionData.statusCode && sessionData.body) {
+        logger.debug('📦 Unwrapping Lambda response structure');
+        // Parse the body if it's a string
+        if (typeof sessionData.body === 'string') {
+          try {
+            sessionData = JSON.parse(sessionData.body);
+            logger.debug('✅ Parsed session data from body string:', sessionData);
+          } catch (e) {
+            logger.error('❌ Failed to parse Lambda response body:', e);
+            throw new Error(`Failed to parse Lambda response: ${e.message}`);
+          }
+        } else {
+          sessionData = sessionData.body;
+        }
+      }
+      
       logger.debug('✅ init_session successful:', {
         hasStateToken: !!sessionData.state_token,
         turn: sessionData.turn,
@@ -598,7 +619,23 @@ export class ConversationManager {
         throw new Error(`Server response: ${response.status}`);
       }
 
-      const data = await response.json();
+      let data = await response.json();
+      
+      // Handle Lambda response wrapper structure
+      if (data && data.statusCode && data.body) {
+        logger.debug('📦 Unwrapping Lambda response structure for conversation load');
+        if (typeof data.body === 'string') {
+          try {
+            data = JSON.parse(data.body);
+            logger.debug('✅ Parsed conversation from body string');
+          } catch (e) {
+            logger.error('❌ Failed to parse conversation body:', e);
+            return null;
+          }
+        } else {
+          data = data.body;
+        }
+      }
       
       // Update our state token with the rotated token
       if (data.stateToken) {
@@ -847,7 +884,23 @@ export class ConversationManager {
           throw new Error(`Server response: ${response.status}`);
         }
 
-        const data = await response.json();
+        let data = await response.json();
+        
+        // Handle Lambda response wrapper structure
+        if (data && data.statusCode && data.body) {
+          logger.debug('📦 Unwrapping Lambda response structure for save');
+          if (typeof data.body === 'string') {
+            try {
+              data = JSON.parse(data.body);
+              logger.debug('✅ Parsed save response from body string');
+            } catch (e) {
+              logger.error('❌ Failed to parse save response body:', e);
+              data = {}; // Use empty object as fallback
+            }
+          } else {
+            data = data.body;
+          }
+        }
         
         // SUCCESS: Update our state with server response
         if (data.stateToken) {
@@ -1026,7 +1079,7 @@ export class ConversationManager {
       conversationId: this.conversationId,
       turn: this.turn,
       messageCount: this.metadata.messageCount,
-      recentMessages: this.messageBuffer.slice(-5).map(msg => ({
+      recentMessages: this.messageBuffer.slice(-this.CONTEXT_WINDOW_SIZE).map(msg => ({
         role: msg.role,
         content: msg.content,
         timestamp: msg.timestamp

@@ -126,7 +126,30 @@ const ConfigProvider = ({ children }) => {
       }
 
       // Get new config data
-      const newConfig = await response.json();
+      let rawResponse = await response.json();
+      console.log('Raw Lambda response keys:', Object.keys(rawResponse || {}));
+      console.log('Raw Lambda response statusCode:', rawResponse?.statusCode);
+      
+      let newConfig = rawResponse;
+      
+      // Check if Lambda returned wrapped response (statusCode + body structure)
+      if (rawResponse.statusCode && rawResponse.body) {
+        console.log('📦 Unwrapping Lambda response structure');
+        console.log('📦 Body type:', typeof rawResponse.body);
+        // Parse the body if it's a string
+        if (typeof rawResponse.body === 'string') {
+          try {
+            newConfig = JSON.parse(rawResponse.body);
+            console.log('✅ Parsed config from body string:', newConfig);
+          } catch (e) {
+            console.error('❌ Failed to parse body:', e);
+            newConfig = rawResponse;
+          }
+        } else {
+          newConfig = rawResponse.body;
+          console.log('✅ Extracted config from body object:', newConfig);
+        }
+      }
       
       // Get version info from Lambda response headers
       const version = response.headers.get('etag') || 
