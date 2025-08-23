@@ -45,7 +45,7 @@ body[data-iframe="true"] {
   --font-size-base: 14px;
   --font-size-heading: 16px;
   --font-weight-semibold: 600;
-  --line-height-base: 1.5;
+  --line-height-base: 1.28;
   
   /* Layout & Spacing */
   --border-radius: 12px;
@@ -895,20 +895,180 @@ body[data-iframe="true"] {
   box-sizing: border-box;
 }
 
-/* Reset margins on markdown-generated content */
-.message-content p {
+/* Reset margins on markdown-generated content (formatted layer only) */
+.message-content .streaming-formatted p {
   margin: 0;
   padding: 0;
 }
 
-.message-content p + p {
+.message-content .streaming-formatted p + p {
   margin-top: 8px;
 }
 
-.message-content ul,
-.message-content ol {
-  margin: 4px 0;
-  padding-left: 16px;
+/* Add spacing between paragraphs and lists */
+.message-content .streaming-formatted p + ul,
+.message-content .streaming-formatted p + ol {
+  margin-top: 12px;
+}
+
+.message-content .streaming-formatted ul + p,
+.message-content .streaming-formatted ol + p {
+  margin-top: 12px;
+}
+
+/* Add spacing between consecutive numbered lists */
+.message-content .streaming-formatted ol + ol {
+  margin-top: 16px;
+}
+
+/* Add spacing between list items that start with numbers (like 1., 2., 3.) */
+.message-content .streaming-formatted > ol > li:not(:first-child) {
+  margin-top: 16px;
+}
+
+.message-content .streaming-formatted ul,
+.message-content .streaming-formatted ol {
+  margin: 8px 0;
+  padding-left: 1rem;
+}
+
+/* === MARKDOWN TYPOGRAPHY (CENTRALIZED) === */
+/* Ensure list markers are visible and spaced consistently (formatted only) */
+.message-content .streaming-formatted ol {
+  list-style-type: decimal;
+  list-style-position: outside;
+  margin: 8px 0;
+  padding-left: 1rem;
+  counter-reset: list-counter;
+}
+
+.message-content .streaming-formatted ul {
+  list-style-type: disc;
+  list-style-position: outside;
+  margin: 8px 0;
+  padding-left: 1rem;
+}
+
+/* Bump specificity within chat window to beat iframe overrides (formatted only) */
+.chat-window .message-content .streaming-formatted ol {
+  list-style-type: decimal;
+  list-style-position: outside;
+  margin: 8px 0;
+  padding-left: 1rem;
+}
+
+.chat-window .message-content .streaming-formatted ul {
+  list-style-type: disc;
+  list-style-position: outside;
+  margin: 8px 0;
+  padding-left: 1rem;
+}
+
+.chat-window .message-content .streaming-formatted li {
+  display: list-item;
+  margin: 1px 0;
+}
+
+/* Nested list styles for readability (formatted only) */
+.message-content .streaming-formatted ol ol { list-style-type: lower-alpha; }
+.message-content .streaming-formatted ol ol ol { list-style-type: lower-roman; }
+.message-content .streaming-formatted ul ul { list-style-type: circle; }
+.message-content .streaming-formatted ul ul ul { list-style-type: square; }
+
+/* List item spacing (formatted only) */
+.message-content .streaming-formatted li { margin: 1px 0; }
+
+/* Collapse paragraphs generated inside list items for tighter spacing (formatted only) */
+.message-content .streaming-formatted li > p { 
+  margin: 0;
+}
+.message-content .streaming-formatted li > p + p {
+  margin-top: 1px;
+}
+
+/* Tighter list line-height for compact bullets (formatted only) */
+.message-content .streaming-formatted li {
+  line-height: 1.24;
+}
+.message-content .streaming-formatted li > p {
+  line-height: 1.24;
+}
+
+/* Ordered list counter and marker styles (formatted only) */
+.message-content .streaming-formatted ol > li {
+  counter-increment: list-counter;
+}
+.message-content .streaming-formatted ol > li::marker {
+  content: counter(list-counter) ". ";
+}
+
+/* Trim outer margins in formatted block */
+.message-content .streaming-formatted > :first-child { margin-top: 0; }
+.message-content .streaming-formatted > :last-child { margin-bottom: 0; }
+
+/* Headings inside bot bubbles */
+.message-content h1,
+.message-content h2,
+.message-content h3 {
+  line-height: 1.25;
+}
+
+/* Blockquotes */
+.message-content blockquote {
+  margin: 8px 0;
+  padding: 8px 12px;
+  border-left: 3px solid var(--border-color);
+  background: rgba(0,0,0,0.02);
+}
+
+/* Code and preformatted text */
+.message-content code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 0.92em;
+  background: rgba(0,0,0,0.04);
+  padding: 0.1em 0.3em;
+  border-radius: 4px;
+}
+
+.message-content pre {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  background: rgba(0,0,0,0.04);
+  padding: 10px 12px;
+  border-radius: 8px;
+  overflow: auto;
+}
+
+/* Tables (if any appear in markdown) */
+.message-content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 8px 0;
+}
+.message-content th,
+.message-content td {
+  border: 1px solid var(--border-color);
+  padding: 6px 8px;
+  text-align: left;
+}
+.message-content thead th {
+  background: rgba(0,0,0,0.03);
+}
+
+/* Tighten paragraph + list adjacency (avoid double gaps) */
+.message-content p + ol,
+.message-content p + ul,
+.message-content ol + p,
+.message-content ul + p {
+  margin-top: 6px;
+}
+
+/* Streaming text node style (plain text before markdown is applied) */
+.streaming {
+  white-space: pre-line; /* keep newlines, collapse spaces */
+  line-height: 1.2;      /* slightly tighter for streamed plaintext */
+  margin: 0;             /* ensure no block margins on container */
 }
 
 .message-content h1,
@@ -1010,6 +1170,15 @@ body[data-iframe="true"] {
 
 .message.user .file-attachments:first-child {
   margin-top: 0;
+}
+
+/* === STREAMING LAYERS === */
+.message .message-content .message-text .streaming-formatted {
+  /* your normal prose styles apply here (lists, headings, spacing) */
+}
+
+.message .message-content .message-text .streaming-plain[aria-hidden="true"] {
+  display: none;
 }
 
 /* === FOOTER === */
@@ -3414,3 +3583,8 @@ body[data-iframe="true"].minimized {
   }
 }
 
+
+/* === STREAMING MESSAGE SUPPORT === */
+.streaming {
+  white-space: pre-wrap;
+}

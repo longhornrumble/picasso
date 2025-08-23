@@ -16,6 +16,96 @@ import { initializeMobileCompatibility } from "../utils/mobileCompatibility";
 import { createLogger } from "../utils/logger";
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
+// --- Compact Marked renderer to prevent blocky reflow on post-render ---
+// Create a proper marked.Renderer instance for v14 compatibility
+const compactRenderer = new marked.Renderer();
+
+// Override paragraph rendering - in v14, receives token object
+compactRenderer.paragraph = function(token) {
+  // Extract the text from the token
+  const text = typeof token === 'string' ? token : (token?.text || '');
+  // Don't add any custom classes - let theme.css handle it
+  return `<p>${text}</p>`;
+};
+
+// Override list rendering - receives token object in v14
+compactRenderer.list = function(token) {
+  // Extract properties from the token
+  if (typeof token === 'string') {
+    // Fallback for string input
+    return `<ul>${token}</ul>`;
+  }
+  
+  const ordered = token.ordered || false;
+  const start = token.start || 1;
+  const items = token.items || [];
+  
+  // Render each list item by recursively parsing its tokens
+  const renderedItems = items.map(item => {
+    // Each item has tokens that need to be rendered recursively
+    // Use marked's parser to render the item's tokens
+    let itemContent = '';
+    if (item.tokens && Array.isArray(item.tokens)) {
+      // Parse the tokens within this list item
+      itemContent = marked.parser(item.tokens);
+      // Remove wrapping <p> tags if present (for tight lists)
+      itemContent = itemContent.replace(/^<p[^>]*>|<\/p>$/g, '');
+    } else {
+      // Fallback to text
+      itemContent = item.text || item.raw || '';
+    }
+    // Trim whitespace
+    itemContent = itemContent.trim();
+    return `<li>${itemContent}</li>`;
+  }).join('');
+  
+  const tag = ordered ? 'ol' : 'ul';
+  const startAttr = ordered && start !== 1 ? ` start="${start}"` : '';
+  return `<${tag}${startAttr}>${renderedItems}</${tag}>`;
+};
+
+// Override list item rendering - receives token object
+compactRenderer.listitem = function(token) {
+  // Extract the text from the token
+  const text = typeof token === 'string' ? token : (token?.text || token?.raw || '');
+  // Collapse internal newlines to prevent phantom spacing
+  const collapsed = String(text).replace(/\s*\n+\s*/g, ' ').trim();
+  return `<li>${collapsed}</li>`;
+};
+
+// Override heading rendering - receives token object
+compactRenderer.heading = function(token) {
+  // Extract text and level from token
+  if (typeof token === 'string') {
+    // Fallback for string with level as second parameter
+    return `<h1>${token}</h1>`;
+  }
+  const text = token.text || token.raw || '';
+  const level = token.depth || 1;
+  return `<h${level}>${text}</h${level}>`;
+};
+
+// Configure marked globally with the renderer instance
+marked.setOptions({
+  gfm: true,              // GitHub Flavored Markdown (tables, strikethrough, etc.)
+  breaks: false,          // IMPORTANT: avoid automatic <br> that inflate spacing
+  smartLists: true,       // Use proper list indentation
+  sanitize: false,        // We sanitize with DOMPurify separately
+  mangle: false,          // Don't obfuscate email addresses
+  renderer: compactRenderer
+});
+
+// Utility: tighten HTML emitted by marked before sanitization
+function tightenHtml(html) {
+  return html
+    // remove totally empty paragraphs
+    .replace(/<p>\s*<\/p>/g, '')
+    .replace(/<p>(?:\s*<br\s*\/?>(\s|&nbsp;)*)*<\/p>/gi, '')
+    // collapse stacks of <br> to a single break
+    .replace(/(?:<br\s*\/?>(\s|&nbsp;)*){2,}/gi, '<br/>')
+    // trim whitespace around list boundaries to avoid extra line boxes
+    .replace(/\s*(<\/?:?li>|<\/?ul>|<\/?ol>)\s*/gi, '$1');
+}
 import { streamingRegistry } from '../utils/streamingRegistry';
 
 /**
@@ -148,7 +238,24 @@ async function streamChat({
             let piece = '';
             try {
               const obj = JSON.parse(dataStr);
-              piece = obj.content ?? obj.delta ?? obj.text ?? '';
+              // Prefer common streaming fields
+              piece = obj.content ?? obj.text ?? obj.delta ?? '';
+              // If delta is an object, extract its text/content
+              if (typeof piece === 'object' && piece !== null) {
+                piece = piece.content ?? piece.text ?? '';
+              }
+              // OpenAI/Claude style chunk: choices[0].delta.content
+              if (!piece && obj?.choices?.[0]?.delta?.content) {
+                piece = obj.choices[0].delta.content;
+              }
+              // Some providers use `message` for the text
+              if (!piece && typeof obj.message === 'string') {
+                piece = obj.message;
+              }
+              // Fallback to stringifying only if still not a string
+              if (typeof piece !== 'string') {
+                piece = '';
+              }
             } catch {
               piece = dataStr;
             }
@@ -193,12 +300,14 @@ async function streamChat({
     totalTextGlobal = '';
     gotFirstEmitGlobal = false;
 
-    // Watchdog: if no real emission within 1500ms, abort so caller can fallback
+    // Watchdog: if no real emission within 7500ms, abort so caller can fallback
+    // Increased from 1500ms to account for Lambda cold starts and network latency
     watchdogId = setTimeout(() => {
       if (!gotFirstEmitGlobal) {
+        console.log('⏱️ No first chunk received within 7.5s - aborting stream');
         controller.abort();
       }
-    }, 1500);
+    }, 7500);
 
     // Helper: emit text (handles SSE `data:` or raw lines)
     const emitLines = (str) => {
@@ -213,7 +322,23 @@ async function streamChat({
         let text = '';
         try {
           const obj = JSON.parse(payload);
-          text = obj.content ?? obj.delta ?? obj.text ?? '';
+          // Prefer common streaming fields first
+          text = obj.content ?? obj.text ?? obj.delta ?? '';
+          // If delta is an object, drill into it
+          if (typeof text === 'object' && text !== null) {
+            text = text.content ?? text.text ?? '';
+          }
+          // OpenAI/Claude chunk support
+          if (!text && obj?.choices?.[0]?.delta?.content) {
+            text = obj.choices[0].delta.content;
+          }
+          // Some providers use `message`
+          if (!text && typeof obj.message === 'string') {
+            text = obj.message;
+          }
+          if (typeof text !== 'string') {
+            text = '';
+          }
         } catch {
           text = payload;
         }
@@ -268,16 +393,7 @@ async function streamChat({
 
 const logger = createLogger('ChatProvider');
 
-// Initialize marked settings at module load time (for esbuild compatibility)
-marked.setOptions({
-  breaks: true,
-  gfm: true,
-  sanitize: false,
-  smartLists: true,
-  smartypants: false,
-  xhtml: false,
-  mangle: false  // Don't mangle email addresses
-});
+// marked configuration is set above with compactRenderer
 
 // Custom extension to auto-link URLs and emails
 marked.use({
@@ -352,10 +468,12 @@ async function sanitizeMessage(content) {
 
   try {
     // marked and DOMPurify are now statically imported at the top
-    const html = marked.parse(content);
-    logger.debug('After marked.parse:', html);
-    
-    const cleanHtml = DOMPurify.sanitize(html, {
+    const rawHtml = marked.parse(content);
+    logger.debug('After marked.parse:', rawHtml);
+
+    const tightened = tightenHtml(rawHtml);
+
+    const cleanHtml = DOMPurify.sanitize(tightened, {
       ALLOWED_TAGS: [
         'p', 'br', 'strong', 'b', 'em', 'i', 'u', 'strike', 'del', 's',
         'ul', 'ol', 'li', 'blockquote', 'code', 'pre', 'hr',
@@ -363,7 +481,7 @@ async function sanitizeMessage(content) {
         'a', 'img', 'table', 'thead', 'tbody', 'tr', 'th', 'td'
       ],
       ALLOWED_ATTR: [
-        'href', 'title', 'target', 'rel', 'alt', 'src', 
+        'href', 'title', 'target', 'rel', 'alt', 'src',
         'width', 'height', 'class'  // Removed 'style' attribute for security
       ],
       // Additional security: Only allow safe CSS properties if we re-enable style later
@@ -390,12 +508,12 @@ async function sanitizeMessage(content) {
         if (attrs.includes('target=')) {
           return match;
         }
-        
+
         // Check if URL is external
         const isExternal = (() => {
           if (!url) return false;
           if (url.startsWith('mailto:')) return true;
-          
+
           try {
             const linkUrl = new URL(url, window.location.href);
             const currentUrl = new URL(window.location.href);
@@ -404,7 +522,7 @@ async function sanitizeMessage(content) {
             return true; // Treat as external if parsing fails
           }
         })();
-        
+
         if (isExternal) {
           // Add target and rel only if not present
           const hasRel = attrs.includes('rel=');
@@ -422,8 +540,8 @@ async function sanitizeMessage(content) {
     // This ensures we never return raw, potentially unsafe content.
     // DOMPurify is now statically imported at the top
     errorLogger.logError(error, { context: 'sanitizeMessage' });
-    return DOMPurify.sanitize(content, { 
-      ALLOWED_TAGS: [], 
+    return DOMPurify.sanitize(content, {
+      ALLOWED_TAGS: [],
       ALLOWED_ATTR: [],
       KEEP_CONTENT: true,
       ALLOW_DATA_ATTR: false,
@@ -968,13 +1086,14 @@ const ChatProvider = ({ children }) => {
         errorLogger.logInfo('🎬 Setting initial welcome message');
         const welcomeActions = generateWelcomeActions(tenantConfig);
 
-        // Sanitize welcome message async
+        // Sanitize welcome message async and wrap with streaming-formatted
         sanitizeMessage(tenantConfig.welcome_message || "Hello! How can I help you today?")
           .then(sanitizedContent => {
+            const wrappedContent = sanitizedContent ? `<div class="streaming-formatted">${sanitizedContent}</div>` : sanitizedContent;
             setMessages([{
               id: "welcome",
               role: "assistant",
-              content: sanitizedContent,
+              content: wrappedContent,
               actions: welcomeActions
             }]);
             setHasInitializedMessages(true);
@@ -1557,10 +1676,11 @@ const ChatProvider = ({ children }) => {
                 }
               }
 
-              // finalize once
+              // finalize once - wrap with streaming-formatted for consistent styling
+              const wrappedBotContent = botContent ? `<div class="streaming-formatted">${botContent}</div>` : botContent;
               setMessages(prev => prev.map(msg =>
                 msg.id === streamingMessageId
-                  ? { ...msg, content: botContent, isStreaming: false, streaming: false, status: 'final', actions: botActions }
+                  ? { ...msg, content: wrappedBotContent, isStreaming: false, streaming: false, status: 'final', actions: botActions }
                   : msg
               ));
 
@@ -1651,12 +1771,15 @@ const ChatProvider = ({ children }) => {
                   
                   // Then update the React state
                   // Keep isStreaming false but mark as streamCompleted
+                  // Wrap content with streaming-formatted class for theme.css styling
+                  const wrappedContent = safe ? `<div class="streaming-formatted">${safe}</div>` : safe;
+                  
                   setMessages(prev => {
                     const updated = prev.map(msg =>
                       msg.id === streamingMessageId
                         ? { 
                             ...msg, 
-                            content: safe, // This MUST contain the full streamed text as HTML
+                            content: wrappedContent, // Wrapped with streaming-formatted class
                             isStreaming: false, 
                             streaming: false, 
                             status: 'final', 
@@ -1673,7 +1796,8 @@ const ChatProvider = ({ children }) => {
                     );
                     console.log('[ChatProvider] Message state updated:', {
                       id: streamingMessageId,
-                      hasContent: !!updated.find(m => m.id === streamingMessageId)?.content
+                      hasContent: !!updated.find(m => m.id === streamingMessageId)?.content,
+                      wrapped: true
                     });
                     return updated;
                   });
@@ -1789,10 +1913,11 @@ const ChatProvider = ({ children }) => {
               }
             }
 
-            // finally commit once:
+            // finally commit once - wrap with streaming-formatted for consistent styling
+            const wrappedBotContent = botContent ? `<div class="streaming-formatted">${botContent}</div>` : botContent;
             setMessages(prev => prev.map(msg =>
               msg.id === streamingMessageId
-                ? { ...msg, content: botContent, isStreaming: false, actions: botActions }
+                ? { ...msg, content: wrappedBotContent, isStreaming: false, actions: botActions }
                 : msg
             ));
 

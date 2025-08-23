@@ -325,7 +325,7 @@ export default function MessageBubble({
           // For messages that were streamed, content is managed imperatively
           // For non-streamed messages, use React's dangerouslySetInnerHTML
           dangerouslySetInnerHTML={
-            (!streamingFlag && !metadata?.streamCompleted && content) 
+            ((!streamingFlag || metadata?.streamCompleted) && content) 
               ? { __html: content } 
               : undefined
           }
