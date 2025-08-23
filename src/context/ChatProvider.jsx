@@ -16,7 +16,255 @@ import { initializeMobileCompatibility } from "../utils/mobileCompatibility";
 import { createLogger } from "../utils/logger";
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
-// Streaming removed - using HTTP only
+import { streamingRegistry } from '../utils/streamingRegistry';
+
+/**
+ * Streaming function that handles both SSE and NDJSON formats
+ * Supports both GET (for true SSE) and POST (recommended for Lambda)
+ * Includes abort controller support for cancellation
+ * 
+ * BACKEND REQUIREMENTS FOR PROPER STREAMING:
+ * 1. Response headers must include:
+ *    - Transfer-Encoding: chunked (or proper SSE headers)
+ *    - Cache-Control: no-cache, no-store
+ *    - Content-Type: text/event-stream (for SSE)
+ *    - X-Accel-Buffering: no (for nginx)
+ * 2. Backend must flush after each chunk (not buffer until complete)
+ * 3. For Lambda: Use response streaming with iterative writes
+ * 4. Service Worker must bypass streaming routes (no caching/cloning)
+ * 5. CDN/Proxy must not buffer (CloudFront: response timeout > 30s)
+ * 
+ * CLIENT-SIDE OPTIMIZATIONS (already implemented):
+ * - Cache-Control: no-store in request headers
+ * - Service Worker bypass for streaming URLs
+ * - Imperative DOM updates via StreamingRegistry
+ * - TextDecoder with streaming flag for proper UTF-8 handling
+ */
+async function streamChat({
+  url,
+  headers,
+  body,
+  streamingMessageId,
+  onStart,
+  onChunk,
+  onDone,
+  onError,
+  abortControllersRef,
+  method = 'POST',
+}) {
+  console.log('🚀 streamChat called with:', {
+    url,
+    method,
+    body,
+    streamingMessageId
+  });
+
+  // Function-scoped trackers to coordinate error handling and finalization
+  let watchdogId = null;
+  let gotFirstEmitGlobal = false;
+  let totalTextGlobal = '';
+  
+  // Always start the UI streaming immediately
+  onStart?.();
+
+  const controller = new AbortController();
+  if (abortControllersRef && streamingMessageId) {
+    abortControllersRef.current.set(streamingMessageId, controller);
+  }
+
+  // Set a 25-second timeout for the entire streaming operation
+  const streamTimeout = setTimeout(() => {
+    console.log('⏱️ Streaming timeout (25s) - aborting');
+    controller.abort();
+  }, 25000);
+
+  try {
+    const fetchOptions = {
+      method,
+      headers: { ...headers },
+      signal: controller.signal,
+    };
+
+    let fetchUrl = url;
+    if (method === 'POST') {
+      fetchOptions.body = JSON.stringify({ ...body, stream: true });
+    } else {
+      // GET: append minimal params and stream flag
+      const u = new URL(url, window.location.origin);
+      if (body?.tenant_hash) u.searchParams.set('t', body.tenant_hash);
+      if (body?.session_id) u.searchParams.set('session_id', body.session_id);
+      if (body?.user_input) u.searchParams.set('message', body.user_input);
+      if (body?.messageId) u.searchParams.set('message_id', body.messageId);
+      u.searchParams.set('stream', 'true');
+      fetchUrl = u.toString();
+    }
+
+    const res = await fetch(fetchUrl, fetchOptions);
+    if (!res.ok) {
+      const txt = await res.text().catch(() => '');
+      throw new Error(`HTTP ${res.status} ${res.statusText} ${txt || ''}`.trim());
+    }
+
+    // Decide streaming mode by headers ONLY to avoid blocking the stream.
+    const contentType = (res.headers.get('content-type') || '').toLowerCase();
+
+    console.log('🌊 Streaming response received:', {
+      url: fetchUrl,
+      status: res.status,
+      contentType,
+      headers: Object.fromEntries(res.headers.entries())
+    });
+
+    // If Lambda returned JSON, treat as buffered (SSE-in-JSON) and unwrap once.
+    if (contentType.includes('application/json')) {
+      let jsonResponse = null;
+      try {
+        jsonResponse = await res.json();
+      } catch (e) {
+        throw new Error('Expected JSON from streaming endpoint but could not parse it.');
+      }
+
+      // Function URL "buffered SSE" case: { statusCode, headers, body: "data: {...}\n..." }
+      if (jsonResponse && jsonResponse.body) {
+        const sseContent = jsonResponse.body;
+        console.log('📝 Processing buffered SSE content (JSON-wrapped):', {
+          contentLength: sseContent.length,
+          preview: sseContent.substring(0, 100)
+        });
+
+        const lines = sseContent.split('\n');
+        let totalText = '';
+        totalTextGlobal = '';
+        gotFirstEmitGlobal = false;
+
+        for (const line of lines) {
+          if (!line) continue;
+          if (line.startsWith(':')) continue; // SSE comment
+          if (line.startsWith('data:')) {
+            const dataStr = line.slice(5).trim();
+            if (!dataStr || dataStr === '[DONE]') continue;
+
+            // Try JSON payloads first, then fall back to raw text.
+            let piece = '';
+            try {
+              const obj = JSON.parse(dataStr);
+              piece = obj.content ?? obj.delta ?? obj.text ?? '';
+            } catch {
+              piece = dataStr;
+            }
+
+            if (piece) {
+              totalText += piece;
+              totalTextGlobal = totalText;
+              if (!gotFirstEmitGlobal) gotFirstEmitGlobal = true;
+              onChunk?.(piece, totalText);
+            }
+          }
+        }
+
+        if (watchdogId) clearTimeout(watchdogId);
+        clearTimeout(streamTimeout);
+        onDone?.(totalText || 'I apologize, but I did not receive a proper response.');
+        return totalText;
+      }
+
+      // Plain JSON fallback (non-SSE)
+      const plain = jsonResponse?.content || jsonResponse?.message || '';
+      if (plain) {
+        totalTextGlobal = plain;
+        gotFirstEmitGlobal = true;
+        onChunk?.(plain, plain);
+        onDone?.(plain);
+        return plain;
+      }
+
+      throw new Error('Unexpected JSON shape from streaming endpoint.');
+    }
+
+    if (!res.body || typeof res.body.getReader !== 'function') {
+      throw new Error('No readable stream on response');
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+
+    let buffer = '';
+    // Use the function-scoped tally so catch/finally can act on it
+    totalTextGlobal = '';
+    gotFirstEmitGlobal = false;
+
+    // Watchdog: if no real emission within 1500ms, abort so caller can fallback
+    watchdogId = setTimeout(() => {
+      if (!gotFirstEmitGlobal) {
+        controller.abort();
+      }
+    }, 1500);
+
+    // Helper: emit text (handles SSE `data:` or raw lines)
+    const emitLines = (str) => {
+      const lines = str.split('\n');
+      for (let raw of lines) {
+        const line = raw.trim();
+        if (!line) continue;
+        if (line.startsWith(':')) continue; // SSE comment
+        let payload = line;
+        if (line.startsWith('data:')) payload = line.slice(5).trim();
+        if (!payload || payload === '[DONE]') continue;
+        let text = '';
+        try {
+          const obj = JSON.parse(payload);
+          text = obj.content ?? obj.delta ?? obj.text ?? '';
+        } catch {
+          text = payload;
+        }
+        if (text) {
+          totalTextGlobal += text;
+          if (!gotFirstEmitGlobal) { gotFirstEmitGlobal = true; if (watchdogId) clearTimeout(watchdogId); }
+          onChunk?.(text, totalTextGlobal);
+        }
+      }
+    };
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      // Process complete lines to minimize DOM churn
+      const lastNL = buffer.lastIndexOf('\n');
+      if (lastNL >= 0) {
+        const complete = buffer.slice(0, lastNL + 1);
+        buffer = buffer.slice(lastNL + 1);
+        emitLines(complete);
+      }
+    }
+
+    // Flush remainder
+    buffer += decoder.decode();
+    if (buffer) emitLines(buffer);
+
+    if (watchdogId) clearTimeout(watchdogId);
+    clearTimeout(streamTimeout);
+    onDone?.(totalTextGlobal);
+    return totalTextGlobal;
+  } catch (error) {
+    clearTimeout(streamTimeout);
+    if (watchdogId) clearTimeout(watchdogId);
+    // If we already emitted at least one chunk, finalize with what we have instead of throwing
+    if (gotFirstEmitGlobal && totalTextGlobal) {
+      try { onDone?.(totalTextGlobal); } catch {}
+      return totalTextGlobal;
+    }
+    onError?.(error);
+    throw error; // Let caller decide fallback (only before first chunk)
+  } finally {
+    clearTimeout(streamTimeout);
+    if (watchdogId) clearTimeout(watchdogId);
+    if (abortControllersRef && streamingMessageId) {
+      abortControllersRef.current.delete(streamingMessageId);
+    }
+  }
+}
 
 const logger = createLogger('ChatProvider');
 
@@ -116,8 +364,15 @@ async function sanitizeMessage(content) {
       ],
       ALLOWED_ATTR: [
         'href', 'title', 'target', 'rel', 'alt', 'src', 
-        'width', 'height', 'style', 'class'
+        'width', 'height', 'class'  // Removed 'style' attribute for security
       ],
+      // Additional security: Only allow safe CSS properties if we re-enable style later
+      ALLOWED_STYLE_PROPS: [],  // Empty = no inline styles allowed
+      // Prevent data: URIs except for images (and even then, be careful)
+      ALLOW_DATA_ATTR: false,
+      ALLOW_UNKNOWN_PROTOCOLS: false,
+      // Don't force attributes - we'll handle them properly below
+      // ADD_ATTR: ['target', 'rel'], // Removed to avoid duplicates
       ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp):|[^a-z]|[a-z+.-]+(?:[^a-z+.-:]|$))/i,
       FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover'],
       FORBID_TAGS: ['script', 'object', 'embed', 'form', 'input', 'button'],
@@ -127,10 +382,15 @@ async function sanitizeMessage(content) {
       RETURN_TRUSTED_TYPE: false
     });
 
-    // Process links to add target="_blank" only for external URLs
+    // Process links to add target="_blank" only for external URLs (if not already present)
     const finalHtml = cleanHtml.replace(
-      /<a\s+href="([^"]+)"/gi,
-      (match, url) => {
+      /<a\s+([^>]*href="([^"]+)"[^>]*)>/gi,
+      (match, attrs, url) => {
+        // Skip if already has target attribute
+        if (attrs.includes('target=')) {
+          return match;
+        }
+        
         // Check if URL is external
         const isExternal = (() => {
           if (!url) return false;
@@ -146,9 +406,12 @@ async function sanitizeMessage(content) {
         })();
         
         if (isExternal) {
-          return `<a target="_blank" rel="noopener noreferrer" href="${url}"`;
+          // Add target and rel only if not present
+          const hasRel = attrs.includes('rel=');
+          const relAttr = hasRel ? '' : ' rel="noopener noreferrer"';
+          return `<a ${attrs} target="_blank"${relAttr}>`;
         }
-        return `<a href="${url}"`;
+        return match;
       }
     );
 
@@ -159,9 +422,42 @@ async function sanitizeMessage(content) {
     // This ensures we never return raw, potentially unsafe content.
     // DOMPurify is now statically imported at the top
     errorLogger.logError(error, { context: 'sanitizeMessage' });
-    return DOMPurify.sanitize(content, { ALLOWED_TAGS: [], KEEP_CONTENT: true });
+    return DOMPurify.sanitize(content, { 
+      ALLOWED_TAGS: [], 
+      ALLOWED_ATTR: [],
+      KEEP_CONTENT: true,
+      ALLOW_DATA_ATTR: false,
+      ALLOW_UNKNOWN_PROTOCOLS: false
+    });
   }
 }
+
+// --- ADD NEAR OTHER UTILS ---
+// Cache the streaming decision for the session to prevent flipping
+let streamingEnabledForSession = null;
+
+const shouldUseStreaming = (tenantConfig, _tenantHash) => {
+  // If we've already decided for this session, stick with it
+  if (streamingEnabledForSession !== null) {
+    return streamingEnabledForSession;
+  }
+  
+  // Simple and direct: Check streaming_enabled flag
+  if (tenantConfig?.features?.streaming_enabled === true) {
+    streamingEnabledForSession = true;
+    return true;
+  }
+  
+  // If streaming_enabled is explicitly false, respect that
+  if (tenantConfig?.features?.streaming_enabled === false) {
+    streamingEnabledForSession = false;
+    return false;
+  }
+  
+  // Default to true if streaming_enabled is not set
+  streamingEnabledForSession = true;
+  return true;
+};
 
 const ChatContext = createContext();
 
@@ -202,7 +498,7 @@ const ChatProvider = ({ children }) => {
     }
     
     // Create new session after purge or if no session exists
-    const newSessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const newSessionId = `session_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
     sessionStorage.setItem(STORAGE_KEYS.SESSION_ID, newSessionId);
     sessionStorage.setItem(STORAGE_KEYS.LAST_ACTIVITY, Date.now().toString());
     logger.debug('Session validation: Created new session', newSessionId.slice(0, 12) + '...');
@@ -344,21 +640,31 @@ const ChatProvider = ({ children }) => {
   
   const abortControllersRef = useRef(new Map());
   const retryTimeoutsRef = useRef(new Map());
+  // Throttle per-message partial updates to ~1 frame
+  const partialUpdateRafRef = useRef(new Map()); // id -> { handle: number|null, latest: string }
 
   // PERFORMANCE: Debounced message persistence to avoid excessive storage writes
   const debouncedPersistMessages = useRef(
     debounce((messages, hasInitializedMessages) => {
-      if (messages.length > 0 && hasInitializedMessages) {
-        try {
+      try {
+        // Skip persistence while streaming is active to avoid jank and extra writes
+        const streamingActive = Array.isArray(messages) && messages.some(m => m && m.isStreaming === true);
+        if (streamingActive) {
+          // Lightweight trace; keep this quiet in production if needed
+          errorLogger.logInfo('⏸️ Skipping persist — streaming active');
+          return;
+        }
+
+        if (Array.isArray(messages) && messages.length > 0 && hasInitializedMessages) {
           sessionStorage.setItem(STORAGE_KEYS.MESSAGES, JSON.stringify(messages));
           sessionStorage.setItem(STORAGE_KEYS.LAST_ACTIVITY, Date.now().toString());
           errorLogger.logInfo('💾 Persisted conversation state', {
             messageCount: messages.length,
             sessionId: sessionIdRef.current
           });
-        } catch (error) {
-          errorLogger.logError(error, { context: 'persistMessages' });
         }
+      } catch (error) {
+        errorLogger.logError(error, { context: 'persistMessages' });
       }
     }, 1000) // Debounce for 1 second
   ).current;
@@ -1074,390 +1380,478 @@ const ChatProvider = ({ children }) => {
     }
     
     if (message.role === "user" && !message.skipBotResponse && !message.uploadState) {
-      const tenantHash = getTenantHash();
-      
-      // Define HTTP API call function with fake streaming UX
-      const makeHTTPAPICall = async () => {
-        errorLogger.logInfo('✅ Making HTTP chat request with fake streaming UX');
+      // INSIDE addMessage, where you currently define makeHTTPAPICall()
+      // Replace that whole function with a small dispatcher:
+
+      const makeChatCall = async () => {
+        const tenantHash = getTenantHash();
         setIsTyping(true);
-        
-        // Create placeholder message for fake streaming
-        const streamingMessageId = `bot_${Date.now()}_${Math.random()}`;
-        setMessages(prev => [...prev, {
-          id: streamingMessageId,
-          role: "assistant", 
-          content: "Thinking...",  // Show immediately while waiting
-          timestamp: new Date().toISOString(),
-          isStreaming: true
-        }]);
-        
-        // No thinking indicator - show response immediately when it arrives
-        const apiStartTime = performance.now();
-        console.log(`⏱️ [${new Date().toISOString()}] Starting API call...`);
-        
+
+        // Abort any in-flight streams before starting new one
+        abortControllersRef.current.forEach(c => c.abort());
+        abortControllersRef.current.clear();
         try {
-          errorLogger.logInfo('🚀 Making chat API call', { 
-            tenantHash: tenantHash.slice(0, 8) + '...',
-            messageId: messageWithId.id,
-            startTime: new Date().toISOString()
-          });
-          
-          const sessionId = sessionIdRef.current;
-          
-          // Get conversation context and state token for memory persistence
-          const conversationManager = conversationManagerRef.current;
-          
-          // CRITICAL: Wait for ConversationManager to have state token before proceeding
-          if (conversationManager && conversationManager.waitForReady) {
-            const waitStartTime = performance.now();
-            console.log(`⏱️ [${new Date().toISOString()}] Waiting for ConversationManager...`);
-            logger.debug('⏳ Waiting for ConversationManager to be ready with state token...');
-            await conversationManager.waitForReady();
-            const waitDuration = (performance.now() - waitStartTime) / 1000;
-            console.log(`⏱️ [${new Date().toISOString()}] ConversationManager ready after ${waitDuration.toFixed(2)} seconds`);
+          if (streamingRegistry && typeof streamingRegistry.endAll === 'function') {
+            streamingRegistry.endAll();
           }
-          
-          const conversationContext = conversationManager ? 
-            conversationManager.getConversationContext() : 
-            null;
-          
-          // Debug: Log what we're sending as context
-          if (conversationContext) {
-            logger.debug('📤 Sending conversation context to Lambda:', {
-              conversationId: conversationContext.conversationId,
-              turn: conversationContext.turn,
-              messageCount: conversationContext.messageCount,
-              recentMessagesCount: conversationContext.recentMessages?.length || 0,
-              recentMessages: conversationContext.recentMessages
-            });
-          }
-          
-          // Get state token for authorization
-          const stateToken = conversationManager?.stateToken;
-          
-          // Enhanced debugging to understand state token issue
-          logger.debug('🔍 Detailed state token debug:', {
-            hasManager: !!conversationManager,
-            managerIsInitialized: conversationManager?.isInitialized,
-            rawStateToken: conversationManager?.stateToken,
-            stateTokenValue: stateToken ? 'exists' : 'missing',
-            stateTokenType: typeof stateToken,
-            stateTokenLength: stateToken ? stateToken.length : 0,
-            stateTokenTruthy: !!stateToken,
-            stateTokenContent: stateToken ? stateToken.substring(0, 20) + '...' : 'none',
-            conversationId: conversationManager?.conversationId,
-            turn: conversationManager?.turn
-          });
-          
-          const requestBody = {
-            tenant_hash: tenantHash,
-            user_input: sanitizedUserContent, // Send sanitized content
-            session_id: sessionId,
-            files: message.files || [],
-            messageId: messageWithId.id,
-            
-            // Add conversation context for server-side memory
-            conversation_context: conversationContext,
-            
-            // Include conversation ID and turn for state tracking
-            conversation_id: conversationManager?.conversationId,
-            turn: conversationManager?.turn
-          };
-          
-          // Build headers with state token if available
-          const headers = {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-          };
-          
-          logger.debug('🔍 Pre-header check:', {
-            stateTokenExists: !!stateToken,
-            stateTokenValue: stateToken,
-            willAddAuth: !!stateToken && stateToken !== 'undefined' && stateToken !== 'null'
-          });
-          
-          if (stateToken && stateToken !== 'undefined' && stateToken !== 'null') {
-            headers['Authorization'] = `Bearer ${stateToken}`;
-            logger.debug('✅ Authorization header added:', {
-              headerValue: headers['Authorization'].substring(0, 30) + '...',
-              conversationId: conversationManager?.conversationId,
-              turn: conversationManager?.turn
-            });
-            errorLogger.logInfo('🔑 Including state token in chat request', {
-              hasToken: true,
-              conversationId: conversationManager?.conversationId,
-              turn: conversationManager?.turn
-            });
-          } else {
-            logger.debug('⚠️ No Authorization header added:', {
-              reason: !stateToken ? 'no token' : 
-                     stateToken === 'undefined' ? 'token is string "undefined"' :
-                     stateToken === 'null' ? 'token is string "null"' : 'unknown',
-              tokenValue: stateToken
-            });
-          }
-          
-          // Use the environment configuration for proper endpoint URL with tenant hash
-          const chatUrl = environmentConfig.getChatUrl(tenantHash);
-          
-          logger.debug('🚀 Sending request with headers:', {
-            url: chatUrl,
-            hasAuthHeader: !!headers['Authorization'],
-            authHeaderPreview: headers['Authorization'] ? headers['Authorization'].substring(0, 30) + '...' : 'none',
-            allHeaders: Object.keys(headers)
-          });
-          
-          const data = await makeAPIRequest(
-            chatUrl,
-            {
-              method: 'POST',
-              headers,
-              body: JSON.stringify(requestBody)
-            },
-            3 // Number of retries
-          );
-          
-          let botContent = "I apologize, but I'm having trouble processing that request right now.";
-          let botActions = [];
-          
-          try {
-            if (data.content) {
-              botContent = await sanitizeMessage(data.content);
-              
-              if (data.actions && Array.isArray(data.actions)) {
-                botActions = data.actions;
-              }
+        } catch {}
+
+        const streamingMessageId = `bot_${Date.now()}_${Math.random()}`;
+        // Add a single placeholder assistant message with all canonical stream id fields and metadata for consumers
+        setMessages(prev => [
+          ...prev,
+          {
+            id: streamingMessageId,                // stable React key and message identity
+            messageId: streamingMessageId,         // some code paths read messageId
+            streamId: streamingMessageId,          // preferred stream id
+            dataStreamId: streamingMessageId,      // top-level copy for easy access
+            sseStreamId: streamingMessageId,       // alias to avoid guessing field names
+            role: "assistant",
+            content: "",                          // keep empty so streaming branch is chosen
+            timestamp: new Date().toISOString(),
+            isStreaming: true,                     // explicit streaming flag
+            streaming: true,                       // secondary flag for older checks
+            metadata: {
+              partialText: "",
+              dataStreamId: streamingMessageId,    // metadata copy (current consumers)
+              streamId: streamingMessageId,        // metadata alias
+              isStreaming: true
             }
-            else if (data.messages && data.messages[0] && data.messages[0].content) {
-              const messageContent = JSON.parse(data.messages[0].content);
-              botContent = await sanitizeMessage(messageContent.message || messageContent.content || botContent);
-              
-              if (messageContent.actions && Array.isArray(messageContent.actions)) {
-                botActions = messageContent.actions;
-              }
-            }
-            else if (data.body) {
-              let bodyData = JSON.parse(data.body);
-              
-              // Handle triple-nested Lambda response structure
-              if (bodyData.statusCode && bodyData.body && typeof bodyData.body === 'string') {
-                try {
-                  const innerBodyData = JSON.parse(bodyData.body);
-                  botContent = await sanitizeMessage(innerBodyData.content || innerBodyData.message || botContent);
-                  
-                  if (innerBodyData.actions && Array.isArray(innerBodyData.actions)) {
-                    botActions = innerBodyData.actions;
+          }
+        ]);
+        console.log('[ChatProvider] 🧪 placeholder created', { id: streamingMessageId });
+
+        // Proactively register the stream so listeners can bind immediately (idempotent if onStart also calls it)
+        try { if (streamingRegistry && typeof streamingRegistry.startStream === 'function') {
+          streamingRegistry.startStream(streamingMessageId);
+        } } catch {}
+
+        const sessionId = sessionIdRef.current;
+        const conversationManager = conversationManagerRef.current;
+
+        if (conversationManager?.waitForReady) {
+          logger.debug('⏳ Waiting for ConversationManager to be ready with state token...');
+          await conversationManager.waitForReady();
+        }
+        const conversationContext = conversationManager?.getConversationContext?.() || null;
+        const stateToken = conversationManager?.stateToken;
+
+        const headers = {
+          'Content-Type': 'application/json',
+          'Accept': 'text/event-stream, application/x-ndjson, application/json'
+        };
+        
+        // Cache-Control header disabled - causes CORS issues with Lambda
+        // The Lambda doesn't allow this header in Access-Control-Allow-Headers
+        // Streaming should work without it since we're using SSE format
+        // if (environmentConfig.ENVIRONMENT !== 'development') {
+        //   headers['Cache-Control'] = 'no-store'; // Prevent intermediaries from buffering streaming responses
+        // }
+        if (stateToken && stateToken !== 'undefined' && stateToken !== 'null') {
+          headers['Authorization'] = `Bearer ${stateToken}`;
+        }
+
+        // Build a single request body you can reuse for both paths
+        const requestBody = {
+          tenant_hash: tenantHash,
+          user_input: message.content, // Send raw text to backend, not HTML
+          session_id: sessionId,
+          files: message.files || [],
+          messageId: messageWithId.id,
+          streaming_message_id: streamingMessageId, // <- ensure the server echoes this for SSE tagging
+          conversation_context: conversationContext,
+          conversation_id: conversationManager?.conversationId,
+          turn: conversationManager?.turn,
+          stream: shouldUseStreaming(tenantConfig, tenantHash) // Add stream flag
+        };
+
+        try {
+          const streamingEnabled = shouldUseStreaming(tenantConfig, tenantHash);
+          console.log('🎯 STREAMING CHECK:', {
+            enabled: streamingEnabled,
+            streaming_enabled_flag: tenantConfig?.features?.streaming_enabled,
+            streaming_flag: tenantConfig?.features?.streaming,
+            endpoint: environmentConfig.STREAMING_ENDPOINT
+          });
+          
+          if (streamingEnabled) {
+            console.log('✅ TAKING STREAMING PATH!');
+            // ---- REAL STREAMING PATH ----
+            // Use dedicated Bedrock streaming endpoint (Node.js with SSE support)
+            let streamingUrl = environmentConfig.getStreamingUrl(tenantHash);
+            const streamingMethod = tenantConfig?.streaming?.method || environmentConfig.STREAMING_METHOD || 'POST';
+            
+            console.log('🌊 Using streaming path:', {
+              url: streamingUrl,
+              method: streamingMethod,
+              requestBody
+            });
+
+            // Fallback HTTP helper (verbatim from HTTP path)
+            const httpFallback = async () => {
+              const chatUrl = environmentConfig.getChatUrl(tenantHash);
+              const data = await makeAPIRequest(
+                chatUrl,
+                { method: 'POST', headers, body: JSON.stringify(requestBody) },
+                3
+              );
+
+              let botContent = "I apologize, but I'm having trouble processing that request right now.";
+              let botActions = [];
+
+              try {
+                if (data.content) {
+                  botContent = await sanitizeMessage(data.content);
+                  if (data.actions && Array.isArray(data.actions)) {
+                    botActions = data.actions;
                   }
-                } catch (nestedParseError) {
-                  // Fallback to single-level parsing
-                  botContent = await sanitizeMessage(bodyData.content || bodyData.message || botContent);
+                }
+                else if (data.messages && data.messages[0] && data.messages[0].content) {
+                  const messageContent = JSON.parse(data.messages[0].content);
+                  botContent = await sanitizeMessage(messageContent.message || messageContent.content || botContent);
+                  if (messageContent.actions && Array.isArray(messageContent.actions)) {
+                    botActions = messageContent.actions;
+                  }
+                }
+                else if (data.body) {
+                  let bodyData = JSON.parse(data.body);
+                  if (bodyData.statusCode && bodyData.body && typeof bodyData.body === 'string') {
+                    try {
+                      const innerBodyData = JSON.parse(bodyData.body);
+                      botContent = await sanitizeMessage(innerBodyData.content || innerBodyData.message || botContent);
+                      if (innerBodyData.actions && Array.isArray(innerBodyData.actions)) {
+                        botActions = innerBodyData.actions;
+                      }
+                    } catch (nestedParseError) {
+                      botContent = await sanitizeMessage(bodyData.content || bodyData.message || botContent);
+                      if (bodyData.actions && Array.isArray(bodyData.actions)) {
+                        botActions = bodyData.actions;
+                      }
+                    }
+                  } else {
+                    botContent = await sanitizeMessage(bodyData.content || bodyData.message || botContent);
+                    if (bodyData.actions && Array.isArray(bodyData.actions)) {
+                      botActions = bodyData.actions;
+                    }
+                  }
+                }
+                else if (data.response) {
+                  botContent = await sanitizeMessage(data.response);
+                }
+
+                if (data.fallback_message) {
+                  botContent = await sanitizeMessage(data.fallback_message);
+                }
+
+                if (data.file_acknowledgment) {
+                  const sanitizedAck = await sanitizeMessage(data.file_acknowledgment);
+                  botContent += "\n\n" + sanitizedAck;
+                }
+              } catch (parseError) {
+                errorLogger.logError(parseError, {
+                  messageId: messageWithId.id,
+                  context: 'response_parsing'
+                });
+                if (typeof data === 'string') {
+                  botContent = await sanitizeMessage(data);
+                }
+              }
+
+              // finalize once
+              setMessages(prev => prev.map(msg =>
+                msg.id === streamingMessageId
+                  ? { ...msg, content: botContent, isStreaming: false, streaming: false, status: 'final', actions: botActions }
+                  : msg
+              ));
+
+              // preserve ConversationManager integration
+              try {
+                if (conversationManager) {
+                  await conversationManager.updateFromChatResponse(
+                    data,
+                    messageWithId,
+                    {
+                      id: streamingMessageId,
+                      type: 'bot',
+                      content: botContent,
+                      actions: botActions,
+                      timestamp: new Date().toISOString(),
+                      metadata: { stream_completed: false, fallback: true }
+                    }
+                  );
+
+                  const metadata = conversationManager.getMetadata();
+                  setConversationMetadata({
+                    conversationId: conversationManager.conversationId,
+                    messageCount: metadata.messageCount,
+                    hasBeenSummarized: metadata.hasBeenSummarized,
+                    canLoadHistory: true
+                  });
+                }
+              } catch (error) {
+                errorLogger.logError(error, {
+                  context: 'conversation_manager_update_from_chat_response',
+                  messageId: streamingMessageId
+                });
+              }
+            };
+
+            try {
+              await streamChat({
+                url: streamingUrl,
+                headers,
+                body: requestBody,
+                streamingMessageId,
+                abortControllersRef,
+                method: streamingMethod,
+                onStart: () => {
+                  streamingRegistry.startStream(streamingMessageId);
+                  setMessages(prev =>
+                    prev.map(m =>
+                      m.id === streamingMessageId
+                        ? {
+                            ...m,
+                            isStreaming: true,
+                            streaming: true,
+                            status: 'streaming',
+                            metadata: { ...(m.metadata || {}), isStreaming: true, streaming: true, status: 'streaming' }
+                          }
+                        : m
+                    )
+                  );
+                  console.log('[ChatProvider] 🚦 onStart -> streaming asserted', { id: streamingMessageId });
+                },
+                onChunk: (delta, total) => {
+                  streamingRegistry.appendChunk(streamingMessageId, delta, total);
+                },
+                onDone: async (fullText) => {
+                  streamingRegistry.endStream(streamingMessageId);
+                  const isCanceled = fullText === '[Message canceled]';
+                  const safe = isCanceled ? fullText : await sanitizeMessage(fullText);
                   
+                  console.log('[ChatProvider] 📝 Streaming complete, updating message with final content:', {
+                    id: streamingMessageId,
+                    fullText: fullText?.substring(0, 100) + '...',
+                    fullTextLen: fullText?.length,
+                    sanitizedContent: safe?.substring(0, 100) + '...',
+                    sanitizedLen: safe?.length
+                  });
+                  
+                  // First, directly update the DOM with the markdown content
+                  // This preserves the content in the same container
+                  try {
+                    const streamingElement = document.querySelector(`[data-stream-id="${streamingMessageId}"]`);
+                    if (streamingElement && safe) {
+                      streamingElement.innerHTML = safe;
+                      console.log('[ChatProvider] ✅ DOM updated directly with markdown', { id: streamingMessageId });
+                    }
+                  } catch (e) {
+                    console.error('[ChatProvider] Failed to update DOM directly:', e);
+                  }
+                  
+                  // Then update the React state
+                  // Keep isStreaming false but mark as streamCompleted
+                  setMessages(prev => {
+                    const updated = prev.map(msg =>
+                      msg.id === streamingMessageId
+                        ? { 
+                            ...msg, 
+                            content: safe, // This MUST contain the full streamed text as HTML
+                            isStreaming: false, 
+                            streaming: false, 
+                            status: 'final', 
+                            metadata: { 
+                              ...(msg.metadata || {}), 
+                              canceled: isCanceled, 
+                              isStreaming: false, 
+                              streaming: false, 
+                              status: 'final',
+                              streamCompleted: true
+                            } 
+                          }
+                        : msg
+                    );
+                    console.log('[ChatProvider] Message state updated:', {
+                      id: streamingMessageId,
+                      hasContent: !!updated.find(m => m.id === streamingMessageId)?.content
+                    });
+                    return updated;
+                  });
+                  console.log('[ChatProvider] ✅ finalized', { id: streamingMessageId, len: fullText?.length });
+
+                  try {
+                    if (conversationManager) {
+                      await conversationManager.updateFromChatResponse(
+                        {
+                          content: fullText,
+                          session_id: sessionId,
+                          actions: [],
+                          conversation_id: conversationManager.conversationId,
+                          turn: conversationManager.turn,
+                          metadata: { stream_completed: true, canceled: isCanceled, timestamp: new Date().toISOString() },
+                          api_version: 'streaming-1.0'
+                        },
+                        messageWithId,
+                        { id: streamingMessageId, type: 'bot', content: fullText, actions: [], timestamp: new Date().toISOString(), metadata: { stream_completed: true, canceled: isCanceled } }
+                      );
+                      const metadata = conversationManager.getMetadata();
+                      setConversationMetadata({ conversationId: conversationManager.conversationId, messageCount: metadata.messageCount, hasBeenSummarized: metadata.hasBeenSummarized, canLoadHistory: true });
+                    }
+                  } catch (err) {
+                    errorLogger.logError(err, { context: 'conversation_manager_update_from_stream' });
+                  }
+                },
+                onError: (err) => {
+                  // allow catch block to trigger fallback
+                  throw err;
+                }
+              });
+            } catch (e) {
+              // streamChat throws ONLY when no first chunk was emitted.
+              // If at least one chunk was emitted, streamChat resolves after calling onDone.
+              console.error('❌ STREAMING FAILED', e);
+              try { streamingRegistry.endStream(streamingMessageId); } catch {}
+              console.error('➡️ Using HTTP fallback (no first chunk)');
+              await httpFallback();
+              return; // prevent outer catch from treating it as an error
+            }
+          } else {
+            // ---- EXISTING HTTP (non-stream) PATH (UNCHANGED) ----
+            // keep your current makeAPIRequest(...) block exactly as-is,
+            // but use streamingMessageId when you write the final assistant message.
+            // (Remove the "fake streaming" word-by-word simulation.)
+            const chatUrl = environmentConfig.getChatUrl(tenantHash);
+            const data = await makeAPIRequest(
+              chatUrl,
+              { method: 'POST', headers, body: JSON.stringify(requestBody) },
+              3
+            );
+
+            // Parse response
+            let botContent = "I apologize, but I'm having trouble processing that request right now.";
+            let botActions = [];
+            
+            try {
+              if (data.content) {
+                botContent = await sanitizeMessage(data.content);
+                if (data.actions && Array.isArray(data.actions)) {
+                  botActions = data.actions;
+                }
+              }
+              else if (data.messages && data.messages[0] && data.messages[0].content) {
+                const messageContent = JSON.parse(data.messages[0].content);
+                botContent = await sanitizeMessage(messageContent.message || messageContent.content || botContent);
+                if (messageContent.actions && Array.isArray(messageContent.actions)) {
+                  botActions = messageContent.actions;
+                }
+              }
+              else if (data.body) {
+                let bodyData = JSON.parse(data.body);
+                if (bodyData.statusCode && bodyData.body && typeof bodyData.body === 'string') {
+                  try {
+                    const innerBodyData = JSON.parse(bodyData.body);
+                    botContent = await sanitizeMessage(innerBodyData.content || innerBodyData.message || botContent);
+                    if (innerBodyData.actions && Array.isArray(innerBodyData.actions)) {
+                      botActions = innerBodyData.actions;
+                    }
+                  } catch (nestedParseError) {
+                    botContent = await sanitizeMessage(bodyData.content || bodyData.message || botContent);
+                    if (bodyData.actions && Array.isArray(bodyData.actions)) {
+                      botActions = bodyData.actions;
+                    }
+                  }
+                } else {
+                  botContent = await sanitizeMessage(bodyData.content || bodyData.message || botContent);
                   if (bodyData.actions && Array.isArray(bodyData.actions)) {
                     botActions = bodyData.actions;
                   }
                 }
-              } else {
-                // Standard single-level parsing
-                botContent = await sanitizeMessage(bodyData.content || bodyData.message || botContent);
-                
-                if (bodyData.actions && Array.isArray(bodyData.actions)) {
-                  botActions = bodyData.actions;
-                }
+              }
+              else if (data.response) {
+                botContent = await sanitizeMessage(data.response);
+              }
+              
+              if (data.fallback_message) {
+                botContent = await sanitizeMessage(data.fallback_message);
+              }
+              
+              if (data.file_acknowledgment) {
+                const sanitizedAck = await sanitizeMessage(data.file_acknowledgment);
+                botContent += "\n\n" + sanitizedAck;
+              }
+            } catch (parseError) {
+              errorLogger.logError(parseError, {
+                messageId: messageWithId.id,
+                context: 'response_parsing'
+              });
+              if (typeof data === 'string') {
+                botContent = await sanitizeMessage(data);
               }
             }
-            else if (data.response) {
-              botContent = await sanitizeMessage(data.response);
-            }
-            
-            if (data.fallback_message) {
-              botContent = await sanitizeMessage(data.fallback_message);
-            }
-            
-            if (data.file_acknowledgment) {
-              const sanitizedAck = await sanitizeMessage(data.file_acknowledgment);
-              botContent += "\n\n" + sanitizedAck;
-            }
-            
-          } catch (parseError) {
-            errorLogger.logError(parseError, {
-              messageId: messageWithId.id,
-              context: 'response_parsing',
-              data: typeof data === 'string' ? data.substring(0, 200) + '...' : JSON.stringify(data).substring(0, 200) + '...'
-            });
-            
-            // As a fallback, try to sanitize the raw response if it's a string
-            if (typeof data === 'string') {
-              botContent = await sanitizeMessage(data);
-            }
-          }
-          
-          // Log API response time
-          const apiEndTime = performance.now();
-          const apiDuration = (apiEndTime - apiStartTime) / 1000;
-          console.log(`⏱️ [${new Date().toISOString()}] API Response received in ${apiDuration.toFixed(2)} seconds`);
-          errorLogger.logInfo('⏱️ API Response timing', {
-            duration: `${apiDuration.toFixed(2)}s`,
-            responseLength: botContent.length
-          });
-          
-          // Simulate streaming by progressively revealing content - FAST
-          const simulateStreaming = (content, actions = []) => {
-            const words = content.split(' ');
-            let currentContent = '';
-            
-            // Reveal words immediately without delays
-            const revealWords = (index) => {
-              if (index < words.length) {
-                currentContent += (index > 0 ? ' ' : '') + words[index];
-                
-                setMessages(prev => prev.map(msg => 
-                  msg.id === streamingMessageId ? {
-                    ...msg,
-                    content: currentContent,
-                    isStreaming: index < words.length - 1
-                  } : msg
-                ));
-                
-                // Fast streaming - 30ms per word for visible effect without delays
-                setTimeout(() => revealWords(index + 1), 30);
-              } else {
-                // Finalize message with actions
-                setMessages(prev => prev.map(msg => 
-                  msg.id === streamingMessageId ? {
-                    ...msg,
-                    content: currentContent,
-                    actions: actions,
-                    isStreaming: false,
-                    metadata: {
-                      session_id: data.session_id,
-                      api_version: data.api_version || 'actions-complete'
-                    }
-                  } : msg
-                ));
+
+            // finally commit once:
+            setMessages(prev => prev.map(msg =>
+              msg.id === streamingMessageId
+                ? { ...msg, content: botContent, isStreaming: false, actions: botActions }
+                : msg
+            ));
+
+            // Update conversation manager
+            try {
+              if (conversationManager) {
+                await conversationManager.updateFromChatResponse(
+                  data,
+                  messageWithId,
+                  {
+                    id: streamingMessageId,
+                    type: 'bot',
+                    content: botContent,
+                    actions: botActions,
+                    timestamp: new Date().toISOString()
+                  }
+                );
               }
-            };
-            
-            // Start revealing words IMMEDIATELY - no delay
-            revealWords(0);
-          };
-          
-          // Start streaming immediately
-          simulateStreaming(botContent, botActions);
-          
-          // Create bot message object for conversation manager
-          const botMessage = {
-            id: streamingMessageId,
-            type: 'bot',
-            content: botContent,
-            actions: botActions,
-            timestamp: new Date().toISOString(),
-            metadata: {
-              session_id: data.session_id,
-              api_version: data.api_version || 'actions-complete'
+            } catch (error) {
+              errorLogger.logError(error, {
+                context: 'conversation_manager_update_from_chat_response',
+                messageId: streamingMessageId
+              });
             }
-          };
-          
-          // Update conversation manager with complete conversation state
-          try {
-            if (conversationManagerRef.current) {
-              logger.debug('🔍 About to update conversation manager with:', {
-                hasConversationManager: !!conversationManagerRef.current,
-                conversationId: conversationManagerRef.current.conversationId,
-                hasStateToken: !!conversationManagerRef.current.stateToken,
-                isInitialized: conversationManagerRef.current.isInitialized,
-                userMessageId: messageWithId.id,
-                botMessageId: botMessage.id
-              });
-              
-              // Use the new updateFromChatResponse method for comprehensive state management
-              await conversationManagerRef.current.updateFromChatResponse(
-                data, // Full chat response
-                messageWithId, // User message
-                botMessage // Bot response
-              );
-              
-              logger.debug('🔍 Conversation manager update completed');
-              
-              // Update conversation metadata
-              const metadata = conversationManagerRef.current.getMetadata();
-              setConversationMetadata({
-                conversationId: conversationManagerRef.current.conversationId,
-                messageCount: metadata.messageCount,
-                hasBeenSummarized: metadata.hasBeenSummarized,
-                canLoadHistory: true
-              });
-              
-              errorLogger.logInfo('🔄 Conversation state updated from chat response', {
-                conversationId: conversationManagerRef.current.conversationId,
-                totalMessages: metadata.messageCount,
-                sessionId: data.session_id
-              });
-            } else {
-              logger.debug('⚠️ No conversation manager available for state update');
-            }
-          } catch (error) {
-            errorLogger.logError(error, {
-              context: 'conversation_manager_update_from_chat_response',
-              messageId: botMessage.id
-            });
           }
-          
-          errorLogger.logInfo('✅ Chat response processed successfully', {
-            messageId: messageWithId.id,
-            hasContent: !!botContent,
-            hasActions: botActions.length > 0,
-            sessionId: data.session_id
-          });
-          
         } catch (error) {
-          errorLogger.logError(error, {
-            messageId: messageWithId.id,
-            context: 'chat_api_error',
-            tenantHash: getTenantHash()
-          });
+          errorLogger.logError(error, { context: 'chat_api_error', messageId: messageWithId.id });
           
-          // Create error message object
-          const errorMessage = {
-            id: `error_${Date.now()}_${Math.random()}`,
-            role: "assistant",
-            content: error.message,
-            timestamp: new Date().toISOString(),
-            isStreaming: false,
-            metadata: {
-              error: error.message,
-              api_type: 'http-with-fake-streaming',
-              can_retry: true,
-              messageId: messageWithId.id
-            }
-          };
-          
-          // Replace streaming placeholder with error
-          setMessages(prev => prev.map(msg => 
-            msg.id === streamingMessageId ? errorMessage : msg
-          ));
-          
-          // Add error message to conversation manager for persistence
-          try {
-            if (conversationManagerRef.current) {
-              conversationManagerRef.current.addMessage(errorMessage);
-            }
-          } catch (convError) {
-            errorLogger.logError(convError, {
-              context: 'conversation_manager_error_message',
-              messageId: errorMessage.id
-            });
+          // ALWAYS end the streaming registry on error to prevent stuck bubbles
+          // This handles errors that occur before onError callback (e.g., CORS, network failures)
+          if (shouldUseStreaming(tenantConfig, tenantHash)) {
+            streamingRegistry.endStream(streamingMessageId);
           }
+          
+          setMessages(prev => prev.map(msg =>
+            msg.id === streamingMessageId
+              ? {
+                  ...msg,  // Keep the same ID and other properties
+                  role: "assistant",
+                  content: error.message,
+                  timestamp: new Date().toISOString(),
+                  isStreaming: false,
+                  metadata: {
+                    ...msg.metadata,
+                    error: error.message,
+                    api_type: shouldUseStreaming(tenantConfig, tenantHash) ? 'streaming' : 'http',
+                    can_retry: true,
+                    messageId: messageWithId.id
+                  }
+                }
+              : msg
+          ));
         } finally {
           setIsTyping(false);
         }
       };
-      
-      // HTTP-only chat (streaming removed)
-      errorLogger.logInfo('📡 Using HTTP response', {
-        messageId: messageWithId.id
-      });
-      
-      makeHTTPAPICall();
+
+      // Call the new dispatcher
+      makeChatCall();
     }
   }, [tenantConfig, retryMessage, isChatProviderReady]);
 
@@ -1478,12 +1872,8 @@ const ChatProvider = ({ children }) => {
     try {
       if (conversationManagerRef.current) {
         logger.debug('🧹 Clearing conversation manager state and tokens');
-        
-        // Clear server-side conversation state
-        conversationManagerRef.current.clearConversation();
-        
-        // Clear local tokens and session storage
         conversationManagerRef.current.clearStateToken();
+        conversationManagerRef.current.reset();
         
         // Reset conversation metadata
         setConversationMetadata({
@@ -1492,137 +1882,161 @@ const ChatProvider = ({ children }) => {
           hasBeenSummarized: false,
           canLoadHistory: false
         });
-        
-        errorLogger.logInfo('✅ Conversation state cleared successfully');
       }
-      
-      // 🔧 FIX: Also perform memory purge when clearing messages
-      logger.debug('🧹 Performing memory purge as part of clear messages');
-      performMemoryPurge();
-      
-      // Force a new session ID to prevent conflicts
-      const newSessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      sessionStorage.setItem(STORAGE_KEYS.SESSION_ID, newSessionId);
-      sessionStorage.setItem(STORAGE_KEYS.LAST_ACTIVITY, Date.now().toString());
-      sessionIdRef.current = newSessionId;
-      
-      logger.debug('🔍 New session created after clear:', newSessionId.slice(0, 12) + '...');
-      
     } catch (error) {
       errorLogger.logError(error, {
-        context: 'clear_conversation_state',
+        context: 'clear_conversation_manager',
         action: 'clearMessages'
       });
     }
+    
+    // Clear session storage to prevent message restoration
+    sessionStorage.removeItem(STORAGE_KEYS.MESSAGES);
+    
+    // Abort any in-flight requests
+    abortControllersRef.current.forEach(controller => {
+      controller.abort();
+    });
+    abortControllersRef.current.clear();
+    // Best-effort: stop any active streaming writers (if registry supports it)
+    try {
+      if (streamingRegistry && typeof streamingRegistry.endAll === 'function') {
+        streamingRegistry.endAll();
+        errorLogger.logInfo('🧹 Stopped all streaming writers via registry');
+      }
+    } catch (e) {
+      logger.debug('Streaming registry endAll not available or failed gracefully');
+    }
+    
+    // Clear any pending retries
+    setPendingRetries(new Map());
+    retryTimeoutsRef.current.forEach(timeoutId => {
+      clearTimeout(timeoutId);
+    });
+    retryTimeoutsRef.current.clear();
   }, []);
 
+  const loadConversationHistory = useCallback(async () => {
+    if (!conversationManagerRef.current || !conversationMetadata.canLoadHistory) {
+      errorLogger.logWarning('Cannot load conversation history', {
+        hasManager: !!conversationManagerRef.current,
+        canLoad: conversationMetadata.canLoadHistory
+      });
+      return false;
+    }
+    
+    try {
+      setIsTyping(true);
+      const history = await conversationManagerRef.current.loadConversationHistory();
+      
+      if (history && history.messages && history.messages.length > 0) {
+        // Convert conversation history to chat messages
+        const historicalMessages = history.messages.map(msg => ({
+          id: msg.id || `historical_${Date.now()}_${Math.random()}`,
+          role: msg.type === 'user' ? 'user' : 'assistant',
+          content: msg.content,
+          timestamp: msg.timestamp || new Date().toISOString(),
+          metadata: {
+            ...msg.metadata,
+            historical: true
+          }
+        }));
+        
+        // Prepend historical messages to current conversation
+        setMessages(prev => [...historicalMessages, ...prev]);
+        
+        // Update metadata
+        setConversationMetadata(prev => ({
+          ...prev,
+          hasLoadedHistory: true,
+          canLoadHistory: false // Prevent loading history multiple times
+        }));
+        
+        errorLogger.logInfo('📚 Loaded conversation history', {
+          messageCount: historicalMessages.length,
+          conversationId: conversationManagerRef.current.conversationId
+        });
+        
+        return true;
+      }
+      
+      return false;
+    } catch (error) {
+      errorLogger.logError(error, {
+        context: 'load_conversation_history',
+        conversationId: conversationManagerRef.current?.conversationId
+      });
+      return false;
+    } finally {
+      setIsTyping(false);
+    }
+  }, [conversationMetadata.canLoadHistory]);
+
+  const installPWA = useCallback(async () => {
+    if (!mobileCompatibilityRef.current?.pwaInstaller) {
+      errorLogger.logWarning('PWA installer not available');
+      return false;
+    }
+    
+    try {
+      const result = await mobileCompatibilityRef.current.pwaInstaller.promptInstall();
+      
+      if (result) {
+        errorLogger.logInfo('✅ PWA installed successfully');
+        setMobileFeatures(prev => ({
+          ...prev,
+          isPWAInstallable: false // Hide install button after successful install
+        }));
+      }
+      
+      return result;
+    } catch (error) {
+      errorLogger.logError(error, {
+        context: 'pwa_install',
+        userAgent: navigator.userAgent
+      });
+      return false;
+    }
+  }, []);
+
+  // Public API for widget integration
   const value = {
     messages,
     isTyping,
-    tenantConfig,
     isOnline,
-    pendingRetries,
+    conversationMetadata,
+    mobileFeatures,
     addMessage,
     updateMessage,
     clearMessages,
     retryMessage,
-    // Phase 3.2: Conversation persistence
-    conversationMetadata,
-    // Phase 3.3: Mobile compatibility and PWA features
-    mobileFeatures,
-    _debug: {
-      tenantHash: getTenantHash(),
-      apiType: 'http-only',
-      configLoaded: !!tenantConfig,
-      chatEndpoint: environmentConfig.getChatUrl(getTenantHash()),
-      streamingEndpoint: null,
-      environment: environmentConfig.ENVIRONMENT,
-      networkStatus: isOnline ? 'online' : 'offline',
-      pendingRetryCount: pendingRetries.size,
-      streamingStatus: 'removed'
-    }
+    loadConversationHistory,
+    installPWA,
+    // Internal helpers
+    sessionId: sessionIdRef.current,
+    getTenantHash,
+    isChatProviderReady
   };
 
-  return React.createElement(
-    ChatContext.Provider,
-    { value },
-    children
+  return (
+    <ChatContext.Provider value={value}>
+      {children}
+    </ChatContext.Provider>
   );
 };
 
-// PropTypes for ChatProvider
 ChatProvider.propTypes = {
   children: PropTypes.node.isRequired
 };
 
-// --- Test Utilities ---
-// These are for development and debugging purposes.
-// They will not be included in the production build if tree-shaking is configured correctly.
-if (typeof import.meta !== 'undefined' && import.meta.env?.DEV) {
-  if (typeof window !== 'undefined') {
-    window.testChatAPI = async (message, tenantHash) => {
-      const hash = tenantHash || environmentConfig.getDefaultTenantHash();
-      errorLogger.logInfo('🧪 Testing chat API...', { message, tenantHash: hash });
-      
-      try {
-        const sessionId = `test_${Date.now()}`;
-        const response = await fetch(environmentConfig.getChatUrl(hash), {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            tenant_hash: hash,
-            user_input: message || "Hello, this is a test message",
-            session_id: sessionId
-          })
-        });
-        
-        if (response.ok) {
-          const data = await response.json();
-          errorLogger.logInfo('✅ Chat API Test Response', { 
-            hasContent: !!data.content,
-            hasActions: data.actions?.length > 0,
-            sessionId: data.session_id
-          });
-          
-          if (data.content) {
-            errorLogger.logInfo('📝 Bot response', { content: data.content.substring(0, 100) + '...' });
-          }
-          
-          if (data.actions && data.actions.length > 0) {
-            errorLogger.logInfo('🎯 Available actions', { 
-              actionCount: data.actions.length,
-              actionLabels: data.actions.map(a => a.label)
-            });
-          }
-          
-          return data;
-        } else {
-          const errorText = await response.text();
-          const error = new Error(`Chat API Test Failed: ${response.status} ${errorText}`);
-          errorLogger.logError(error, { 
-            context: 'chat_api_test',
-            status: response.status,
-            responseText: errorText
-          });
-          return null;
-        }
-      } catch (error) {
-        errorLogger.logError(error, { context: 'chat_api_test_error' });
-        return null;
-      }
-    };
+export default ChatProvider;
+export { ChatProvider }; // Named export for backward compatibility
 
-    window.testVolunteer = () => window.testChatAPI("I want to volunteer");
-    window.testDonate = () => window.testChatAPI("How can I donate?");
-    window.testContact = () => window.testChatAPI("How do I contact you?");
-    window.testServices = () => window.testChatAPI("What services do you offer?");
-
-    errorLogger.logInfo('🛠️ Chat API test commands available', {
-      commands: ['testChatAPI', 'testVolunteer', 'testDonate', 'testContact', 'testServices']
-    });
+// Hook for consuming chat context
+export const useChat = () => {
+  const context = React.useContext(ChatContext);
+  if (context === undefined) {
+    throw new Error('useChat must be used within a ChatProvider');
   }
-}
-
-export { ChatProvider };
+  return context;
+};

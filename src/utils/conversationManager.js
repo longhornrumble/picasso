@@ -766,14 +766,14 @@ export class ConversationManager {
         logger.debug(`💾 Preparing to save conversation delta (attempt ${retryCount + 1}):`, {
           endpoint,
           hasStateToken: !!this.stateToken,
-          stateTokenType: this.stateToken?.startsWith('local_') ? 'local' : 'server',
+          stateTokenType: (this.stateToken && typeof this.stateToken === 'string' && this.stateToken.startsWith('local_')) ? 'local' : 'server',
           conversationId: this.conversationId,
           turn: this.turn,
           retryCount
         });
         
         // If we have a local token, just save to sessionStorage and return
-        if (this.stateToken?.startsWith('local_')) {
+        if (this.stateToken && typeof this.stateToken === 'string' && this.stateToken.startsWith('local_')) {
           logger.debug('📱 Using local token - saving to sessionStorage only');
           this.saveToSessionStorage();
           // CRITICAL FIX: Increment turn locally only for local-only conversations

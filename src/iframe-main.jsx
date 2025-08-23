@@ -1,3 +1,6 @@
+// Load string safety polyfill first
+import './utils/stringPolyfill.js';
+
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { ConfigProvider } from './context/ConfigProvider.js';
