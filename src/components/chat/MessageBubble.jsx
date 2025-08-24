@@ -5,6 +5,59 @@ import { useChat } from "../../hooks/useChat";
 import { config as environmentConfig } from "../../config/environment";
 import FilePreview from "./FilePreview";
 import { streamingRegistry } from "../../utils/streamingRegistry";
+import { marked } from 'marked';
+import DOMPurify from 'dompurify';
+
+// Configure marked for streaming markdown
+marked.setOptions({
+  gfm: true,
+  breaks: true,
+  mangle: false,
+  headerIds: false,
+  pedantic: false,
+  smartypants: false,
+  sanitize: false
+});
+
+// Simple markdown processor for streaming
+const processStreamingMarkdown = (text) => {
+  if (!text) return '';
+  
+  try {
+    // Convert markdown to HTML
+    const html = marked.parse(text);
+    
+    // Sanitize the HTML
+    const safeHtml = DOMPurify.sanitize(html, {
+      ALLOWED_TAGS: [
+        'p', 'br', 'strong', 'b', 'em', 'i', 'u', 'strike', 'del', 's',
+        'ul', 'ol', 'li', 'blockquote', 'code', 'pre', 'hr',
+        'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+        'a', 'img', 'table', 'thead', 'tbody', 'tr', 'th', 'td'
+      ],
+      ALLOWED_ATTR: [
+        'href', 'title', 'target', 'rel', 'alt', 'src',
+        'width', 'height', 'class', 'start'
+      ],
+      ADD_ATTR: ['target', 'rel'],
+      ALLOW_DATA_ATTR: false
+    });
+    
+    // Add target="_blank" to links
+    return safeHtml.replace(
+      /<a\s+([^>]*href=["'](?:https?:|mailto:|tel:)[^"']+["'][^>]*)>/gi,
+      (match, attrs) => {
+        if (!/target=/i.test(attrs)) {
+          return `<a ${attrs} target="_blank" rel="noopener noreferrer">`;
+        }
+        return match;
+      }
+    );
+  } catch (err) {
+    console.error('[Bubble] Markdown processing error:', err);
+    return DOMPurify.sanitize(text);
+  }
+};
 
 // --- Avatar URL helper (unchanged, but slightly tidied) ---
 const getAvatarUrl = (config) => {
@@ -73,6 +126,13 @@ export default function MessageBubble({
   }, [streamIdProp, dataStreamIdProp, messageIdProp, explicitId, metadata]);
 
   const streamingFlag = useMemo(() => {
+    // Check if streaming is globally disabled
+    const streamingConfig = require('../../config/streaming-config');
+    if (!streamingConfig.isStreamingEnabled()) {
+      console.log('[MessageBubble] Streaming globally disabled - forcing streamingFlag to false');
+      return false;
+    }
+    
     if (typeof isStreamingProp === 'boolean') return isStreamingProp;
     const metaFlag = (metadata.isStreaming === true) || (metadata.streaming === true) || (metadata.status === 'streaming');
     const registryFlag = (typeof streamingRegistry?.isActive === 'function') ? !!streamingRegistry.isActive(messageId) : false;
@@ -106,6 +166,13 @@ export default function MessageBubble({
 
   // Ensure a single Text node exists in the streaming container before first paint
   useLayoutEffect(() => {
+    // Check if streaming is globally disabled
+    const streamingConfig = require('../../config/streaming-config');
+    if (!streamingConfig.isStreamingEnabled()) {
+      console.log('[MessageBubble] Skipping text node creation - streaming globally disabled');
+      return;
+    }
+    
     if (!streamingFlag) return;
     const el = streamingContainerRef.current;
     if (!el) return;
@@ -143,6 +210,12 @@ export default function MessageBubble({
   }, [streamingFlag, messageId]);
 
   useEffect(() => {
+    // Check if streaming is globally disabled
+    const streamingConfig = require('../../config/streaming-config');
+    if (!streamingConfig.isStreamingEnabled()) {
+      return; // Skip scheduleCommit when streaming is disabled
+    }
+    
     if (streamingFlag) scheduleCommit();
   }, [streamingFlag, scheduleCommit]);
 
@@ -184,6 +257,13 @@ export default function MessageBubble({
 
   // Subscribe to streamingRegistry using stable id (imperative DOM updates only)
   useEffect(() => {
+    // Double-check streaming is enabled globally
+    const streamingConfig = require('../../config/streaming-config');
+    if (!streamingConfig.isStreamingEnabled()) {
+      console.log('[MessageBubble] Skipping StreamingRegistry subscription - streaming globally disabled');
+      return;
+    }
+    
     if (!streamingFlag || !messageId) return;
 
     let el = resolveLiveEl();
@@ -214,20 +294,141 @@ export default function MessageBubble({
       }
       // Keep an internal buffer for debugging and minimal comparisons
       bufferRef.current = accum || '';
+      
+      const nextText = bufferRef.current.length ? bufferRef.current : '\u200B';
+      
+      // Full markdown processing for streaming content
       try {
-        // Write directly to the element; this is the most robust and avoids
-        // any Text-node replacement edge cases.
-        const nextText = bufferRef.current.length ? bufferRef.current : '\u200B';
-        if (elNode.textContent !== nextText) {
-          elNode.textContent = nextText;
+        let html = nextText;
+        
+        // Process headers (H1-H6) first
+        html = html.replace(/^######\s+(.+)$/gm, '<h6>$1</h6>');
+        html = html.replace(/^#####\s+(.+)$/gm, '<h5>$1</h5>');
+        html = html.replace(/^####\s+(.+)$/gm, '<h4>$1</h4>');
+        html = html.replace(/^###\s+(.+)$/gm, '<h3>$1</h3>');
+        html = html.replace(/^##\s+(.+)$/gm, '<h2>$1</h2>');
+        html = html.replace(/^#\s+(.+)$/gm, '<h1>$1</h1>');
+        
+        // Process markdown links BEFORE auto-linking to prevent double processing
+        // This must happen before auto-link to avoid matching URLs inside markdown links
+        html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+        
+        // Now auto-link plain URLs (but not those already in HTML tags)
+        // Negative lookbehind to avoid URLs already in href="..." or already linked
+        html = html.replace(/(?<!href=")(?<!>)(https?:\/\/[^\s<"]+)(?![^<]*<\/a>)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+        
+        // Process lists - preserve as single block without extra line breaks
+        const lines = html.split('\n');
+        let result = [];
+        let inList = false;
+        let listType = null;
+        
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i];
+          const bulletMatch = line.match(/^\s*[-*+]\s+(.+)$/);
+          const numberMatch = line.match(/^\s*(\d+)\.\s+(.+)$/);
+          
+          if (bulletMatch) {
+            // Process any inline formatting in the list item
+            let itemContent = bulletMatch[1]
+              .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+              .replace(/__([^_]+)__/g, '<strong>$1</strong>')
+              .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+              .replace(/_([^_]+)_/g, '<em>$1</em>')
+              .replace(/`([^`]+)`/g, '<code>$1</code>');
+            
+            if (!inList || listType !== 'ul') {
+              if (inList) result.push(`</${listType}>`);
+              result.push('<ul>');
+              inList = true;
+              listType = 'ul';
+            }
+            result.push(`<li>${itemContent}</li>`);
+          } else if (numberMatch) {
+            // Process any inline formatting in the list item
+            let itemContent = numberMatch[2]
+              .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+              .replace(/__([^_]+)__/g, '<strong>$1</strong>')
+              .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+              .replace(/_([^_]+)_/g, '<em>$1</em>')
+              .replace(/`([^`]+)`/g, '<code>$1</code>');
+            
+            if (!inList || listType !== 'ol') {
+              if (inList) result.push(`</${listType}>`);
+              result.push('<ol>');
+              inList = true;
+              listType = 'ol';
+            }
+            result.push(`<li>${itemContent}</li>`);
+          } else {
+            // Not a list item
+            if (inList) {
+              result.push(`</${listType}>`);
+              inList = false;
+              listType = null;
+            }
+            
+            // Only add line breaks between non-list paragraphs
+            if (line.trim() === '') {
+              result.push('<br>');
+            } else {
+              result.push(line);
+            }
+          }
         }
-        lastLenRef.current = nextText.length;
-        try { console.log('[Bubble] writeAccumulated -> el.textContent set', { id: messageId, len: lastLenRef.current }); } catch {}
-      } catch {
-        // Fallback: ensure at least something is visible
-        try { elNode.textContent = bufferRef.current || '\u200B'; } catch {}
-        lastLenRef.current = (elNode.textContent || '').length;
+        
+        // Close any open list
+        if (inList) {
+          result.push(`</${listType}>`);
+        }
+        
+        html = result.join('');
+        
+        // Process remaining inline formatting (for non-list content)
+        // Bold/strong
+        html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+        html = html.replace(/__([^_]+)__/g, '<strong>$1</strong>');
+        
+        // Italic/emphasis  
+        html = html.replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, '<em>$1</em>');
+        html = html.replace(/(?<!_)_([^_]+)_(?!_)/g, '<em>$1</em>');
+        
+        // Code blocks (multi-line)
+        html = html.replace(/```([^`]*)```/gs, '<pre><code>$1</code></pre>');
+        
+        // Inline code
+        html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+        
+        // Blockquotes
+        html = html.replace(/^>\s+(.+)$/gm, '<blockquote>$1</blockquote>');
+        
+        // Horizontal rules
+        html = html.replace(/^([-*_]){3,}$/gm, '<hr>');
+        
+        // Paragraphs - wrap non-HTML content in <p> tags for better spacing
+        // Split by double newlines for paragraph detection
+        const paragraphs = html.split(/\n\n+/);
+        html = paragraphs.map(p => {
+          // Don't wrap if it's already HTML (starts with <)
+          if (p.trim().startsWith('<')) return p;
+          // Don't wrap empty lines
+          if (p.trim() === '') return '';
+          // Wrap text content in paragraph
+          return `<p>${p.replace(/\n/g, ' ')}</p>`;
+        }).join('');
+        
+        // Apply HTML to element with streaming-formatted wrapper for CSS
+        // This ensures all theme.css rules for streaming content are applied
+        elNode.innerHTML = `<div class="streaming-formatted">${html}</div>`;
+        console.log('[Bubble] writeAccumulated -> el.innerHTML set with streaming-formatted wrapper', { id: messageId, len: nextText.length });
+      } catch (err) {
+        // Fallback to plain text if processing fails
+        console.error('[Bubble] Error with inline markdown:', err);
+        elNode.textContent = nextText;
+        console.log('[Bubble] writeAccumulated -> el.textContent set (fallback)', { id: messageId, len: nextText.length });
       }
+      
+      lastLenRef.current = nextText.length;
       scheduleCommit();
     };
 
@@ -245,7 +446,9 @@ export default function MessageBubble({
 
     // Replay any already-accumulated text immediately (in case we mounted late)
     const snapshot = streamingRegistry.getAccumulated?.(messageId);
-    if (snapshot && snapshot.length) writeAccumulated(String(snapshot));
+    if (snapshot && snapshot.length) {
+      writeAccumulated(String(snapshot)); // Fire and forget, no await needed
+    }
 
     return () => {
       try { unsubscribe && unsubscribe(); } catch {}
@@ -253,6 +456,12 @@ export default function MessageBubble({
   }, [streamingFlag, messageId, scheduleCommit, resolveLiveEl]);
 
   useEffect(() => {
+    // Check if streaming is globally disabled
+    const streamingConfig = require('../../config/streaming-config');
+    if (!streamingConfig.isStreamingEnabled()) {
+      return; // Skip mutation observer when streaming is disabled
+    }
+    
     if (!streamingFlag || !messageId) return;
     const current = resolveLiveEl();
     if (!current) return;
@@ -325,15 +534,15 @@ export default function MessageBubble({
           // For messages that were streamed, content is managed imperatively
           // For non-streamed messages, use React's dangerouslySetInnerHTML
           dangerouslySetInnerHTML={
-            ((!streamingFlag || metadata?.streamCompleted) && content) 
-              ? { __html: content } 
+            (!streamingFlag && !metadata?.streamCompleted) && typeof content === 'string' && content.length
+              ? { __html: content }
               : undefined
           }
           style={{
             display: "block",
             visibility: "visible",
             opacity: 1,
-            whiteSpace: "pre-wrap",
+            whiteSpace: "normal",
             wordBreak: "break-word",
             transition: "none",
             willChange: streamingFlag ? "contents" : "auto",

@@ -92,7 +92,9 @@ marked.setOptions({
   smartLists: true,       // Use proper list indentation
   sanitize: false,        // We sanitize with DOMPurify separately
   mangle: false,          // Don't obfuscate email addresses
-  renderer: compactRenderer
+  renderer: compactRenderer,
+  pedantic: false,        // Don't be strict about markdown syntax
+  smartypants: false      // Don't use smart quotes
 });
 
 // Utility: tighten HTML emitted by marked before sanitization
@@ -106,7 +108,28 @@ function tightenHtml(html) {
     // trim whitespace around list boundaries to avoid extra line boxes
     .replace(/\s*(<\/?:?li>|<\/?ul>|<\/?ol>)\s*/gi, '$1');
 }
+
+// --- Linkification helpers (URLs + emails) ---
+const URL_REGEX = /(?:(?:https?:\/\/)|(?:www\.))[\w\-._~:/?#%\[\]@!$&'()*+,;=]+/gi;
+const EMAIL_REGEX = /([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/gi;
+
+function linkifyPlaintext(input) {
+  if (!input) return '';
+  let text = String(input);
+  // Convert emails first so local-parts containing 'www.' don't confuse URL pass
+  text = text.replace(EMAIL_REGEX, (m) => `[${m}](mailto:${m})`);
+  text = text.replace(URL_REGEX, (m) => {
+    // If already markdown-linked (e.g., [label](url)), leave it alone
+    // We only see the raw token here, so just return if it already includes a scheme wrapper
+    const href = m.startsWith('www.') ? `https://${m}` : m;
+    return `[${m}](${href})`;
+  });
+  return text;
+}
+
+let __sanitizeHookInstalled = false;
 import { streamingRegistry } from '../utils/streamingRegistry';
+import { isStreamingEnabled as checkStreamingEnabled } from '../config/streaming-config';
 
 /**
  * Streaming function that handles both SSE and NDJSON formats
@@ -460,93 +483,65 @@ marked.use({
 
 
 async function sanitizeMessage(content) {
-  if (!content || typeof content !== 'string') {
-    return '';
-  }
-
-  logger.debug('sanitizeMessage - Input content:', content);
+  // Normalize to string (avoid [object Object] and null/undefined)
+  const raw = (content == null) ? '' : String(content);
+  logger.debug('sanitizeMessage - Input content:', raw);
 
   try {
-    // marked and DOMPurify are now statically imported at the top
-    const rawHtml = marked.parse(content);
-    logger.debug('After marked.parse:', rawHtml);
+    // 1) Convert bare URLs/emails in the plain text to markdown links BEFORE marked
+    const withLinks = linkifyPlaintext(raw);
 
-    const tightened = tightenHtml(rawHtml);
+    // 2) Markdown → HTML using the globally configured marked renderer
+    const html = marked.parse(withLinks);
+    logger.debug('After marked.parse:', html);
 
+    // 3) Tighten the HTML to avoid spurious spacing
+    const tightened = tightenHtml(html);
+
+    // 4) One-time DOMPurify hook to enforce safe anchors + new-tab behavior
+    if (!__sanitizeHookInstalled && typeof DOMPurify?.addHook === 'function') {
+      DOMPurify.addHook('afterSanitizeAttributes', (node) => {
+        if (node.tagName && node.tagName.toLowerCase() === 'a') {
+          const href = node.getAttribute('href') || '';
+          // Allow only http(s), mailto, tel
+          if (!/^https?:/i.test(href) && !/^mailto:/i.test(href) && !/^tel:/i.test(href)) {
+            node.removeAttribute('href');
+          }
+          node.setAttribute('target', '_blank');
+          node.setAttribute('rel', 'noopener noreferrer');
+        }
+      });
+      __sanitizeHookInstalled = true;
+    }
+
+    // 5) Sanitize. Explicitly allow target/rel on links.
     const cleanHtml = DOMPurify.sanitize(tightened, {
       ALLOWED_TAGS: [
-        'p', 'br', 'strong', 'b', 'em', 'i', 'u', 'strike', 'del', 's',
-        'ul', 'ol', 'li', 'blockquote', 'code', 'pre', 'hr',
-        'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-        'a', 'img', 'table', 'thead', 'tbody', 'tr', 'th', 'td'
+        'p','br','strong','b','em','i','u','strike','del','s',
+        'ul','ol','li','blockquote','code','pre','hr',
+        'h1','h2','h3','h4','h5','h6',
+        'a','img','table','thead','tbody','tr','th','td'
       ],
       ALLOWED_ATTR: [
-        'href', 'title', 'target', 'rel', 'alt', 'src',
-        'width', 'height', 'class'  // Removed 'style' attribute for security
+        'href','title','target','rel','alt','src',
+        'width','height','class',
+        'start'
       ],
-      // Additional security: Only allow safe CSS properties if we re-enable style later
-      ALLOWED_STYLE_PROPS: [],  // Empty = no inline styles allowed
-      // Prevent data: URIs except for images (and even then, be careful)
+      ADD_ATTR: ['target','rel'],
       ALLOW_DATA_ATTR: false,
       ALLOW_UNKNOWN_PROTOCOLS: false,
-      // Don't force attributes - we'll handle them properly below
-      // ADD_ATTR: ['target', 'rel'], // Removed to avoid duplicates
-      ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp):|[^a-z]|[a-z+.-]+(?:[^a-z+.-:]|$))/i,
-      FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover'],
-      FORBID_TAGS: ['script', 'object', 'embed', 'form', 'input', 'button'],
-      KEEP_CONTENT: true,
-      RETURN_DOM: false,
-      RETURN_DOM_FRAGMENT: false,
-      RETURN_TRUSTED_TYPE: false
+      ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel):|[^a-z]|[a-z+.-]+(?:[^a-z+.-:]|$))/i,
+      FORBID_ATTR: ['onerror','onload','onclick','onmouseover'],
+      FORBID_TAGS: ['script','object','embed','form','input','button'],
+      KEEP_CONTENT: true
     });
 
-    // Process links to add target="_blank" only for external URLs (if not already present)
-    const finalHtml = cleanHtml.replace(
-      /<a\s+([^>]*href="([^"]+)"[^>]*)>/gi,
-      (match, attrs, url) => {
-        // Skip if already has target attribute
-        if (attrs.includes('target=')) {
-          return match;
-        }
-
-        // Check if URL is external
-        const isExternal = (() => {
-          if (!url) return false;
-          if (url.startsWith('mailto:')) return true;
-
-          try {
-            const linkUrl = new URL(url, window.location.href);
-            const currentUrl = new URL(window.location.href);
-            return linkUrl.origin !== currentUrl.origin;
-          } catch (e) {
-            return true; // Treat as external if parsing fails
-          }
-        })();
-
-        if (isExternal) {
-          // Add target and rel only if not present
-          const hasRel = attrs.includes('rel=');
-          const relAttr = hasRel ? '' : ' rel="noopener noreferrer"';
-          return `<a ${attrs} target="_blank"${relAttr}>`;
-        }
-        return match;
-      }
-    );
-
-    logger.debug('After DOMPurify.sanitize:', finalHtml);
-    return finalHtml;
-  } catch (error) {
-    // In case of a markdown parsing error, fall back to basic sanitization.
-    // This ensures we never return raw, potentially unsafe content.
-    // DOMPurify is now statically imported at the top
-    errorLogger.logError(error, { context: 'sanitizeMessage' });
-    return DOMPurify.sanitize(content, {
-      ALLOWED_TAGS: [],
-      ALLOWED_ATTR: [],
-      KEEP_CONTENT: true,
-      ALLOW_DATA_ATTR: false,
-      ALLOW_UNKNOWN_PROTOCOLS: false
-    });
+    logger.debug('After DOMPurify.sanitize:', cleanHtml);
+    return cleanHtml;
+  } catch (e) {
+    errorLogger.logError(e, { context: 'sanitizeMessage' });
+    const escaped = DOMPurify.sanitize(raw, { ALLOWED_TAGS: [], ALLOWED_ATTR: [], KEEP_CONTENT: true });
+    return `<p>${escaped}</p>`;
   }
 }
 
@@ -554,27 +549,22 @@ async function sanitizeMessage(content) {
 // Cache the streaming decision for the session to prevent flipping
 let streamingEnabledForSession = null;
 
+/**
+ * Determines whether to use streaming for this session.
+ * Uses the centralized streaming configuration as the single source of truth.
+ */
 const shouldUseStreaming = (tenantConfig, _tenantHash) => {
-  // If we've already decided for this session, stick with it
+  // If we've already decided for this session, stick with it to prevent flipping
   if (streamingEnabledForSession !== null) {
     return streamingEnabledForSession;
   }
   
-  // Simple and direct: Check streaming_enabled flag
-  if (tenantConfig?.features?.streaming_enabled === true) {
-    streamingEnabledForSession = true;
-    return true;
-  }
+  // Use centralized configuration (single source of truth)
+  const enabled = checkStreamingEnabled(tenantConfig);
+  streamingEnabledForSession = enabled;
   
-  // If streaming_enabled is explicitly false, respect that
-  if (tenantConfig?.features?.streaming_enabled === false) {
-    streamingEnabledForSession = false;
-    return false;
-  }
-  
-  // Default to true if streaming_enabled is not set
-  streamingEnabledForSession = true;
-  return true;
+  console.log(`📡 ChatProvider: Streaming ${enabled ? 'ENABLED' : 'DISABLED'} (from streaming-config.js)`);
+  return enabled;
 };
 
 const ChatContext = createContext();
@@ -895,13 +885,19 @@ const ChatProvider = ({ children }) => {
             return; // Exit and let the effect re-run with correct session
           }
           
-          // 🔧 FIX: Force clear any existing conversation state that might cause conflicts
-          logger.debug('🧹 Performing pre-initialization conversation cleanup');
-          try {
-            sessionStorage.removeItem('picasso_conversation_id');
-            sessionStorage.removeItem('picasso_state_token');
-          } catch (e) {
-            logger.warn('🧹 Error during conversation cleanup:', e);
+          // 🔧 FIX: Only clear conversation state if session is new or expired
+          // Don't clear for existing valid sessions as this prevents conversation recall
+          const isNewSession = !sessionStorage.getItem('picasso_conversation_id');
+          if (isNewSession) {
+            logger.debug('🧹 New session detected, clearing any stale conversation state');
+            try {
+              sessionStorage.removeItem('picasso_conversation_id');
+              sessionStorage.removeItem('picasso_state_token');
+            } catch (e) {
+              logger.warn('🧹 Error during conversation cleanup:', e);
+            }
+          } else {
+            logger.debug('♻️ Existing session detected, preserving conversation state for recall');
           }
 
           // Create conversation manager
@@ -1516,34 +1512,45 @@ const ChatProvider = ({ children }) => {
         } catch {}
 
         const streamingMessageId = `bot_${Date.now()}_${Math.random()}`;
-        // Add a single placeholder assistant message with all canonical stream id fields and metadata for consumers
-        setMessages(prev => [
-          ...prev,
-          {
-            id: streamingMessageId,                // stable React key and message identity
-            messageId: streamingMessageId,         // some code paths read messageId
-            streamId: streamingMessageId,          // preferred stream id
-            dataStreamId: streamingMessageId,      // top-level copy for easy access
-            sseStreamId: streamingMessageId,       // alias to avoid guessing field names
-            role: "assistant",
-            content: "",                          // keep empty so streaming branch is chosen
-            timestamp: new Date().toISOString(),
-            isStreaming: true,                     // explicit streaming flag
-            streaming: true,                       // secondary flag for older checks
-            metadata: {
-              partialText: "",
-              dataStreamId: streamingMessageId,    // metadata copy (current consumers)
-              streamId: streamingMessageId,        // metadata alias
-              isStreaming: true
+        
+        // Check if streaming is actually enabled
+        const actuallyUseStreaming = shouldUseStreaming(tenantConfig, tenantHash);
+        console.log('🔍 actuallyUseStreaming value:', actuallyUseStreaming);
+        console.log('🔍 shouldUseStreaming returned:', shouldUseStreaming(tenantConfig, tenantHash));
+        
+        if (actuallyUseStreaming) {
+          // STREAMING PATH: Add placeholder for streaming
+          setMessages(prev => [
+            ...prev,
+            {
+              id: streamingMessageId,                // stable React key and message identity
+              messageId: streamingMessageId,         // some code paths read messageId
+              streamId: streamingMessageId,          // preferred stream id
+              dataStreamId: streamingMessageId,      // top-level copy for easy access
+              sseStreamId: streamingMessageId,       // alias to avoid guessing field names
+              role: "assistant",
+              content: "",                          // keep empty so streaming branch is chosen
+              timestamp: new Date().toISOString(),
+              isStreaming: true,                     // explicit streaming flag
+              streaming: true,                       // secondary flag for older checks
+              metadata: {
+                partialText: "",
+                dataStreamId: streamingMessageId,    // metadata copy (current consumers)
+                streamId: streamingMessageId,        // metadata alias
+                isStreaming: true
+              }
             }
-          }
-        ]);
-        console.log('[ChatProvider] 🧪 placeholder created', { id: streamingMessageId });
+          ]);
+          console.log('[ChatProvider] 🧪 STREAMING: placeholder created', { id: streamingMessageId });
 
-        // Proactively register the stream so listeners can bind immediately (idempotent if onStart also calls it)
-        try { if (streamingRegistry && typeof streamingRegistry.startStream === 'function') {
-          streamingRegistry.startStream(streamingMessageId);
-        } } catch {}
+          // Proactively register the stream so listeners can bind immediately
+          try { if (streamingRegistry && typeof streamingRegistry.startStream === 'function') {
+            streamingRegistry.startStream(streamingMessageId);
+          } } catch {}
+        } else {
+          // HTTP PATH: No placeholder needed - will add complete message after response
+          console.log('[ChatProvider] 🌐 HTTP MODE: Skipping placeholder creation');
+        }
 
         const sessionId = sessionIdRef.current;
         const conversationManager = conversationManagerRef.current;
@@ -1554,6 +1561,16 @@ const ChatProvider = ({ children }) => {
         }
         const conversationContext = conversationManager?.getConversationContext?.() || null;
         const stateToken = conversationManager?.stateToken;
+        
+        // Debug ConversationManager state
+        console.log('🧠 CONVERSATION MANAGER STATE:', {
+          hasManager: !!conversationManager,
+          hasGetContext: !!conversationManager?.getConversationContext,
+          contextResult: conversationContext,
+          stateToken: stateToken ? 'Present' : 'Missing',
+          messageBufferLength: conversationManager?.messageBuffer?.length || 0,
+          turn: conversationManager?.turn || 0
+        });
 
         const headers = {
           'Content-Type': 'application/json',
@@ -1570,10 +1587,13 @@ const ChatProvider = ({ children }) => {
           headers['Authorization'] = `Bearer ${stateToken}`;
         }
 
+        // The streaming Lambda now properly handles conversation history and role instructions
+        // No need for the workaround anymore - just send the raw user input
+        
         // Build a single request body you can reuse for both paths
         const requestBody = {
           tenant_hash: tenantHash,
-          user_input: message.content, // Send raw text to backend, not HTML
+          user_input: message.content, // Send raw user input - Lambda handles context
           session_id: sessionId,
           files: message.files || [],
           messageId: messageWithId.id,
@@ -1581,21 +1601,45 @@ const ChatProvider = ({ children }) => {
           conversation_context: conversationContext,
           conversation_id: conversationManager?.conversationId,
           turn: conversationManager?.turn,
-          stream: shouldUseStreaming(tenantConfig, tenantHash) // Add stream flag
+          stream: actuallyUseStreaming, // Use the same decision we made above
+          // Still include these for when the Lambda is updated
+          conversation_history: conversationContext?.recentMessages || [],
+          original_user_input: message.content // Keep original for logging
         };
+        
+        // Debug logging for conversation context
+        console.log('🔍 REQUEST BODY CONVERSATION CONTEXT:', {
+          hasContext: !!conversationContext,
+          contextKeys: conversationContext ? Object.keys(conversationContext) : [],
+          recentMessagesCount: conversationContext?.recentMessages?.length || 0,
+          recentMessages: conversationContext?.recentMessages || [],
+          turn: conversationManager?.turn,
+          conversationId: conversationManager?.conversationId
+        });
 
         try {
-          const streamingEnabled = shouldUseStreaming(tenantConfig, tenantHash);
-          console.log('🎯 STREAMING CHECK:', {
-            enabled: streamingEnabled,
-            streaming_enabled_flag: tenantConfig?.features?.streaming_enabled,
-            streaming_flag: tenantConfig?.features?.streaming,
-            endpoint: environmentConfig.STREAMING_ENDPOINT
+          // DUAL-PATH ARCHITECTURE:
+          // 1. STREAMING PATH (default): Real-time character-by-character updates
+          // 2. HTTP PATH: Complete response at once (fallback or explicit choice)
+          // 
+          // The decision is made by shouldUseStreaming() which checks:
+          // - Config file setting (features.streaming_enabled)
+          // - Defaults to true if not configured
+          //
+          // This is the SINGLE POINT where the path decision is made
+          
+          console.log('🎯 STREAMING DECISION:', {
+            enabled: actuallyUseStreaming,
+            config_setting: tenantConfig?.features?.streaming_enabled,
+            reason: actuallyUseStreaming ? 
+              (tenantConfig?.features?.streaming_enabled === false ? 'Config disabled' : 'Default/Config enabled') :
+              'Config explicitly disabled',
+            endpoint: actuallyUseStreaming ? environmentConfig.STREAMING_ENDPOINT : environmentConfig.getChatUrl(tenantHash)
           });
           
-          if (streamingEnabled) {
-            console.log('✅ TAKING STREAMING PATH!');
-            // ---- REAL STREAMING PATH ----
+          if (actuallyUseStreaming) {
+            console.log('✅ TAKING STREAMING PATH (with HTTP fallback on failure)');
+            // ---- STREAMING PATH WITH HTTP FALLBACK ----
             // Use dedicated Bedrock streaming endpoint (Node.js with SSE support)
             let streamingUrl = environmentConfig.getStreamingUrl(tenantHash);
             const streamingMethod = tenantConfig?.streaming?.method || environmentConfig.STREAMING_METHOD || 'POST';
@@ -1757,17 +1801,9 @@ const ChatProvider = ({ children }) => {
                     sanitizedLen: safe?.length
                   });
                   
-                  // First, directly update the DOM with the markdown content
-                  // This preserves the content in the same container
-                  try {
-                    const streamingElement = document.querySelector(`[data-stream-id="${streamingMessageId}"]`);
-                    if (streamingElement && safe) {
-                      streamingElement.innerHTML = safe;
-                      console.log('[ChatProvider] ✅ DOM updated directly with markdown', { id: streamingMessageId });
-                    }
-                  } catch (e) {
-                    console.error('[ChatProvider] Failed to update DOM directly:', e);
-                  }
+                  // Skip DOM update - MessageBubble already handled markdown during streaming
+                  // This prevents overwriting the properly rendered links
+                  console.log('[ChatProvider] ⏭️ Skipping DOM update - content already rendered during streaming');
                   
                   // Then update the React state
                   // Keep isStreaming false but mark as streamCompleted
@@ -1840,10 +1876,10 @@ const ChatProvider = ({ children }) => {
               return; // prevent outer catch from treating it as an error
             }
           } else {
-            // ---- EXISTING HTTP (non-stream) PATH (UNCHANGED) ----
-            // keep your current makeAPIRequest(...) block exactly as-is,
-            // but use streamingMessageId when you write the final assistant message.
-            // (Remove the "fake streaming" word-by-word simulation.)
+            // ---- HTTP PATH (CHOSEN BY CONFIG) ----
+            // This path is taken when features.streaming_enabled = false in config
+            // Complete response delivered at once, no incremental updates
+            console.log('🌐 HTTP PATH CHOSEN (config disabled streaming)');
             const chatUrl = environmentConfig.getChatUrl(tenantHash);
             const data = await makeAPIRequest(
               chatUrl,
@@ -1915,11 +1951,32 @@ const ChatProvider = ({ children }) => {
 
             // finally commit once - wrap with streaming-formatted for consistent styling
             const wrappedBotContent = botContent ? `<div class="streaming-formatted">${botContent}</div>` : botContent;
-            setMessages(prev => prev.map(msg =>
-              msg.id === streamingMessageId
-                ? { ...msg, content: wrappedBotContent, isStreaming: false, actions: botActions }
-                : msg
-            ));
+            
+            if (!actuallyUseStreaming) {
+              // HTTP MODE: Add complete message directly (no placeholder exists)
+              console.log('🌐 HTTP: Adding complete message directly');
+              setMessages(prev => [...prev, {
+                id: streamingMessageId,
+                role: "assistant",
+                content: wrappedBotContent,
+                timestamp: new Date().toISOString(),
+                isStreaming: false,
+                streaming: false,
+                status: 'final',
+                actions: botActions,
+                metadata: {
+                  httpMode: true,
+                  streamCompleted: false
+                }
+              }]);
+            } else {
+              // STREAMING MODE: Update existing placeholder (shouldn't reach here when streaming disabled)
+              setMessages(prev => prev.map(msg =>
+                msg.id === streamingMessageId
+                  ? { ...msg, content: wrappedBotContent, isStreaming: false, actions: botActions }
+                  : msg
+              ));
+            }
 
             // Update conversation manager
             try {
