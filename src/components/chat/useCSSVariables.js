@@ -11,11 +11,33 @@ export function useCSSVariables(config) {
     console.log('🔍 useCSSVariables called at:', new Date().toISOString());
     console.log('🔍 useCSSVariables received config:', config);
     console.log('🔍 Config type:', typeof config);
-    console.log('🔍 Config branding:', config?.branding);
-    console.log('🔍 Config keys:', config ? Object.keys(config) : 'no config');
+    
+    // Extract actual config from Lambda response wrapper if needed
+    let actualConfig = config;
+    if (config && config.statusCode && config.body) {
+      console.log('📦 Detected Lambda response wrapper, extracting config from body');
+      console.log('📦 Body type:', typeof config.body);
+      
+      // Parse the body if it's a string
+      if (typeof config.body === 'string') {
+        try {
+          actualConfig = JSON.parse(config.body);
+          console.log('✅ Parsed config from body string:', actualConfig);
+        } catch (e) {
+          console.error('❌ Failed to parse body:', e);
+          actualConfig = config;
+        }
+      } else {
+        actualConfig = config.body;
+        console.log('✅ Extracted config from body object:', actualConfig);
+      }
+    }
+    
+    console.log('🔍 Actual config branding:', actualConfig?.branding);
+    console.log('🔍 Actual config keys:', actualConfig ? Object.keys(actualConfig) : 'no config');
     
     // Handle loading state - apply minimal fallback CSS immediately
-    if (!config) {
+    if (!actualConfig) {
       console.log('⏳ Config not loaded yet, applying fallback CSS...');
       
       // Apply immediate fallback styling so components aren't completely unstyled
@@ -45,21 +67,21 @@ export function useCSSVariables(config) {
     }
 
     // Handle case where branding might be missing - create default branding
-    const branding = config.branding || {
+    const branding = actualConfig.branding || {
       primary_color: '#3b82f6',
       background_color: '#ffffff',
       font_color: '#374151'
     };
 
-    if (!config.branding) {
+    if (!actualConfig.branding) {
       console.warn('⚠️ No branding config found, using defaults');
     } else {
-      console.log('✅ Found branding config:', config.branding);
+      console.log('✅ Found branding config:', actualConfig.branding);
     }
 
-    console.log('🎨 Applying CSS variables for tenant:', config.tenant_hash || config.tenant_id);
+    console.log('🎨 Applying CSS variables for tenant:', actualConfig.tenant_hash || actualConfig.tenant_id);
     
-    const features = config.features || {};
+    const features = actualConfig.features || {};
 
     // Action chips configuration
     const actionChipsConfig = features.action_chips || {};
@@ -173,7 +195,7 @@ export function useCSSVariables(config) {
       '--chat-transform-origin': calculateTransformOrigin(branding.chat_position),
       
       /* === AVATAR SYSTEM === */
-      '--avatar-url': generateAvatarUrl(config),
+      '--avatar-url': generateAvatarUrl(actualConfig),
       '--avatar-border-radius': determineAvatarBorderRadius(branding.avatar_shape),
       '--avatar-display': branding.avatar_shape === 'hidden' ? 'none' : 'block',
       '--avatar-border': branding.avatar_border || '2px solid rgba(59, 130, 246, 0.15)',
@@ -374,21 +396,21 @@ export function useCSSVariables(config) {
     // Apply advanced computed styles
     applyComputedStyles(cssVariables, root);
 
-    console.log(`🎨 Applied ${appliedVariables.length} CSS variables for tenant: ${config.tenant_hash || config.tenant_id}`);
+    console.log(`🎨 Applied ${appliedVariables.length} CSS variables for tenant: ${actualConfig.tenant_hash || actualConfig.tenant_id}`);
     
     if (failedVariables.length > 0) {
       console.warn(`⚠️ ${failedVariables.length} variables failed:`, failedVariables);
     }
 
     // Store current config for debugging
-    window.currentPicassoConfig = config;
+    window.currentPicassoConfig = actualConfig;
     window.appliedCSSVariables = cssVariables;
     window.picassoDebug = {
-      config,
+      config: actualConfig,
       appliedVariables: cssVariables,
-      tenant_hash: config?.tenant_hash,
+      tenant_hash: actualConfig?.tenant_hash,
       enhancementsApplied: true,
-      configSource: config.metadata?.source
+      configSource: actualConfig.metadata?.source
     };
 
     // Cleanup function

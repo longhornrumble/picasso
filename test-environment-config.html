@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Environment Configuration Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .result { margin: 10px 0; padding: 10px; border-radius: 4px; white-space: pre-wrap; }
+        .success { background: #d4edda; border: 1px solid #c3e6cb; color: #155724; }
+        .error { background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; }
+    </style>
+</head>
+<body>
+    <h1>Picasso Environment Configuration Test</h1>
+    
+    <div id="config-result" class="result"></div>
+    
+    <script>
+        // Load the actual Picasso environment configuration
+        import('./src/config/environment.js').then(module => {
+            const config = module.config;
+            const resultDiv = document.getElementById('config-result');
+            
+            try {
+                // Test the configuration
+                const tenantHash = 'my87674d777bf9';
+                const streamingUrl = config.getStreamingUrl(tenantHash);
+                
+                const results = {
+                    'Environment': config.ENVIRONMENT,
+                    'Debug Mode': config.DEBUG,
+                    'API Base URL': config.API_BASE_URL,
+                    'Chat Endpoint': config.CHAT_ENDPOINT,
+                    'Config Endpoint': config.CONFIG_ENDPOINT,
+                    'Streaming Endpoint': streamingUrl,
+                    'Default Tenant Hash': config.getDefaultTenantHash(),
+                    'Widget Domain': config.getWidgetDomain()
+                };
+                
+                resultDiv.innerHTML = `✅ Environment configuration loaded successfully!\n\nConfiguration:\n${JSON.stringify(results, null, 2)}`;
+                resultDiv.className = 'result success';
+                
+            } catch (error) {
+                resultDiv.innerHTML = `❌ Configuration test failed:\n\n${error.message}`;
+                resultDiv.className = 'result error';
+            }
+        }).catch(error => {
+            const resultDiv = document.getElementById('config-result');
+            resultDiv.innerHTML = `❌ Failed to load environment module:\n\n${error.message}`;
+            resultDiv.className = 'result error';
+        });
+    </script>
+</body>
+</html>

@@ -8,7 +8,7 @@ const ENVIRONMENTS = {
   staging: {
     bucket: 'picasso-staging',
     cloudfront: 'E1234567890ABC',
-    domain: 'staging-chat.myrecruiter.ai'
+    domain: 'chat.myrecruiter.ai' // Staging uses same domain with different Lambda aliases
   },
   production: {
     bucket: 'picasso-production', 

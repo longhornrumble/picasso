@@ -1,0 +1,5 @@
+# Bedrock Streaming Handler Requirements
+# Minimal dependencies - no JWT libraries needed
+
+boto3>=1.28.0
+botocore>=1.31.0

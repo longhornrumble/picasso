@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Staging Widget Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-info { background: #f0f8ff; padding: 15px; margin: 20px 0; border-radius: 5px; }
+    </style>
+</head>
+<body>
+    <h1>🧪 Staging Widget Test</h1>
+    
+    <div class="test-info">
+        <h3>Test Configuration:</h3>
+        <p><strong>Environment:</strong> Staging</p>
+        <p><strong>Tenant Hash:</strong> my87674d777bf9</p>
+        <p><strong>Lambda URL:</strong> https://xkjbyi3ushhuiytcfbuk5uaqom0ivhfk.lambda-url.us-east-1.on.aws</p>
+    </div>
+    
+    <p>The chat widget should appear in the bottom right corner. If working correctly, you should be able to:</p>
+    <ul>
+        <li>See the widget minimize/expand</li>
+        <li>Load the MYR384719 config</li>
+        <li>Send a test message to staging Lambda</li>
+    </ul>
+    
+    <!-- Load the staging widget with correct tenant hash -->
+    <script src="http://localhost:8000/widget.js" data-tenant="my87674d777bf9"></script>
+</body>
+</html>

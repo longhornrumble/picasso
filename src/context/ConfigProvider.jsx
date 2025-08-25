@@ -1,17 +1,19 @@
-// src/context/ConfigProvider.jsx - FIXED Pure Hash + Action System
-import React, { createContext, useState, useEffect, useRef } from 'react';
+import { createContext, useState, useEffect, useRef, useContext } from 'react';
 import { config as environmentConfig } from '../config/environment';
 
 const ConfigContext = createContext();
-
-// Function to get the context for hooks
-export const getConfigContext = () => ConfigContext;
 
 // Export provider as named export
 const ConfigProvider = ({ children }) => {
   const [config, setConfig] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  
+  // RACE CONDITION FIX: Add initialization lock
+  const initializationLockRef = useRef({
+    isInitializing: false,
+    initializationPromise: null
+  });
   
   // Track config metadata for change detection
   const configMetadata = useRef({
@@ -51,12 +53,12 @@ const ConfigProvider = ({ children }) => {
         return window.PicassoConfig.tenant;
       }
 
-      console.warn('⚠️ No valid tenant hash found, using development fallback');
-      return 'fo85e6a06dcdf4'; // Development fallback
+      console.warn('⚠️ No valid tenant hash found, using environment default');
+      return environmentConfig.getDefaultTenantHash();
       
     } catch (error) {
       console.warn('Hash extraction failed:', error);
-      return 'fo85e6a06dcdf4'; // Development fallback
+      return environmentConfig.getDefaultTenantHash();
     }
   };
 
@@ -85,7 +87,7 @@ const ConfigProvider = ({ children }) => {
         }
       }
 
-      console.log(`🔄 Fetching config from S3/CloudFront`, {
+      console.log(`🔄 Fetching config from Lambda Master_Function`, {
         hash: tenantHash.slice(0, 8) + '...',
         force,
         url: configUrl
@@ -101,37 +103,67 @@ const ConfigProvider = ({ children }) => {
 
       console.log('📡 Response status:', response.status);
 
-      // If primary endpoint fails with 404, try legacy endpoint
+      // If primary endpoint fails with 404, it means the tenant hash is invalid
       if (response.status === 404) {
-        console.warn('⚠️ Primary config endpoint returned 404, trying legacy endpoint...');
-        const legacyUrl = `https://chat.myrecruiter.ai/v1/widget/config/${tenantHash}`;
-        response = await fetch(legacyUrl, environmentConfig.getRequestConfig({
-          method: 'GET',
-          cache: 'no-cache'
-        }));
-        console.log('📡 Legacy response status:', response.status);
+        console.warn('⚠️ Tenant configuration not found - invalid or unauthorized tenant hash');
+        // Don't try fallback endpoints for security - fail closed
       }
 
       if (response.status === 404) {
-        // Handle missing tenant gracefully
+        // Handle missing tenant gracefully with fallback
         console.warn('⚠️ Tenant config not found (404), using fallback');
         return { config: getFallbackConfig(tenantHash), changed: true };
       }
 
       if (!response.ok) {
-        // For S3, we might get different error responses
+        // Handle different error responses from Lambda
         if (response.status === 403) {
-          console.error('❌ Access denied to S3 config');
+          console.error('❌ Access denied - invalid tenant hash');
+        } else if (response.status === 500) {
+          console.error('❌ Lambda function error');
         }
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
-      // Get new config data
-      const newConfig = await response.json();
+      // Get new config data - DEBUGGING
+      console.log('Starting config parse - Response status:', response.status);
+      let rawResponse = await response.json();
+      console.log('Raw Lambda response keys:', Object.keys(rawResponse || {}));
+      console.log('Raw Lambda response type:', typeof rawResponse);
+      console.log('Raw Lambda response statusCode:', rawResponse?.statusCode);
+      console.log('Raw Lambda response body type:', typeof rawResponse?.body);
       
-      // Get version info from S3 headers
-      const version = response.headers.get('x-amz-version-id') || 
-                     response.headers.get('etag') || 
+      let newConfig = rawResponse;
+      
+      // Check if Lambda returned wrapped response (statusCode + body structure)
+      if (rawResponse.statusCode && rawResponse.body) {
+        console.log('📦 Unwrapping Lambda response structure');
+        console.log('📦 Body type:', typeof rawResponse.body);
+        // Parse the body if it's a string
+        if (typeof rawResponse.body === 'string') {
+          try {
+            newConfig = JSON.parse(rawResponse.body);
+            console.log('✅ Parsed config from body string:', newConfig);
+          } catch (e) {
+            console.error('❌ Failed to parse body:', e);
+            newConfig = rawResponse;
+          }
+        } else {
+          newConfig = rawResponse.body;
+          console.log('✅ Extracted config from body object:', newConfig);
+        }
+      }
+      
+      console.log('📋 Final config object:', {
+        hasBranding: !!newConfig.branding,
+        brandingKeys: newConfig.branding ? Object.keys(newConfig.branding) : [],
+        hasFeatures: !!newConfig.features,
+        chatTitle: newConfig.chat_title
+      });
+      
+      // Get version info from Lambda response headers
+      const version = response.headers.get('etag') || 
+                     response.headers.get('x-version-id') || 
                      Date.now().toString();
       
       // Update metadata
@@ -147,12 +179,15 @@ const ConfigProvider = ({ children }) => {
       };
       sessionStorage.setItem(`picasso-config-${tenantHash}`, JSON.stringify(cacheData));
 
-      console.log('✅ Config loaded successfully from S3/CloudFront', {
+      console.log('✅ Config loaded successfully from Lambda Master_Function', {
         hash: tenantHash.slice(0, 8) + '...',
         chatTitle: newConfig.chat_title,
         hasBranding: !!newConfig.branding,
         hasFeatures: !!newConfig.features,
-        version: version
+        version: version,
+        configKeys: Object.keys(newConfig || {}),
+        configStructure: typeof newConfig,
+        hasStatusCode: !!newConfig.statusCode
       });
 
       return { config: newConfig, changed: true };
@@ -165,34 +200,51 @@ const ConfigProvider = ({ children }) => {
 
   // Load tenant config using NEW hash + action system
   const loadTenantConfig = async (tenantHash) => {
-    setLoading(true);
-    setError(null);
-    
-    try {
-      console.log(`🔍 Loading config for hash: ${tenantHash.slice(0, 8)}... via S3/CloudFront`);
-      
-      // Load config using pure hash + action API
-      const result = await fetchConfigWithCacheCheck(tenantHash, true);
-      
-      if (result.config) {
-        setConfig(result.config);
-        configMetadata.current.tenantHash = tenantHash;
-        console.log('🎉 Config loaded successfully:', {
-          chatTitle: result.config.chat_title,
-          hash: tenantHash.slice(0, 8) + '...',
-          apiType: 's3-cloudfront'
-        });
-      }
-    } catch (error) {
-      console.error('❌ Failed to load config:', error);
-      setError(error.message);
-      
-      // Use fallback config
-      console.log('🔧 Using fallback config');
-      setConfig(getFallbackConfig(tenantHash));
-    } finally {
-      setLoading(false);
+    // RACE CONDITION FIX: Check if already initializing
+    if (initializationLockRef.current.isInitializing) {
+      console.log('🔒 Config initialization already in progress, waiting...');
+      return await initializationLockRef.current.initializationPromise;
     }
+    
+    // Set initialization lock
+    initializationLockRef.current.isInitializing = true;
+    const initPromise = (async () => {
+      setLoading(true);
+      setError(null);
+      
+      try {
+        console.log(`🔍 Loading config for hash: ${tenantHash.slice(0, 8)}... via Lambda Master_Function`);
+        
+        // Load config using pure hash + action API
+        const result = await fetchConfigWithCacheCheck(tenantHash, true);
+        
+        if (result.config) {
+          setConfig(result.config);
+          configMetadata.current.tenantHash = tenantHash;
+          console.log('🎉 Config loaded successfully:', {
+            chatTitle: result.config.chat_title,
+            hash: tenantHash.slice(0, 8) + '...',
+            apiType: 'lambda-master-function'
+          });
+        }
+      } catch (error) {
+        console.error('❌ Failed to load config:', error);
+        setError(error.message);
+        
+        // Use fallback config
+        console.log('🔧 Using fallback config');
+        setConfig(getFallbackConfig(tenantHash));
+      } finally {
+        setLoading(false);
+        // Release initialization lock
+        initializationLockRef.current.isInitializing = false;
+        initializationLockRef.current.initializationPromise = null;
+      }
+    })();
+    
+    // Store the promise for concurrent calls
+    initializationLockRef.current.initializationPromise = initPromise;
+    return await initPromise;
   };
 
   // Periodic config update checker
@@ -287,7 +339,7 @@ const ConfigProvider = ({ children }) => {
       metadata: {
         source: "fallback",
         generated_at: Date.now(),
-        apiType: "s3-cloudfront"
+        apiType: "lambda-master-function"
       }
     };
   };
@@ -335,7 +387,7 @@ const ConfigProvider = ({ children }) => {
       etag: configMetadata.current.etag,
       tenantHash: configMetadata.current.tenantHash,
       lastModified: configMetadata.current.lastModified,
-      apiType: 's3-cloudfront'
+      apiType: 'lambda-master-function'
     },
     features: {
       uploads: config?.features?.uploads || false,
@@ -361,7 +413,7 @@ if (typeof window !== 'undefined') {
 
   // Test health check action
   window.testHealthCheck = async (tenantHash) => {
-    const hash = tenantHash || 'fo85e6a06dcdf4';
+    const hash = tenantHash || environmentConfig.getDefaultTenantHash();
     console.log('🧪 Testing health check action...');
     
     try {
@@ -388,27 +440,26 @@ if (typeof window !== 'undefined') {
     }
   };
 
-  // Test config loading from S3
+  // Test config loading from Lambda Master_Function
   window.testConfigLoad = async (tenantHash) => {
-    const hash = tenantHash || 'fo85e6a06dcdf4';
-    console.log('🧪 Testing S3/CloudFront config load...');
+    const hash = tenantHash || environmentConfig.getDefaultTenantHash();
+    console.log('🧪 Testing Lambda Master_Function config load...');
     
     try {
-      const configLoadUrl = `https://your-cloudfront.com/tenants/${hash}/config.json`;
-      const response = await fetch(configLoadUrl, {
+      const configLoadUrl = environmentConfig.getConfigUrl(hash);
+      const response = await fetch(configLoadUrl, environmentConfig.getRequestConfig({
         method: 'GET',
-        mode: 'cors',
         cache: 'no-cache'
-      });
+      }));
       
       if (response.ok) {
         const config = await response.json();
-        console.log('✅ S3 Config Load:', {
+        console.log('✅ Lambda Config Load:', {
           chatTitle: config.chat_title,
           hasBranding: !!config.branding,
           hasFeatures: !!config.features,
           tenantHash: config.tenant_hash,
-          version: response.headers.get('x-amz-version-id') || response.headers.get('etag')
+          version: response.headers.get('etag') || response.headers.get('x-version-id')
         });
         return config;
       } else {
@@ -423,7 +474,7 @@ if (typeof window !== 'undefined') {
 
   // Test chat action
   window.testChatAction = async (tenantHash, userInput = "Hello") => {
-    const hash = tenantHash || 'fo85e6a06dcdf4';
+    const hash = tenantHash || environmentConfig.getDefaultTenantHash();
     console.log('🧪 Testing chat action...');
     
     try {
@@ -456,14 +507,14 @@ if (typeof window !== 'undefined') {
   };
 
   console.log(`
-🛠️  PICASSO S3/CLOUDFRONT CONFIG COMMANDS:
+🛠️  PICASSO LAMBDA MASTER_FUNCTION COMMANDS:
    testHealthCheck()             - Test action=health_check
-   testConfigLoad()              - Test S3/CloudFront config  
+   testConfigLoad()              - Test Lambda config load  
    testChatAction()              - Test action=chat
    refreshPicassoConfig()        - Force refresh config
    
-   CONFIG SOURCE: S3/CloudFront CDN
-   ✅ Public configs, version checking, 2-minute cache
+   CONFIG SOURCE: Lambda Master_Function
+   ✅ Hash-based auth, tenant inference, 2-minute cache
   `);
 
   console.log(`
@@ -475,11 +526,20 @@ if (typeof window !== 'undefined') {
 
 // Hook for manual config refresh in components
 export function useConfigRefresh() {
-  const context = React.useContext(ConfigContext);
+  const context = useContext(ConfigContext);
   if (!context) {
     throw new Error('useConfigRefresh must be used within a ConfigProvider');
   }
   return context.refreshConfig;
+}
+
+// Hook to use the config context
+export function useConfig() {
+  const context = useContext(ConfigContext);
+  if (!context) {
+    throw new Error('useConfig must be used within a ConfigProvider');
+  }
+  return context;
 }
 
 // Export only the provider

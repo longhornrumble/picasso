@@ -1,8 +1,8 @@
 import React from "react";
 import { useConfig } from "../../hooks/useConfig";
-import { X } from "lucide-react";
+import { X, Settings } from "lucide-react";
 
-export default function ChatHeader({ onClose }) {
+export default function ChatHeader({ onClose, onOpenSettings }) {
   const { config } = useConfig();
 
   // Get subtitle from config with fallback - add null check
@@ -25,13 +25,26 @@ export default function ChatHeader({ onClose }) {
         </div>
       </div>
 
-      <button
-        onClick={onClose}
-        className="chat-header-close-button"
-        aria-label="Close chat"
-      >
-        <X className="w-4 h-4" />
-      </button>
+      <div className="chat-header-actions">
+        {onOpenSettings && (
+          <button
+            onClick={onOpenSettings}
+            className="chat-header-action-button"
+            aria-label="Open chat settings"
+            title="Chat Settings"
+          >
+            <Settings size={16} />
+          </button>
+        )}
+        
+        <button
+          onClick={onClose}
+          className="chat-header-close-button"
+          aria-label="Close chat"
+        >
+          <X size={16} />
+        </button>
+      </div>
     </div>
   );
 }

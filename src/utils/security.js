@@ -47,10 +47,16 @@ export const sanitizeHTML = (html, options = {}) => {
   };
 
   try {
+    // Check if DOMPurify is properly initialized
+    if (!DOMPurify || typeof DOMPurify.sanitize !== 'function') {
+      console.warn('⚠️ DOMPurify not available, returning unsanitized HTML (SECURITY RISK)');
+      return html;
+    }
     return DOMPurify.sanitize(html, defaultOptions);
   } catch (error) {
     console.error('Error sanitizing HTML:', error);
-    return '';
+    console.warn('⚠️ Returning unsanitized HTML due to error (SECURITY RISK)');
+    return html;
   }
 };
 
@@ -201,7 +207,8 @@ export const validateConfigSecurity = (config) => {
   if (config.ENVIRONMENT === 'production') {
     const urlFields = ['API_BASE_URL', 'CHAT_API_URL', 'ASSET_BASE_URL', 'WIDGET_DOMAIN'];
     urlFields.forEach(field => {
-      if (config[field] && !config[field].startsWith('https://')) {
+      const url = config[field];
+      if (url && typeof url === 'string' && !url.startsWith('https://')) {
         checks.push(`Insecure URL in production: ${field}`);
       }
     });

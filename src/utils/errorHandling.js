@@ -8,6 +8,17 @@
 import { sanitizeError } from './security';
 import { config as environmentConfig } from '../config/environment';
 
+// Safe string helpers to prevent undefined.startsWith() errors
+const s = v => (typeof v === 'string' ? v : '');
+const starts = (v, p) => {
+  const str = s(v);
+  return str && typeof str.startsWith === 'function' ? str.startsWith(p) : false;
+};
+const has = (v, sub) => {
+  const str = s(v);
+  return str && typeof str.includes === 'function' ? str.includes(sub) : false;
+};
+
 // Error severity levels
 export const ERROR_SEVERITY = {
   LOW: 'low',
@@ -38,6 +49,10 @@ export const ERROR_TYPES = {
   VALIDATION_ERROR: 'validation_error',
   RENDER_ERROR: 'render_error',
   CONFIG_ERROR: 'config_error',
+  JWT_ERROR: 'jwt_error',
+  JWT_EXPIRED_ERROR: 'jwt_expired_error',
+  JWT_VALIDATION_ERROR: 'jwt_validation_error',
+  FUNCTION_URL_ERROR: 'function_url_error',
   UNKNOWN_ERROR: 'unknown_error'
 };
 
@@ -45,8 +60,13 @@ export const ERROR_TYPES = {
  * Enhanced error classifier with more detailed categorization
  */
 export const classifyError = (error, response = null) => {
+  try {
+    // Normalize once at the top
+    const msg = typeof error?.message === 'string' ? error.message : '';
+    const name = typeof error?.name === 'string' ? error.name : '';
+  
   // Network and fetch errors
-  if (error.name === 'AbortError' || error.message.includes('timeout')) {
+  if (name === 'AbortError' || has(msg, 'timeout')) {
     return {
       type: ERROR_TYPES.TIMEOUT_ERROR,
       category: ERROR_CATEGORY.NETWORK,
@@ -55,9 +75,9 @@ export const classifyError = (error, response = null) => {
     };
   }
   
-  if (error.message.includes('Failed to fetch') || 
-      error.message.includes('NetworkError') ||
-      error.message.includes('ERR_NETWORK')) {
+  if (has(msg, 'Failed to fetch') || 
+      has(msg, 'NetworkError') ||
+      has(msg, 'ERR_NETWORK')) {
     return {
       type: ERROR_TYPES.NETWORK_ERROR,
       category: ERROR_CATEGORY.NETWORK,
@@ -106,7 +126,7 @@ export const classifyError = (error, response = null) => {
   }
   
   // React and rendering errors
-  if (error.message.includes('React') || error.message.includes('render')) {
+  if (has(msg, 'React') || has(msg, 'render')) {
     return {
       type: ERROR_TYPES.RENDER_ERROR,
       category: ERROR_CATEGORY.RENDERING,
@@ -116,12 +136,59 @@ export const classifyError = (error, response = null) => {
   }
   
   // Configuration errors
-  if (error.message.includes('config') || error.message.includes('configuration')) {
+  if (has(msg, 'config') || has(msg, 'configuration')) {
     return {
       type: ERROR_TYPES.CONFIG_ERROR,
       category: ERROR_CATEGORY.CONFIGURATION,
       severity: ERROR_SEVERITY.CRITICAL,
       retryable: false
+    };
+  }
+  
+  // JWT and authentication errors
+  if (has(msg, 'JWT') || has(msg, 'jwt')) {
+    if (has(msg, 'expired') || has(msg, 'expir')) {
+      return {
+        type: ERROR_TYPES.JWT_EXPIRED_ERROR,
+        category: ERROR_CATEGORY.AUTHENTICATION,
+        severity: ERROR_SEVERITY.MEDIUM,
+        retryable: true // Can retry with new token
+      };
+    }
+    
+    if (has(msg, 'invalid') || has(msg, 'validation')) {
+      return {
+        type: ERROR_TYPES.JWT_VALIDATION_ERROR,
+        category: ERROR_CATEGORY.AUTHENTICATION,
+        severity: ERROR_SEVERITY.HIGH,
+        retryable: false
+      };
+    }
+    
+    if (has(msg, 'Token generation failed')) {
+      return {
+        type: ERROR_TYPES.JWT_ERROR,
+        category: ERROR_CATEGORY.AUTHENTICATION,
+        severity: ERROR_SEVERITY.HIGH,
+        retryable: true
+      };
+    }
+    
+    return {
+      type: ERROR_TYPES.JWT_ERROR,
+      category: ERROR_CATEGORY.AUTHENTICATION,
+      severity: ERROR_SEVERITY.HIGH,
+      retryable: false
+    };
+  }
+  
+  // Function URL errors
+  if (has(msg, 'Function URL') || has(msg, 'function_url')) {
+    return {
+      type: ERROR_TYPES.FUNCTION_URL_ERROR,
+      category: ERROR_CATEGORY.API,
+      severity: ERROR_SEVERITY.HIGH,
+      retryable: true
     };
   }
   
@@ -132,6 +199,16 @@ export const classifyError = (error, response = null) => {
     severity: ERROR_SEVERITY.MEDIUM,
     retryable: true
   };
+  } catch (e) {
+    // If error classification itself fails, return safe default
+    console.warn('Error classifier failed:', e);
+    return {
+      type: ERROR_TYPES.UNKNOWN_ERROR,
+      category: ERROR_CATEGORY.UNKNOWN,
+      severity: ERROR_SEVERITY.MEDIUM,
+      retryable: true
+    };
+  }
 };
 
 /**
@@ -147,6 +224,10 @@ export const shouldRetry = (errorClassification, attempt, _maxRetries = 3) => {
     [ERROR_TYPES.TIMEOUT_ERROR]: 3,
     [ERROR_TYPES.RATE_LIMIT_ERROR]: 2,
     [ERROR_TYPES.SERVER_ERROR]: 3,
+    [ERROR_TYPES.JWT_ERROR]: 2,
+    [ERROR_TYPES.JWT_EXPIRED_ERROR]: 1, // Only retry once for expired tokens
+    [ERROR_TYPES.JWT_VALIDATION_ERROR]: 0, // Never retry validation errors
+    [ERROR_TYPES.FUNCTION_URL_ERROR]: 2,
     [ERROR_TYPES.UNKNOWN_ERROR]: 1
   };
   
@@ -163,6 +244,10 @@ export const getBackoffDelay = (errorClassification, attempt, baseDelay = 1000) 
     [ERROR_TYPES.TIMEOUT_ERROR]: 2000,
     [ERROR_TYPES.RATE_LIMIT_ERROR]: 5000,
     [ERROR_TYPES.SERVER_ERROR]: 2000,
+    [ERROR_TYPES.JWT_ERROR]: 1500,
+    [ERROR_TYPES.JWT_EXPIRED_ERROR]: 500, // Quick retry for expired tokens
+    [ERROR_TYPES.JWT_VALIDATION_ERROR]: 0, // No retry delay
+    [ERROR_TYPES.FUNCTION_URL_ERROR]: 2000,
     [ERROR_TYPES.UNKNOWN_ERROR]: 1000
   };
   
@@ -188,6 +273,10 @@ export const getUserFriendlyMessage = (errorClassification, attempt = 1) => {
     [ERROR_TYPES.VALIDATION_ERROR]: "The information provided is invalid. Please check and try again.",
     [ERROR_TYPES.RENDER_ERROR]: "There was a problem displaying the chat. Please refresh the page.",
     [ERROR_TYPES.CONFIG_ERROR]: "There's a configuration issue. Please contact support.",
+    [ERROR_TYPES.JWT_ERROR]: "Authentication failed. Please try again.",
+    [ERROR_TYPES.JWT_EXPIRED_ERROR]: "Your session has expired. Please try again.",
+    [ERROR_TYPES.JWT_VALIDATION_ERROR]: "Authentication validation failed. Please refresh and try again.",
+    [ERROR_TYPES.FUNCTION_URL_ERROR]: "Chat service connection failed. Please try again.",
     [ERROR_TYPES.UNKNOWN_ERROR]: "Something unexpected happened. Please try again."
   };
   
@@ -214,8 +303,19 @@ class ErrorLogger {
    * Log an error with structured data
    */
   logError(error, context = {}) {
-    const errorClassification = context.classification || classifyError(error, context.response);
-    const sanitizedError = sanitizeError(error);
+    // Extra defensive: catch any error in the error logger itself
+    try {
+      // Ensure error is an object with safe properties
+      const safeError = error || {};
+      if (!safeError.message) {
+        safeError.message = String(error) || 'Unknown error';
+      }
+      if (!safeError.name) {
+        safeError.name = 'Error';
+      }
+      
+      const errorClassification = context.classification || classifyError(safeError, context.response);
+      const sanitizedError = sanitizeError(safeError);
     
     const logEntry = {
       timestamp: new Date().toISOString(),
@@ -258,6 +358,11 @@ class ErrorLogger {
     this.notifyParentWindow(logEntry);
     
     return logEntry;
+    } catch (loggerError) {
+      // If the logger itself fails, just log to console
+      console.error('Error logger failed:', loggerError, 'Original error:', error);
+      return null;
+    }
   }
   
   /**
@@ -432,7 +537,7 @@ export const setupGlobalErrorHandling = () => {
     originalConsoleError.apply(console, args);
     
     // Don't log our own error logging
-    if (args[0] && typeof args[0] === 'string' && args[0].includes('🚨 Picasso Error')) {
+    if (args[0] && typeof args[0] === 'string' && has(args[0], '🚨 Picasso Error')) {
       return;
     }
     

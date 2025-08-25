@@ -1,35 +1,48 @@
-// src/components/chat/ChatWidget.jsx - FIXED callout timer bug + FOS callout text override
-import React, { useState, useEffect, useRef } from "react";
+// src/components/chat/ChatWidget.jsx - PERFORMANCE OPTIMIZED: Fixed render loop and version conflicts
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { MessagesSquare, X } from "lucide-react";
 import { useChat } from "../../hooks/useChat";
 import { useConfig } from "../../hooks/useConfig";
 import { useCSSVariables } from "./useCSSVariables";
+import { initializeMobileCompatibility } from "../../utils/mobileCompatibility";
 import ChatHeader from "./ChatHeader";
 import InputBar from "./InputBar";
 import ChatFooter from "./ChatFooter";
 import AttachmentMenu from "./AttachmentMenu";
 import MessageBubble from "./MessageBubble";
 import TypingIndicator from "./TypingIndicator";
+import StateManagementPanel from "./StateManagementPanel";
 
 function ChatWidget() {
-  const { messages, isTyping } = useChat();
+  const { messages, isTyping, renderMode } = useChat();
   const { config } = useConfig();
-  
-  // Debug: Log what config we're getting
-  console.log('🔍 ChatWidget config:', config);
-  console.log('🔍 ChatWidget config type:', typeof config);
-  console.log('🔍 ChatWidget config keys:', config ? Object.keys(config) : 'no config');
-  
-  // Debug: Component mounting
-  console.log('🎨 ChatWidget component rendering...');
-  console.log('🎨 ChatWidget messages:', messages?.length || 0);
-  console.log('🎨 ChatWidget isTyping:', isTyping);
   
   // In iframe mode, we don't need breakpoints - the iframe container handles responsive sizing
   // The widget should always fill its container
   
   // Apply CSS variables for theming
   useCSSVariables(config);
+  
+  // Listen for host commands via custom events (iframe communication bridge)
+  useEffect(() => {
+    const handleOpenChat = () => {
+      console.log('📡 ChatWidget received picasso-open-chat event');
+      setIsOpen(true);
+    };
+    
+    const handleCloseChat = () => {
+      console.log('📡 ChatWidget received picasso-close-chat event');
+      setIsOpen(false);
+    };
+    
+    window.addEventListener('picasso-open-chat', handleOpenChat);
+    window.addEventListener('picasso-close-chat', handleCloseChat);
+    
+    return () => {
+      window.removeEventListener('picasso-open-chat', handleOpenChat);
+      window.removeEventListener('picasso-close-chat', handleCloseChat);
+    };
+  }, []);
   
   // Chat state with sessionStorage persistence (matches conversation persistence)
   const [isOpen, setIsOpen] = useState(() => {
@@ -64,6 +77,7 @@ function ChatWidget() {
   const [showCallout, setShowCallout] = useState(false);
   const [calloutDismissed, setCalloutDismissed] = useState(false);
   const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
+  const [showStateManagement, setShowStateManagement] = useState(false);
   
   // Track last read message and user interaction
   const [lastReadMessageIndex, setLastReadMessageIndex] = useState(() => {
@@ -93,8 +107,8 @@ function ChatWidget() {
   // 🔧 FIX: Add ref to track if callout was auto-dismissed
   const calloutAutoDismissedRef = useRef(false);
 
-  // Iframe communication helper
-  const notifyParentEvent = (event, payload = {}) => {
+  // Iframe communication helper - memoized to prevent recreating on every render
+  const notifyParentEvent = useCallback((event, payload = {}) => {
     // Only notify if we're in an iframe
     if (window.parent && window.parent !== window) {
       window.parent.postMessage({
@@ -103,15 +117,31 @@ function ChatWidget() {
         payload
       }, '*');
     }
-  };
+  }, []);
 
-  // Persist chat open/close on toggle
-  const handleToggle = () => {
+  // Persist chat open/close on toggle - memoized to prevent recreating on every render
+  const handleToggle = useCallback(() => {
     const newOpen = !isOpen;
+    
+    // Update state immediately
     setIsOpen(newOpen);
+    
+    // Manually update body class immediately for iframe communication
+    // This ensures the widget-frame.html SIZE_CHANGE message is sent at the right time
+    if (newOpen) {
+      document.body.classList.add("chat-open");
+    } else {
+      document.body.classList.remove("chat-open");
+    }
     
     // Notify parent of state change (PRD requirement)
     notifyParentEvent(newOpen ? 'CHAT_OPENED' : 'CHAT_CLOSED');
+    
+    // Notify parent of size change for iframe container adjustment
+    notifyParentEvent('SIZE_CHANGE', {
+      isOpen: newOpen,
+      size: newOpen ? { width: 360, height: 640 } : { width: 90, height: 90 }
+    });
     
     if (config?.widget_behavior?.remember_state) {
       try {
@@ -125,9 +155,9 @@ function ChatWidget() {
         console.warn('Failed to save chat state on toggle:', e);
       }
     }
-  };
+  }, [isOpen, lastReadMessageIndex, config?.widget_behavior?.remember_state, notifyParentEvent]);
 
-  // Auto-open delay functionality with remember_state support
+  // Auto-open delay functionality with remember_state support - optimized dependencies
   useEffect(() => {
     const widgetConfig = config?.widget_behavior || {};
     if (!isOpen && widgetConfig.auto_open_delay > 0) {
@@ -165,9 +195,9 @@ function ChatWidget() {
         return () => clearTimeout(timer);
       }
     }
-  }, [config?.widget_behavior, isOpen, config?.tenant_id]);
+  }, [config?.widget_behavior?.auto_open_delay, config?.widget_behavior?.remember_state, isOpen]);
 
-  // Add/remove chat-open class
+  // Add/remove chat-open class immediately for iframe communication
   useEffect(() => {
     if (isOpen) {
       document.body.classList.add("chat-open");
@@ -202,10 +232,10 @@ function ChatWidget() {
   // Get chat title
   const chat_title = config?.chat_title || 
                     config?.branding?.chat_title || 
-                    (config?.tenant_id === "FOS402334" ? "Foster Village" : "Chat");
+                    "Chat";
 
-  // Auto-scroll function
-  const scrollToLatestMessage = () => {
+  // Auto-scroll function - memoized to prevent recreating on every render
+  const scrollToLatestMessage = useCallback(() => {
     if (lastMessageRef.current) {
       const chatWindow = chatWindowRef.current;
       if (chatWindow) {
@@ -238,7 +268,7 @@ function ChatWidget() {
         requestAnimationFrame(animateScroll);
       }
     }
-  };
+  }, []);
 
   // Save scroll position when chat is closed
   useEffect(() => {
@@ -307,95 +337,33 @@ function ChatWidget() {
     }
   }, [messages, isOpen, lastReadMessageIndex]);
 
-  // Auto-scroll effects
+  // Auto-scroll effects - optimized with proper dependencies
   useEffect(() => {
     if (messages?.length > 0) {
       setTimeout(scrollToLatestMessage, 100);
     }
-  }, [messages]);
+  }, [messages?.length, scrollToLatestMessage]);
 
   useEffect(() => {
     if (isTyping) {
       setTimeout(scrollToLatestMessage, 100);
     }
-  }, [isTyping]);
+  }, [isTyping, scrollToLatestMessage]);
 
   useEffect(() => {
     if (isOpen) {
       setTimeout(scrollToLatestMessage, 200);
     }
-  }, [isOpen]);
+  }, [isOpen, scrollToLatestMessage]);
 
-  // 🔧 FIXED: Callout management with proper config access
-  const calloutConfig = config?.features?.callout || {};
-  const calloutEnabled = typeof calloutConfig === 'object' 
-    ? calloutConfig.enabled !== false 
-    : config?.features?.callout !== false;
-  
-  // 🔧 FIXED: Proper callout text override hierarchy for FOS config
-  const calloutText = calloutConfig.text || 
-                     config?.calloutText || 
-                     config?.callout_text ||  // Legacy support
-                     "Hi! 👋 Need help? I'm here to assist you.";
-  
-  const calloutDelay = calloutConfig.delay || 1000;
-  const calloutAutoDismiss = calloutConfig.auto_dismiss || false;
-  const calloutDismissTimeout = calloutConfig.dismiss_timeout || 30000;
 
-  // 🔧 FIXED: Separate callout display logic from dismissal state
-  useEffect(() => {
-    if (!isOpen && calloutEnabled && !calloutDismissed && !hasOpenedChat) {
-      const timer = setTimeout(() => {
-        setShowCallout(true);
-      }, calloutDelay);
-      
-      return () => clearTimeout(timer);
-    } else {
-      setShowCallout(false);
-    }
-  }, [isOpen, calloutEnabled, calloutDismissed, hasOpenedChat, calloutDelay]);
 
-  // 🔧 FIXED: Handle auto-dismiss separately without affecting toggle functionality
-  useEffect(() => {
-    if (showCallout && calloutAutoDismiss && calloutDismissTimeout > 0 && !calloutAutoDismissedRef.current) {
-      const dismissTimer = setTimeout(() => {
-        console.log('🕐 Callout auto-dismissing after timeout');
-        setShowCallout(false);
-        calloutAutoDismissedRef.current = true; // Mark as auto-dismissed but don't block future shows
-        
-        // 🔧 FIX: Don't set calloutDismissed to true here - that permanently blocks the callout
-        // Instead, just hide it for this session but allow it to show again if user refreshes
-      }, calloutDismissTimeout);
-      
-      return () => clearTimeout(dismissTimer);
-    }
-  }, [showCallout, calloutAutoDismiss, calloutDismissTimeout]);
-
-  // 🔧 FIXED: Manual callout close handler
-  const handleCalloutClose = () => {
-    console.log('❌ Callout manually closed by user');
+  // 🔧 FIXED: Manual callout close handler - memoized to prevent recreating
+  const handleCalloutClose = useCallback(() => {
     setShowCallout(false);
     setCalloutDismissed(true); // Only set permanent dismiss on manual close
-  };
+  }, []);
 
-  // Callout state monitoring - notify parent of callout visibility changes
-  useEffect(() => {
-    if (window.parent && window.parent !== window) {
-      const calloutData = {
-        visible: showCallout,
-        width: showCallout ? 300 : 0,
-        height: showCallout ? 60 : 0,
-        text: calloutText,
-        enabled: calloutEnabled
-      };
-      
-      console.log('📢 Notifying parent of callout state change:', calloutData);
-      
-      notifyParentEvent('CALLOUT_STATE_CHANGE', {
-        calloutConfig: calloutData
-      });
-    }
-  }, [showCallout, calloutText, calloutEnabled]);
 
   // 🔧 FIXED: Reset auto-dismiss state when user opens chat
   useEffect(() => {
@@ -405,37 +373,74 @@ function ChatWidget() {
     }
   }, [isOpen, hasOpenedChat]);
 
-  // Debug logging including callout text detection
-  console.log('ChatWidget render - state:', { 
-    isOpen,
-    calloutEnabled,
-    calloutDismissed,
-    hasOpenedChat,
-    showCallout,
-    calloutText, // 🔧 Added for debugging FOS override
-    calloutAutoDismissed: calloutAutoDismissedRef.current,
-    unreadCount,
-    lastReadMessageIndex,
-    totalMessages: messages.length,
-    tenant_id: config?.tenant_id,
-    chat_title,
-    css_variables_applied: !!config,
-    widget_behavior: config?.widget_behavior,
-    // 🔧 Added callout config debugging
-    calloutConfig: {
-      fullConfig: calloutConfig,
-      textFromConfig: calloutConfig.text,
-      textFromRoot: config?.calloutText,
-      textFromLegacy: config?.callout_text
-    },
-    // Debug iframe and responsive behavior
-    windowWidth: window.innerWidth,
-    isIframe: document.body.getAttribute('data-iframe'),
-    shouldShowToggle: (window.innerWidth >= 768 || !isOpen),
-    shouldShowChat: isOpen
-  });
+  // Initial size notification when widget loads
+  useEffect(() => {
+    // Send initial size when component mounts
+    if (window.parent && window.parent !== window) {
+      notifyParentEvent('SIZE_CHANGE', {
+        isOpen: isOpen,
+        size: isOpen ? { width: 360, height: 640 } : { width: 90, height: 90 },
+        initial: true
+      });
+    }
+  }, []); // Run once on mount
+
+  // 🔧 FIXED: Callout configuration - simple values without conditional logic
+  const calloutConfig = config?.features?.callout || {};
+  const calloutEnabled = typeof calloutConfig === 'object' 
+    ? calloutConfig.enabled !== false 
+    : config?.features?.callout !== false;
+  
+  const calloutText = calloutConfig.text || 
+                     config?.calloutText || 
+                     config?.callout_text ||
+                     "Hi! 👋 Need help? I'm here to assist you.";
+  
+  const calloutDelay = calloutConfig.delay || 1000;
+  const calloutAutoDismiss = calloutConfig.auto_dismiss || false;
+  const calloutDismissTimeout = calloutConfig.dismiss_timeout || 30000;
 
   const isDoubleInput = config?.features?.uploads || config?.features?.voice;
+
+  // 🔧 FIXED: All callout useEffects BEFORE early return to respect hooks rules
+  useEffect(() => {
+    if (config && !isOpen && calloutEnabled && !calloutDismissed && !hasOpenedChat) {
+      const timer = setTimeout(() => {
+        setShowCallout(true);
+      }, calloutDelay);
+      
+      return () => clearTimeout(timer);
+    } else {
+      setShowCallout(false);
+    }
+  }, [config, isOpen, calloutEnabled, calloutDismissed, hasOpenedChat, calloutDelay]);
+
+  useEffect(() => {
+    if (config && showCallout && calloutAutoDismiss && calloutDismissTimeout > 0 && !calloutAutoDismissedRef.current) {
+      const dismissTimer = setTimeout(() => {
+        setShowCallout(false);
+        calloutAutoDismissedRef.current = true;
+      }, calloutDismissTimeout);
+      
+      return () => clearTimeout(dismissTimer);
+    }
+  }, [config, showCallout, calloutAutoDismiss, calloutDismissTimeout]);
+
+  useEffect(() => {
+    if (config && window.parent && window.parent !== window) {
+      const calloutData = {
+        visible: showCallout,
+        width: showCallout ? 300 : 0,
+        height: showCallout ? 60 : 0,
+        text: calloutText,
+        enabled: calloutEnabled
+      };
+      
+      notifyParentEvent('CALLOUT_STATE_CHANGE', {
+        calloutConfig: calloutData
+      });
+    }
+  }, [config, showCallout, calloutText, calloutEnabled, notifyParentEvent]);
 
   // Don't render anything if config is still loading to prevent null reference errors
   if (!config) {
@@ -490,10 +495,13 @@ function ChatWidget() {
       {/* Chat container - Show when open */}
       {isOpen && (
         <div className="chat-container" data-input-mode={isDoubleInput ? "double" : "single"}>
-          <ChatHeader onClose={() => {
-            console.log('🔄 Header close clicked - calling handleToggle');
-            handleToggle(); // Use handleToggle to properly notify parent and handle state
-          }} />
+          <ChatHeader 
+            onClose={() => {
+              console.log('🔄 Header close clicked - calling handleToggle');
+              handleToggle(); // Use handleToggle to properly notify parent and handle state
+            }}
+            onOpenSettings={() => setShowStateManagement(true)}
+          />
 
           <div ref={chatWindowRef} className="chat-window">
             <div className="chat-header-spacer" />
@@ -505,12 +513,16 @@ function ChatWidget() {
                   ref={isLastMessage ? lastMessageRef : null}
                 >
                   <MessageBubble 
+                    id={msg.id}
                     role={msg.role} 
                     content={msg.content}
                     files={msg.files}
                     actions={msg.actions}
                     uploadState={msg.uploadState}
                     onCancel={msg.onCancel}
+                    isStreaming={msg.isStreaming}
+                    metadata={msg.metadata}
+                    renderMode={renderMode}
                   />
                 </div>
               );
@@ -530,6 +542,12 @@ function ChatWidget() {
           </div>
         </div>
       )}
+
+      {/* Phase 3.4: State Management Panel */}
+      <StateManagementPanel 
+        isOpen={showStateManagement} 
+        onClose={() => setShowStateManagement(false)} 
+      />
     </div>
   );
 }

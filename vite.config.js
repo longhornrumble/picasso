@@ -1,144 +1,182 @@
-// vite.config.js
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import cssInjectedByJsPlugin from 'vite-plugin-css-injected-by-js';
 import { resolve } from 'path';
 
-export default defineConfig(({ mode }) => {
-  const isProduction = mode === 'production';
+// Environment-specific configuration
+const ENVIRONMENT_CONFIG = {
+  development: {
+    API_BASE_URL: 'http://localhost:3000/api',
+    WIDGET_DOMAIN: 'http://localhost:5173',
+    CONFIG_DOMAIN: 'https://picasso-staging.s3.amazonaws.com'
+  },
+  staging: {
+    API_BASE_URL: 'https://xkjbyi3ushhuiytcfbuk5uaqom0ivhfk.lambda-url.us-east-1.on.aws',
+    WIDGET_DOMAIN: 'https://picassostaging.s3.amazonaws.com',
+    CONFIG_DOMAIN: 'https://picasso-staging.s3.amazonaws.com'
+  },
+  production: {
+    API_BASE_URL: 'https://api.myrecruiter.ai',
+    WIDGET_DOMAIN: 'https://chat.myrecruiter.ai',
+    CONFIG_DOMAIN: 'https://picasso-production.s3.amazonaws.com'
+  }
+};
+
+export default defineConfig(({ command, mode }) => {
+  // Determine build environment
+  const environment = process.env.VITE_ENVIRONMENT || mode || 'production';
+  const isProduction = command === 'build';
+  const isDevelopment = command === 'serve' || environment === 'development';
+  
+  console.log(`🏗️ Building for environment: ${environment.toUpperCase()}`);
+  console.log(`📦 Build mode: ${isProduction ? 'PRODUCTION' : 'DEVELOPMENT'}`);
+  
+  const envConfig = ENVIRONMENT_CONFIG[environment] || ENVIRONMENT_CONFIG.production;
+  
+  // Define environment variables for injection
+  const defineVars = {
+    __ENVIRONMENT__: JSON.stringify(environment),
+    __API_BASE_URL__: JSON.stringify(envConfig.API_BASE_URL),
+    __WIDGET_DOMAIN__: JSON.stringify(envConfig.WIDGET_DOMAIN),
+    __CONFIG_DOMAIN__: JSON.stringify(envConfig.CONFIG_DOMAIN),
+    __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
+    __VERSION__: JSON.stringify(process.env.npm_package_version || '2.0.0')
+  };
+  
+  console.log('🌐 Environment variables:', defineVars);
 
   return {
     plugins: [
       react({
-        fastRefresh: true,
-        include: "**/*.{jsx,tsx}",
+        jsxRuntime: 'automatic'
       }),
+      
+      // Inject CSS into JS for better widget loading
+      cssInjectedByJsPlugin({
+        topExecutionPriority: false,
+        jsAssetsFilterFunction: function customJsAssetsfilterFunction(outputChunk) {
+          // Only inject CSS for widget and iframe entry points
+          return outputChunk.name === 'widget' || outputChunk.name === 'iframe';
+        }
+      })
     ],
+
+    // Environment variable definitions
+    define: defineVars,
 
     // Development server configuration
     server: {
       port: 5173,
-      host: true,
+      host: '0.0.0.0',
       cors: true,
-      headers: {
-        'X-Frame-Options': 'SAMEORIGIN',
-        'X-Content-Type-Options': 'nosniff',
-        'Referrer-Policy': 'strict-origin-when-cross-origin',
-        'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=()',
-        'Content-Security-Policy': "frame-ancestors 'self' http://localhost:* https://localhost:*"
-      },
-      proxy: {
-        '/Master_Function': {
-          target: 'https://chat.myrecruiter.ai',
-          changeOrigin: true,
-          secure: true,
-          rewrite: (path) => path,
-          configure: (proxy, options) => {
-            proxy.on('proxyReq', (proxyReq, req, res) => {
-              console.log('🔄 Proxying request:', req.url);
-            });
-            proxy.on('proxyRes', (proxyRes, req, res) => {
-              console.log('✅ Proxy response:', proxyRes.statusCode);
-            });
-          }
-        }
+      open: false,
+      hmr: {
+        port: 5173
       }
     },
-    
-    // Make widget-loader.js available at root
-    publicDir: 'public',
 
+    // Preview server (for testing builds)
+    preview: {
+      port: 3000,
+      host: '0.0.0.0',
+      cors: true
+    },
+
+    // Build configuration
     build: {
-      target: 'esnext',
-      outDir: 'dist',
+      outDir: `dist/${environment}`,
       emptyOutDir: true,
-      minify: isProduction ? 'terser' : 'esbuild',
-      terserOptions: isProduction ? {
-        compress: {
-          drop_console: true,      // Remove all console.* statements
-          drop_debugger: true,     // Remove debugger statements
-          pure_funcs: ['console.log', 'console.info', 'console.debug', 'console.warn'],
-          passes: 2,               // Run compress passes twice for better optimization
-        },
-        mangle: {
-          safari10: true,          // Work around Safari 10/11 bugs
-        },
-        format: {
-          comments: false,         // Remove all comments
-        },
-      } : undefined,
-      sourcemap: isProduction ? false : 'inline',
-      cssCodeSplit: true,
-
+      
+      // Rollup options for multi-entry builds
       rollupOptions: {
         input: {
-          main: 'src/main.jsx', // For the host page
-          iframe: 'src/iframe-main.jsx', // For the widget iframe
-          'widget-frame': resolve(__dirname, 'widget-frame.html'),
+          // Widget entry point (host script)
+          widget: resolve(__dirname, 'src/widget-standalone.js'),
+          // Iframe entry point (React app)
+          iframe: resolve(__dirname, 'src/iframe-main.jsx')
         },
+        
         output: {
-          // Consistent naming for predictable script tags
-          entryFileNames: 'assets/[name].js',
-          chunkFileNames: 'assets/[name]-[hash].js',
-          assetFileNames: 'assets/[name]-[hash][extname]',
-          
-          // Disable code splitting for iframe to fix module loading issues
-          // This ensures all dependencies are bundled into a single file
-          manualChunks: (id, { getModuleInfo }) => {
-            // Check if this module is imported by iframe entry
-            const isIframeModule = (modulePath) => {
-              if (modulePath.includes('iframe-main.jsx')) return true;
-              const info = getModuleInfo(modulePath);
-              if (!info || !info.importers) return false;
-              return info.importers.some(imp => isIframeModule(imp));
-            };
-            
-            // If this module is part of the iframe entry, don't split it
-            if (isIframeModule(id)) {
-              return undefined; // Return undefined to keep in the main chunk
-            }
-            
-            // For the main entry point, we can still do code splitting
-            if (id.includes('node_modules/react')) {
-              return 'vendor-react';
-            }
-            if (id.includes('node_modules/marked') || id.includes('node_modules/dompurify')) {
-              return 'vendor-libs';
-            }
-            if (id.includes('node_modules')) {
-              return 'vendor';
-            }
+          // Place files in assets directory
+          assetFileNames: 'assets/[name].[hash].[ext]',
+          chunkFileNames: 'assets/[name].[hash].js',
+          entryFileNames: (chunkInfo) => {
+            // Widget goes to assets/widget.js, iframe goes to assets/iframe.js
+            return `assets/${chunkInfo.name}.js`;
           },
+          
+          // Optimize for widget loading
+          manualChunks: {
+            // Keep React separate for better caching
+            'react-vendor': ['react', 'react-dom'],
+            // Keep DOMPurify separate (security-critical)
+            'security': ['dompurify']
+          }
         },
+        
+        // External dependencies (none for widget - we bundle everything)
+        external: []
       },
-      copyPublicDir: true,
-      chunkSizeWarningLimit: 600,
-      logLevel: 'info',
+
+      // Production optimizations
+      minify: isProduction ? 'terser' : false,
+      terserOptions: isProduction ? {
+        compress: {
+          drop_console: ['log', 'debug', 'info'],
+          drop_debugger: true,
+          pure_funcs: ['console.log', 'console.debug', 'console.info']
+        },
+        mangle: {
+          safari10: true
+        }
+      } : undefined,
+
+      // Source maps for debugging
+      sourcemap: isDevelopment ? true : false,
+
+      // Target modern browsers
+      target: 'es2018',
+
+      // Size limits and warnings
+      chunkSizeWarningLimit: 500
     },
 
-    define: {
-      'process.env.NODE_ENV': JSON.stringify(isProduction ? 'production' : 'development'),
-      __PICASSO_VERSION__: JSON.stringify(process.env.npm_package_version || '2.0.0'),
-    },
-
+    // Resolve configuration
     resolve: {
       alias: {
-        '@': resolve(__dirname, './src'),
-        '/widget.js': resolve(__dirname, 'src/widget/widget-loader.js'),
-      },
+        '@': resolve(__dirname, 'src'),
+        '@components': resolve(__dirname, 'src/components'),
+        '@utils': resolve(__dirname, 'src/utils'),
+        '@styles': resolve(__dirname, 'src/styles'),
+        '@config': resolve(__dirname, 'src/config')
+      }
     },
 
-    test: {
-      globals: true,
-      environment: 'jsdom',
-      setupFiles: './src/test/setup.js',
-      coverage: {
-        provider: 'v8',
-        reporter: ['text', 'json', 'html'],
+    // CSS configuration
+    css: {
+      postcss: {
+        plugins: []
       },
+      modules: {
+        // Disable CSS modules - we use regular CSS with proper isolation
+        localsConvention: 'camelCase'
+      }
     },
-    
+
+    // Optimization
     optimizeDeps: {
-      include: ['react', 'react-dom', 'marked', 'dompurify', 'prop-types'],
+      include: [
+        'react',
+        'react-dom',
+        'dompurify',
+        'marked'
+      ],
+      exclude: []
     },
+
+    // Base path configuration for different environments
+    // In development: serve from root
+    // In production builds: assets will be in dist/{environment}/ but served from /{environment}/
+    base: isDevelopment ? '/' : `./`
   };
 });

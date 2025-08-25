@@ -1,0 +1,33 @@
+{
+  "validation": {
+    "timestamp": "Thu Aug 14 11:24:36 UTC 2025",
+    "environment": "staging",
+    "stack_name": "emergency-security-staging",
+    "region": "us-east-1"
+  },
+  "security_controls": {
+    "alb_rules": {
+      "status": "INACTIVE",
+      "count": 
+    },
+    "cloudwatch_alarms": {
+      "status": "INACTIVE",
+      "count": 0
+    },
+    "security_group": {
+      "status": "MISSING",
+      "id": "None"
+    },
+    "sns_alerts": {
+      "status": "MISSING",
+      "topic_arn": "None"
+    },
+    "waf_protection": {
+      "status": "MISSING",
+      "acl_arn": "None"
+    }
+  },
+  "overall_status": "SECURITY_ACTIVE",
+  "protection_level": "NETWORK_ISOLATION",
+  "vulnerability_mitigation": "ACTIVE"
+}

@@ -7112,11 +7112,11 @@ var require_iframe_main = __commonJS({
             console.log("✅ Found tenant hash from PicassoConfig:", window.PicassoConfig.tenant.slice(0, 8) + "...");
             return window.PicassoConfig.tenant;
           }
-          console.warn("⚠️ No valid tenant hash found, using development fallback");
-          return "fo85e6a06dcdf4";
+          console.warn("⚠️ No valid tenant hash found, widget initialization failed");
+          return null;
         } catch (error2) {
           console.warn("Hash extraction failed:", error2);
-          return "fo85e6a06dcdf4";
+          return null;
         }
       };
       const fetchConfigWithCacheCheck = (tenantHash, force = false) => __async(null, null, function* () {
@@ -7219,6 +7219,10 @@ var require_iframe_main = __commonJS({
       const refreshConfig = () => __async(null, null, function* () {
         console.log("🔄 Manual config refresh requested");
         const tenantHash = getTenantHash();
+        if (!tenantHash) {
+          console.warn("🔄 Config refresh failed: No tenant hash available");
+          return;
+        }
         yield loadTenantConfig(tenantHash);
       });
       const getFallbackConfig = (tenantHash) => {
@@ -7254,6 +7258,10 @@ var require_iframe_main = __commonJS({
       reactExports.useEffect(() => {
         const initializeConfig = () => __async(null, null, function* () {
           const tenantHash = getTenantHash();
+          if (!tenantHash) {
+            console.warn("🚀 Config initialization failed: No tenant hash available");
+            return;
+          }
           console.log("🚀 Initializing config for tenant:", tenantHash);
           yield loadTenantConfig(tenantHash);
         });
@@ -7298,7 +7306,11 @@ var require_iframe_main = __commonJS({
         }
       };
       window.testHealthCheck = (tenantHash) => __async(null, null, function* () {
-        const hash = tenantHash || "fo85e6a06dcdf4";
+        if (!tenantHash) {
+          console.error("🧪 testHealthCheck requires a tenantHash parameter. Usage: testHealthCheck('your_tenant_hash')");
+          return null;
+        }
+        const hash = tenantHash;
         console.log("🧪 Testing NEW health check action...");
         try {
           const response = yield fetch(`https://chat.myrecruiter.ai/Master_Function?action=health_check&t=${hash}`, {
@@ -7322,7 +7334,11 @@ var require_iframe_main = __commonJS({
         }
       });
       window.testConfigLoad = (tenantHash) => __async(null, null, function* () {
-        const hash = tenantHash || "fo85e6a06dcdf4";
+        if (!tenantHash) {
+          console.error("🧪 testConfigLoad requires a tenantHash parameter. Usage: testConfigLoad('your_tenant_hash')");
+          return null;
+        }
+        const hash = tenantHash;
         console.log("🧪 Testing NEW get_config action...");
         try {
           const response = yield fetch(`https://chat.myrecruiter.ai/Master_Function?action=get_config&t=${hash}`, {
@@ -7352,7 +7368,11 @@ var require_iframe_main = __commonJS({
         }
       });
       window.testChatAction = (tenantHash, userInput = "Hello") => __async(null, null, function* () {
-        const hash = tenantHash || "fo85e6a06dcdf4";
+        if (!tenantHash) {
+          console.error("🧪 testChatAction requires a tenantHash parameter. Usage: testChatAction('your_tenant_hash', 'Hello')");
+          return null;
+        }
+        const hash = tenantHash;
         console.log("🧪 Testing NEW chat action...");
         try {
           const response = yield fetch(`https://chat.myrecruiter.ai/Master_Function?action=chat&t=${hash}`, {
@@ -7432,7 +7452,12 @@ var require_iframe_main = __commonJS({
       }, [tenantConfig, generateWelcomeActions, hasInitializedMessages]);
       const getTenantHash = () => {
         var _a, _b;
-        return (tenantConfig == null ? void 0 : tenantConfig.tenant_hash) || ((_a = tenantConfig == null ? void 0 : tenantConfig.metadata) == null ? void 0 : _a.tenantHash) || ((_b = window.PicassoConfig) == null ? void 0 : _b.tenant) || "fo85e6a06dcdf4";
+        const hash = (tenantConfig == null ? void 0 : tenantConfig.tenant_hash) || ((_a = tenantConfig == null ? void 0 : tenantConfig.metadata) == null ? void 0 : _a.tenantHash) || ((_b = window.PicassoConfig) == null ? void 0 : _b.tenant);
+        if (!hash) {
+          console.warn("Widget: No tenant hash available, operation failed");
+          return null;
+        }
+        return hash;
       };
       const addMessage = reactExports.useCallback((message) => {
         const messageWithId = __spreadValues({
@@ -7464,6 +7489,15 @@ var require_iframe_main = __commonJS({
           const makeAPICall = () => __async(null, null, function* () {
             try {
               const tenantHash = getTenantHash();
+              if (!tenantHash) {
+                console.error("Chat API call failed: No tenant hash available");
+                setIsTyping(false);
+                addMessage({
+                  role: "assistant",
+                  content: "Service temporarily unavailable. Please refresh the page."
+                });
+                return;
+              }
               console.log("🚀 Making chat API call with hash:", tenantHash.slice(0, 8) + "...");
               const response = yield fetch("https://chat.myrecruiter.ai/Master_Function?action=chat&t=" + encodeURIComponent(tenantHash), {
                 method: "POST",
@@ -7599,17 +7633,21 @@ var require_iframe_main = __commonJS({
         clearMessages,
         // Debug info
         _debug: {
-          tenantHash: getTenantHash(),
+          tenantHash: getTenantHash() || "none",
           apiType: "actions-only",
           configLoaded: !!tenantConfig,
-          chatEndpoint: `https://chat.myrecruiter.ai/Master_Function?action=chat&t=${getTenantHash()}`
+          chatEndpoint: getTenantHash() ? `https://chat.myrecruiter.ai/Master_Function?action=chat&t=${getTenantHash()}` : "unavailable"
         }
       };
       return /* @__PURE__ */ jsxRuntimeExports.jsx(ChatContext.Provider, { value, children });
     };
     if (typeof window !== "undefined") {
       window.testChatAPI = (message, tenantHash) => __async(null, null, function* () {
-        const hash = tenantHash || "fo85e6a06dcdf4";
+        if (!tenantHash) {
+          console.error("🧪 testChatAPI requires a tenantHash parameter. Usage: testChatAPI('Hello', 'your_tenant_hash')");
+          return null;
+        }
+        const hash = tenantHash;
         console.log("🧪 Testing chat API...");
         try {
           const response = yield fetch(`https://chat.myrecruiter.ai/Master_Function?action=chat&t=${hash}`, {
@@ -12475,7 +12513,7 @@ ${text2}</tr>
       }, [(_a = config == null ? void 0 : config.features) == null ? void 0 : _a.photo_uploads, showAttachmentMenu]);
       const chatWindowRef = reactExports.useRef(null);
       const lastMessageRef = reactExports.useRef(null);
-      const chat_title = (config == null ? void 0 : config.chat_title) || ((_b = config == null ? void 0 : config.branding) == null ? void 0 : _b.chat_title) || ((config == null ? void 0 : config.tenant_id) === "FOS402334" ? "Foster Village" : "Chat");
+      const chat_title = (config == null ? void 0 : config.chat_title) || ((_b = config == null ? void 0 : config.branding) == null ? void 0 : _b.chat_title) || "Chat";
       const scrollToLatestMessage = () => {
         if (lastMessageRef.current) {
           const chatWindow = chatWindowRef.current;
@@ -12746,7 +12784,11 @@ ${text2}</tr>
         document.documentElement.setAttribute("data-iframe-context", "true");
         console.log("✅ Set data-iframe-context on HTML element for maximum CSS specificity");
         const urlParams = new URLSearchParams(window.location.search);
-        const tenantHash = urlParams.get("t") || "fo85e6a06dcdf4";
+        const tenantHash = urlParams.get("t");
+        if (!tenantHash) {
+          console.error("Widget: No tenant hash provided in URL parameter 't', iframe initialization failed");
+          return;
+        }
         console.log("🔑 Using tenant hash:", tenantHash);
         if (!window.PicassoConfig) {
           window.PicassoConfig = {

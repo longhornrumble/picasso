@@ -1,0 +1,98 @@
+{
+  "validation_timestamp": "2025-08-14T05:53:17.435810",
+  "total_tests": 10,
+  "passed_tests": 6,
+  "failed_tests": 4,
+  "success_rate": "60.0%",
+  "cross_tenant_access_rate": "0.0%",
+  "test_duration_seconds": 0.23,
+  "security_status": "VULNERABLE",
+  "detailed_results": [
+    {
+      "test_name": "Staging hash blocked from production",
+      "success": false,
+      "timestamp": "2025-08-14T05:53:17.082678",
+      "details": {
+        "status_code": 200,
+        "error": "Staging hash accessed production"
+      }
+    },
+    {
+      "test_name": "Cross-tenant hash validation",
+      "success": true,
+      "timestamp": "2025-08-14T05:53:17.203053",
+      "details": {
+        "success_count": 5,
+        "total_attempts": 5,
+        "success_rate": "100.0%"
+      }
+    },
+    {
+      "test_name": "Environment configuration isolation",
+      "success": false,
+      "timestamp": "2025-08-14T05:53:17.203568",
+      "details": {
+        "error": "No module named 'environment'"
+      }
+    },
+    {
+      "test_name": "JWT tenant enforcement code",
+      "success": true,
+      "timestamp": "2025-08-14T05:53:17.204124",
+      "details": {
+        "security_checks_passed": 4
+      }
+    },
+    {
+      "test_name": "Security monitoring active",
+      "success": true,
+      "timestamp": "2025-08-14T05:53:17.204882",
+      "details": {
+        "monitoring_functions": 5
+      }
+    },
+    {
+      "test_name": "Staging hash blocked from production",
+      "success": false,
+      "timestamp": "2025-08-14T05:53:17.422501",
+      "details": {
+        "status_code": 200,
+        "error": "Staging hash accessed production"
+      }
+    },
+    {
+      "test_name": "Cross-tenant hash validation",
+      "success": true,
+      "timestamp": "2025-08-14T05:53:17.435093",
+      "details": {
+        "success_count": 5,
+        "total_attempts": 5,
+        "success_rate": "100.0%"
+      }
+    },
+    {
+      "test_name": "Environment configuration isolation",
+      "success": false,
+      "timestamp": "2025-08-14T05:53:17.435467",
+      "details": {
+        "error": "No module named 'environment'"
+      }
+    },
+    {
+      "test_name": "JWT tenant enforcement code",
+      "success": true,
+      "timestamp": "2025-08-14T05:53:17.435623",
+      "details": {
+        "security_checks_passed": 4
+      }
+    },
+    {
+      "test_name": "Security monitoring active",
+      "success": true,
+      "timestamp": "2025-08-14T05:53:17.435800",
+      "details": {
+        "monitoring_functions": 5
+      }
+    }
+  ]
+}

@@ -1,0 +1,666 @@
+/**
+ * ChatProvider - Orchestration Layer and Unified Interface
+ * 
+ * Composes all distributed providers in proper dependency order and maintains
+ * backward compatibility through the unified useChat() hook. Provides the same
+ * interface as the original ChatProvider while leveraging the distributed
+ * architecture benefits.
+ */
+
+/// <reference path="../types/window.d.ts" />
+import * as React from 'react';
+const { createContext, useContext, useCallback, useEffect, useRef, useState, useMemo } = React;
+import { useConfig } from '../hooks/useConfig';
+import { config as environmentConfig } from '../config/environment';
+import { useStreaming } from '../hooks/useStreaming';
+import { validateStreamingEndpoint, quickStreamingHealthCheck } from '../utils/streamingValidator';
+import { 
+  errorLogger, 
+  performanceMonitor, 
+  classifyError, 
+  shouldRetry, 
+  getBackoffDelay, 
+  getUserFriendlyMessage 
+} from '../utils/errorHandling';
+
+// Import distributed providers
+import { ChatStateProvider, useChatState } from './ChatStateProvider';
+import { ChatAPIProvider, useChatAPI } from './ChatAPIProvider'; 
+import { ChatStreamingProvider, useChatStreaming } from './ChatStreamingProvider';
+import { ChatContentProvider, useChatContent } from './ChatContentProvider';
+import { ChatMonitoringProvider, useChatMonitoring } from './ChatMonitoringProvider';
+import { ChatDebugProvider, useChatDebug } from './ChatDebugProvider';
+
+import type { ReactNode } from 'react';
+import type { ValidTenantHash } from '../types/security';
+import type { Duration } from '../types/branded';
+import { createDuration } from '../types/branded';
+
+/* ===== INTERFACES ===== */
+
+/**
+ * Unified Chat Interface - Maintains backward compatibility
+ * This interface must match exactly what the existing useChat() hook returns
+ */
+export interface UnifiedChatInterface {
+  // Core state
+  messages: any[];
+  isTyping: boolean;
+  tenantConfig: any;
+  isOnline: boolean;
+  pendingRetries: Map<string, any>;
+  hasInitializedMessages: boolean;
+  welcomeMessage: string;
+
+  // Core actions
+  addMessage: (message: any) => void;
+  updateMessage: (id: string, updates: any) => void;
+  clearMessages: () => void;
+  retryMessage: (messageId: string) => Promise<void>;
+
+  // Streaming
+  isStreaming: boolean;
+  streamingEnabled: boolean;
+
+  // Debug context (for development)
+  _debug: {
+    tenantHash: string | null;
+    apiType: string;
+    configLoaded: boolean;
+    chatEndpoint: string;
+    streamingSource: string;
+    streamingReason: string;
+    environment: string;
+    networkStatus: string;
+    pendingRetryCount: number;
+    streamingEnabled: boolean;
+    memoryStats: {
+      activeControllers: number;
+      activeTimeouts: number;
+      sessionDurationMinutes: number;
+      memoryGrowthAlerts: number;
+      errorLogStats: any;
+    };
+  };
+}
+
+export interface ChatProviderProps {
+  children: ReactNode;
+  tenantHash?: ValidTenantHash;
+  enableDebug?: boolean;
+  enableMonitoring?: boolean;
+  monitoringInterval?: Duration;
+}
+
+/* ===== STORAGE KEYS ===== */
+
+const STORAGE_KEYS = {
+  MESSAGES: 'picasso_chat_messages',
+  LAST_ACTIVITY: 'picasso_last_activity',
+  SESSION_ID: 'picasso_session_id'
+};
+
+const SESSION_TIMEOUT = 30 * 60 * 1000; // 30 minutes
+
+/* ===== CHAT ORCHESTRATOR IMPLEMENTATION ===== */
+
+const ChatOrchestratorImpl: React.FC<{ children: ReactNode }> = ({ children }) => {
+  // Use distributed providers
+  const stateProvider = useChatState();
+  const apiProvider = useChatAPI();
+  const streamingProvider = useChatStreaming();
+  const contentProvider = useChatContent();
+  const monitoringProvider = useChatMonitoring();
+  const debugProvider = useChatDebug();
+
+  // Original hook dependencies
+  const { config: tenantConfig } = useConfig();
+  
+  // Create streaming configuration
+  const streamingHookConfig = useMemo(() => ({
+    streamingEndpoint: tenantConfig?.streaming_endpoint,
+    tenantHash: tenantConfig?.tenant_hash,
+    onMessage: () => {},
+    onComplete: () => {},
+    onError: (error) => errorLogger.logError(error, { context: 'streaming_hook' })
+  }), [tenantConfig]);
+  
+  const streamingHookResult = useStreaming(streamingHookConfig);
+  const streamingEnabled = tenantConfig?.features?.streaming_enabled ?? true;
+  const streamingConfig = {
+    endpoint: tenantConfig?.streaming_endpoint,
+    source: 'chat_provider',
+    reason: 'user_interaction'
+  };
+
+  // Local state for backward compatibility
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [pendingRetries, setPendingRetries] = useState(new Map());
+  const [hasInitializedMessages, setHasInitializedMessages] = useState(false);
+
+  // Refs for cleanup tracking
+  const abortControllersRef = useRef(new Map());
+  const retryTimeoutsRef = useRef(new Map());
+  const sessionIdRef = useRef(null);
+
+  // Memory monitoring ref (for backward compatibility)
+  const memoryMonitorRef = useRef({
+    getSessionDuration: () => Date.now() - (sessionIdRef.current?.startTime || Date.now()),
+    getGrowthAlerts: () => 0
+  });
+
+  // Initialize session
+  useEffect(() => {
+    if (!sessionIdRef.current) {
+      sessionIdRef.current = {
+        id: `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        startTime: Date.now()
+      };
+      
+      try {
+        // Store just the session ID string for compatibility with tests
+        sessionStorage.setItem(STORAGE_KEYS.SESSION_ID, sessionIdRef.current.id);
+      } catch (error) {
+        errorLogger.logError(error, { context: 'session_initialization' });
+      }
+    }
+  }, []);
+
+  // Network status monitoring
+  useEffect(() => {
+    // Initialize with current navigator.onLine status
+    setIsOnline(navigator.onLine);
+    
+    const handleOnline = () => {
+      setIsOnline(true);
+      errorLogger.logInfo('Network status: online');
+    };
+    const handleOffline = () => {
+      setIsOnline(false);
+      errorLogger.logInfo('Network status: offline');
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  // Local state for testing and fallback
+  const [localMessages, setLocalMessages] = useState([]);
+  const [localIsTyping, setLocalIsTyping] = useState(false);
+
+  // Initialize welcome message and check for persisted messages
+  useEffect(() => {
+    if (tenantConfig && !hasInitializedMessages) {
+      // First check for persisted messages in sessionStorage
+      try {
+        const persistedMessages = sessionStorage.getItem('picasso_messages');
+        const lastActivity = sessionStorage.getItem('picasso_last_activity');
+        
+        if (persistedMessages && lastActivity) {
+          const messages = JSON.parse(persistedMessages);
+          const lastActivityTime = parseInt(lastActivity);
+          const now = Date.now();
+          
+          // Check if session is still valid (within 30 minutes)
+          if (now - lastActivityTime < SESSION_TIMEOUT && messages.length > 0) {
+            errorLogger.logInfo('🔄 Continuing previous conversation', {
+              messageCount: messages.length,
+              sessionId: sessionIdRef.current?.id
+            });
+            setLocalMessages(messages);
+            setHasInitializedMessages(true);
+            return;
+          }
+        }
+      } catch (error) {
+        errorLogger.logWarning('Failed to restore persisted messages', { error: error.message });
+      }
+
+      // No valid persisted messages, create welcome message
+      errorLogger.logInfo('🎬 Setting initial welcome message');
+      const welcomeActions = generateWelcomeActions(tenantConfig);
+      
+      // Use content provider to sanitize welcome message
+      const welcomeText = tenantConfig.welcome_message || "Hello! How can I help you today?";
+      
+      const welcomeMessage = {
+        id: "welcome",
+        role: "assistant",
+        content: welcomeText,
+        actions: welcomeActions,
+        timestamp: new Date().toISOString()
+      };
+
+      if (stateProvider && stateProvider.messageOps) {
+        // Check if we have existing messages
+        const existingMessages = stateProvider.messages || [];
+        
+        if (existingMessages.length > 0) {
+          errorLogger.logInfo('🔄 Continuing previous conversation from provider', {
+            messageCount: existingMessages.length,
+            sessionId: sessionIdRef.current?.id
+          });
+          setHasInitializedMessages(true);
+        } else {
+          // Add welcome message via state provider
+          stateProvider.messageOps.addMessage(welcomeMessage)
+            .then(() => {
+              setHasInitializedMessages(true);
+            })
+            .catch(error => {
+              errorLogger.logError(error, { context: 'welcome_message_via_provider' });
+              // Fallback to local state
+              setLocalMessages([welcomeMessage]);
+              setHasInitializedMessages(true);
+            });
+        }
+      } else {
+        // Fallback to local state (during initialization or testing)
+        setLocalMessages([welcomeMessage]);
+        setHasInitializedMessages(true);
+      }
+    }
+  }, [tenantConfig, hasInitializedMessages, stateProvider]);
+
+  // Helper function for generating welcome actions
+  const generateWelcomeActions = useCallback((config: any) => {
+    if (!config) return [];
+    
+    const actionChipsConfig = config.action_chips || {};
+    
+    if (!actionChipsConfig.enabled || !actionChipsConfig.show_on_welcome) {
+      return [];
+    }
+    
+    const chips = actionChipsConfig.default_chips || [];
+    const maxDisplay = actionChipsConfig.max_display || 3;
+    
+    return chips.slice(0, maxDisplay);
+  }, []);
+
+  // Retry message implementation
+  const retryMessage = useCallback(async (messageId: string) => {
+    const retryData = pendingRetries.get(messageId);
+    if (!retryData || !apiProvider) {
+      errorLogger.logWarning('No retry data found for message', { messageId });
+      return;
+    }
+    
+    errorLogger.logInfo(`🔄 Manual retry for message ${messageId}`);
+    
+    try {
+      // Use API provider to retry the request
+      const response = await apiProvider.sendMessage(retryData.originalMessage);
+      
+      if (response && stateProvider) {
+        // Process the response through content provider if available
+        let processedContent = response.content;
+        if (contentProvider) {
+          processedContent = await contentProvider.processAssistantMessage(response.content);
+        }
+
+        // Update the message with successful response
+        stateProvider.updateMessage(messageId, {
+          role: "assistant",
+          content: processedContent,
+          actions: response.actions || [],
+          timestamp: new Date().toISOString(),
+          metadata: {
+            ...response.metadata,
+            retry_success: true
+          }
+        });
+
+        // Clear the retry data
+        setPendingRetries(prev => {
+          const newMap = new Map(prev);
+          newMap.delete(messageId);
+          return newMap;
+        });
+
+        errorLogger.logInfo('✅ Retry successful for message', { messageId });
+      }
+    } catch (error) {
+      errorLogger.logError(error, {
+        messageId,
+        context: 'retry_failed',
+        retryData: {
+          attempt: retryData.attempt,
+          errorClassification: retryData.errorClassification
+        }
+      });
+      
+      // Update error message with retry failure
+      if (stateProvider) {
+        stateProvider.updateMessage(messageId, {
+          content: (error as Error).message,
+          metadata: {
+            retry_failed: true,
+            final_error: (error as Error).message
+          }
+        });
+      }
+    }
+  }, [pendingRetries, apiProvider, stateProvider, contentProvider]);
+
+  // Legacy-compatible helper methods
+  const getMessages = useCallback(() => {
+    if (stateProvider && stateProvider.messages && stateProvider.messages.length > 0) {
+      return [...stateProvider.messages];
+    }
+    // Fallback to local messages for testing/initialization
+    return [...localMessages];
+  }, [stateProvider, localMessages]);
+
+  const getIsTyping = useCallback(() => {
+    if (stateProvider && typeof stateProvider.isTyping === 'boolean') {
+      return stateProvider.isTyping;
+    }
+    // Fallback to local typing state
+    return localIsTyping;
+  }, [stateProvider, localIsTyping]);
+
+  const getStreamingState = useCallback(() => {
+    if (streamingProvider) {
+      return {
+        isStreaming: streamingProvider.isStreaming || false,
+        currentSession: streamingProvider.currentSession
+      };
+    }
+    return { isStreaming: false, currentSession: null };
+  }, [streamingProvider]);
+
+  // Unified interface implementation
+  const unifiedInterface: UnifiedChatInterface = useMemo(() => {
+    const messages = getMessages();
+    const isTyping = getIsTyping();
+    const streamingState = getStreamingState();
+    
+    return {
+      // Core state
+      messages,
+      isTyping,
+      tenantConfig,
+      isOnline,
+      pendingRetries,
+      hasInitializedMessages,
+      welcomeMessage: tenantConfig?.welcome_message || "Hello! How can I help you today?",
+
+      // Core actions
+      addMessage: (message: any) => {
+        const messageWithDefaults = {
+          ...message,
+          id: message.id || `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          timestamp: message.timestamp || new Date().toISOString(),
+          sender: message.role || message.sender || 'user',
+          type: message.type || 'text'
+        };
+        
+        // Try to use state provider first
+        if (stateProvider && stateProvider.messageOps) {
+          // Process user messages through content provider if available
+          if (message.role === 'user' && contentProvider) {
+            contentProvider.processUserMessage(message.content)
+              .then(processedContent => {
+                stateProvider.messageOps.addMessage({
+                  ...messageWithDefaults,
+                  content: processedContent
+                }).catch(error => {
+                  errorLogger.logError(error, { context: 'add_message_with_processing' });
+                  // Fallback to local state on error
+                  setLocalMessages(prev => [...prev, { ...messageWithDefaults, content: processedContent }]);
+                });
+              })
+              .catch(error => {
+                errorLogger.logError(error, { context: 'user_message_processing' });
+                // Fallback to unprocessed message in local state
+                setLocalMessages(prev => [...prev, messageWithDefaults]);
+              });
+          } else {
+            stateProvider.messageOps.addMessage(messageWithDefaults).catch(error => {
+              errorLogger.logError(error, { context: 'add_message_direct' });
+              // Fallback to local state on error
+              setLocalMessages(prev => [...prev, messageWithDefaults]);
+            });
+          }
+        } else {
+          // Fallback to local state (testing/initialization)
+          setLocalMessages(prev => {
+            const newMessages = [...prev, messageWithDefaults];
+            // Persist to sessionStorage
+            try {
+              sessionStorage.setItem('picasso_messages', JSON.stringify(newMessages));
+              sessionStorage.setItem('picasso_last_activity', Date.now().toString());
+            } catch (error) {
+              errorLogger.logError(error, { context: 'local_message_persistence' });
+            }
+            return newMessages;
+          });
+        }
+      },
+
+      updateMessage: (id: string, updates: any) => {
+        if (stateProvider?.messageOps?.updateMessage) {
+          stateProvider.messageOps.updateMessage(id, updates).catch(error => {
+            errorLogger.logError(error, { context: 'update_message' });
+          });
+        }
+      },
+
+      clearMessages: () => {
+        if (stateProvider?.messageOps?.clearMessages) {
+          stateProvider.messageOps.clearMessages().catch(error => {
+            errorLogger.logError(error, { context: 'clear_messages' });
+            // Fallback to local state on error
+            setLocalMessages([]);
+          });
+        } else {
+          // Fallback to local state (testing/initialization)
+          setLocalMessages([]);
+        }
+        // Keep hasInitializedMessages as true to prevent welcome message from being re-added
+      },
+
+      retryMessage,
+
+      // Streaming
+      isStreaming: streamingState?.isStreaming || false,
+      streamingEnabled: streamingEnabled || false,
+
+      // Debug context (for development)
+      _debug: {
+        tenantHash: tenantConfig?.tenant_hash || null,
+        apiType: streamingEnabled ? 'streaming' : 'actions-only',
+        configLoaded: !!tenantConfig,
+        chatEndpoint: streamingEnabled 
+          ? streamingConfig?.endpoint 
+          : 'https://chat.myrecruiter.ai/Master_Function?action=chat',
+        streamingSource: streamingConfig?.source || 'unknown',
+        streamingReason: streamingConfig?.reason || 'unknown',
+        environment: environmentConfig.ENVIRONMENT,
+        networkStatus: isOnline ? 'online' : 'offline',
+        pendingRetryCount: pendingRetries.size,
+        streamingEnabled: streamingEnabled || false,
+        memoryStats: {
+          activeControllers: abortControllersRef.current.size,
+          activeTimeouts: retryTimeoutsRef.current.size,
+          sessionDurationMinutes: Math.round(memoryMonitorRef.current.getSessionDuration() / (1000 * 60)),
+          memoryGrowthAlerts: memoryMonitorRef.current.getGrowthAlerts(),
+          errorLogStats: errorLogger.getMemoryStats()
+        }
+      }
+    };
+  }, [
+    stateProvider,
+    streamingProvider,
+    contentProvider,
+    tenantConfig,
+    isOnline,
+    pendingRetries,
+    hasInitializedMessages,
+    streamingEnabled,
+    streamingConfig,
+    retryMessage
+  ]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      // Cleanup abort controllers
+      abortControllersRef.current.forEach(controller => {
+        try {
+          controller.abort();
+        } catch (error) {
+          errorLogger.logError(error, { context: 'cleanup_abort_controller' });
+        }
+      });
+      abortControllersRef.current.clear();
+
+      // Cleanup retry timeouts
+      retryTimeoutsRef.current.forEach(timeoutId => {
+        try {
+          clearTimeout(timeoutId);
+        } catch (error) {
+          errorLogger.logError(error, { context: 'cleanup_retry_timeout' });
+        }
+      });
+      retryTimeoutsRef.current.clear();
+    };
+  }, []);
+
+  // Expose debug context to window for development
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'development' && typeof window !== 'undefined') {
+      window.debugChatContext = unifiedInterface._debug;
+    }
+  }, [unifiedInterface._debug]);
+
+  return (
+    <UnifiedChatContext.Provider value={unifiedInterface}>
+      {children}
+    </UnifiedChatContext.Provider>
+  );
+};
+
+/* ===== CONTEXT SETUP ===== */
+
+const UnifiedChatContext = createContext<UnifiedChatInterface | null>(null);
+
+/* ===== PROVIDER COMPOSITION ===== */
+
+export const ChatProvider: React.FC<ChatProviderProps> = ({
+  children,
+  tenantHash,
+  enableDebug = process.env.NODE_ENV === 'development',
+  enableMonitoring = true,
+  monitoringInterval = createDuration(30000) // 30 seconds
+}) => {
+  // Full distributed provider composition
+  return (
+    <ChatMonitoringProvider
+      enableMonitoring={enableMonitoring}
+      monitoringInterval={monitoringInterval}
+    >
+      <ChatContentProvider>
+        <ChatStreamingProvider>
+          <ChatAPIProvider>
+            <ChatStateProvider>
+              <ChatDebugProvider enableDebug={enableDebug}>
+                <ChatOrchestratorImpl>
+                  {children}
+                </ChatOrchestratorImpl>
+              </ChatDebugProvider>
+            </ChatStateProvider>
+          </ChatAPIProvider>
+        </ChatStreamingProvider>
+      </ChatContentProvider>
+    </ChatMonitoringProvider>
+  );
+};
+
+/* ===== UNIFIED useChat HOOK ===== */
+
+/**
+ * Unified useChat hook - maintains exact backward compatibility
+ * This hook provides the same interface as the original ChatProvider
+ */
+export const useChat = (): UnifiedChatInterface => {
+  const context = useContext(UnifiedChatContext);
+  if (!context) {
+    throw new Error("useChat must be used within a ChatProvider");
+  }
+  return context;
+};
+
+/* ===== CONTEXT EXPORT FOR COMPATIBILITY ===== */
+
+/**
+ * Export function for backward compatibility with existing imports
+ */
+export const getChatContext = () => {
+  return UnifiedChatContext;
+};
+
+/* ===== DEVELOPMENT UTILITIES ===== */
+
+// Re-expose development utilities for backward compatibility
+if (process.env.NODE_ENV === 'development' && typeof window !== 'undefined') {
+  // Test API functions
+  window.testChatAPI = async (message: string, tenantHash?: string) => {
+    try {
+      console.log('🧪 Testing Chat API with message:', message);
+      // Would integrate with the actual API provider
+      return { success: true, message: 'Test functionality moved to distributed providers' };
+    } catch (error) {
+      errorLogger.logError(error, { context: 'chat_api_test_error' });
+      return null;
+    }
+  };
+
+  // Quick test commands
+  window.testVolunteer = () => window.testChatAPI("I want to volunteer");
+  window.testDonate = () => window.testChatAPI("How can I donate?");
+  window.testContact = () => window.testChatAPI("How do I contact you?");
+  window.testServices = () => window.testChatAPI("What services do you offer?");
+
+  // Memory leak detection
+  window.startMemoryLeakDetection = () => {
+    console.log('🔍 Memory leak detection has been moved to ChatMonitoringProvider');
+    console.log('Use the monitoring provider APIs for memory tracking');
+  };
+
+  window.debugGetActiveControllers = () => {
+    return window.debugChatContext?.memoryStats?.activeControllers || 0;
+  };
+
+  window.debugGetActiveTimeouts = () => {
+    return window.debugChatContext?.memoryStats?.activeTimeouts || 0;
+  };
+
+  errorLogger.logInfo('🛠️ Chat API test commands available (distributed architecture)', {
+    commands: ['testChatAPI', 'testVolunteer', 'testDonate', 'testContact', 'testServices'],
+    note: 'Advanced debugging moved to individual providers'
+  });
+}
+
+/* ===== EXPORTS ===== */
+
+export default ChatProvider;
+
+// Export the orchestrator for direct use if needed
+export { ChatOrchestratorImpl };
+
+// Export all provider hooks for advanced usage
+export {
+  useChatState,
+  useChatAPI,
+  useChatStreaming,
+  useChatContent,
+  useChatMonitoring,
+  useChatDebug
+};

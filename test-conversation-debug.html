@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Conversation Debug Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 2rem;
+            background: #f5f5f5;
+        }
+        .test-controls {
+            background: white;
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+        }
+        button {
+            margin: 0.5rem;
+            padding: 0.5rem 1rem;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .logs {
+            background: #1e1e1e;
+            color: #fff;
+            padding: 1rem;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 12px;
+            height: 400px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <h1>Conversation Persistence Debug Test</h1>
+    
+    <div class="test-controls">
+        <h3>Widget Controls</h3>
+        <button onclick="openWidget()">Open Widget</button>
+        <button onclick="closeWidget()">Close Widget</button>
+        <button onclick="clearStorage()">Clear Storage</button>
+        <button onclick="checkConversationState()">Check Conversation State</button>
+        <button onclick="sendTestMessage()">Send Test Message</button>
+    </div>
+    
+    <div class="test-controls">
+        <h3>Console Logs</h3>
+        <div id="logs" class="logs">Waiting for logs...</div>
+    </div>
+
+    <!-- Widget Script in development mode to test conversation logic -->
+    <script 
+        src="http://localhost:5173/current-widget.js" 
+        data-tenant="my87674d777bf9">
+    </script>
+
+    <script>
+        // Console log capture
+        const logsDiv = document.getElementById('logs');
+        const originalLog = console.log;
+        const originalError = console.error;
+        const originalWarn = console.warn;
+
+        function addToLogs(level, ...args) {
+            const timestamp = new Date().toISOString().slice(11, 23);
+            const message = args.map(arg => 
+                typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+            ).join(' ');
+            logsDiv.textContent += `[${timestamp}] ${level}: ${message}\n`;
+            logsDiv.scrollTop = logsDiv.scrollHeight;
+        }
+
+        console.log = (...args) => {
+            originalLog.apply(console, args);
+            addToLogs('LOG', ...args);
+        };
+
+        console.error = (...args) => {
+            originalError.apply(console, args);
+            addToLogs('ERROR', ...args);
+        };
+
+        console.warn = (...args) => {
+            originalWarn.apply(console, args);
+            addToLogs('WARN', ...args);
+        };
+
+        // Widget control functions
+        function openWidget() {
+            if (window.PicassoWidget) {
+                window.PicassoWidget.open();
+                console.log('📱 Widget opened via API');
+            } else {
+                console.error('❌ PicassoWidget not available');
+            }
+        }
+
+        function closeWidget() {
+            if (window.PicassoWidget) {
+                window.PicassoWidget.close();
+                console.log('📱 Widget closed via API');
+            } else {
+                console.error('❌ PicassoWidget not available');
+            }
+        }
+
+        function clearStorage() {
+            sessionStorage.clear();
+            localStorage.clear();
+            console.log('🧹 Storage cleared');
+        }
+
+        function checkConversationState() {
+            const sessionData = sessionStorage.getItem('picasso_conversation_manager');
+            const stateToken = sessionStorage.getItem('picasso_state_token');
+            
+            console.log('🔍 Current conversation state:', {
+                hasSessionData: !!sessionData,
+                hasStateToken: !!stateToken,
+                sessionDataPreview: sessionData ? sessionData.slice(0, 100) + '...' : null,
+                stateTokenPreview: stateToken ? stateToken.slice(0, 20) + '...' : null
+            });
+        }
+
+        function sendTestMessage() {
+            console.log('📤 Attempting to send test message via iframe postMessage');
+            if (window.PicassoWidget && window.PicassoWidget.iframe) {
+                // Send a message to the iframe to trigger a chat
+                window.PicassoWidget.iframe.contentWindow.postMessage({
+                    type: 'PICASSO_COMMAND',
+                    command: 'SEND_TEST_MESSAGE',
+                    data: { message: 'Test conversation persistence' }
+                }, '*');
+                console.log('📤 Test message command sent to iframe');
+            } else {
+                console.error('❌ Widget iframe not available for test message');
+            }
+        }
+
+        // Wait for widget to load and test conversation initialization
+        setTimeout(() => {
+            console.log('🚀 Starting conversation debug test');
+            checkConversationState();
+        }, 2000);
+    </script>
+</body>
+</html>

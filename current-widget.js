@@ -47,9 +47,9 @@ var __spreadValues = (a, b) => {
       this.setupEventListeners();
       this.setupResizeObserver();
       
-      // Ensure widget starts in correct position
-      this.isOpen = true;   // Temporarily set to true so minimize() will run
-      this.minimize();      // Apply minimized positioning (this will set isOpen to false)
+      // Ensure widget starts in correct minimized position
+      this.isOpen = false;  // Start with correct state
+      this.applyMinimizedStyles();  // Apply minimized positioning without state change
     },
     // Ensure proper viewport meta tag for mobile
     ensureViewportMeta() {
@@ -201,23 +201,58 @@ var __spreadValues = (a, b) => {
         // In dev mode, use the same origin as the widget.js script
         widgetDomain = scriptUrl.origin;
         console.log(`🔧 Dev mode: Using script origin ${widgetDomain}`);
+      } else if (isStaging && scriptUrl && scriptUrl.origin.includes('localhost:8000')) {
+        // esbuild staging mode - served from localhost:8000 without /staging/ path
+        widgetDomain = scriptUrl.origin;
+        pathPrefix = ''; // No staging subdirectory in esbuild setup
+        console.log(`🧪 esbuild staging mode: Using current domain for widget frame`);
       } else if (scriptUrl && scriptUrl.pathname.includes('/staging/')) {
-        // Staging is detected from the script path
+        // Traditional staging deployment with /staging/ path
         widgetDomain = scriptUrl.origin;
         pathPrefix = '/staging';
         console.log(`🧪 Staging detected from script path`);
+      } else if (scriptUrl && scriptUrl.origin.includes('picassostaging')) {
+        // Staging S3 bucket
+        widgetDomain = scriptUrl.origin;
+        pathPrefix = '';
+        console.log(`🧪 Staging S3 bucket detected: ${widgetDomain}`);
+      } else if (scriptUrl && scriptUrl.origin.includes('picassocode')) {
+        // Production S3 bucket
+        widgetDomain = scriptUrl.origin;
+        pathPrefix = '';
+        console.log(`🚀 Production S3 bucket detected: ${widgetDomain}`);
       } else {
-        // Production
-        widgetDomain = "https://chat.myrecruiter.ai";
+        // Fallback - use script origin if available
+        widgetDomain = scriptUrl ? scriptUrl.origin : "https://chat.myrecruiter.ai";
+        console.log(`📍 Using origin: ${widgetDomain}`);
       }
       
       // Store the expected origin for security validation
       // Always use the iframe's domain for postMessage, not the script's domain
       this.widgetOrigin = widgetDomain;
       
-      // Use staging-specific HTML file if in staging mode
-      const htmlFile = isStaging ? 'widget-frame-staging.html' : 'widget-frame.html';
-      const iframeUrl = `${widgetDomain}${pathPrefix}/${htmlFile}?t=${this.tenantHash}`;
+      // Use the standard iframe HTML file
+      const htmlFile = 'iframe.html';
+      let iframeUrl = `${widgetDomain}${pathPrefix}/${htmlFile}?t=${this.tenantHash}`;
+      
+      // Pass environment to iframe
+      // Get the script element that loaded this widget
+      const widgetScript = document.querySelector('script[src*="widget.js"][data-tenant]') || 
+                          document.querySelector('script[src*="widget.js"]') ||
+                          document.currentScript;
+      const scriptEnv = widgetScript?.getAttribute('data-env');
+      
+      if (scriptEnv) {
+        iframeUrl += `&env=${scriptEnv}`;
+        console.log(`📌 Passing env=${scriptEnv} to iframe (from data-env attribute)`);
+      } else if (isStaging) {
+        iframeUrl += '&env=staging';
+        console.log(`📌 Passing env=staging to iframe (detected staging mode)`);
+      } else if (devMode) {
+        iframeUrl += '&env=development';
+        console.log(`📌 Passing env=development to iframe (dev mode)`);
+      }
+      
       console.log(`🌐 Loading iframe from: ${iframeUrl} (${devMode ? "DEV" : isStaging ? "STAGING" : "PROD"} mode)`);
       console.log(`💡 To use dev mode, add ?picasso-dev=true to URL or data-dev="true" to script tag`);
       Object.assign(this.iframe, {
@@ -294,6 +329,10 @@ var __spreadValues = (a, b) => {
             console.log("📏 Resizing iframe");
             this.handleResize(event.data.dimensions);
             break;
+          case "PICASSO_ERROR":
+            console.log("⚠️ Widget error:", event.data.error || event.data.message);
+            // Errors are logged but don't require action from the host
+            break;
           default:
             console.log("❓ Unknown message type:", event.data.type);
         }
@@ -345,6 +384,10 @@ var __spreadValues = (a, b) => {
           console.log("📢 Callout state changed:", payload);
           // Resize container for callout regardless of open state
           this.resizeForCallout(payload.calloutConfig);
+          break;
+        case "SIZE_CHANGE":
+          console.log("📐 Size change event received:", payload);
+          // Size change is handled internally by the iframe, no action needed
           break;
         default:
           console.log("❓ Unknown PICASSO_EVENT:", event);
@@ -510,6 +553,47 @@ var __spreadValues = (a, b) => {
       }, 50); // Small delay to ensure position is set first
       
       console.log("📉 Widget minimized");
+    },
+    
+    // Apply minimized styles without changing state (used during initialization)
+    applyMinimizedStyles() {
+      // Remove mobile fullscreen attribute
+      this.container.removeAttribute('data-mobile-fullscreen');
+      
+      // Reset all positioning to ensure proper anchoring
+      Object.assign(this.container.style, {
+        position: "fixed",
+        top: "auto",
+        left: "auto",
+        bottom: "20px",
+        right: "20px",
+        width: "90px",
+        height: "90px",
+        zIndex: this.config.zIndex,
+        // Visual styling for minimized state
+        border: "none",
+        borderRadius: "50%",
+        // Ensure smooth transition back to corner
+        transition: "all 0.3s ease",
+        background: "transparent" // Keep container transparent in minimized state
+      });
+      
+      // Reset iframe to circular button with proper dimensions
+      Object.assign(this.iframe.style, {
+        width: "100%",
+        height: "100%",
+        position: "absolute",
+        top: "0",
+        left: "0",
+        borderRadius: "50%",
+        transition: "all 0.3s ease",
+        // Ensure iframe remains invisible
+        boxShadow: "none",
+        border: "none",
+        background: "transparent"
+      });
+      
+      console.log("📍 Applied minimized styles during initialization");
     },
     
     // Security helper: Validate message origin

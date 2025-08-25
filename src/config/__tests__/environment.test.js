@@ -104,7 +104,7 @@ describe('Environment Configuration', () => {
     
     expect(assetUrl).toContain(path);
     expect(assetUrl).not.toContain('//'); // No double slashes
-    expect(assetUrl).toContain('picassocode.s3.amazonaws.com');
+    expect(assetUrl).toContain('myrecruiter-picasso.s3.us-east-1.amazonaws.com');
     
     // Test validation
     expect(() => config.getAssetUrl()).toThrow('getAssetUrl: path is required');
@@ -191,7 +191,7 @@ describe('Environment Configuration', () => {
     config = freshConfig;
     
     expect(config.ENVIRONMENT).toBe('staging');
-    expect(config.API_BASE_URL).toBe('https://staging-chat.myrecruiter.ai');
+    expect(config.API_BASE_URL).toBe('https://chat.myrecruiter.ai');
     expect(config.LOG_LEVEL).toBe('info');
   });
 
@@ -240,7 +240,7 @@ describe('Environment Configuration', () => {
     config = freshConfig;
     
     const healthUrl = config.getHealthCheckUrl();
-    expect(healthUrl).toBe('https://chat.myrecruiter.ai/health');
+    expect(healthUrl).toBe('https://chat.myrecruiter.ai/Master_Function?action=health_check');
   });
 
   it('should validate environment configuration on load', async () => {

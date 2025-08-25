@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phase 3 Authentication Flow Test</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f7fa;
+        }
+        
+        .test-container {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        
+        .test-header {
+            border-bottom: 1px solid #e2e8f0;
+            padding-bottom: 16px;
+            margin-bottom: 20px;
+        }
+        
+        .test-result {
+            margin: 12px 0;
+            padding: 12px;
+            border-radius: 8px;
+            border-left: 4px solid;
+        }
+        
+        .success {
+            background: #f0f9ff;
+            border-color: #22c55e;
+            color: #047857;
+        }
+        
+        .error {
+            background: #fef2f2;
+            border-color: #ef4444;
+            color: #dc2626;
+        }
+        
+        .info {
+            background: #faf8ff;
+            border-color: #6366f1;
+            color: #4f46e5;
+        }
+        
+        button {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin: 8px 8px 8px 0;
+        }
+        
+        button:hover {
+            background: #2563eb;
+        }
+        
+        .widget-container {
+            position: relative;
+            height: 600px;
+            border: 2px dashed #cbd5e1;
+            border-radius: 12px;
+            padding: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #f8fafc;
+        }
+        
+        pre {
+            background: #1e293b;
+            color: #e2e8f0;
+            padding: 16px;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 16px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <div class="test-header">
+            <h1>🚀 Phase 3: Authentication Flow Integration Test</h1>
+            <p><strong>Testing:</strong> Lambda Master_Function endpoints with hash-based authentication</p>
+            <p><strong>Environment:</strong> <span id="environment">Loading...</span></p>
+            <p><strong>Tenant Hash:</strong> <span id="tenant-hash">Loading...</span></p>
+        </div>
+        
+        <div class="test-section">
+            <h3>📡 API Endpoint Tests</h3>
+            <div id="api-tests">
+                <button onclick="testHealthCheck()">Test Health Check</button>
+                <button onclick="testConfigLoad()">Test Config Load</button>
+                <button onclick="testChatAction()">Test Chat Action</button>
+                <button onclick="runAllTests()">Run All Tests</button>
+            </div>
+            <div id="test-results"></div>
+        </div>
+        
+        <div class="test-section">
+            <h3>🎨 Widget Integration Test</h3>
+            <div class="widget-container" id="widget-container">
+                <p>Widget will load here...</p>
+            </div>
+            <button onclick="loadWidget()">Load Widget</button>
+            <button onclick="testWidgetActions()">Test Widget Actions</button>
+        </div>
+        
+        <div class="test-section">
+            <h3>📊 Debug Information</h3>
+            <pre id="debug-info">Loading debug information...</pre>
+        </div>
+    </div>
+
+    <script>
+        let testResults = [];
+        
+        // Initialize test page
+        document.addEventListener('DOMContentLoaded', function() {
+            updateEnvironmentInfo();
+            updateDebugInfo();
+        });
+        
+        function updateEnvironmentInfo() {
+            // This will be populated when the widget loads
+            document.getElementById('environment').textContent = 'Development';
+            document.getElementById('tenant-hash').textContent = 'my87674d777bf9';
+        }
+        
+        function addTestResult(test, status, message, details = null) {
+            const resultDiv = document.createElement('div');
+            resultDiv.className = `test-result ${status}`;
+            
+            let content = `<strong>${test}:</strong> ${message}`;
+            if (details) {
+                content += `<br><small>${JSON.stringify(details, null, 2)}</small>`;
+            }
+            
+            resultDiv.innerHTML = content;
+            document.getElementById('test-results').appendChild(resultDiv);
+            
+            testResults.push({
+                test,
+                status,
+                message,
+                details,
+                timestamp: new Date().toISOString()
+            });
+            
+            updateDebugInfo();
+        }
+        
+        async function testHealthCheck() {
+            addTestResult('Health Check', 'info', 'Testing health check endpoint...');
+            
+            try {
+                // This function should be available when the widget loads
+                if (typeof window.testHealthCheck === 'function') {
+                    const result = await window.testHealthCheck();
+                    
+                    if (result && result.status === 'healthy') {
+                        addTestResult('Health Check', 'success', 'Health check passed!', {
+                            status: result.status,
+                            modules: result.modules,
+                            environment: result.environment
+                        });
+                    } else {
+                        addTestResult('Health Check', 'error', 'Health check failed or returned invalid response', result);
+                    }
+                } else {
+                    addTestResult('Health Check', 'error', 'testHealthCheck function not available - widget may not be loaded');
+                }
+            } catch (error) {
+                addTestResult('Health Check', 'error', `Health check failed: ${error.message}`, error);
+            }
+        }
+        
+        async function testConfigLoad() {
+            addTestResult('Config Load', 'info', 'Testing config load from Lambda...');
+            
+            try {
+                if (typeof window.testConfigLoad === 'function') {
+                    const result = await window.testConfigLoad();
+                    
+                    if (result && result.chat_title) {
+                        addTestResult('Config Load', 'success', 'Config loaded successfully!', {
+                            chatTitle: result.chat_title,
+                            hasBranding: !!result.branding,
+                            hasFeatures: !!result.features,
+                            apiType: result.metadata?.apiType
+                        });
+                    } else {
+                        addTestResult('Config Load', 'error', 'Config load failed or returned invalid response', result);
+                    }
+                } else {
+                    addTestResult('Config Load', 'error', 'testConfigLoad function not available - widget may not be loaded');
+                }
+            } catch (error) {
+                addTestResult('Config Load', 'error', `Config load failed: ${error.message}`, error);
+            }
+        }
+        
+        async function testChatAction() {
+            addTestResult('Chat Action', 'info', 'Testing chat action with Lambda...');
+            
+            try {
+                if (typeof window.testChatAction === 'function') {
+                    const result = await window.testChatAction(null, "Phase 3 authentication test");
+                    
+                    if (result && (result.content || result.response)) {
+                        addTestResult('Chat Action', 'success', 'Chat action successful!', {
+                            hasContent: !!(result.content || result.response),
+                            sessionId: result.session_id,
+                            apiVersion: result.api_version
+                        });
+                    } else {
+                        addTestResult('Chat Action', 'error', 'Chat action failed or returned invalid response', result);
+                    }
+                } else {
+                    addTestResult('Chat Action', 'error', 'testChatAction function not available - widget may not be loaded');
+                }
+            } catch (error) {
+                addTestResult('Chat Action', 'error', `Chat action failed: ${error.message}`, error);
+            }
+        }
+        
+        async function runAllTests() {
+            // Clear previous results
+            document.getElementById('test-results').innerHTML = '';
+            testResults = [];
+            
+            addTestResult('Test Suite', 'info', 'Running comprehensive Phase 3 authentication tests...');
+            
+            await testHealthCheck();
+            await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second between tests
+            
+            await testConfigLoad();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            await testChatAction();
+            
+            // Summary
+            const passed = testResults.filter(r => r.status === 'success').length;
+            const failed = testResults.filter(r => r.status === 'error').length;
+            const total = passed + failed;
+            
+            if (total > 0) {
+                const status = failed === 0 ? 'success' : (passed > failed ? 'info' : 'error');
+                addTestResult('Test Summary', status, `${passed}/${total} tests passed`, {
+                    passed,
+                    failed,
+                    total,
+                    successRate: Math.round((passed / total) * 100) + '%'
+                });
+            }
+        }
+        
+        function loadWidget() {
+            const container = document.getElementById('widget-container');
+            container.innerHTML = `
+                <div style="width: 100%; height: 100%; position: relative;">
+                    <iframe 
+                        src="http://localhost:5173/?t=my87674d777bf9" 
+                        style="width: 100%; height: 100%; border: none; border-radius: 8px;"
+                        title="Picasso Chat Widget - Phase 3 Test">
+                    </iframe>
+                </div>
+            `;
+            
+            addTestResult('Widget Load', 'success', 'Widget iframe loaded with Phase 3 authentication flow');
+            
+            // Give the widget time to load, then update debug info
+            setTimeout(() => {
+                updateDebugInfo();
+            }, 3000);
+        }
+        
+        function testWidgetActions() {
+            if (typeof window.PicassoWidget !== 'undefined') {
+                addTestResult('Widget Actions', 'info', 'Testing widget actions...');
+                
+                try {
+                    // Test widget API
+                    if (typeof window.PicassoWidget.isOpen === 'function') {
+                        const isOpen = window.PicassoWidget.isOpen();
+                        addTestResult('Widget API', 'success', `Widget API accessible. Currently open: ${isOpen}`);
+                        
+                        // Test toggle
+                        window.PicassoWidget.toggle();
+                        
+                        setTimeout(() => {
+                            const newState = window.PicassoWidget.isOpen();
+                            addTestResult('Widget Toggle', 'success', `Widget toggled successfully. New state: ${newState}`);
+                        }, 500);
+                    }
+                } catch (error) {
+                    addTestResult('Widget Actions', 'error', `Widget action failed: ${error.message}`, error);
+                }
+            } else {
+                addTestResult('Widget Actions', 'error', 'PicassoWidget not available - may need to load main widget script');
+            }
+        }
+        
+        function updateDebugInfo() {
+            const debugInfo = {
+                timestamp: new Date().toISOString(),
+                environment: 'development',
+                userAgent: navigator.userAgent,
+                testResults: testResults.length,
+                widgetLoaded: typeof window.PicassoWidget !== 'undefined',
+                configFunctions: {
+                    testHealthCheck: typeof window.testHealthCheck === 'function',
+                    testConfigLoad: typeof window.testConfigLoad === 'function',
+                    testChatAction: typeof window.testChatAction === 'function',
+                    refreshPicassoConfig: typeof window.refreshPicassoConfig === 'function'
+                },
+                endpoints: {
+                    config: 'Lambda Master_Function?action=get_config',
+                    chat: 'Lambda Master_Function?action=chat',
+                    health: 'Lambda Master_Function?action=health_check'
+                },
+                phase: 'Phase 3 - User Experience Integration',
+                authFlow: 'Hash-based with tenant inference'
+            };
+            
+            document.getElementById('debug-info').textContent = JSON.stringify(debugInfo, null, 2);
+        }
+        
+        console.log(`
+🚀 PICASSO PHASE 3 AUTHENTICATION FLOW TEST
+============================================
+This page tests the updated client applications with Phase 2 authentication flow.
+
+Available Functions:
+- testHealthCheck()   - Test Lambda health check endpoint
+- testConfigLoad()    - Test Lambda config loading  
+- testChatAction()    - Test Lambda chat functionality
+- runAllTests()       - Run complete test suite
+- loadWidget()        - Load widget with new auth flow
+- testWidgetActions() - Test widget API functions
+
+Phase 3 Implementation:
+✅ Updated ConfigProvider for Lambda Master_Function
+✅ Updated ChatProvider for hash-based authentication  
+✅ Removed custom headers (using URL parameters)
+✅ Environment configuration integration
+        `);
+    </script>
+</body>
+</html>

@@ -1,0 +1,398 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://chat.myrecruiter.ai/schemas/build.schema.json",
+  "title": "Build Configuration Schema",
+  "description": "Schema for build-time configuration and optimization settings",
+  "type": "object",
+  "properties": {
+    "target": {
+      "type": "string",
+      "enum": ["es2015", "es2017", "es2018", "es2020", "esnext"],
+      "description": "JavaScript build target"
+    },
+    "mode": {
+      "type": "string", 
+      "enum": ["development", "production", "test"],
+      "description": "Build mode"
+    },
+    "optimization": {
+      "type": "object",
+      "properties": {
+        "minify": {
+          "type": "boolean",
+          "description": "Enable minification"
+        },
+        "treeshaking": {
+          "type": "boolean",
+          "description": "Enable tree shaking"
+        },
+        "codeSplitting": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Enable code splitting"
+            },
+            "strategy": {
+              "type": "string",
+              "enum": ["chunks", "dynamic", "vendor"],
+              "description": "Code splitting strategy"
+            },
+            "chunkSizeLimit": {
+              "type": "number",
+              "minimum": 10240,
+              "maximum": 1048576,
+              "description": "Maximum chunk size in bytes"
+            }
+          },
+          "required": ["enabled"],
+          "additionalProperties": false
+        },
+        "bundleAnalysis": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Enable bundle analysis"
+            },
+            "outputPath": {
+              "type": "string",
+              "description": "Bundle analysis output path"
+            },
+            "openReport": {
+              "type": "boolean",
+              "description": "Automatically open bundle report"
+            }
+          },
+          "required": ["enabled"],
+          "additionalProperties": false
+        },
+        "compression": {
+          "type": "object",
+          "properties": {
+            "gzip": {
+              "type": "boolean",
+              "description": "Enable gzip compression"
+            },
+            "brotli": {
+              "type": "boolean",
+              "description": "Enable brotli compression"
+            },
+            "level": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 9,
+              "description": "Compression level"
+            }
+          },
+          "required": ["gzip"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["minify", "treeshaking", "codeSplitting", "bundleAnalysis", "compression"],
+      "additionalProperties": false
+    },
+    "assets": {
+      "type": "object",
+      "properties": {
+        "publicPath": {
+          "type": "string",
+          "description": "Public path for assets"
+        },
+        "outputPath": {
+          "type": "string",
+          "description": "Output directory for built assets"
+        },
+        "hashFilenames": {
+          "type": "boolean",
+          "description": "Add hash to filenames for cache busting"
+        },
+        "images": {
+          "type": "object",
+          "properties": {
+            "optimization": {
+              "type": "boolean",
+              "description": "Enable image optimization"
+            },
+            "formats": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": ["webp", "avif", "jpg", "png", "svg"]
+              },
+              "description": "Supported image formats"
+            },
+            "quality": {
+              "type": "number",
+              "minimum": 10,
+              "maximum": 100,
+              "description": "Image compression quality"
+            }
+          },
+          "required": ["optimization"],
+          "additionalProperties": false
+        },
+        "fonts": {
+          "type": "object",
+          "properties": {
+            "preload": {
+              "type": "boolean",
+              "description": "Preload critical fonts"
+            },
+            "formats": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": ["woff2", "woff", "ttf", "eot"]
+              },
+              "description": "Supported font formats"
+            },
+            "display": {
+              "type": "string",
+              "enum": ["auto", "block", "swap", "fallback", "optional"],
+              "description": "Font display strategy"
+            }
+          },
+          "required": ["preload"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["publicPath", "outputPath", "hashFilenames", "images", "fonts"],
+      "additionalProperties": false
+    },
+    "development": {
+      "type": "object",
+      "properties": {
+        "hotReload": {
+          "type": "boolean",
+          "description": "Enable hot module replacement"
+        },
+        "sourceMap": {
+          "type": "string",
+          "enum": ["inline", "eval", "source-map", "cheap-source-map", "none"],
+          "description": "Source map generation strategy"
+        },
+        "devServer": {
+          "type": "object",
+          "properties": {
+            "host": {
+              "type": "string",
+              "description": "Development server host"
+            },
+            "port": {
+              "type": "number",
+              "minimum": 1000,
+              "maximum": 65535,
+              "description": "Development server port"
+            },
+            "https": {
+              "type": "boolean",
+              "description": "Enable HTTPS for dev server"
+            },
+            "proxy": {
+              "type": "object",
+              "patternProperties": {
+                "^/": {
+                  "type": "string",
+                  "format": "uri"
+                }
+              },
+              "description": "API proxy configuration"
+            }
+          },
+          "required": ["host", "port"],
+          "additionalProperties": false
+        },
+        "linting": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Enable linting during build"
+            },
+            "failOnError": {
+              "type": "boolean",
+              "description": "Fail build on linting errors"
+            },
+            "rules": {
+              "type": "string",
+              "enum": ["strict", "recommended", "minimal", "custom"],
+              "description": "Linting rule preset"
+            }
+          },
+          "required": ["enabled"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["hotReload", "sourceMap", "devServer", "linting"],
+      "additionalProperties": false
+    },
+    "production": {
+      "type": "object",
+      "properties": {
+        "sourceMaps": {
+          "type": "boolean",
+          "description": "Generate source maps for production"
+        },
+        "polyfills": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Include polyfills"
+            },
+            "targets": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Browser targets for polyfills"
+            }
+          },
+          "required": ["enabled"],
+          "additionalProperties": false
+        },
+        "caching": {
+          "type": "object",
+          "properties": {
+            "strategy": {
+              "type": "string",
+              "enum": ["aggressive", "conservative", "custom"],
+              "description": "Caching strategy"
+            },
+            "maxAge": {
+              "type": "number",
+              "minimum": 3600,
+              "maximum": 31536000,
+              "description": "Cache max age in seconds"
+            },
+            "immutableAssets": {
+              "type": "boolean",
+              "description": "Mark assets as immutable"
+            }
+          },
+          "required": ["strategy"],
+          "additionalProperties": false
+        },
+        "security": {
+          "type": "object",
+          "properties": {
+            "csp": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "description": "Generate CSP headers"
+                },
+                "nonce": {
+                  "type": "boolean",
+                  "description": "Generate CSP nonce"
+                },
+                "reportOnly": {
+                  "type": "boolean",
+                  "description": "Use CSP report-only mode"
+                }
+              },
+              "required": ["enabled"],
+              "additionalProperties": false
+            },
+            "sri": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "description": "Generate subresource integrity hashes"
+                },
+                "algorithm": {
+                  "type": "string",
+                  "enum": ["sha256", "sha384", "sha512"],
+                  "description": "SRI hash algorithm"
+                }
+              },
+              "required": ["enabled"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["csp", "sri"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["sourceMaps", "polyfills", "caching", "security"],
+      "additionalProperties": false
+    },
+    "testing": {
+      "type": "object",
+      "properties": {
+        "coverage": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Enable code coverage collection"
+            },
+            "threshold": {
+              "type": "object",
+              "properties": {
+                "statements": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 100
+                },
+                "branches": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 100
+                },
+                "functions": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 100
+                },
+                "lines": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 100
+                }
+              },
+              "additionalProperties": false
+            },
+            "reporters": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": ["text", "html", "lcov", "json", "cobertura"]
+              },
+              "description": "Coverage reporters"
+            }
+          },
+          "required": ["enabled"],
+          "additionalProperties": false
+        },
+        "e2e": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Enable E2E testing"
+            },
+            "browser": {
+              "type": "string",
+              "enum": ["chromium", "firefox", "webkit"],
+              "description": "E2E test browser"
+            },
+            "headless": {
+              "type": "boolean",
+              "description": "Run tests in headless mode"
+            }
+          },
+          "required": ["enabled"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["coverage", "e2e"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["target", "mode", "optimization", "assets", "development", "production", "testing"],
+  "additionalProperties": false
+}

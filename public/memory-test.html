@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Conversation Memory Test - Development</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .test-info {
+            background: #e3f2fd;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .test-steps {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .step {
+            margin-bottom: 15px;
+            padding: 10px;
+            border-left: 4px solid #2196F3;
+            background: #f8f9fa;
+        }
+        .expected {
+            color: #4CAF50;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-info">
+        <h1>🧠 Conversation Memory Test - Development Environment</h1>
+        <p><strong>Environment:</strong> Development (Local endpoints with CORS disabled)</p>
+        <p><strong>Tenant Hash:</strong> my87674d777bf9 (MyRecruiter)</p>
+        <p><strong>Purpose:</strong> Test conversation memory functionality</p>
+    </div>
+
+    <div class="test-steps">
+        <h2>Test Instructions</h2>
+        
+        <div class="step">
+            <h3>Step 1: Initial Conversation</h3>
+            <p>1. Click the chat widget to open it</p>
+            <p>2. Send a message: <strong>"My name is John and I need help with home care services"</strong></p>
+            <p class="expected">Expected: Widget initializes and conversation manager handles the message</p>
+        </div>
+
+        <div class="step">
+            <h3>Step 2: Conversation Continuation</h3>
+            <p>1. Send another message: <strong>"What are your rates?"</strong></p>
+            <p class="expected">Expected: Conversation memory maintained between messages</p>
+        </div>
+
+        <div class="step">
+            <h3>Step 3: Memory Persistence</h3>
+            <p>1. Close the chat widget</p>
+            <p>2. Wait 5 seconds, then reopen it</p>
+            <p>3. Send: <strong>"Do you remember what I asked about?"</strong></p>
+            <p class="expected">Expected: Conversation memory persists across widget sessions</p>
+        </div>
+
+        <div class="step">
+            <h3>Step 4: Check Console Logs</h3>
+            <p>1. Open browser Developer Tools (F12)</p>
+            <p>2. Check Console tab for conversation-related messages</p>
+            <p class="expected">Expected: See conversation manager initialization and memory operations</p>
+        </div>
+    </div>
+
+    <!-- Development Widget with staging tenant -->
+    <script>
+        // In development, the widget will be served by Vite
+        const script = document.createElement('script');
+        script.setAttribute('data-tenant', 'my87674d777bf9');
+        script.src = '/current-widget.js'; // Development widget file
+        document.body.appendChild(script);
+    </script>
+</body>
+</html>

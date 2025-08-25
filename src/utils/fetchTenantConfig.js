@@ -4,7 +4,7 @@
  * This function fetches from the production API using tenant hashes.
  * Matches the deployment infrastructure and hash-based system.
  * 
- * @param {string} tenantHash - The hash of the tenant (e.g., fo85e6a06dcdf4)
+ * @param {string} tenantHash - The hash of the tenant (e.g., my87674d777bf9)
  * @returns {Promise<Object>} - Resolves to the config JSON object
  * @throws {Error} - If the fetch fails or config is invalid
  */

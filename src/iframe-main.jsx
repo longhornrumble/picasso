@@ -1,7 +1,10 @@
+// Load string safety polyfill first
+import './utils/stringPolyfill.js';
+
 import React from "react";
 import { createRoot } from "react-dom/client";
-import { ConfigProvider } from './context/ConfigProvider.jsx';
-import { ChatProvider } from './context/ChatProvider.jsx';
+import { ConfigProvider } from './context/ConfigProvider.js';
+import ChatProviderOrchestrator from './context/ChatProviderOrchestrator.jsx';
 import ChatWidget from './components/chat/ChatWidget.jsx';
 import { CSSVariablesProvider } from './components/chat/useCSSVariables.js';
 import { config as environmentConfig } from './config/environment.js';
@@ -57,8 +60,10 @@ function getAllowedOrigins() {
   if (import.meta.env.DEV) {
     origins.push('http://localhost:5173');
     origins.push('http://localhost:3000');
+    origins.push('http://localhost:8000'); // Add esbuild dev server port
     origins.push('http://127.0.0.1:5173');
     origins.push('http://127.0.0.1:3000');
+    origins.push('http://127.0.0.1:8000'); // Add esbuild dev server port
   }
   
   // In production, only allow specific domains
@@ -131,12 +136,16 @@ function setupCommandListener() {
         case 'OPEN_CHAT':
           console.log('📡 Received OPEN_CHAT command');
           document.body.classList.add('chat-open');
+          // Dispatch custom event to notify React component
+          window.dispatchEvent(new CustomEvent('picasso-open-chat'));
           notifyParentEvent('CHAT_OPENED');
           break;
           
         case 'CLOSE_CHAT':
           console.log('📡 Received CLOSE_CHAT command');
           document.body.classList.remove('chat-open');
+          // Dispatch custom event to notify React component
+          window.dispatchEvent(new CustomEvent('picasso-close-chat'));
           notifyParentEvent('CHAT_CLOSED');
           break;
           
@@ -157,6 +166,12 @@ function setupCommandListener() {
             if (payload.isMobile) document.body.setAttribute('data-mobile', 'true');
             if (payload.isTablet) document.body.setAttribute('data-tablet', 'true');
           }
+          break;
+          
+        case 'MINIMIZE':
+          console.log('📡 Received MINIMIZE command');
+          document.body.classList.remove('chat-open');
+          notifyParentEvent('CHAT_CLOSED');
           break;
           
         default:
@@ -234,7 +249,7 @@ function initializeWidget() {
     
     // Get tenant hash from URL or use default
     const urlParams = new URLSearchParams(window.location.search);
-    const tenantHash = urlParams.get('t') || 'fo85e6a06dcdf4';
+    const tenantHash = urlParams.get('t') || environmentConfig.getDefaultTenantHash();
     console.log('🔑 Using tenant hash:', tenantHash);
     
     // Set up config for iframe mode to use live API
@@ -283,7 +298,7 @@ function initializeWidget() {
         console.log('🔄 Fetching config from:', configUrl);
         
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+        const timeoutId = setTimeout(() => controller.abort(), 3000); // PERFORMANCE: 3 second timeout for faster failure detection
         
         const response = await fetch(configUrl, {
           method: 'GET',
@@ -387,11 +402,11 @@ function initializeWidget() {
     root.render(
       <ErrorBoundary>
         <ConfigProvider>
-          <ChatProvider>
-            <CSSVariablesProvider>
+          <CSSVariablesProvider>
+            <ChatProviderOrchestrator>
               <ChatWidget />
-            </CSSVariablesProvider>
-          </ChatProvider>
+            </ChatProviderOrchestrator>
+          </CSSVariablesProvider>
         </ConfigProvider>
       </ErrorBoundary>
     );

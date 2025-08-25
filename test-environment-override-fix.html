@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Environment Override Fix Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-result { margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .success { background-color: #d4edda; border: 1px solid #c3e6cb; color: #155724; }
+        .error { background-color: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; }
+        .info { background-color: #d1ecf1; border: 1px solid #bee5eb; color: #0c5460; }
+        pre { background: #f8f9fa; padding: 10px; border-radius: 3px; overflow-x: auto; }
+        button { margin: 5px; padding: 10px 15px; border: none; border-radius: 3px; cursor: pointer; }
+        .test-btn { background: #007bff; color: white; }
+        .clear-btn { background: #dc3545; color: white; }
+    </style>
+</head>
+<body>
+    <h1>🔧 Environment Override Fix Test</h1>
+    <p>This page tests if the ConfigProvider fix correctly routes API calls to staging when <code>?picasso-env=staging</code> is active.</p>
+    
+    <div class="test-result info">
+        <strong>Current URL Parameters:</strong>
+        <pre id="url-params"></pre>
+    </div>
+    
+    <div class="test-result info">
+        <strong>Expected Behavior:</strong>
+        <ul>
+            <li>✅ Console shows: "RUNTIME OVERRIDE: Environment forced to staging via URL parameter"</li>
+            <li>✅ Console shows staging endpoints</li>
+            <li>✅ Network tab requests go to: https://xkjbyi3ushhuiytcfbuk5uaqom0ivhfk.lambda-url.us-east-1.on.aws</li>
+            <li>❌ NO requests to: https://chat.myrecruiter.ai</li>
+        </ul>
+    </div>
+    
+    <button class="test-btn" onclick="testEnvironmentDetection()">Test Environment Detection</button>
+    <button class="test-btn" onclick="testConfigFetch()">Test Config Fetch (Trigger API Call)</button>
+    <button class="clear-btn" onclick="clearCache()">Clear Cache</button>
+    <button class="test-btn" onclick="openStagingURL()">Open With ?picasso-env=staging</button>
+    
+    <div id="test-results"></div>
+    
+    <h2>📡 Network Monitor</h2>
+    <p>Watch the Network tab in DevTools when testing. API calls should go to staging Lambda URL when environment override is active.</p>
+    
+    <div id="picasso-widget" style="margin-top: 20px;">
+        <!-- Widget will be loaded here -->
+    </div>
+
+    <script>
+        // Display current URL parameters
+        function updateURLInfo() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const params = {};
+            for (const [key, value] of urlParams) {
+                params[key] = value;
+            }
+            document.getElementById('url-params').textContent = JSON.stringify(params, null, 2);
+        }
+        
+        function addResult(type, title, content) {
+            const div = document.createElement('div');
+            div.className = `test-result ${type}`;
+            div.innerHTML = `<strong>${title}</strong><br>${content}`;
+            document.getElementById('test-results').appendChild(div);
+        }
+        
+        function testEnvironmentDetection() {
+            console.log('🧪 Testing environment detection...');
+            
+            const urlParams = new URLSearchParams(window.location.search);
+            const envOverride = urlParams.get('picasso-env');
+            
+            if (envOverride === 'staging') {
+                addResult('success', '✅ Environment Override Detected', 
+                    'URL parameter picasso-env=staging is present');
+            } else {
+                addResult('error', '❌ No Environment Override', 
+                    'URL parameter picasso-env=staging is missing. Click "Open With ?picasso-env=staging" button.');
+            }
+            
+            // Try to access Picasso config if available
+            if (window.picassoConfig) {
+                const config = window.picassoConfig;
+                addResult('info', '📋 Picasso Config Found', 
+                    `<pre>${JSON.stringify({
+                        environment: config.ENVIRONMENT,
+                        apiBaseUrl: config.API_BASE_URL,
+                        configEndpoint: config.CONFIG_ENDPOINT,
+                        chatEndpoint: config.CHAT_ENDPOINT
+                    }, null, 2)}</pre>`);
+            } else {
+                addResult('info', '⏳ Picasso Config Not Loaded', 
+                    'Picasso configuration not yet available. Try loading the widget first.');
+            }
+        }
+        
+        async function testConfigFetch() {
+            console.log('🧪 Testing config fetch to trigger API call...');
+            
+            // This will trigger the ConfigProvider to make an API call
+            if (window.testConfigLoad) {
+                try {
+                    const result = await window.testConfigLoad();
+                    if (result) {
+                        addResult('success', '✅ Config Fetch Success', 
+                            'Check Network tab - request should go to staging Lambda URL');
+                    } else {
+                        addResult('error', '❌ Config Fetch Failed', 
+                            'Check console for details');
+                    }
+                } catch (error) {
+                    addResult('error', '❌ Config Fetch Error', error.message);
+                }
+            } else {
+                addResult('info', '⏳ Widget Not Loaded', 
+                    'Load the Picasso widget first to enable config testing');
+            }
+        }
+        
+        function clearCache() {
+            console.log('🧹 Clearing cache...');
+            
+            // Clear sessionStorage
+            sessionStorage.clear();
+            
+            // Clear localStorage
+            localStorage.clear();
+            
+            addResult('success', '✅ Cache Cleared', 
+                'Session storage and local storage have been cleared. Refresh to test fresh state.');
+        }
+        
+        function openStagingURL() {
+            const url = new URL(window.location);
+            url.searchParams.set('picasso-env', 'staging');
+            url.searchParams.set('t', 'my87674d777bf9'); // Add tenant hash for testing
+            window.location.href = url.toString();
+        }
+        
+        // Initialize
+        updateURLInfo();
+        
+        // Auto-run environment detection on load
+        setTimeout(testEnvironmentDetection, 500);
+        
+        // Monitor console for relevant messages
+        const originalConsoleLog = console.log;
+        console.log = function(...args) {
+            const message = args.join(' ');
+            if (message.includes('RUNTIME OVERRIDE') || 
+                message.includes('Environment forced') ||
+                message.includes('lambda-url.us-east-1.on.aws')) {
+                addResult('success', '✅ Console Detection', message);
+            }
+            originalConsoleLog.apply(console, args);
+        };
+    </script>
+    
+    <!-- Load Picasso Widget -->
+    <script src="http://localhost:4174/dist/widget.js" 
+            data-tenant="my87674d777bf9"
+            data-env="staging"
+            async></script>
+</body>
+</html>

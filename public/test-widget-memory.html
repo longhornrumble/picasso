@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Picasso Widget Memory Test - End-to-End</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+        
+        .test-container {
+            background: white;
+            border-radius: 16px;
+            padding: 30px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .header h1 {
+            color: #2c3e50;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+        }
+        
+        .header p {
+            color: #7f8c8d;
+            font-size: 1.1em;
+            max-width: 600px;
+            margin: 0 auto;
+            line-height: 1.6;
+        }
+        
+        .test-section {
+            margin: 30px 0;
+            padding: 20px;
+            border: 2px solid #e9ecef;
+            border-radius: 12px;
+            background: #f8f9fa;
+        }
+        
+        .test-section h3 {
+            color: #495057;
+            margin-top: 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .test-button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            margin: 5px;
+        }
+        
+        .test-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.3);
+        }
+        
+        .test-button:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        
+        .status-pending { background: #ffc107; }
+        .status-running { background: #007bff; animation: pulse 1s infinite; }
+        .status-success { background: #28a745; }
+        .status-error { background: #dc3545; }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .log-area {
+            background: #2c3e50;
+            color: #ecf0f1;
+            padding: 20px;
+            border-radius: 8px;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 14px;
+            line-height: 1.4;
+            max-height: 400px;
+            overflow-y: auto;
+            margin-top: 15px;
+        }
+        
+        .log-entry {
+            margin: 5px 0;
+            padding: 5px;
+            border-radius: 4px;
+        }
+        
+        .log-info { background: rgba(52, 152, 219, 0.2); }
+        .log-success { background: rgba(39, 174, 96, 0.2); }
+        .log-error { background: rgba(231, 76, 60, 0.2); }
+        .log-warning { background: rgba(241, 196, 15, 0.2); }
+        
+        .widget-info {
+            background: #e3f2fd;
+            border: 1px solid #bbdefb;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        
+        .widget-info h4 {
+            color: #1976d2;
+            margin-top: 0;
+        }
+        
+        .prerequisites {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        
+        .prerequisites h4 {
+            color: #856404;
+            margin-top: 0;
+        }
+        
+        .test-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin: 20px 0;
+        }
+        
+        .manual-controls {
+            margin: 20px 0;
+        }
+        
+        .message-history {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 15px 0;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        .message-entry {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 6px;
+            border-left: 4px solid #007bff;
+            background: white;
+        }
+        
+        .message-user {
+            border-left-color: #28a745;
+        }
+        
+        .message-ai {
+            border-left-color: #6f42c1;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <div class="header">
+            <h1>🎭 Picasso Widget Memory Test</h1>
+            <p>End-to-end testing of conversation memory using the actual esbuild widget</p>
+        </div>
+
+        <div class="prerequisites">
+            <h4>📋 Prerequisites</h4>
+            <ul>
+                <li>esbuild dev server must be running on <code>http://localhost:8000</code></li>
+                <li>Run: <code>npm run dev:esbuild</code> in the picasso-main directory</li>
+                <li>Widget will load from the dev server and use staging environment</li>
+                <li>All tests use real API endpoints for authentic conversation memory testing</li>
+            </ul>
+        </div>
+
+        <div class="widget-info">
+            <h4>🔧 Widget Configuration</h4>
+            <p><strong>Tenant:</strong> my87674d777bf9 (staging tenant)</p>
+            <p><strong>Widget Source:</strong> http://localhost:8000/widget.js</p>
+            <p><strong>Environment:</strong> Staging (real API calls)</p>
+            <p><strong>Memory System:</strong> JWT-based conversation tracking</p>
+        </div>
+
+        <div class="manual-controls">
+            <h3>🎮 Manual Widget Controls</h3>
+            <button class="test-button" onclick="openWidget()">Open Widget</button>
+            <button class="test-button" onclick="closeWidget()">Close Widget</button>
+            <button class="test-button" onclick="toggleWidget()">Toggle Widget</button>
+            <button class="test-button" onclick="checkWidgetHealth()">Health Check</button>
+        </div>
+
+        <div class="test-grid">
+            <div class="test-section">
+                <h3>
+                    <span id="test1-status" class="status-indicator status-pending"></span>
+                    Test 1: Name Memory
+                </h3>
+                <p>Tests whether the AI remembers the user's name across multiple messages.</p>
+                <button class="test-button" onclick="runNameMemoryTest()" id="test1-btn">
+                    Run Name Memory Test
+                </button>
+                <div id="test1-messages" class="message-history" style="display: none;"></div>
+            </div>
+
+            <div class="test-section">
+                <h3>
+                    <span id="test2-status" class="status-indicator status-pending"></span>
+                    Test 2: Context Memory
+                </h3>
+                <p>Tests complex context memory (veteran + hospice care scenario).</p>
+                <button class="test-button" onclick="runContextMemoryTest()" id="test2-btn">
+                    Run Context Memory Test
+                </button>
+                <div id="test2-messages" class="message-history" style="display: none;"></div>
+            </div>
+
+            <div class="test-section">
+                <h3>
+                    <span id="test3-status" class="status-indicator status-pending"></span>
+                    Test 3: Multi-turn Conversation
+                </h3>
+                <p>Tests longer conversation with multiple context elements.</p>
+                <button class="test-button" onclick="runMultiTurnTest()" id="test3-btn">
+                    Run Multi-turn Test
+                </button>
+                <div id="test3-messages" class="message-history" style="display: none;"></div>
+            </div>
+
+            <div class="test-section">
+                <h3>
+                    <span id="error-monitor-status" class="status-indicator status-pending"></span>
+                    Error Monitoring
+                </h3>
+                <p>Monitors console for 409 errors and conversation issues.</p>
+                <button class="test-button" onclick="startErrorMonitoring()" id="error-monitor-btn">
+                    Start Error Monitoring
+                </button>
+                <div id="error-log" class="message-history" style="display: none;"></div>
+            </div>
+        </div>
+
+        <div class="test-section">
+            <h3>🔄 Run All Tests</h3>
+            <p>Execute all memory tests sequentially with real conversation flows.</p>
+            <button class="test-button" onclick="runAllTests()" id="run-all-btn">
+                Run All Memory Tests
+            </button>
+            <button class="test-button" onclick="resetAllTests()">Reset Tests</button>
+        </div>
+
+        <div class="log-area" id="log-output">
+            <div class="log-entry log-info">🚀 Test environment initialized. Load the widget to begin testing.</div>
+            <div class="log-entry log-warning">⚠️ Ensure esbuild dev server is running: npm run dev:esbuild</div>
+        </div>
+    </div>
+
+    <!-- Load the actual Picasso widget built with esbuild -->
+    <script src="http://localhost:8000/widget.js" data-tenant="my87674d777bf9"></script>
+    
+    <!-- Load the automation helper -->
+    <script src="test-widget-automation.js"></script>
+
+    <script>
+        // Test state management
+        let testResults = {
+            test1: null,
+            test2: null,
+            test3: null,
+            errorMonitoring: false
+        };
+
+        let currentTestRunning = false;
+        let errorMonitoringActive = false;
+
+        // Logging utilities
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logOutput = document.getElementById('log-output');
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${type}`;
+            entry.innerHTML = `[${timestamp}] ${message}`;
+            logOutput.appendChild(entry);
+            logOutput.scrollTop = logOutput.scrollHeight;
+            console.log(`[${type.toUpperCase()}] ${message}`);
+        }
+
+        function updateTestStatus(testId, status) {
+            const indicator = document.getElementById(`${testId}-status`);
+            indicator.className = `status-indicator status-${status}`;
+        }
+
+        function logMessage(testId, sender, message) {
+            const messagesDiv = document.getElementById(`${testId}-messages`);
+            messagesDiv.style.display = 'block';
+            
+            const messageEntry = document.createElement('div');
+            messageEntry.className = `message-entry message-${sender.toLowerCase()}`;
+            messageEntry.innerHTML = `<strong>${sender}:</strong> ${message}`;
+            messagesDiv.appendChild(messageEntry);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        // Widget control functions
+        function openWidget() {
+            if (window.PicassoWidget) {
+                window.PicassoWidget.open();
+                log('Widget opened manually', 'info');
+            } else {
+                log('Widget not loaded yet', 'error');
+            }
+        }
+
+        function closeWidget() {
+            if (window.PicassoWidget) {
+                window.PicassoWidget.close();
+                log('Widget closed manually', 'info');
+            } else {
+                log('Widget not loaded yet', 'error');
+            }
+        }
+
+        function toggleWidget() {
+            if (window.PicassoWidget) {
+                window.PicassoWidget.toggle();
+                log('Widget toggled manually', 'info');
+            } else {
+                log('Widget not loaded yet', 'error');
+            }
+        }
+
+        function checkWidgetHealth() {
+            if (window.PicassoWidget && window.PicassoWidget.health) {
+                const health = window.PicassoWidget.health();
+                log(`Widget Health: ${JSON.stringify(health, null, 2)}`, 'info');
+            } else {
+                log('Widget health check not available', 'error');
+            }
+        }
+
+        // Test execution functions
+        async function runNameMemoryTest() {
+            if (currentTestRunning) {
+                log('Another test is already running', 'warning');
+                return;
+            }
+
+            currentTestRunning = true;
+            updateTestStatus('test1', 'running');
+            document.getElementById('test1-btn').disabled = true;
+
+            try {
+                log('Starting Name Memory Test...', 'info');
+                
+                // Clear previous messages
+                document.getElementById('test1-messages').innerHTML = '';
+                
+                const result = await runMemoryTest('test1', [
+                    { message: "Hi, my name is Chris", expectedContext: ["Chris"] },
+                    { message: "What's my name?", expectedContext: ["Chris"], delay: 2000 }
+                ]);
+                
+                testResults.test1 = result;
+                updateTestStatus('test1', result ? 'success' : 'error');
+                log(`Name Memory Test ${result ? 'PASSED' : 'FAILED'}`, result ? 'success' : 'error');
+                
+            } catch (error) {
+                log(`Name Memory Test ERROR: ${error.message}`, 'error');
+                updateTestStatus('test1', 'error');
+                testResults.test1 = false;
+            }
+
+            document.getElementById('test1-btn').disabled = false;
+            currentTestRunning = false;
+        }
+
+        async function runContextMemoryTest() {
+            if (currentTestRunning) {
+                log('Another test is already running', 'warning');
+                return;
+            }
+
+            currentTestRunning = true;
+            updateTestStatus('test2', 'running');
+            document.getElementById('test2-btn').disabled = true;
+
+            try {
+                log('Starting Context Memory Test...', 'info');
+                
+                // Clear previous messages
+                document.getElementById('test2-messages').innerHTML = '';
+                
+                const result = await runMemoryTest('test2', [
+                    { message: "I'm a veteran looking for hospice care", expectedContext: ["veteran", "hospice"] },
+                    { message: "What did I tell you about myself?", expectedContext: ["veteran", "hospice"], delay: 2000 }
+                ]);
+                
+                testResults.test2 = result;
+                updateTestStatus('test2', result ? 'success' : 'error');
+                log(`Context Memory Test ${result ? 'PASSED' : 'FAILED'}`, result ? 'success' : 'error');
+                
+            } catch (error) {
+                log(`Context Memory Test ERROR: ${error.message}`, 'error');
+                updateTestStatus('test2', 'error');
+                testResults.test2 = false;
+            }
+
+            document.getElementById('test2-btn').disabled = false;
+            currentTestRunning = false;
+        }
+
+        async function runMultiTurnTest() {
+            if (currentTestRunning) {
+                log('Another test is already running', 'warning');
+                return;
+            }
+
+            currentTestRunning = true;
+            updateTestStatus('test3', 'running');
+            document.getElementById('test3-btn').disabled = true;
+
+            try {
+                log('Starting Multi-turn Conversation Test...', 'info');
+                
+                // Clear previous messages
+                document.getElementById('test3-messages').innerHTML = '';
+                
+                const result = await runMemoryTest('test3', [
+                    { message: "I'm Sarah and I work in technology", expectedContext: ["Sarah", "technology"] },
+                    { message: "I'm also interested in healthcare benefits", expectedContext: ["healthcare", "benefits"] },
+                    { message: "What do you know about me so far?", expectedContext: ["Sarah", "technology", "healthcare"], delay: 2000 }
+                ]);
+                
+                testResults.test3 = result;
+                updateTestStatus('test3', result ? 'success' : 'error');
+                log(`Multi-turn Test ${result ? 'PASSED' : 'FAILED'}`, result ? 'success' : 'error');
+                
+            } catch (error) {
+                log(`Multi-turn Test ERROR: ${error.message}`, 'error');
+                updateTestStatus('test3', 'error');
+                testResults.test3 = false;
+            }
+
+            document.getElementById('test3-btn').disabled = false;
+            currentTestRunning = false;
+        }
+
+        function startErrorMonitoring() {
+            if (errorMonitoringActive) {
+                log('Error monitoring already active', 'warning');
+                return;
+            }
+
+            errorMonitoringActive = true;
+            updateTestStatus('error-monitor', 'running');
+            document.getElementById('error-monitor-btn').disabled = true;
+            document.getElementById('error-log').style.display = 'block';
+
+            log('Starting error monitoring...', 'info');
+
+            // Monitor console errors
+            const originalError = console.error;
+            console.error = function(...args) {
+                originalError.apply(console, args);
+                const errorMsg = args.join(' ');
+                if (errorMsg.includes('409') || errorMsg.includes('conversation') || errorMsg.includes('memory')) {
+                    logError('Console Error', errorMsg);
+                }
+            };
+
+            // Monitor network errors
+            const originalFetch = window.fetch;
+            window.fetch = function(...args) {
+                return originalFetch.apply(this, args)
+                    .then(response => {
+                        if (response.status === 409) {
+                            logError('Network 409 Error', `Request to ${response.url} returned 409`);
+                        }
+                        return response;
+                    })
+                    .catch(error => {
+                        logError('Network Error', error.message);
+                        throw error;
+                    });
+            };
+
+            testResults.errorMonitoring = true;
+            updateTestStatus('error-monitor', 'success');
+            log('Error monitoring started successfully', 'success');
+        }
+
+        function logError(type, message) {
+            const errorLog = document.getElementById('error-log');
+            const timestamp = new Date().toLocaleTimeString();
+            const errorEntry = document.createElement('div');
+            errorEntry.className = 'message-entry';
+            errorEntry.innerHTML = `<strong>[${timestamp}] ${type}:</strong> ${message}`;
+            errorLog.appendChild(errorEntry);
+            errorLog.scrollTop = errorLog.scrollHeight;
+            
+            log(`ERROR DETECTED - ${type}: ${message}`, 'error');
+        }
+
+        async function runAllTests() {
+            if (currentTestRunning) {
+                log('Another test is already running', 'warning');
+                return;
+            }
+
+            document.getElementById('run-all-btn').disabled = true;
+            log('🚀 Starting comprehensive memory test suite...', 'info');
+
+            // Start error monitoring first
+            if (!errorMonitoringActive) {
+                startErrorMonitoring();
+                await sleep(1000);
+            }
+
+            // Run tests sequentially
+            await runNameMemoryTest();
+            await sleep(3000); // Wait between tests
+            
+            await runContextMemoryTest();
+            await sleep(3000);
+            
+            await runMultiTurnTest();
+
+            // Summary
+            const passed = Object.values(testResults).filter(r => r === true).length;
+            const total = Object.keys(testResults).length - 1; // Exclude error monitoring
+            
+            log(`🏁 Test Suite Complete: ${passed}/${total} tests passed`, passed === total ? 'success' : 'error');
+            
+            document.getElementById('run-all-btn').disabled = false;
+        }
+
+        function resetAllTests() {
+            testResults = {
+                test1: null,
+                test2: null,
+                test3: null,
+                errorMonitoring: false
+            };
+
+            // Reset status indicators
+            ['test1', 'test2', 'test3', 'error-monitor'].forEach(testId => {
+                updateTestStatus(testId, 'pending');
+            });
+
+            // Clear message histories
+            ['test1-messages', 'test2-messages', 'test3-messages', 'error-log'].forEach(id => {
+                document.getElementById(id).innerHTML = '';
+                document.getElementById(id).style.display = 'none';
+            });
+
+            // Re-enable buttons
+            ['test1-btn', 'test2-btn', 'test3-btn', 'error-monitor-btn', 'run-all-btn'].forEach(id => {
+                document.getElementById(id).disabled = false;
+            });
+
+            currentTestRunning = false;
+            errorMonitoringActive = false;
+
+            log('🔄 All tests reset', 'info');
+        }
+
+        // Utility function
+        function sleep(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        // Initialize when page loads
+        window.addEventListener('load', () => {
+            log('Test page loaded. Waiting for widget to initialize...', 'info');
+            
+            // Check if widget is loaded
+            const checkWidget = setInterval(() => {
+                if (window.PicassoWidget && window.PicassoWidget.isLoaded) {
+                    clearInterval(checkWidget);
+                    log('✅ Picasso Widget loaded and ready for testing', 'success');
+                    
+                    // Check widget health
+                    setTimeout(() => {
+                        if (window.PicassoWidget.health) {
+                            const health = window.PicassoWidget.health();
+                            log(`Widget health status: ${health.healthy ? 'HEALTHY' : 'UNHEALTHY'}`, health.healthy ? 'success' : 'warning');
+                        }
+                    }, 1000);
+                }
+            }, 500);
+
+            // Timeout after 30 seconds
+            setTimeout(() => {
+                if (!window.PicassoWidget || !window.PicassoWidget.isLoaded) {
+                    clearInterval(checkWidget);
+                    log('❌ Widget failed to load after 30 seconds. Check esbuild server.', 'error');
+                }
+            }, 30000);
+        });
+    </script>
+</body>
+</html>

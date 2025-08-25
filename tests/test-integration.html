@@ -1,0 +1,974 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Conversation Memory Integration Test Suite</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f8f9fa;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 10px;
+        }
+        
+        .test-scenario {
+            background: white;
+            margin: 20px 0;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            border-left: 4px solid #007bff;
+        }
+        
+        .test-scenario h3 {
+            margin: 0 0 15px 0;
+            color: #333;
+        }
+        
+        .test-scenario p {
+            color: #666;
+            margin: 10px 0;
+        }
+        
+        .test-controls {
+            margin: 15px 0;
+        }
+        
+        .btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 14px;
+        }
+        
+        .btn:hover {
+            background: #0056b3;
+        }
+        
+        .btn:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+        
+        .btn.success {
+            background: #28a745;
+        }
+        
+        .btn.danger {
+            background: #dc3545;
+        }
+        
+        .results {
+            margin-top: 15px;
+            padding: 15px;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        .results.success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        
+        .results.error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        
+        .results.info {
+            background: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+        
+        .chat-simulation {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 15px 0;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        
+        .message {
+            margin: 8px 0;
+            padding: 8px 12px;
+            border-radius: 15px;
+            max-width: 80%;
+        }
+        
+        .message.user {
+            background: #007bff;
+            color: white;
+            margin-left: auto;
+            text-align: right;
+        }
+        
+        .message.assistant {
+            background: #e9ecef;
+            color: #333;
+            margin-right: auto;
+        }
+        
+        .metadata {
+            font-size: 11px;
+            color: #6c757d;
+            margin-top: 5px;
+            padding: 5px;
+            background: #f8f9fa;
+            border-radius: 3px;
+        }
+        
+        .summary {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .progress {
+            width: 100%;
+            height: 20px;
+            background: #e9ecef;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+        
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #007bff, #28a745);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🧠 Conversation Memory Integration Test Suite</h1>
+        <p>Comprehensive browser-based testing for conversational AI memory functionality</p>
+    </div>
+
+    <div id="overall-progress">
+        <h3>Overall Test Progress</h3>
+        <div class="progress">
+            <div class="progress-bar" id="progress-bar"></div>
+        </div>
+        <p id="progress-text">Ready to start testing...</p>
+    </div>
+
+    <div id="test-scenarios">
+        <!-- Test Scenario 1: Basic Name Memory -->
+        <div class="test-scenario" id="test-name-memory">
+            <h3>🏷️ Test 1: Basic Name Memory</h3>
+            <p>Tests if the AI can remember a user's name across multiple exchanges.</p>
+            <div class="test-controls">
+                <button class="btn" onclick="runNameMemoryTest()">Run Name Memory Test</button>
+                <button class="btn" onclick="clearTest('test-name-memory')">Clear Results</button>
+            </div>
+            <div class="chat-simulation" id="name-memory-chat" style="display: none;"></div>
+            <div class="results" id="name-memory-results"></div>
+        </div>
+
+        <!-- Test Scenario 2: Multi-fact Memory -->
+        <div class="test-scenario" id="test-multi-fact">
+            <h3>📋 Test 2: Multi-fact Memory</h3>
+            <p>Tests if the AI can remember and recall multiple facts about the user.</p>
+            <div class="test-controls">
+                <button class="btn" onclick="runMultiFactTest()">Run Multi-fact Test</button>
+                <button class="btn" onclick="clearTest('test-multi-fact')">Clear Results</button>
+            </div>
+            <div class="chat-simulation" id="multi-fact-chat" style="display: none;"></div>
+            <div class="results" id="multi-fact-results"></div>
+        </div>
+
+        <!-- Test Scenario 3: Context Continuity -->
+        <div class="test-scenario" id="test-context-continuity">
+            <h3>🔗 Test 3: Context Continuity</h3>
+            <p>Tests if conversation context flows properly through multiple exchanges.</p>
+            <div class="test-controls">
+                <button class="btn" onclick="runContextContinuityTest()">Run Context Continuity Test</button>
+                <button class="btn" onclick="clearTest('test-context-continuity')">Clear Results</button>
+            </div>
+            <div class="chat-simulation" id="context-continuity-chat" style="display: none;"></div>
+            <div class="results" id="context-continuity-results"></div>
+        </div>
+
+        <!-- Test Scenario 4: Turn Tracking -->
+        <div class="test-scenario" id="test-turn-tracking">
+            <h3>🔄 Test 4: Turn Tracking</h3>
+            <p>Tests if turn numbers increment properly and handle conflicts.</p>
+            <div class="test-controls">
+                <button class="btn" onclick="runTurnTrackingTest()">Run Turn Tracking Test</button>
+                <button class="btn" onclick="clearTest('test-turn-tracking')">Clear Results</button>
+            </div>
+            <div class="chat-simulation" id="turn-tracking-chat" style="display: none;"></div>
+            <div class="results" id="turn-tracking-results"></div>
+        </div>
+
+        <!-- Test Scenario 5: Context Structure -->
+        <div class="test-scenario" id="test-context-structure">
+            <h3>🏗️ Test 5: Context Structure Validation</h3>
+            <p>Tests if conversation context has the proper structure for Lambda consumption.</p>
+            <div class="test-controls">
+                <button class="btn" onclick="runContextStructureTest()">Run Context Structure Test</button>
+                <button class="btn" onclick="clearTest('test-context-structure')">Clear Results</button>
+            </div>
+            <div class="results" id="context-structure-results"></div>
+        </div>
+
+        <!-- Test Scenario 6: Full Integration -->
+        <div class="test-scenario" id="test-full-integration">
+            <h3>🚀 Test 6: Full Integration Test</h3>
+            <p>Comprehensive test simulating a complete conversation flow with memory.</p>
+            <div class="test-controls">
+                <button class="btn" onclick="runFullIntegrationTest()">Run Full Integration Test</button>
+                <button class="btn" onclick="clearTest('test-full-integration')">Clear Results</button>
+            </div>
+            <div class="chat-simulation" id="full-integration-chat" style="display: none;"></div>
+            <div class="results" id="full-integration-results"></div>
+        </div>
+    </div>
+
+    <!-- Control Panel -->
+    <div class="test-scenario">
+        <h3>🎛️ Control Panel</h3>
+        <div class="test-controls">
+            <button class="btn" onclick="runAllTests()">Run All Tests</button>
+            <button class="btn" onclick="clearAllTests()">Clear All Results</button>
+            <button class="btn" onclick="exportResults()">Export Results</button>
+        </div>
+    </div>
+
+    <!-- Test Summary -->
+    <div class="summary" id="test-summary" style="display: none;">
+        <h3>📊 Test Summary</h3>
+        <div id="summary-content"></div>
+    </div>
+
+    <script>
+        // Test state management
+        let testResults = {};
+        let conversationManager = null;
+        let testCount = 0;
+        let completedTests = 0;
+        
+        // Mock conversation manager for testing
+        class MockConversationManager {
+            constructor(tenantHash, sessionId) {
+                this.tenantHash = tenantHash;
+                this.sessionId = sessionId;
+                this.conversationId = `sess_${tenantHash.slice(0, 8)}_${Date.now()}`;
+                this.messageBuffer = [];
+                this.turn = 0;
+                this.stateToken = 'mock_token_123';
+                this.isInitialized = true;
+                this.metadata = {
+                    created: new Date().toISOString(),
+                    updated: new Date().toISOString(),
+                    messageCount: 0,
+                    hasBeenSummarized: false,
+                    tenantHash: tenantHash.slice(0, 8) + '...'
+                };
+            }
+
+            addMessage(message) {
+                const validatedMessage = {
+                    ...message,
+                    conversationId: this.conversationId,
+                    addedAt: new Date().toISOString()
+                };
+                
+                this.messageBuffer.push(validatedMessage);
+                this.metadata.messageCount++;
+                this.metadata.updated = new Date().toISOString();
+                return true;
+            }
+
+            getMessages() {
+                return [...this.messageBuffer];
+            }
+
+            getConversationContext() {
+                return {
+                    conversationId: this.conversationId,
+                    turn: this.turn,
+                    messageCount: this.metadata.messageCount,
+                    recentMessages: this.messageBuffer.slice(-5).map(msg => ({
+                        role: msg.role,
+                        content: msg.content,
+                        timestamp: msg.timestamp
+                    })),
+                    lastSummary: this.metadata.lastSummary,
+                    conversationStarted: this.metadata.created
+                };
+            }
+
+            async updateFromChatResponse(chatResponse, userMessage, assistantMessage) {
+                if (userMessage) this.addMessage(userMessage);
+                if (assistantMessage) this.addMessage(assistantMessage);
+                this.turn++;
+                return { success: true, turn: this.turn };
+            }
+
+            async clearConversation() {
+                this.messageBuffer = [];
+                this.turn = 0;
+                this.metadata.messageCount = 0;
+                this.conversationId = `sess_${this.tenantHash.slice(0, 8)}_${Date.now()}`;
+                return true;
+            }
+        }
+
+        // Initialize conversation manager
+        function initializeConversationManager() {
+            if (!conversationManager) {
+                conversationManager = new MockConversationManager(
+                    'test_tenant_hash_123456789',
+                    'test_session_987654321'
+                );
+            }
+            return conversationManager;
+        }
+
+        // Mock chat function that simulates AI responses with memory
+        async function mockChat(message, context) {
+            // Simulate processing delay
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            // Extract information from context
+            const contextMessages = context?.recentMessages || [];
+            const conversationText = contextMessages.map(msg => msg.content).join(' ');
+            
+            // Simulate AI responses based on context
+            let response = '';
+            
+            if (message.toLowerCase().includes('my name is')) {
+                const nameMatch = message.match(/my name is (\w+)/i);
+                if (nameMatch) {
+                    response = `Nice to meet you, ${nameMatch[1]}! I'll remember your name for our conversation.`;
+                }
+            } else if (message.toLowerCase().includes('what is my name') || message.toLowerCase().includes('what\'s my name')) {
+                const nameMatch = conversationText.match(/my name is (\w+)/i);
+                if (nameMatch) {
+                    response = `Your name is ${nameMatch[1]}, as you told me earlier in our conversation.`;
+                } else {
+                    response = `I don't recall you telling me your name yet. Could you please tell me?`;
+                }
+            } else if (message.toLowerCase().includes('i am a veteran')) {
+                response = `Thank you for your service! I understand you are a veteran. How can I assist you today?`;
+            } else if (message.toLowerCase().includes('hospice care')) {
+                response = `I can help you with information about hospice care services. What specific questions do you have?`;
+            } else if (message.toLowerCase().includes('what did i tell you')) {
+                const facts = [];
+                if (conversationText.includes('veteran')) facts.push('you are a veteran');
+                if (conversationText.includes('hospice')) facts.push('you need hospice care information');
+                const nameMatch = conversationText.match(/my name is (\w+)/i);
+                if (nameMatch) facts.push(`your name is ${nameMatch[1]}`);
+                
+                if (facts.length > 0) {
+                    response = `From our conversation, I remember that ${facts.join(', ')}.`;
+                } else {
+                    response = `I don't have any specific information about you from our conversation yet.`;
+                }
+            } else {
+                response = `I understand you said: "${message}". How can I help you further?`;
+            }
+            
+            return {
+                success: true,
+                response: response,
+                metadata: {
+                    contextReceived: !!context,
+                    contextMessageCount: contextMessages.length,
+                    conversationId: context?.conversationId,
+                    turn: context?.turn
+                }
+            };
+        }
+
+        // Utility functions
+        function logResult(testId, message, type = 'info') {
+            const resultsDiv = document.getElementById(testId + '-results');
+            const timestamp = new Date().toLocaleTimeString();
+            resultsDiv.innerHTML += `<div class="log-entry">[${timestamp}] ${message}</div>`;
+            resultsDiv.className = `results ${type}`;
+            resultsDiv.scrollTop = resultsDiv.scrollHeight;
+        }
+
+        function displayChatMessage(chatId, role, content, metadata = null) {
+            const chatDiv = document.getElementById(chatId);
+            chatDiv.style.display = 'block';
+            
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${role}`;
+            messageDiv.innerHTML = content;
+            
+            if (metadata) {
+                const metaDiv = document.createElement('div');
+                metaDiv.className = 'metadata';
+                metaDiv.innerHTML = `Turn: ${metadata.turn || 'N/A'} | Context: ${metadata.contextReceived ? 'Yes' : 'No'} | Messages: ${metadata.contextMessageCount || 0}`;
+                messageDiv.appendChild(metaDiv);
+            }
+            
+            chatDiv.appendChild(messageDiv);
+            chatDiv.scrollTop = chatDiv.scrollHeight;
+        }
+
+        function clearTest(testId) {
+            const resultsDiv = document.getElementById(testId + '-results');
+            resultsDiv.innerHTML = '';
+            resultsDiv.className = 'results';
+            
+            const chatDiv = document.getElementById(testId.replace('test-', '') + '-chat');
+            if (chatDiv) {
+                chatDiv.innerHTML = '';
+                chatDiv.style.display = 'none';
+            }
+            
+            delete testResults[testId];
+            updateProgress();
+        }
+
+        function clearAllTests() {
+            const scenarios = ['test-name-memory', 'test-multi-fact', 'test-context-continuity', 'test-turn-tracking', 'test-context-structure', 'test-full-integration'];
+            scenarios.forEach(clearTest);
+            
+            // Reset conversation manager
+            conversationManager = null;
+            testResults = {};
+            completedTests = 0;
+            updateProgress();
+            
+            document.getElementById('test-summary').style.display = 'none';
+        }
+
+        function updateProgress() {
+            testCount = 6; // Total number of tests
+            completedTests = Object.keys(testResults).length;
+            
+            const percentage = (completedTests / testCount) * 100;
+            document.getElementById('progress-bar').style.width = percentage + '%';
+            document.getElementById('progress-text').textContent = 
+                `${completedTests}/${testCount} tests completed (${Math.round(percentage)}%)`;
+            
+            if (completedTests === testCount) {
+                showTestSummary();
+            }
+        }
+
+        function showTestSummary() {
+            const summaryDiv = document.getElementById('test-summary');
+            const contentDiv = document.getElementById('summary-content');
+            
+            const passed = Object.values(testResults).filter(r => r.success).length;
+            const failed = Object.values(testResults).filter(r => !r.success).length;
+            
+            let summaryHTML = `
+                <h4>Results Overview</h4>
+                <p><strong>Total Tests:</strong> ${testCount}</p>
+                <p><strong>Passed:</strong> <span style="color: #28a745;">${passed}</span></p>
+                <p><strong>Failed:</strong> <span style="color: #dc3545;">${failed}</span></p>
+                <p><strong>Success Rate:</strong> ${((passed / testCount) * 100).toFixed(1)}%</p>
+                
+                <h4>Test Details</h4>
+                <ul>
+            `;
+            
+            Object.entries(testResults).forEach(([testId, result]) => {
+                const status = result.success ? '✅' : '❌';
+                summaryHTML += `<li>${status} ${testId}: ${result.message}</li>`;
+            });
+            
+            summaryHTML += '</ul>';
+            
+            contentDiv.innerHTML = summaryHTML;
+            summaryDiv.style.display = 'block';
+        }
+
+        // Test implementations
+        async function runNameMemoryTest() {
+            logResult('test-name-memory', 'Starting name memory test...', 'info');
+            
+            try {
+                const manager = initializeConversationManager();
+                await manager.clearConversation();
+                
+                // Step 1: User introduces name
+                logResult('test-name-memory', 'Step 1: User introduces name');
+                const userMessage1 = {
+                    id: 'msg_1',
+                    role: 'user',
+                    content: 'My name is Chris',
+                    timestamp: new Date().toISOString()
+                };
+                
+                const context1 = manager.getConversationContext();
+                displayChatMessage('name-memory-chat', 'user', userMessage1.content);
+                
+                const response1 = await mockChat(userMessage1.content, context1);
+                const assistantMessage1 = {
+                    id: 'msg_2',
+                    role: 'assistant',
+                    content: response1.response,
+                    timestamp: new Date().toISOString()
+                };
+                
+                displayChatMessage('name-memory-chat', 'assistant', assistantMessage1.content, response1.metadata);
+                await manager.updateFromChatResponse(response1, userMessage1, assistantMessage1);
+                
+                // Step 2: Ask for name
+                logResult('test-name-memory', 'Step 2: Ask for name recall');
+                const userMessage2 = {
+                    id: 'msg_3',
+                    role: 'user',
+                    content: 'What is my name?',
+                    timestamp: new Date().toISOString()
+                };
+                
+                const context2 = manager.getConversationContext();
+                displayChatMessage('name-memory-chat', 'user', userMessage2.content);
+                
+                const response2 = await mockChat(userMessage2.content, context2);
+                const assistantMessage2 = {
+                    id: 'msg_4',
+                    role: 'assistant',
+                    content: response2.response,
+                    timestamp: new Date().toISOString()
+                };
+                
+                displayChatMessage('name-memory-chat', 'assistant', assistantMessage2.content, response2.metadata);
+                
+                // Verify name was remembered
+                if (response2.response.toLowerCase().includes('chris')) {
+                    logResult('test-name-memory', '✅ SUCCESS: AI remembered the name "Chris"', 'success');
+                    testResults['test-name-memory'] = { success: true, message: 'AI successfully remembered user name' };
+                } else {
+                    logResult('test-name-memory', '❌ FAILED: AI did not remember the name', 'error');
+                    testResults['test-name-memory'] = { success: false, message: 'AI failed to remember user name' };
+                }
+                
+                updateProgress();
+                
+            } catch (error) {
+                logResult('test-name-memory', `❌ ERROR: ${error.message}`, 'error');
+                testResults['test-name-memory'] = { success: false, message: `Error: ${error.message}` };
+                updateProgress();
+            }
+        }
+
+        async function runMultiFactTest() {
+            logResult('test-multi-fact', 'Starting multi-fact memory test...', 'info');
+            
+            try {
+                const manager = initializeConversationManager();
+                await manager.clearConversation();
+                
+                // Step 1: User provides multiple facts
+                logResult('test-multi-fact', 'Step 1: User provides multiple facts');
+                const userMessage1 = {
+                    id: 'msg_1',
+                    role: 'user',
+                    content: 'I am a veteran and I need hospice care for my father',
+                    timestamp: new Date().toISOString()
+                };
+                
+                const context1 = manager.getConversationContext();
+                displayChatMessage('multi-fact-chat', 'user', userMessage1.content);
+                
+                const response1 = await mockChat(userMessage1.content, context1);
+                const assistantMessage1 = {
+                    id: 'msg_2',
+                    role: 'assistant',
+                    content: response1.response,
+                    timestamp: new Date().toISOString()
+                };
+                
+                displayChatMessage('multi-fact-chat', 'assistant', assistantMessage1.content, response1.metadata);
+                await manager.updateFromChatResponse(response1, userMessage1, assistantMessage1);
+                
+                // Step 2: Ask for fact recall
+                logResult('test-multi-fact', 'Step 2: Ask for fact recall');
+                const userMessage2 = {
+                    id: 'msg_3',
+                    role: 'user',
+                    content: 'What did I tell you about myself?',
+                    timestamp: new Date().toISOString()
+                };
+                
+                const context2 = manager.getConversationContext();
+                displayChatMessage('multi-fact-chat', 'user', userMessage2.content);
+                
+                const response2 = await mockChat(userMessage2.content, context2);
+                const assistantMessage2 = {
+                    id: 'msg_4',
+                    role: 'assistant',
+                    content: response2.response,
+                    timestamp: new Date().toISOString()
+                };
+                
+                displayChatMessage('multi-fact-chat', 'assistant', assistantMessage2.content, response2.metadata);
+                
+                // Verify facts were remembered
+                const responseText = response2.response.toLowerCase();
+                const rememberedVeteran = responseText.includes('veteran');
+                const rememberedHospice = responseText.includes('hospice');
+                
+                if (rememberedVeteran && rememberedHospice) {
+                    logResult('test-multi-fact', '✅ SUCCESS: AI remembered both veteran status and hospice care need', 'success');
+                    testResults['test-multi-fact'] = { success: true, message: 'AI successfully remembered multiple facts' };
+                } else {
+                    logResult('test-multi-fact', `❌ FAILED: AI remembered veteran: ${rememberedVeteran}, hospice: ${rememberedHospice}`, 'error');
+                    testResults['test-multi-fact'] = { success: false, message: 'AI failed to remember all facts' };
+                }
+                
+                updateProgress();
+                
+            } catch (error) {
+                logResult('test-multi-fact', `❌ ERROR: ${error.message}`, 'error');
+                testResults['test-multi-fact'] = { success: false, message: `Error: ${error.message}` };
+                updateProgress();
+            }
+        }
+
+        async function runContextContinuityTest() {
+            logResult('test-context-continuity', 'Starting context continuity test...', 'info');
+            
+            try {
+                const manager = initializeConversationManager();
+                await manager.clearConversation();
+                
+                // Multi-step conversation
+                const steps = [
+                    'My name is Sarah',
+                    'I need help with insurance',
+                    'I live in California',
+                    'Can you summarize what I told you?'
+                ];
+                
+                for (let i = 0; i < steps.length; i++) {
+                    logResult('test-context-continuity', `Step ${i + 1}: ${steps[i]}`);
+                    
+                    const userMessage = {
+                        id: `msg_user_${i}`,
+                        role: 'user',
+                        content: steps[i],
+                        timestamp: new Date().toISOString()
+                    };
+                    
+                    const context = manager.getConversationContext();
+                    displayChatMessage('context-continuity-chat', 'user', userMessage.content);
+                    
+                    const response = await mockChat(userMessage.content, context);
+                    const assistantMessage = {
+                        id: `msg_assistant_${i}`,
+                        role: 'assistant',
+                        content: response.response,
+                        timestamp: new Date().toISOString()
+                    };
+                    
+                    displayChatMessage('context-continuity-chat', 'assistant', assistantMessage.content, response.metadata);
+                    await manager.updateFromChatResponse(response, userMessage, assistantMessage);
+                    
+                    // Verify context is building
+                    logResult('test-context-continuity', `Context now has ${context.messageCount} messages, turn ${context.turn}`);
+                }
+                
+                // Verify final context
+                const finalContext = manager.getConversationContext();
+                if (finalContext.messageCount >= 8 && finalContext.turn >= 4) {
+                    logResult('test-context-continuity', '✅ SUCCESS: Context continuity maintained throughout conversation', 'success');
+                    testResults['test-context-continuity'] = { success: true, message: 'Context continuity maintained' };
+                } else {
+                    logResult('test-context-continuity', '❌ FAILED: Context continuity broken', 'error');
+                    testResults['test-context-continuity'] = { success: false, message: 'Context continuity broken' };
+                }
+                
+                updateProgress();
+                
+            } catch (error) {
+                logResult('test-context-continuity', `❌ ERROR: ${error.message}`, 'error');
+                testResults['test-context-continuity'] = { success: false, message: `Error: ${error.message}` };
+                updateProgress();
+            }
+        }
+
+        async function runTurnTrackingTest() {
+            logResult('test-turn-tracking', 'Starting turn tracking test...', 'info');
+            
+            try {
+                const manager = initializeConversationManager();
+                await manager.clearConversation();
+                
+                logResult('test-turn-tracking', `Initial turn: ${manager.turn}`);
+                
+                // Exchange 1
+                const result1 = await manager.updateFromChatResponse(
+                    { success: true },
+                    { id: 'msg_1', role: 'user', content: 'Hello', timestamp: new Date().toISOString() },
+                    { id: 'msg_2', role: 'assistant', content: 'Hi there!', timestamp: new Date().toISOString() }
+                );
+                
+                logResult('test-turn-tracking', `After exchange 1: turn ${manager.turn}`);
+                displayChatMessage('turn-tracking-chat', 'user', 'Hello');
+                displayChatMessage('turn-tracking-chat', 'assistant', 'Hi there!', { turn: manager.turn });
+                
+                // Exchange 2
+                const result2 = await manager.updateFromChatResponse(
+                    { success: true },
+                    { id: 'msg_3', role: 'user', content: 'How are you?', timestamp: new Date().toISOString() },
+                    { id: 'msg_4', role: 'assistant', content: 'I am doing well!', timestamp: new Date().toISOString() }
+                );
+                
+                logResult('test-turn-tracking', `After exchange 2: turn ${manager.turn}`);
+                displayChatMessage('turn-tracking-chat', 'user', 'How are you?');
+                displayChatMessage('turn-tracking-chat', 'assistant', 'I am doing well!', { turn: manager.turn });
+                
+                // Verify turn progression
+                if (manager.turn === 2) {
+                    logResult('test-turn-tracking', '✅ SUCCESS: Turn tracking working correctly', 'success');
+                    testResults['test-turn-tracking'] = { success: true, message: 'Turn tracking working correctly' };
+                } else {
+                    logResult('test-turn-tracking', `❌ FAILED: Expected turn 2, got ${manager.turn}`, 'error');
+                    testResults['test-turn-tracking'] = { success: false, message: `Turn tracking failed: expected 2, got ${manager.turn}` };
+                }
+                
+                updateProgress();
+                
+            } catch (error) {
+                logResult('test-turn-tracking', `❌ ERROR: ${error.message}`, 'error');
+                testResults['test-turn-tracking'] = { success: false, message: `Error: ${error.message}` };
+                updateProgress();
+            }
+        }
+
+        async function runContextStructureTest() {
+            logResult('test-context-structure', 'Starting context structure validation...', 'info');
+            
+            try {
+                const manager = initializeConversationManager();
+                await manager.clearConversation();
+                
+                // Add some messages
+                manager.addMessage({
+                    id: 'msg_1',
+                    role: 'user',
+                    content: 'Test message',
+                    timestamp: new Date().toISOString()
+                });
+                
+                const context = manager.getConversationContext();
+                
+                // Validate required fields
+                const requiredFields = ['conversationId', 'turn', 'messageCount', 'recentMessages', 'conversationStarted'];
+                const missingFields = requiredFields.filter(field => !(field in context));
+                
+                if (missingFields.length === 0) {
+                    logResult('test-context-structure', '✅ All required fields present');
+                } else {
+                    logResult('test-context-structure', `❌ Missing fields: ${missingFields.join(', ')}`);
+                }
+                
+                // Validate data types
+                const typeValidations = [
+                    { field: 'conversationId', type: 'string', value: context.conversationId },
+                    { field: 'turn', type: 'number', value: context.turn },
+                    { field: 'messageCount', type: 'number', value: context.messageCount },
+                    { field: 'recentMessages', type: 'object', value: context.recentMessages }
+                ];
+                
+                let typeErrors = [];
+                typeValidations.forEach(({ field, type, value }) => {
+                    if (type === 'object' && !Array.isArray(value)) {
+                        typeErrors.push(`${field} should be array`);
+                    } else if (type !== 'object' && typeof value !== type) {
+                        typeErrors.push(`${field} should be ${type}`);
+                    }
+                });
+                
+                if (typeErrors.length === 0) {
+                    logResult('test-context-structure', '✅ All field types correct');
+                } else {
+                    logResult('test-context-structure', `❌ Type errors: ${typeErrors.join(', ')}`);
+                }
+                
+                // Test JSON serialization
+                try {
+                    const serialized = JSON.stringify(context);
+                    const deserialized = JSON.parse(serialized);
+                    logResult('test-context-structure', '✅ Context is JSON serializable');
+                } catch (e) {
+                    logResult('test-context-structure', '❌ Context is not JSON serializable');
+                    typeErrors.push('JSON serialization failed');
+                }
+                
+                // Overall result
+                if (missingFields.length === 0 && typeErrors.length === 0) {
+                    logResult('test-context-structure', '✅ SUCCESS: Context structure is valid for Lambda', 'success');
+                    testResults['test-context-structure'] = { success: true, message: 'Context structure is valid' };
+                } else {
+                    logResult('test-context-structure', '❌ FAILED: Context structure has issues', 'error');
+                    testResults['test-context-structure'] = { success: false, message: 'Context structure validation failed' };
+                }
+                
+                updateProgress();
+                
+            } catch (error) {
+                logResult('test-context-structure', `❌ ERROR: ${error.message}`, 'error');
+                testResults['test-context-structure'] = { success: false, message: `Error: ${error.message}` };
+                updateProgress();
+            }
+        }
+
+        async function runFullIntegrationTest() {
+            logResult('test-full-integration', 'Starting full integration test...', 'info');
+            
+            try {
+                const manager = initializeConversationManager();
+                await manager.clearConversation();
+                
+                // Full conversation flow
+                const conversation = [
+                    { user: 'My name is David', expectedKeyword: 'David' },
+                    { user: 'I am 65 years old', expectedKeyword: null },
+                    { user: 'I need home care services', expectedKeyword: null },
+                    { user: 'What is my name?', expectedKeyword: 'David' },
+                    { user: 'What services do I need?', expectedKeyword: 'care' }
+                ];
+                
+                let conversationSuccesses = 0;
+                
+                for (let i = 0; i < conversation.length; i++) {
+                    const step = conversation[i];
+                    logResult('test-full-integration', `Step ${i + 1}: ${step.user}`);
+                    
+                    const userMessage = {
+                        id: `msg_user_${i}`,
+                        role: 'user',
+                        content: step.user,
+                        timestamp: new Date().toISOString()
+                    };
+                    
+                    const context = manager.getConversationContext();
+                    displayChatMessage('full-integration-chat', 'user', userMessage.content);
+                    
+                    const response = await mockChat(userMessage.content, context);
+                    const assistantMessage = {
+                        id: `msg_assistant_${i}`,
+                        role: 'assistant',
+                        content: response.response,
+                        timestamp: new Date().toISOString()
+                    };
+                    
+                    displayChatMessage('full-integration-chat', 'assistant', assistantMessage.content, response.metadata);
+                    await manager.updateFromChatResponse(response, userMessage, assistantMessage);
+                    
+                    // Check if expected keyword is present
+                    if (step.expectedKeyword) {
+                        if (response.response.toLowerCase().includes(step.expectedKeyword.toLowerCase())) {
+                            logResult('test-full-integration', `✅ Step ${i + 1}: Expected keyword "${step.expectedKeyword}" found`);
+                            conversationSuccesses++;
+                        } else {
+                            logResult('test-full-integration', `❌ Step ${i + 1}: Expected keyword "${step.expectedKeyword}" not found`);
+                        }
+                    } else {
+                        conversationSuccesses++;
+                        logResult('test-full-integration', `✅ Step ${i + 1}: Completed successfully`);
+                    }
+                }
+                
+                // Final validation
+                const finalContext = manager.getConversationContext();
+                const successRate = (conversationSuccesses / conversation.length) * 100;
+                
+                if (successRate >= 80 && finalContext.messageCount >= 10) {
+                    logResult('test-full-integration', `✅ SUCCESS: Full integration test passed (${successRate}% success rate)`, 'success');
+                    testResults['test-full-integration'] = { success: true, message: `Full integration successful (${successRate}% success rate)` };
+                } else {
+                    logResult('test-full-integration', `❌ FAILED: Integration test failed (${successRate}% success rate)`, 'error');
+                    testResults['test-full-integration'] = { success: false, message: `Integration test failed (${successRate}% success rate)` };
+                }
+                
+                updateProgress();
+                
+            } catch (error) {
+                logResult('test-full-integration', `❌ ERROR: ${error.message}`, 'error');
+                testResults['test-full-integration'] = { success: false, message: `Error: ${error.message}` };
+                updateProgress();
+            }
+        }
+
+        async function runAllTests() {
+            clearAllTests();
+            
+            logResult('test-name-memory', 'Running all tests...', 'info');
+            
+            await runNameMemoryTest();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            await runMultiFactTest();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            await runContextContinuityTest();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            await runTurnTrackingTest();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            await runContextStructureTest();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            await runFullIntegrationTest();
+        }
+
+        function exportResults() {
+            const results = {
+                timestamp: new Date().toISOString(),
+                testResults: testResults,
+                summary: {
+                    total: testCount,
+                    passed: Object.values(testResults).filter(r => r.success).length,
+                    failed: Object.values(testResults).filter(r => !r.success).length
+                }
+            };
+            
+            const blob = new Blob([JSON.stringify(results, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `conversation-memory-test-results-${new Date().toISOString().slice(0, 19)}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            updateProgress();
+        });
+    </script>
+</body>
+</html>

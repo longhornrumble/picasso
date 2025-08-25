@@ -4,7 +4,7 @@ import { FileText, Image, Video, Music, Archive, File, X } from "lucide-react";
 
 export default function FilePreview({ file, uploadState = "complete", onCancel }) {
   // Helper function to check if file is an image
-  const isImage = file?.type?.startsWith('image/');
+  const isImage = file?.type && typeof file.type === 'string' && file.type.startsWith('image/');
 
   // Helper function to get file type label for icon
   const getFileTypeLabel = (mimeType) => {
@@ -95,14 +95,14 @@ export default function FilePreview({ file, uploadState = "complete", onCancel }
             </div>
           )}
         </div>
-      ) : file.type?.startsWith('video/') && uploadState === 'complete' ? (
+      ) : (file.type && typeof file.type === 'string' && file.type.startsWith('video/')) && uploadState === 'complete' ? (
         <div className="video-preview">
           <video 
             src={file.url} 
             controls
           />
         </div>
-      ) : file.type?.includes('pdf') && uploadState === 'complete' ? (
+      ) : (file.type && typeof file.type === 'string' && file.type.includes('pdf')) && uploadState === 'complete' ? (
         <div className="pdf-preview">
           <iframe 
             src={file.url}

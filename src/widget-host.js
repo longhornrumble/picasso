@@ -68,20 +68,41 @@ import { config as environmentConfig } from './config/environment.js';
       // Determine the correct domain based on explicit development mode
       // Check for development mode via data attribute or URL parameter
       const urlParams = new URLSearchParams(window.location.search);
-      const devMode = urlParams.get('picasso-dev') === 'true' ||
-                      document.currentScript?.getAttribute('data-dev') === 'true' ||
-                      document.querySelector('script[src*="widget.js"][data-dev="true"]');
+      const explicitDevMode = urlParams.get('picasso-dev') === 'true' ||
+                             document.currentScript?.getAttribute('data-dev') === 'true' ||
+                             document.querySelector('script[src*="widget.js"][data-dev="true"]');
       
-      const isLocal = devMode || (['localhost', '127.0.0.1'].includes(window.location.hostname) && import.meta.env.DEV);
+      // Respect build-time dev mode override for staging/production builds
+      const autoDevModeDisabled = typeof __DISABLE_AUTO_DEV_MODE__ !== 'undefined' && __DISABLE_AUTO_DEV_MODE__;
+      const devMode = explicitDevMode || (!autoDevModeDisabled && ['localhost', '127.0.0.1'].includes(window.location.hostname));
       
-      const widgetDomain = devMode ? 
-        `http://localhost:5173` : 
-        (isLocal ? window.location.origin : environmentConfig.WIDGET_DOMAIN);
+      const isLocal = devMode;
       
-      let iframeUrl = `${widgetDomain}/widget-frame.html?t=${this.tenantHash}`;
+      // Use build-time widget domain override for staging builds
+      let widgetDomain;
+      if (devMode) {
+        widgetDomain = `http://localhost:8000`;
+      } else if (typeof __WIDGET_DOMAIN__ !== 'undefined' && __WIDGET_DOMAIN__ === 'CURRENT_DOMAIN') {
+        widgetDomain = window.location.origin;
+        console.log('🎯 Using current domain for staging build:', widgetDomain);
+      } else if (typeof __WIDGET_DOMAIN__ !== 'undefined') {
+        widgetDomain = __WIDGET_DOMAIN__;
+      } else {
+        widgetDomain = isLocal ? window.location.origin : environmentConfig.WIDGET_DOMAIN;
+      }
+      
+      // Determine the correct iframe path for staging builds
+      const isStaging = typeof __IS_STAGING__ !== 'undefined' && __IS_STAGING__;
+      const iframePath = isStaging && widgetDomain === window.location.origin ? 
+        '/dist/staging/widget-frame-staging.html' : 
+        '/widget-frame.html';
+      
+      let iframeUrl = `${widgetDomain}${iframePath}?t=${this.tenantHash}`;
       
       if (isLocal && !iframeUrl.includes('picasso-env')) {
         iframeUrl += '&picasso-env=development';
+      } else if (isStaging) {
+        iframeUrl += '&picasso-env=staging';
       }
       
       console.log(`🌐 Loading iframe from: ${iframeUrl} (${isLocal ? 'LOCAL' : 'PROD'} mode)`);

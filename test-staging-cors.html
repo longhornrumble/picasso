@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Staging CORS Test - Conversation Persistence</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 20px;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .pending {
+            background: #fff3cd;
+            color: #856404;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            border: none;
+            border-radius: 4px;
+            background: #007bff;
+            color: white;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        pre {
+            background: #f4f4f4;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        h1 {
+            color: #28a745;
+        }
+        .widget-container {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 9999;
+        }
+    </style>
+</head>
+<body>
+    <h1>🚀 Staging Environment CORS Test</h1>
+    
+    <div class="test-section">
+        <h2>Widget Status</h2>
+        <div id="widget-status" class="status pending">Checking widget...</div>
+        <button onclick="openWidget()">Open Widget</button>
+        <button onclick="closeWidget()">Close Widget</button>
+    </div>
+
+    <div class="test-section">
+        <h2>Test 1: Config Loading (Staging)</h2>
+        <button onclick="testConfigLoad()">Test Config Load</button>
+        <div id="test1-status"></div>
+        <pre id="test1-response"></pre>
+    </div>
+
+    <div class="test-section">
+        <h2>Test 2: Initialize Session</h2>
+        <button onclick="testInitSession()">Initialize Session</button>
+        <div id="test2-status"></div>
+        <pre id="test2-response"></pre>
+    </div>
+
+    <div class="test-section">
+        <h2>Test 3: Save Conversation</h2>
+        <button onclick="testSaveConversation()">Save Conversation</button>
+        <div id="test3-status"></div>
+        <pre id="test3-response"></pre>
+    </div>
+
+    <div class="test-section">
+        <h2>Test 4: Retrieve Conversation</h2>
+        <button onclick="testGetConversation()">Get Conversation</button>
+        <div id="test4-status"></div>
+        <pre id="test4-response"></pre>
+    </div>
+
+    <div class="test-section">
+        <h2>Test 5: Chat with Memory</h2>
+        <button onclick="testChatWithMemory()">Test Chat Memory</button>
+        <div id="test5-status"></div>
+        <pre id="test5-response"></pre>
+    </div>
+
+    <!-- Load the staging widget -->
+    <script src="https://picassostaging.s3.amazonaws.com/widget.js" data-tenant="my87674d777bf9"></script>
+
+    <script>
+        const API_URL = 'https://xo6tsuhi6u2fby3rkw4usa663q0igxjk.lambda-url.us-east-1.on.aws';
+        const TENANT_HASH = 'my87674d777bf9';
+        let stateToken = null;
+        let sessionId = 'staging_test_' + Date.now();
+
+        // Check widget status
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                const widgetStatus = document.getElementById('widget-status');
+                if (window.PicassoWidget) {
+                    widgetStatus.className = 'status success';
+                    widgetStatus.textContent = '✅ Widget loaded from staging!';
+                } else {
+                    widgetStatus.className = 'status error';
+                    widgetStatus.textContent = '❌ Widget not loaded';
+                }
+            }, 2000);
+        });
+
+        function openWidget() {
+            if (window.PicassoWidget) {
+                window.PicassoWidget.open();
+            }
+        }
+
+        function closeWidget() {
+            if (window.PicassoWidget) {
+                window.PicassoWidget.close();
+            }
+        }
+
+        async function testConfigLoad() {
+            const statusEl = document.getElementById('test1-status');
+            const responseEl = document.getElementById('test1-response');
+            
+            statusEl.className = 'status pending';
+            statusEl.textContent = 'Testing config loading from Lambda...';
+            
+            try {
+                const response = await fetch(`${API_URL}?action=get_config&t=${TENANT_HASH}`, {
+                    method: 'GET',
+                    headers: {
+                        'Origin': 'file://'
+                    }
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    const hasConfig = data.tenant_hash || (data.body && JSON.parse(data.body).tenant_hash);
+                    if (hasConfig) {
+                        statusEl.className = 'status success';
+                        statusEl.textContent = '✅ Config loaded successfully!';
+                    } else {
+                        statusEl.className = 'status error';
+                        statusEl.textContent = '⚠️ Response OK but config structure unexpected';
+                    }
+                } else {
+                    statusEl.className = 'status error';
+                    statusEl.textContent = `❌ Config failed: ${response.status}`;
+                }
+                
+                responseEl.textContent = JSON.stringify(data, null, 2);
+            } catch (error) {
+                statusEl.className = 'status error';
+                statusEl.textContent = `❌ Error: ${error.message}`;
+                responseEl.textContent = error.stack;
+            }
+        }
+
+        async function testInitSession() {
+            const statusEl = document.getElementById('test2-status');
+            const responseEl = document.getElementById('test2-response');
+            
+            statusEl.className = 'status pending';
+            statusEl.textContent = 'Initializing session...';
+            
+            try {
+                const response = await fetch(`${API_URL}?action=init_session&t=${TENANT_HASH}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Origin': 'file://'
+                    },
+                    body: JSON.stringify({
+                        tenant_hash: TENANT_HASH,
+                        session_id: sessionId
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (response.ok && (data.state_token || data.body)) {
+                    statusEl.className = 'status success';
+                    statusEl.textContent = '✅ Session initialized!';
+                    
+                    // Extract token from body if wrapped
+                    if (data.body) {
+                        const parsed = typeof data.body === 'string' ? JSON.parse(data.body) : data.body;
+                        stateToken = parsed.state_token;
+                    } else {
+                        stateToken = data.state_token;
+                    }
+                    
+                    console.log('Got state token:', stateToken);
+                } else {
+                    statusEl.className = 'status error';
+                    statusEl.textContent = `❌ Init failed: ${response.status}`;
+                }
+                
+                responseEl.textContent = JSON.stringify(data, null, 2);
+            } catch (error) {
+                statusEl.className = 'status error';
+                statusEl.textContent = `❌ Error: ${error.message}`;
+                responseEl.textContent = error.stack;
+            }
+        }
+
+        async function testSaveConversation() {
+            const statusEl = document.getElementById('test3-status');
+            const responseEl = document.getElementById('test3-response');
+            
+            if (!stateToken) {
+                statusEl.className = 'status error';
+                statusEl.textContent = '❌ No state token - run Test 2 first';
+                return;
+            }
+            
+            statusEl.className = 'status pending';
+            statusEl.textContent = 'Saving conversation...';
+            
+            try {
+                const response = await fetch(`${API_URL}?action=conversation&operation=save&t=${TENANT_HASH}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${stateToken}`,
+                        'Origin': 'file://'
+                    },
+                    body: JSON.stringify({
+                        turn: 0,
+                        delta: {
+                            lastMessages: [
+                                { role: 'user', text: 'My name is Chris Miller from the staging environment' },
+                                { role: 'assistant', text: 'Hello Chris Miller! Nice to meet you from the staging environment!' }
+                            ]
+                        }
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    statusEl.className = 'status success';
+                    statusEl.textContent = '✅ Conversation saved!';
+                    
+                    // Update token if provided
+                    if (data.body) {
+                        const parsed = typeof data.body === 'string' ? JSON.parse(data.body) : data.body;
+                        if (parsed.stateToken) stateToken = parsed.stateToken;
+                    } else if (data.stateToken) {
+                        stateToken = data.stateToken;
+                    }
+                } else {
+                    statusEl.className = 'status error';
+                    statusEl.textContent = `❌ Save failed: ${response.status}`;
+                }
+                
+                responseEl.textContent = JSON.stringify(data, null, 2);
+            } catch (error) {
+                statusEl.className = 'status error';
+                statusEl.textContent = `❌ Error: ${error.message}`;
+                responseEl.textContent = error.stack;
+            }
+        }
+
+        async function testGetConversation() {
+            const statusEl = document.getElementById('test4-status');
+            const responseEl = document.getElementById('test4-response');
+            
+            if (!stateToken) {
+                statusEl.className = 'status error';
+                statusEl.textContent = '❌ No state token - run Test 2 first';
+                return;
+            }
+            
+            statusEl.className = 'status pending';
+            statusEl.textContent = 'Retrieving conversation...';
+            
+            try {
+                const response = await fetch(`${API_URL}?action=conversation&operation=get&t=${TENANT_HASH}`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${stateToken}`,
+                        'Origin': 'file://'
+                    }
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    let hasName = false;
+                    
+                    // Check for Chris Miller in the response
+                    const responseStr = JSON.stringify(data);
+                    hasName = responseStr.includes('Chris Miller');
+                    
+                    if (hasName) {
+                        statusEl.className = 'status success';
+                        statusEl.textContent = '✅ Conversation retrieved with name!';
+                    } else {
+                        statusEl.className = 'status success';
+                        statusEl.textContent = '✅ Conversation retrieved (name not found)';
+                    }
+                } else {
+                    statusEl.className = 'status error';
+                    statusEl.textContent = `❌ Get failed: ${response.status}`;
+                }
+                
+                responseEl.textContent = JSON.stringify(data, null, 2);
+            } catch (error) {
+                statusEl.className = 'status error';
+                statusEl.textContent = `❌ Error: ${error.message}`;
+                responseEl.textContent = error.stack;
+            }
+        }
+
+        async function testChatWithMemory() {
+            const statusEl = document.getElementById('test5-status');
+            const responseEl = document.getElementById('test5-response');
+            
+            statusEl.className = 'status pending';
+            statusEl.textContent = 'Testing chat with memory...';
+            
+            try {
+                const response = await fetch(`${API_URL}?action=chat&t=${TENANT_HASH}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Origin': 'file://'
+                    },
+                    body: JSON.stringify({
+                        tenant_hash: TENANT_HASH,
+                        user_input: 'What is my name?',
+                        session_id: sessionId,
+                        conversation_id: sessionId
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    const responseStr = JSON.stringify(data);
+                    const hasName = responseStr.includes('Chris Miller');
+                    
+                    if (hasName) {
+                        statusEl.className = 'status success';
+                        statusEl.textContent = '✅ Chat remembers your name (Chris Miller)!';
+                    } else {
+                        statusEl.className = 'status error';
+                        statusEl.textContent = '❌ Chat did not remember your name';
+                    }
+                } else {
+                    statusEl.className = 'status error';
+                    statusEl.textContent = `❌ Chat failed: ${response.status}`;
+                }
+                
+                responseEl.textContent = JSON.stringify(data, null, 2);
+            } catch (error) {
+                statusEl.className = 'status error';
+                statusEl.textContent = `❌ Error: ${error.message}`;
+                responseEl.textContent = error.stack;
+            }
+        }
+    </script>
+</body>
+</html>

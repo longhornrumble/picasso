@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CORS Test - Conversation Persistence</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 20px;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .pending {
+            background: #fff3cd;
+            color: #856404;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            border: none;
+            border-radius: 4px;
+            background: #007bff;
+            color: white;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        pre {
+            background: #f4f4f4;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>CORS Test - Conversation Persistence</h1>
+    
+    <div class="test-section">
+        <h2>Test 1: Save Conversation with Name</h2>
+        <button onclick="testSaveConversation()">Run Test</button>
+        <div id="test1-status"></div>
+        <pre id="test1-response"></pre>
+    </div>
+
+    <div class="test-section">
+        <h2>Test 2: Retrieve Conversation</h2>
+        <button onclick="testGetConversation()">Run Test</button>
+        <div id="test2-status"></div>
+        <pre id="test2-response"></pre>
+    </div>
+
+    <div class="test-section">
+        <h2>Test 3: Test Chat with Context</h2>
+        <button onclick="testChatWithContext()">Run Test</button>
+        <div id="test3-status"></div>
+        <pre id="test3-response"></pre>
+    </div>
+
+    <script>
+        const API_URL = 'https://xo6tsuhi6u2fby3rkw4usa663q0igxjk.lambda-url.us-east-1.on.aws';
+        const TENANT_HASH = 'my87674d777bf9';
+        let stateToken = null;
+        let sessionId = 'test_session_' + Date.now();
+
+        // Generate initial JWT token
+        async function getInitialToken() {
+            const response = await fetch(`${API_URL}?action=init_session&t=${TENANT_HASH}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Origin': 'http://localhost:8000'
+                },
+                body: JSON.stringify({
+                    tenant_hash: TENANT_HASH,
+                    session_id: sessionId
+                })
+            });
+            const data = await response.json();
+            if (data.state_token) {
+                stateToken = data.state_token;
+                console.log('Got initial token:', stateToken);
+            }
+            return data;
+        }
+
+        async function testSaveConversation() {
+            const statusEl = document.getElementById('test1-status');
+            const responseEl = document.getElementById('test1-response');
+            
+            statusEl.className = 'status pending';
+            statusEl.textContent = 'Testing conversation save...';
+            
+            try {
+                // Get initial token if we don't have one
+                if (!stateToken) {
+                    await getInitialToken();
+                }
+
+                // Save conversation with user's name
+                const response = await fetch(`${API_URL}?action=conversation&operation=save&t=${TENANT_HASH}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${stateToken}`,
+                        'Origin': 'http://localhost:8000'
+                    },
+                    body: JSON.stringify({
+                        turn: 0,
+                        delta: {
+                            lastMessages: [
+                                { role: 'user', text: 'My name is Chris Miller' },
+                                { role: 'assistant', text: 'Nice to meet you, Chris Miller!' }
+                            ]
+                        }
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    statusEl.className = 'status success';
+                    statusEl.textContent = '✅ Conversation saved successfully!';
+                    if (data.stateToken) {
+                        stateToken = data.stateToken;
+                    }
+                } else {
+                    statusEl.className = 'status error';
+                    statusEl.textContent = `❌ Save failed: ${response.status} ${response.statusText}`;
+                }
+                
+                responseEl.textContent = JSON.stringify(data, null, 2);
+            } catch (error) {
+                statusEl.className = 'status error';
+                statusEl.textContent = `❌ Error: ${error.message}`;
+                responseEl.textContent = error.stack;
+            }
+        }
+
+        async function testGetConversation() {
+            const statusEl = document.getElementById('test2-status');
+            const responseEl = document.getElementById('test2-response');
+            
+            statusEl.className = 'status pending';
+            statusEl.textContent = 'Retrieving conversation...';
+            
+            try {
+                if (!stateToken) {
+                    throw new Error('No state token - run Test 1 first');
+                }
+
+                const response = await fetch(`${API_URL}?action=conversation&operation=get&t=${TENANT_HASH}`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${stateToken}`,
+                        'Origin': 'http://localhost:8000'
+                    }
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    const hasMessages = data.state?.lastMessages?.length > 0;
+                    const hasName = JSON.stringify(data).includes('Chris Miller');
+                    
+                    if (hasMessages && hasName) {
+                        statusEl.className = 'status success';
+                        statusEl.textContent = '✅ Conversation retrieved with name!';
+                    } else if (hasMessages) {
+                        statusEl.className = 'status success';
+                        statusEl.textContent = '✅ Conversation retrieved (but name not found)';
+                    } else {
+                        statusEl.className = 'status error';
+                        statusEl.textContent = '❌ No messages in retrieved conversation';
+                    }
+                    
+                    if (data.stateToken) {
+                        stateToken = data.stateToken;
+                    }
+                } else {
+                    statusEl.className = 'status error';
+                    statusEl.textContent = `❌ Get failed: ${response.status} ${response.statusText}`;
+                }
+                
+                responseEl.textContent = JSON.stringify(data, null, 2);
+            } catch (error) {
+                statusEl.className = 'status error';
+                statusEl.textContent = `❌ Error: ${error.message}`;
+                responseEl.textContent = error.stack;
+            }
+        }
+
+        async function testChatWithContext() {
+            const statusEl = document.getElementById('test3-status');
+            const responseEl = document.getElementById('test3-response');
+            
+            statusEl.className = 'status pending';
+            statusEl.textContent = 'Testing chat with context...';
+            
+            try {
+                const response = await fetch(`${API_URL}?action=chat&t=${TENANT_HASH}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Origin': 'http://localhost:8000'
+                    },
+                    body: JSON.stringify({
+                        tenant_hash: TENANT_HASH,
+                        user_input: 'What is my name?',
+                        session_id: sessionId,
+                        conversation_id: sessionId
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    const hasName = JSON.stringify(data).includes('Chris Miller');
+                    
+                    if (hasName) {
+                        statusEl.className = 'status success';
+                        statusEl.textContent = '✅ Chat remembers your name (Chris Miller)!';
+                    } else {
+                        statusEl.className = 'status error';
+                        statusEl.textContent = '❌ Chat did not remember your name';
+                    }
+                } else {
+                    statusEl.className = 'status error';
+                    statusEl.textContent = `❌ Chat failed: ${response.status} ${response.statusText}`;
+                }
+                
+                responseEl.textContent = JSON.stringify(data, null, 2);
+            } catch (error) {
+                statusEl.className = 'status error';
+                statusEl.textContent = `❌ Error: ${error.message}`;
+                responseEl.textContent = error.stack;
+            }
+        }
+
+        // Initialize on page load
+        window.addEventListener('load', async () => {
+            console.log('Page loaded. Session ID:', sessionId);
+            console.log('API URL:', API_URL);
+        });
+    </script>
+</body>
+</html>
