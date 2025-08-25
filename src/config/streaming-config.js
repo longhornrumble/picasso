@@ -13,7 +13,7 @@
 // ============================================
 // MAIN CONTROL - CHANGE THIS TO ENABLE/DISABLE STREAMING
 // ============================================
-const STREAMING_ENABLED = false; // Set to true to enable streaming, false to disable
+const STREAMING_ENABLED = true; // Set to true to enable streaming, false to disable
 const FORCE_OVERRIDE = true; // Set to true to ignore tenant config and use STREAMING_ENABLED value
 
 // ============================================

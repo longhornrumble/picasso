@@ -1,6 +1,6 @@
 import React from 'react';
 import { ConfigProvider } from './context/ConfigProvider';
-import { ChatProvider } from './context/ChatProvider';
+import { ChatProviderOrchestrator as ChatProvider } from './context/ChatProviderOrchestrator';
 import { CSSVariablesProvider } from './components/chat/useCSSVariables';
 import ChatWidget from './components/chat/ChatWidget';
 import FullPageChat from './components/chat/FullPageChat';

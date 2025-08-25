@@ -101,6 +101,8 @@ export default function MessageBubble({
   messageId: messageIdProp,
   streamId: streamIdProp,
   dataStreamId: dataStreamIdProp,
+  // New prop to control rendering mode
+  renderMode = "static", // "static" or "streaming"
 }) {
   const { config } = useConfig();
   const { addMessage, isTyping, retryMessage } = useChat();
@@ -126,10 +128,8 @@ export default function MessageBubble({
   }, [streamIdProp, dataStreamIdProp, messageIdProp, explicitId, metadata]);
 
   const streamingFlag = useMemo(() => {
-    // Check if streaming is globally disabled
-    const streamingConfig = require('../../config/streaming-config');
-    if (!streamingConfig.isStreamingEnabled()) {
-      console.log('[MessageBubble] Streaming globally disabled - forcing streamingFlag to false');
+    // Use renderMode to determine if streaming is enabled
+    if (renderMode !== "streaming") {
       return false;
     }
     
@@ -137,9 +137,9 @@ export default function MessageBubble({
     const metaFlag = (metadata.isStreaming === true) || (metadata.streaming === true) || (metadata.status === 'streaming');
     const registryFlag = (typeof streamingRegistry?.isActive === 'function') ? !!streamingRegistry.isActive(messageId) : false;
     return !!(metaFlag || registryFlag);
-  }, [isStreamingProp, metadata, messageId]);
+  }, [isStreamingProp, metadata, messageId, renderMode]);
 
-  try { console.log('[Bubble] render flags', { id: messageId, streamingFlag, hasContent: !!content, len: (content || '').length }); } catch {}
+  // try { console.log('[Bubble] render flags', { id: messageId, streamingFlag, hasContent: !!content, len: (content || '').length }); } catch {}
 
   // --- Streaming DOM refs ---
   const streamingContainerRef = useRef(null); // wraps the text node
@@ -166,10 +166,8 @@ export default function MessageBubble({
 
   // Ensure a single Text node exists in the streaming container before first paint
   useLayoutEffect(() => {
-    // Check if streaming is globally disabled
-    const streamingConfig = require('../../config/streaming-config');
-    if (!streamingConfig.isStreamingEnabled()) {
-      console.log('[MessageBubble] Skipping text node creation - streaming globally disabled');
+    // Only create text nodes when in streaming mode
+    if (renderMode !== "streaming") {
       return;
     }
     
@@ -210,14 +208,13 @@ export default function MessageBubble({
   }, [streamingFlag, messageId]);
 
   useEffect(() => {
-    // Check if streaming is globally disabled
-    const streamingConfig = require('../../config/streaming-config');
-    if (!streamingConfig.isStreamingEnabled()) {
-      return; // Skip scheduleCommit when streaming is disabled
+    // Only schedule commits when in streaming mode
+    if (renderMode !== "streaming") {
+      return;
     }
     
     if (streamingFlag) scheduleCommit();
-  }, [streamingFlag, scheduleCommit]);
+  }, [streamingFlag, scheduleCommit, renderMode]);
 
   const resolveLiveEl = useCallback(() => {
     const refEl = streamingContainerRef.current;
@@ -257,10 +254,8 @@ export default function MessageBubble({
 
   // Subscribe to streamingRegistry using stable id (imperative DOM updates only)
   useEffect(() => {
-    // Double-check streaming is enabled globally
-    const streamingConfig = require('../../config/streaming-config');
-    if (!streamingConfig.isStreamingEnabled()) {
-      console.log('[MessageBubble] Skipping StreamingRegistry subscription - streaming globally disabled');
+    // Only subscribe to streaming registry when in streaming mode
+    if (renderMode !== "streaming") {
       return;
     }
     
@@ -456,10 +451,9 @@ export default function MessageBubble({
   }, [streamingFlag, messageId, scheduleCommit, resolveLiveEl]);
 
   useEffect(() => {
-    // Check if streaming is globally disabled
-    const streamingConfig = require('../../config/streaming-config');
-    if (!streamingConfig.isStreamingEnabled()) {
-      return; // Skip mutation observer when streaming is disabled
+    // Only set up mutation observer when in streaming mode
+    if (renderMode !== "streaming") {
+      return;
     }
     
     if (!streamingFlag || !messageId) return;
@@ -534,7 +528,7 @@ export default function MessageBubble({
           // For messages that were streamed, content is managed imperatively
           // For non-streamed messages, use React's dangerouslySetInnerHTML
           dangerouslySetInnerHTML={
-            (!streamingFlag && !metadata?.streamCompleted) && typeof content === 'string' && content.length
+            (!streamingFlag) && typeof content === 'string' && content.length
               ? { __html: content }
               : undefined
           }
