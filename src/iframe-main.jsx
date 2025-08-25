@@ -56,8 +56,8 @@ function getAllowedOrigins() {
     }
   }
   
-  // In development, allow localhost origins
-  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+  // In development, allow localhost origins - use import.meta.env for build-time evaluation
+  if (import.meta.env.DEV) {
     origins.push('http://localhost:5173');
     origins.push('http://localhost:3000');
     origins.push('http://localhost:8000'); // Add esbuild dev server port

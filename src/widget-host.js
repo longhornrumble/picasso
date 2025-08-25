@@ -81,7 +81,7 @@ import { config as environmentConfig } from './config/environment.js';
       // Use build-time widget domain override for staging builds
       let widgetDomain;
       if (devMode) {
-        widgetDomain = `http://localhost:5173`;
+        widgetDomain = `http://localhost:8000`;
       } else if (typeof __WIDGET_DOMAIN__ !== 'undefined' && __WIDGET_DOMAIN__ === 'CURRENT_DOMAIN') {
         widgetDomain = window.location.origin;
         console.log('🎯 Using current domain for staging build:', widgetDomain);
