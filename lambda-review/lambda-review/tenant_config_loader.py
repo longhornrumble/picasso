@@ -3,7 +3,6 @@ import json
 import logging
 import boto3
 import time
-import re
 from botocore.exceptions import ClientError
 
 logger = logging.getLogger()
@@ -19,122 +18,6 @@ s3 = boto3.client("s3")
 cached_config = {}  # Cache by hash, not tenant_id
 cache_timestamps = {}
 hash_to_tenant_cache = {}  # Cache hash→tenant_id mappings for S3 access
-
-# 🛡️ SECURITY: Dynamic hash validation against S3 mapping files
-# No hardcoded whitelist - validation happens against actual S3 mapping files
-
-# 🛡️ SECURITY: Tenant hash validation pattern
-TENANT_HASH_PATTERN = re.compile(r'^[a-zA-Z0-9]{10,20}$')  # Alphanumeric, 10-20 chars
-
-def is_valid_tenant_hash(tenant_hash):
-    """🛡️ SECURITY: Strict tenant hash validation with dynamic S3 mapping check"""
-    if not tenant_hash:
-        return False
-    
-    # Check basic format requirements
-    if not isinstance(tenant_hash, str):
-        return False
-        
-    # Check length constraints
-    if len(tenant_hash) < 10 or len(tenant_hash) > 20:
-        return False
-    
-    # Check pattern matching (alphanumeric only)
-    if not TENANT_HASH_PATTERN.match(tenant_hash):
-        return False
-    
-    # 🛡️ SECURITY: Dynamic validation against S3 mapping files
-    # This ensures only hashes with valid mapping files are allowed
-    try:
-        mapping_key = f"{MAPPINGS_PREFIX}/{tenant_hash}.json"
-        logger.debug(f"[{tenant_hash[:8]}...] 🔍 Validating hash against S3: s3://{S3_BUCKET}/{mapping_key}")
-        
-        # Quick check if mapping file exists (HEAD request is faster than GET)
-        s3.head_object(Bucket=S3_BUCKET, Key=mapping_key)
-        logger.debug(f"[{tenant_hash[:8]}...] ✅ Hash validation passed - mapping file exists")
-        return True
-        
-    except ClientError as e:
-        error_code = e.response['Error']['Code']
-        if error_code == 'NoSuchKey':
-            logger.warning(f"[{tenant_hash[:8]}...] ⚠️ Hash validation failed - no mapping file: {mapping_key}")
-        else:
-            logger.error(f"[{tenant_hash[:8]}...] ❌ S3 error during hash validation: {e.response['Error']['Message']}")
-        return False
-    except Exception as e:
-        logger.error(f"[{tenant_hash[:8]}...] ❌ Unexpected error during hash validation: {str(e)}")
-        return False
-
-def log_security_event(event_type, tenant_hash, additional_data=None):
-    """🛡️ SECURITY: Legacy security event logging - enhanced with new monitoring"""
-    # Try to use the new security monitor if available
-    try:
-        from security_monitor import log_unauthorized_access_attempt, log_invalid_hash_attempt, log_cross_tenant_violation
-        
-        # Map legacy event types to new security monitor functions
-        if event_type == "invalid_hash_attempt":
-            log_invalid_hash_attempt(tenant_hash)
-        elif event_type == "hash_resolution_failed":
-            log_unauthorized_access_attempt(tenant_hash, "config_access", "hash_resolution_failed")
-        elif event_type == "cross_tenant_access":
-            log_cross_tenant_violation(tenant_hash, "config_access")
-        else:
-            log_unauthorized_access_attempt(tenant_hash, "legacy_event", event_type)
-        
-        return  # Exit early if new monitoring is available
-    except ImportError:
-        pass  # Fall back to legacy logging
-    
-    # Legacy security event logging
-    security_event = {
-        "event_type": event_type,
-        "tenant_hash": tenant_hash[:8] + "..." if tenant_hash else "None",
-        "timestamp": int(time.time()),
-        "source_ip": os.environ.get("SOURCE_IP", "unknown"),
-        "user_agent": os.environ.get("USER_AGENT", "unknown")
-    }
-    
-    if additional_data:
-        security_event.update(additional_data)
-    
-    # Log to CloudWatch for security monitoring
-    logger.warning(f"SECURITY_EVENT: {json.dumps(security_event)}")
-    
-    # 🛡️ SECURITY: Increment security metrics for monitoring
-    try:
-        import boto3
-        cloudwatch = boto3.client('cloudwatch')
-        
-        # Send custom metric to CloudWatch for alerting
-        cloudwatch.put_metric_data(
-            Namespace='PICASSO/Security',
-            MetricData=[
-                {
-                    'MetricName': 'UnauthorizedAccessAttempts',
-                    'Value': 1,
-                    'Unit': 'Count',
-                    'Dimensions': [
-                        {
-                            'Name': 'EventType',
-                            'Value': event_type
-                        },
-                        {
-                            'Name': 'Environment',
-                            'Value': os.environ.get('ENVIRONMENT', 'unknown')
-                        }
-                    ]
-                }
-            ]
-        )
-    except Exception as e:
-        # Don't fail the function if monitoring fails
-        logger.debug(f"Failed to send security metrics: {str(e)}")
-    
-    # 🚨 CRITICAL: For high-risk events, consider immediate notification
-    critical_events = {'invalid_hash_attempt', 'hash_resolution_failed', 'chat_invalid_hash', 'cross_tenant_access'}
-    if event_type in critical_events:
-        # Log critical security events more prominently
-        logger.error(f"CRITICAL_SECURITY_EVENT: {json.dumps(security_event)}")
 
 def resolve_tenant_hash(tenant_hash):
     """🔒 SECURITY: Resolve tenant hash to internal tenant_id for S3 access only"""
@@ -195,11 +78,9 @@ def resolve_tenant_hash(tenant_hash):
 def get_config_for_tenant_by_hash(tenant_hash):
     """🔒 PRIMARY: Hash-only config loading (only public entry point)"""
     
-    # 🛡️ SECURITY: Strict tenant hash validation
-    if not is_valid_tenant_hash(tenant_hash):
-        logger.warning(f"❌ SECURITY: Invalid tenant hash rejected: {tenant_hash[:8] if tenant_hash else 'None'}...")
-        log_security_event("invalid_hash_attempt", tenant_hash)
-        raise ValueError("Invalid tenant hash")
+    if not tenant_hash or len(tenant_hash) < 8:
+        logger.error(f"❌ Invalid tenant hash format: {tenant_hash}")
+        raise ValueError("Invalid tenant hash format")
     
     logger.info(f"[{tenant_hash[:8]}...] 🔍 Loading config by hash")
     
@@ -231,17 +112,24 @@ def get_config_for_tenant_by_hash(tenant_hash):
     # 🔧 FIXED: Resolve hash to tenant_id for S3 access only
     tenant_id = resolve_tenant_hash(tenant_hash)
     if not tenant_id:
-        logger.error(f"[{tenant_hash[:8]}...] ❌ SECURITY: Tenant hash resolution failed - access denied")
-        log_security_event("hash_resolution_failed", tenant_hash)
-        # 🛡️ SECURITY: Return None instead of fallback config to prevent unauthorized access
-        return None
+        logger.warning(f"[{tenant_hash[:8]}...] ❌ Could not resolve hash, using fallback config")
+        fallback_config = get_default_config_hash_only(tenant_hash)
+        
+        # Cache fallback config to prevent repeated failures
+        cached_config[tenant_hash] = fallback_config
+        cache_timestamps[tenant_hash] = time.time()
+        log_cache_metrics(tenant_hash, "fallback", 0)
+        
+        return fallback_config
 
     # 🔧 FIXED: Validate tenant_id before using in S3 path
     if tenant_id == "undefined" or not tenant_id:
-        logger.error(f"[{tenant_hash[:8]}...] ❌ SECURITY: Invalid tenant_id resolved - access denied")
-        log_security_event("invalid_tenant_id", tenant_hash)
-        # 🛡️ SECURITY: Return None instead of fallback config to prevent unauthorized access
-        return None
+        logger.error(f"[{tenant_hash[:8]}...] ❌ Invalid tenant_id resolved: '{tenant_id}'")
+        fallback_config = get_default_config_hash_only(tenant_hash)
+        cached_config[tenant_hash] = fallback_config
+        cache_timestamps[tenant_hash] = time.time()
+        log_cache_metrics(tenant_hash, "invalid_tenant_id", 0)
+        return fallback_config
 
     # Load from S3 using internal tenant_id structure (for file paths only)
     s3_key = f"{TENANTS_PREFIX}/{tenant_id}/{tenant_id}-config.json"
@@ -279,25 +167,77 @@ def get_config_for_tenant_by_hash(tenant_hash):
         else:
             logger.error(f"[{tenant_hash[:8]}...] ❌ S3 access error: {e.response['Error']['Message']}")
         
-        # 🛡️ SECURITY: Return None instead of default config for invalid access
-        logger.error(f"[{tenant_hash[:8]}...] ❌ SECURITY: Config file not found - access denied")
-        log_security_event("config_not_found", tenant_hash) 
-        return None
+        # Return default config as fallback
+        logger.info(f"[{tenant_hash[:8]}...] 🔧 Using default configuration")
+        default_config = get_default_config_hash_only(tenant_hash)
+        
+        # Cache default config
+        cached_config[tenant_hash] = default_config
+        cache_timestamps[tenant_hash] = time.time()
+        logger.info(f"[{tenant_hash[:8]}...] 💾 Default config cached")
+        
+        log_cache_metrics(tenant_hash, "fallback", 0)
+        return default_config
         
     except json.JSONDecodeError as e:
-        logger.error(f"[{tenant_hash[:8]}...] ❌ SECURITY: Invalid JSON in config file - access denied")
-        log_security_event("invalid_json", tenant_hash)
-        return None
+        logger.error(f"[{tenant_hash[:8]}...] ❌ Invalid JSON in config file: {str(e)}")
+        default_config = get_default_config_hash_only(tenant_hash)
+        cached_config[tenant_hash] = default_config
+        cache_timestamps[tenant_hash] = time.time()
+        log_cache_metrics(tenant_hash, "json_error", 0)
+        return default_config
         
     except Exception as e:
-        logger.error(f"[{tenant_hash[:8]}...] ❌ SECURITY: Unexpected error loading config - access denied")
-        log_security_event("config_load_error", tenant_hash)
-        return None
+        logger.error(f"[{tenant_hash[:8]}...] ❌ Unexpected error loading config: {str(e)}")
+        
+        # Return default config as last resort
+        default_config = get_default_config_hash_only(tenant_hash)
+        log_cache_metrics(tenant_hash, "error", 0)
+        return default_config
 
 
-# 🛡️ SECURITY: Fallback config function REMOVED for healthcare compliance
-# Invalid tenant hashes must return 404, never fallback configurations
-# This prevents unauthorized access to ANY tenant data
+def get_default_config_hash_only(tenant_hash):
+    """🔒 Generate hash-only fallback config"""
+    logger.info(f"[{tenant_hash[:8]}...] 🔧 Generating hash-only fallback config")
+    
+    config = {
+        # 🔒 NO TENANT_ID: Hash-only approach
+        "tenant_hash": tenant_hash,
+        
+        # Minimal safe defaults
+        "chat_title": "Chat",
+        "welcome_message": "Hello! How can I help you today?",
+        "tone_prompt": "You are a helpful and friendly assistant.",
+        
+        "branding": {
+            "primary_color": "#3b82f6",
+            "font_family": "Inter, sans-serif",
+            "chat_title": "Chat",
+            "border_radius": "12px"
+        },
+        
+        "features": {
+            "uploads": False,
+            "photo_uploads": False,
+            "callout": False
+        },
+        
+        "quick_help": {
+            "enabled": False
+        },
+        
+        "action_chips": {
+            "enabled": False
+        },
+        
+        "metadata": {
+            "fallback_reason": "hash_resolution_failed",
+            "tenant_hash": tenant_hash,
+            "generated_at": int(time.time())
+        }
+    }
+    
+    return add_cloudfront_metadata_hash_only(config, tenant_hash)
 
 
 def add_cloudfront_metadata_hash_only(config, tenant_hash):

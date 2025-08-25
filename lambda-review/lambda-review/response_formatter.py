@@ -33,11 +33,8 @@ def format_lex_markdown_response(response_text, session_attributes):
         ]
     }
 
-def format_http_response(message, session_id, context=None, request_headers=None, tenant_hash=None):
-    """
-    Format HTTP response with CloudFront optimization headers and secure CORS
-    Security: Implements tenant-specific CORS validation
-    """
+def format_http_response(message, session_id, context=None):
+    """Format HTTP response with CloudFront optimization headers"""
     logger.info(f"📦 Formatting HTTP response for session_id: {session_id} via CloudFront")
     
     # Enhance context with CloudFront information
@@ -48,44 +45,18 @@ def format_http_response(message, session_id, context=None, request_headers=None
         "cache_strategy": "no-cache"  # Chat responses should not be cached
     })
     
-    # Base headers without CORS
-    headers = {
-        "Content-Type": "application/json",
-        "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type,x-api-key,Authorization",
-        "Cache-Control": "no-cache, must-revalidate",  # Chat responses are dynamic
-        "CloudFront-Domain": CLOUDFRONT_DOMAIN,
-        "X-Delivery-Method": "cloudfront",
-        "X-Response-Type": "chat"
-    }
-    
-    # Apply secure CORS validation
-    try:
-        # Import the secure CORS validation function
-        import sys
-        import os
-        sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-        from lambda_function import validate_cors_origin
-        
-        allowed_origin, is_valid = validate_cors_origin(request_headers, tenant_hash, None)
-        
-        if allowed_origin:
-            headers["Access-Control-Allow-Origin"] = allowed_origin
-            headers["Access-Control-Allow-Credentials"] = "true"
-            logger.info(f"[{tenant_hash[:8] if tenant_hash else 'unknown'}...] SECURE CORS: HTTP response with origin {allowed_origin}")
-        elif not is_valid:
-            # CORS violation - browser will reject
-            logger.warning(f"[{tenant_hash[:8] if tenant_hash else 'unknown'}...] CORS VIOLATION: Origin rejected in HTTP response")
-        else:
-            # Direct API access
-            logger.info(f"[{tenant_hash[:8] if tenant_hash else 'unknown'}...] Direct API access - no CORS headers in HTTP response")
-    except Exception as e:
-        logger.error(f"Error validating CORS in HTTP response: {e}")
-        # Fail closed - don't set CORS headers on error
-    
     return {
         "statusCode": 200,
-        "headers": headers,
+        "headers": {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type,x-api-key,Authorization",
+            "Cache-Control": "no-cache, must-revalidate",  # Chat responses are dynamic
+            "CloudFront-Domain": CLOUDFRONT_DOMAIN,
+            "X-Delivery-Method": "cloudfront",
+            "X-Response-Type": "chat"
+        },
         "body": json.dumps({
             "type": "text",
             "content": message,
@@ -99,48 +70,22 @@ def format_http_response(message, session_id, context=None, request_headers=None
         })
     }
 
-def format_http_error(status_code, message, details=None, request_headers=None, tenant_hash=None):
-    """Format error response with CloudFront-appropriate headers and secure CORS"""
+def format_http_error(status_code, message, details=None):
+    """Format error response with CloudFront-appropriate headers"""
     logger.warning(f"⚠️ Formatting error response: {status_code} - {message} via CloudFront")
-    
-    # Base headers without CORS
-    headers = {
-        "Content-Type": "application/json",
-        "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type,x-api-key,Authorization",
-        "Cache-Control": "no-cache, must-revalidate",  # Errors should not be cached
-        "CloudFront-Domain": CLOUDFRONT_DOMAIN,
-        "X-Delivery-Method": "cloudfront",
-        "X-Response-Type": "error"
-    }
-    
-    # Apply secure CORS validation
-    try:
-        # Import the secure CORS validation function
-        import sys
-        import os
-        sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-        from lambda_function import validate_cors_origin
-        
-        allowed_origin, is_valid = validate_cors_origin(request_headers, tenant_hash, None)
-        
-        if allowed_origin:
-            headers["Access-Control-Allow-Origin"] = allowed_origin
-            headers["Access-Control-Allow-Credentials"] = "true"
-            logger.info(f"[{tenant_hash[:8] if tenant_hash else 'unknown'}...] SECURE CORS: Error response with origin {allowed_origin}")
-        elif not is_valid:
-            # CORS violation - browser will reject
-            logger.warning(f"[{tenant_hash[:8] if tenant_hash else 'unknown'}...] CORS VIOLATION: Origin rejected in error response")
-        else:
-            # Direct API access
-            logger.info(f"[{tenant_hash[:8] if tenant_hash else 'unknown'}...] Direct API access - no CORS headers in error response")
-    except Exception as e:
-        logger.error(f"Error validating CORS in error response: {e}")
-        # Fail closed - don't set CORS headers on error
     
     return {
         "statusCode": status_code,
-        "headers": headers,
+        "headers": {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type,x-api-key,Authorization",
+            "Cache-Control": "no-cache, must-revalidate",  # Errors should not be cached
+            "CloudFront-Domain": CLOUDFRONT_DOMAIN,
+            "X-Delivery-Method": "cloudfront",
+            "X-Response-Type": "error"
+        },
         "body": json.dumps({
             "error": message,
             "details": details,
@@ -153,49 +98,23 @@ def format_http_error(status_code, message, details=None, request_headers=None, 
         })
     }
 
-def format_config_response(config_data, tenant_id, request_headers=None, tenant_hash=None):
-    """Format config response optimized for CloudFront caching with secure CORS"""
+def format_config_response(config_data, tenant_id):
+    """Format config response optimized for CloudFront caching"""
     logger.info(f"⚙️ Formatting config response for {tenant_id} via CloudFront")
-    
-    # Base headers without CORS
-    headers = {
-        "Content-Type": "application/json",
-        "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type,x-api-key,Authorization",
-        "Cache-Control": "no-cache, must-revalidate",  # Configs change frequently
-        "CloudFront-Domain": CLOUDFRONT_DOMAIN,
-        "X-Delivery-Method": "cloudfront",
-        "X-Response-Type": "config",
-        "X-Tenant-ID": tenant_id
-    }
-    
-    # Apply secure CORS validation
-    try:
-        # Import the secure CORS validation function
-        import sys
-        import os
-        sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-        from lambda_function import validate_cors_origin
-        
-        allowed_origin, is_valid = validate_cors_origin(request_headers, tenant_hash, config_data)
-        
-        if allowed_origin:
-            headers["Access-Control-Allow-Origin"] = allowed_origin
-            headers["Access-Control-Allow-Credentials"] = "true"
-            logger.info(f"[{tenant_hash[:8] if tenant_hash else 'unknown'}...] SECURE CORS: Config response with origin {allowed_origin}")
-        elif not is_valid:
-            # CORS violation - browser will reject
-            logger.warning(f"[{tenant_hash[:8] if tenant_hash else 'unknown'}...] CORS VIOLATION: Origin rejected in config response")
-        else:
-            # Direct API access
-            logger.info(f"[{tenant_hash[:8] if tenant_hash else 'unknown'}...] Direct API access - no CORS headers in config response")
-    except Exception as e:
-        logger.error(f"Error validating CORS in config response: {e}")
-        # Fail closed - don't set CORS headers on error
     
     return {
         "statusCode": 200,
-        "headers": headers,
+        "headers": {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type,x-api-key,Authorization",
+            "Cache-Control": "no-cache, must-revalidate",  # Configs change frequently
+            "CloudFront-Domain": CLOUDFRONT_DOMAIN,
+            "X-Delivery-Method": "cloudfront",
+            "X-Response-Type": "config",
+            "X-Tenant-ID": tenant_id
+        },
         "body": json.dumps({
             **config_data,
             "_delivery": {
@@ -207,8 +126,8 @@ def format_config_response(config_data, tenant_id, request_headers=None, tenant_
         })
     }
 
-def format_static_asset_response(asset_content, content_type, tenant_id=None, request_headers=None, tenant_hash=None):
-    """Format static asset response for CloudFront caching (e.g., embed scripts) with secure CORS"""
+def format_static_asset_response(asset_content, content_type, tenant_id=None):
+    """Format static asset response for CloudFront caching (e.g., embed scripts)"""
     logger.info(f"📄 Formatting static asset response via CloudFront")
     
     cache_control = "public, max-age=3600"  # Cache static assets for 1 hour
@@ -217,6 +136,7 @@ def format_static_asset_response(asset_content, content_type, tenant_id=None, re
     
     headers = {
         "Content-Type": content_type,
+        "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "GET,OPTIONS",
         "Access-Control-Allow-Headers": "Content-Type",
         "Cache-Control": cache_control,
@@ -224,30 +144,6 @@ def format_static_asset_response(asset_content, content_type, tenant_id=None, re
         "X-Delivery-Method": "cloudfront",
         "X-Response-Type": "static-asset"
     }
-    
-    # Apply secure CORS validation for static assets
-    try:
-        # Import the secure CORS validation function
-        import sys
-        import os
-        sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-        from lambda_function import validate_cors_origin
-        
-        allowed_origin, is_valid = validate_cors_origin(request_headers, tenant_hash, None)
-        
-        if allowed_origin:
-            headers["Access-Control-Allow-Origin"] = allowed_origin
-            headers["Access-Control-Allow-Credentials"] = "true"
-            logger.info(f"[{tenant_hash[:8] if tenant_hash else 'unknown'}...] SECURE CORS: Static asset response with origin {allowed_origin}")
-        elif not is_valid:
-            # CORS violation - browser will reject
-            logger.warning(f"[{tenant_hash[:8] if tenant_hash else 'unknown'}...] CORS VIOLATION: Origin rejected in static asset response")
-        else:
-            # Direct API access
-            logger.info(f"[{tenant_hash[:8] if tenant_hash else 'unknown'}...] Direct API access - no CORS headers in static asset response")
-    except Exception as e:
-        logger.error(f"Error validating CORS in static asset response: {e}")
-        # Fail closed - don't set CORS headers on error
     
     if tenant_id:
         headers["X-Tenant-ID"] = tenant_id

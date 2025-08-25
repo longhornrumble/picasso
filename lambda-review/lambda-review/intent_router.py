@@ -1,17 +1,7 @@
 import json
 import logging
 from session_utils import extract_session_data, build_session_attributes
-
-# Try to use optimized handler, fall back to original if not available
-try:
-    from bedrock_handler_optimized import fetch_tenant_tone, retrieve_kb_chunks, build_prompt, call_claude_with_prompt, get_cache_status, warm_cache_for_tenant
-    logging.info("✅ Using optimized bedrock handler with caching")
-except ImportError:
-    from bedrock_handler import fetch_tenant_tone, retrieve_kb_chunks, build_prompt, call_claude_with_prompt
-    get_cache_status = None
-    warm_cache_for_tenant = None
-    logging.info("⚠️ Using standard bedrock handler without caching")
-
+from bedrock_handler import fetch_tenant_tone, retrieve_kb_chunks, build_prompt, call_claude_with_prompt
 from response_formatter import format_lex_markdown_response, format_http_response, format_http_error
 
 # Import hash-based config loader
@@ -27,7 +17,7 @@ except ImportError as e:
     logger.warning(f"⚠️ tenant_config_loader not available: {e}")
     TENANT_CONFIG_AVAILABLE = False
 
-def route_intent(event, config=None, conversation_context=None):
+def route_intent(event, config=None):
     try:
         logger.info("📨 Routing intent request")
         
@@ -38,33 +28,6 @@ def route_intent(event, config=None, conversation_context=None):
 
         logger.info(f"[{tenant_hash[:8] if tenant_hash else 'unknown'}...] Session ID: {session_id}")
         logger.info(f"[{tenant_hash[:8] if tenant_hash else 'unknown'}...] User input: {user_input[:40]}...")
-        
-        # Use passed conversation_context or try to extract it from the event body
-        if conversation_context:
-            logger.info(f"[{tenant_hash[:8]}...] 📝 Using passed conversation context: {len(conversation_context.get('messages', []))} messages")
-        else:
-            try:
-                body = event.get("body", "{}")
-                if isinstance(body, str):
-                    body = json.loads(body)
-                
-                # Get conversation context from request
-                request_context = body.get('conversation_context', {})
-                # Check for both 'recentMessages' and 'messages' keys
-                messages = request_context.get('recentMessages', request_context.get('messages', []))
-                if request_context and messages:
-                    conversation_context = {
-                        'messages': messages,
-                        'recentMessages': messages,  # Support both formats
-                        'session_id': body.get('session_id'),
-                        'conversation_id': body.get('conversation_id'),
-                        'turn': body.get('turn', 0)
-                    }
-                    logger.info(f"[{tenant_hash[:8]}...] 📝 Extracted conversation context from request body: {len(messages)} messages")
-                else:
-                    logger.info(f"[{tenant_hash[:8]}...] 📝 No conversation context found in request body")
-            except Exception as e:
-                logger.warning(f"Could not extract conversation context from body: {e}")
 
         if not tenant_hash or not user_input:
             logger.warning(f"❌ Missing tenant_hash or user_input")
@@ -78,38 +41,20 @@ def route_intent(event, config=None, conversation_context=None):
             try:
                 config = get_config_for_tenant_by_hash(tenant_hash)
                 logger.info(f"[{tenant_hash[:8]}...] ✅ Config loaded using hash")
-                
-                # Warm cache for this tenant if cache warming is available
-                if warm_cache_for_tenant and config:
-                    # Check if cache is empty (likely cold start or expired)
-                    if get_cache_status:
-                        cache_status = get_cache_status()
-                        if cache_status['kb_cache_size'] == 0 and cache_status['response_cache_size'] == 0:
-                            logger.info(f"[{tenant_hash[:8]}...] 🔥 Cold start detected, warming cache...")
-                            warm_cache_for_tenant(tenant_hash, config)
-                
             except Exception as e:
                 logger.warning(f"[{tenant_hash[:8]}...] ⚠️ Could not load config: {e}")
         
-        # 🛡️ SECURITY: NO fallback config for healthcare compliance
-        # Invalid tenant hashes must return 404, never fallback configurations
+        # Fallback config if none available
         if not config:
-            logger.error(f"[{tenant_hash[:8]}...] ❌ SECURITY: Tenant configuration not found - blocking access")
-            if "sessionState" in event:
-                return format_lex_markdown_response("Tenant configuration not found", {})
-            else:
-                return format_http_error(404, "Tenant configuration not found", "The requested tenant hash is not authorized or does not exist")
+            logger.warning(f"[{tenant_hash[:8]}...] Using fallback config")
+            config = get_fallback_config(tenant_hash)
         
         tone = config.get("tone_prompt", "You are a helpful assistant.")
         logger.info(f"[{tenant_hash[:8]}...] 🎨 Using tone: {tone[:40]}...")
 
         kb_context, sources = retrieve_kb_chunks(user_input, config)
-        prompt = build_prompt(user_input, kb_context, tone, conversation_context)
-        
-        if conversation_context and conversation_context.get('messages'):
-            logger.info(f"[{tenant_hash[:8]}...] 🧠 Prompt built with {len(conversation_context['messages'])} conversation messages. Submitting to Claude...")
-        else:
-            logger.info(f"[{tenant_hash[:8]}...] 🧠 Prompt built without conversation history. Submitting to Claude...")
+        prompt = build_prompt(user_input, kb_context, tone)
+        logger.info(f"[{tenant_hash[:8]}...] 🧠 Prompt built. Submitting to Claude...")
 
         response_text = call_claude_with_prompt(prompt, config)
         logger.info(f"[{tenant_hash[:8]}...] ✅ Claude response received")
@@ -231,8 +176,16 @@ def build_session_attributes_hash(tenant_hash, prompt_index, topic):
         "cloudfront_domain": "chat.myrecruiter.ai"
     }
 
-# 🛡️ SECURITY: Fallback config function REMOVED for healthcare compliance
-# Invalid tenant hashes must return 404, never fallback configurations
-# This prevents unauthorized access to ANY tenant data or chat functionality
-
-# REMOVED: get_fallback_config() - All invalid hashes must be blocked with 404
+def get_fallback_config(tenant_hash):
+    """Generate fallback config - dynamic, no hardcoded customer names"""
+    
+    return {
+        "tenant_hash": tenant_hash,
+        "tone_prompt": "You are a helpful and friendly assistant.",
+        "chat_title": "Chat",
+        "welcome_message": "Hello! How can I help you today?",
+        "aws": {
+            "model_id": "anthropic.claude-3-sonnet-20240229-v1:0",
+            "aws_region": "us-east-1"
+        }
+    }
