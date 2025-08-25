@@ -14,7 +14,7 @@ import TypingIndicator from "./TypingIndicator";
 import StateManagementPanel from "./StateManagementPanel";
 
 function ChatWidget() {
-  const { messages, isTyping } = useChat();
+  const { messages, isTyping, renderMode } = useChat();
   const { config } = useConfig();
   
   // In iframe mode, we don't need breakpoints - the iframe container handles responsive sizing
@@ -513,12 +513,16 @@ function ChatWidget() {
                   ref={isLastMessage ? lastMessageRef : null}
                 >
                   <MessageBubble 
+                    id={msg.id}
                     role={msg.role} 
                     content={msg.content}
                     files={msg.files}
                     actions={msg.actions}
                     uploadState={msg.uploadState}
                     onCancel={msg.onCancel}
+                    isStreaming={msg.isStreaming}
+                    metadata={msg.metadata}
+                    renderMode={renderMode}
                   />
                 </div>
               );

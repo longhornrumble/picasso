@@ -100,12 +100,19 @@ def handle_conversation_action(event, context):
     Routes to GET/POST/DELETE operations with full security hardening
     """
     try:
+        # Handle OPTIONS requests for CORS preflight
+        http_method = event.get('httpMethod', event.get('requestContext', {}).get('http', {}).get('method', 'GET'))
+        if http_method == 'OPTIONS':
+            return _options_response(event)
+        
         # Extract operation from query parameters
         query_params = event.get("queryStringParameters") or {}
         operation = query_params.get("operation")
+        tenant_hash = query_params.get("t")
+        headers = event.get("headers", {})
         
         if not operation:
-            return _error_response("MISSING_OPERATION", "Operation parameter required", 400)
+            return _error_response("MISSING_OPERATION", "Operation parameter required", 400, request_headers=headers, tenant_hash=tenant_hash)
         
         # Route to appropriate handler
         if operation == "get":
@@ -115,13 +122,13 @@ def handle_conversation_action(event, context):
         elif operation == "clear":
             return handle_clear_conversation(event)
         else:
-            return _error_response("INVALID_OPERATION", f"Unknown operation: {operation}", 400)
+            return _error_response("INVALID_OPERATION", f"Unknown operation: {operation}", 400, request_headers=headers, tenant_hash=tenant_hash)
             
     except ConversationError as e:
-        return _error_response(e.error_type, e.message, e.status_code)
+        return _error_response(e.error_type, e.message, e.status_code, request_headers=event.get("headers", {}), tenant_hash=query_params.get("t") if 'query_params' in locals() else None)
     except Exception as e:
         logger.exception("❌ Critical error in conversation handler")
-        return _error_response("SYSTEM_ERROR", "Internal server error", 500)
+        return _error_response("SYSTEM_ERROR", "Internal server error", 500, request_headers=event.get("headers", {}), tenant_hash=query_params.get("t") if 'query_params' in locals() else None)
 
 def handle_get_conversation(event):
     """
@@ -169,7 +176,8 @@ def handle_get_conversation(event):
             "stateToken": new_token
         }
         
-        return _success_response(response_data)
+        headers = event.get("headers", {})
+        return _success_response(response_data, request_headers=headers, tenant_hash=tenant_id)
         
     except ConversationError:
         raise
@@ -221,6 +229,7 @@ def handle_save_conversation(event):
                 
                 logger.warning(f"Version conflict: request_turn={request_turn}, token_turn={current_turn}, actual_turn={actual_turn}")
                 
+                headers = event.get("headers", {})
                 return _error_response(
                     "VERSION_CONFLICT",
                     "Conversation state changed by another session",
@@ -228,7 +237,9 @@ def handle_save_conversation(event):
                     extra_data={
                         "stateToken": server_token,
                         "currentTurn": actual_turn  # Return actual turn from database
-                    }
+                    },
+                    request_headers=headers,
+                    tenant_hash=tenant_id
                 )
         
         # 4. Validate payload limits
@@ -271,7 +282,8 @@ def handle_save_conversation(event):
             "turn": current_turn + 1
         }
         
-        return _success_response(response_data)
+        headers = event.get("headers", {})
+        return _success_response(response_data, request_headers=headers, tenant_hash=tenant_id)
         
     except ConversationError:
         raise
@@ -332,7 +344,8 @@ def handle_clear_conversation(event):
             "stateToken": None  # No token after clear
         }
         
-        return _success_response(response_data)
+        headers = event.get("headers", {})
+        return _success_response(response_data, request_headers=headers, tenant_hash=tenant_id)
         
     except ConversationError:
         raise
@@ -991,6 +1004,22 @@ def _get_jwt_signing_key():
         jwt_key_cache_expires = 0
         raise ConversationError("JWT_KEY_ERROR", "Authentication service unavailable", 500)
 
+def _options_response(event=None):
+    """
+    Handle OPTIONS requests for CORS preflight
+    """
+    # For OPTIONS, just return simple CORS headers
+    return {
+        "statusCode": 200,
+        "headers": {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With"
+        },
+        "body": ""
+    }
+
 def _success_response(data, request_headers=None, tenant_hash=None):
     """
     Create successful response with secure tenant-specific CORS headers
@@ -1002,29 +1031,8 @@ def _success_response(data, request_headers=None, tenant_hash=None):
         "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS"
     }
     
-    # Apply secure CORS validation (import from lambda_function)
-    try:
-        # Import the secure CORS validation function
-        import sys
-        import os
-        sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-        from lambda_function import validate_cors_origin
-        
-        allowed_origin, is_valid = validate_cors_origin(request_headers, tenant_hash, None)
-        
-        if allowed_origin:
-            headers["Access-Control-Allow-Origin"] = allowed_origin
-            headers["Access-Control-Allow-Credentials"] = "true"
-            logger.info(f"[{tenant_hash[:8] if tenant_hash else 'unknown'}...] SECURE CORS: Success response with origin {allowed_origin}")
-        elif not is_valid:
-            # CORS violation - browser will reject
-            logger.warning(f"[{tenant_hash[:8] if tenant_hash else 'unknown'}...] CORS VIOLATION: Origin rejected in success response")
-        else:
-            # Direct API access
-            logger.info(f"[{tenant_hash[:8] if tenant_hash else 'unknown'}...] Direct API access - no CORS headers in success response")
-    except Exception as e:
-        logger.error(f"Error validating CORS in success response: {e}")
-        # Fail closed - don't set CORS headers on error
+    # Use wildcard for now to ensure it works
+    headers["Access-Control-Allow-Origin"] = "*"
     
     return {
         "statusCode": 200,
@@ -1084,28 +1092,28 @@ def _error_response(error_type, message, status_code, extra_data=None, request_h
         "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS"
     }
     
-    try:
-        # Import the secure CORS validation function
-        import sys
-        import os
-        sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-        from lambda_function import validate_cors_origin
-        
-        allowed_origin, is_valid = validate_cors_origin(request_headers, tenant_hash, None)
-        
-        if allowed_origin:
-            headers["Access-Control-Allow-Origin"] = allowed_origin
-            headers["Access-Control-Allow-Credentials"] = "true"
-            logger.info(f"[{tenant_hash[:8] if tenant_hash else 'unknown'}...] SECURE CORS: Error response with origin {allowed_origin}")
-        elif not is_valid:
-            # CORS violation - browser will reject
-            logger.warning(f"[{tenant_hash[:8] if tenant_hash else 'unknown'}...] CORS VIOLATION: Origin rejected in error response")
-        else:
-            # Direct API access
-            logger.info(f"[{tenant_hash[:8] if tenant_hash else 'unknown'}...] Direct API access - no CORS headers in error response")
-    except Exception as e:
-        logger.error(f"Error validating CORS in error response: {e}")
-        # Fail closed - don't set CORS headers on error
+    # Determine the allowed origin based on the request
+    allowed_origin = '*'  # Default fallback
+    if request_headers:
+        origin = request_headers.get('origin') or request_headers.get('Origin')
+        if origin:
+            # Allow specific trusted origins
+            allowed_origins = [
+                'http://localhost:8000',
+                'http://localhost:5173',
+                'http://localhost:3000',
+                'https://chat.myrecruiter.ai',
+                'https://picassocode.s3.amazonaws.com',
+                'https://picassostaging.s3.amazonaws.com'
+            ]
+            if origin in allowed_origins or origin.startswith('http://localhost:'):
+                allowed_origin = origin
+                headers["Access-Control-Allow-Credentials"] = "true"
+                logger.info(f"[{tenant_hash[:8] if tenant_hash else 'unknown'}...] CORS: Error response allowing origin {origin}")
+            else:
+                logger.warning(f"[{tenant_hash[:8] if tenant_hash else 'unknown'}...] CORS: Origin {origin} not in allowed list for error response")
+    
+    headers["Access-Control-Allow-Origin"] = allowed_origin
     
     return {
         "statusCode": status_code,

@@ -40,8 +40,16 @@ export class ConversationManager {
   constructor(tenantHash, sessionId) {
     this.tenantHash = tenantHash;
     this.sessionId = sessionId;
-    // Initialize conversationId with sessionId (may be updated by server)
-    this.conversationId = sessionId; // Start with sessionId, server may override
+    
+    // Check for existing conversation ID in sessionStorage for conversation recall
+    const existingConversationId = sessionStorage.getItem('picasso_conversation_id');
+    if (existingConversationId && existingConversationId.startsWith('session_')) {
+      this.conversationId = existingConversationId;
+      logger.debug('♻️ Using existing conversation ID from storage:', this.conversationId);
+    } else {
+      // Initialize conversationId with sessionId (may be updated by server)
+      this.conversationId = sessionId; // Start with sessionId, server may override
+    }
     this.messageBuffer = [];
     this.persistenceTimer = null;
     this.lastSummaryAt = 0;
@@ -51,7 +59,7 @@ export class ConversationManager {
     this.isInitialized = false;
     
     // Configuration for context window size
-    this.CONTEXT_WINDOW_SIZE = 10; // Increased from 5 to maintain better conversation memory
+    this.CONTEXT_WINDOW_SIZE = 20; // Extended to 20 messages for longer conversation memory
     
     // Prevent rapid initialization calls
     this.initializationInProgress = false;
@@ -112,37 +120,39 @@ export class ConversationManager {
         // Continue anyway with local storage
       }
       
-      // After getting state token, try to restore conversation if we had one
-      if (hadExistingToken && this.stateToken) {
-        const serverConversation = await this.loadConversationFromServer();
-        logger.debug('🔍 Server conversation response:', serverConversation);
-        if (serverConversation && serverConversation.conversation) {
-          logger.debug('🔍 Before applyServerState - conversationId:', this.conversationId);
-          this.applyServerState(serverConversation);
-          logger.debug('🔍 After applyServerState - conversationId:', this.conversationId);
+      // After getting state token, ALWAYS try to load conversation from server
+      // The init_session response should include the conversation if it exists
+      if (this.stateToken && initResult.success) {
+        // Check if init_session already returned the conversation
+        if (initResult.conversation) {
+          logger.debug('📂 init_session returned existing conversation');
+          this.applyServerState(initResult);
+        } else {
+          // Otherwise try to load it separately
+          const serverConversation = await this.loadConversationFromServer();
+          logger.debug('🔍 Server conversation response:', serverConversation);
+          if (serverConversation && serverConversation.conversation) {
+            logger.debug('🔍 Before applyServerState - conversationId:', this.conversationId);
+            this.applyServerState(serverConversation);
+            logger.debug('🔍 After applyServerState - conversationId:', this.conversationId);
           
-          errorLogger.logInfo('📂 Restored conversation from server', {
-            conversationId: this.conversationId,
-            messageCount: this.messageBuffer.length,
-            turn: this.turn
-          });
+            errorLogger.logInfo('📂 Restored conversation from server', {
+              conversationId: this.conversationId,
+              messageCount: this.messageBuffer.length,
+              turn: this.turn
+            });
           
-          this.isInitialized = true;
-          this.initializationInProgress = false; // Clear initialization flag
-          this.saveToSessionStorage();
-          
-          return {
-            success: true,
-            conversationId: this.conversationId,
-            restored: true,
-            messageCount: this.messageBuffer.length,
-            turn: this.turn
-          };
+            this.isInitialized = true;
+            this.initializationInProgress = false; // Clear initialization flag
+            this.saveToSessionStorage();
+          }
         }
       }
       
-      // Save the state token if initialization was successful
-      if (initResult.success && this.stateToken) {
+      // Mark as initialized regardless of whether we loaded existing conversation
+      this.isInitialized = true;
+      this.initializationInProgress = false;
+      this.saveToSessionStorage();
         this.saveStateToken();
         
         errorLogger.logInfo('🆕 Initialized new conversation with server', {
@@ -162,10 +172,6 @@ export class ConversationManager {
           messageCount: 0,
           turn: this.turn
         };
-      } else {
-        // Server initialization failed, fallback to local-only
-        throw new Error(initResult.error || 'Server initialization failed');
-      }
       
     } catch (error) {
       errorLogger.logError(error, {
@@ -465,15 +471,24 @@ export class ConversationManager {
       const initSessionEndpoint = this.getInitSessionEndpoint();
       logger.debug('🔑 Calling init_session endpoint:', initSessionEndpoint);
       
+      // Include existing conversation_id if available for conversation recall
+      const initRequestBody = {
+        tenant_hash: this.tenantHash,
+        session_id: this.sessionId
+      };
+      
+      // Add conversation_id if it's different from session_id (indicates existing conversation)
+      if (this.conversationId && this.conversationId !== this.sessionId) {
+        initRequestBody.conversation_id = this.conversationId;
+        logger.debug('📤 Including existing conversation_id in init_session:', this.conversationId);
+      }
+      
       const initResponse = await fetch(initSessionEndpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          tenant_hash: this.tenantHash,
-          session_id: this.sessionId
-        })
+        body: JSON.stringify(initRequestBody)
       });
       
       logger.debug('📡 init_session response status:', initResponse.status);
@@ -528,6 +543,14 @@ export class ConversationManager {
       if (sessionData.session_id) {
         this.conversationId = sessionData.session_id;
         logger.debug('🔧 Set conversationId from init_session:', this.conversationId);
+        
+        // Persist conversation ID to sessionStorage for conversation recall
+        try {
+          sessionStorage.setItem('picasso_conversation_id', this.conversationId);
+          logger.debug('💾 Persisted conversation ID to sessionStorage');
+        } catch (e) {
+          logger.warn('Failed to persist conversation ID:', e);
+        }
       }
       
       logger.debug('🔧 State properly initialized:', {

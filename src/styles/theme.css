@@ -398,6 +398,11 @@ body[data-iframe="true"] {
 .widget-container {
   position: fixed;
   z-index: 999999;
+  pointer-events: auto;
+}
+
+/* optional pass-through state */
+.widget-container.pass-through {
   pointer-events: none;
 }
 
@@ -921,6 +926,12 @@ body[data-iframe="true"] {
   margin-top: 16px;
 }
 
+/* Add spacing between numbered list items and their bullet children */
+.message-content .streaming-formatted ol + ul {
+  margin-top: 8px;
+  margin-bottom: 16px;
+}
+
 /* Add spacing between list items that start with numbers (like 1., 2., 3.) */
 .message-content .streaming-formatted > ol > li:not(:first-child) {
   margin-top: 16px;
@@ -939,7 +950,7 @@ body[data-iframe="true"] {
   list-style-position: outside;
   margin: 8px 0;
   padding-left: 1rem;
-  counter-reset: list-counter;
+  /* Removed counter-reset to allow start attribute to work */
 }
 
 .message-content .streaming-formatted ul {
@@ -994,12 +1005,10 @@ body[data-iframe="true"] {
   line-height: 1.24;
 }
 
-/* Ordered list counter and marker styles (formatted only) */
-.message-content .streaming-formatted ol > li {
-  counter-increment: list-counter;
-}
+/* Ordered list marker styles (formatted only) - removed counter to allow native numbering */
 .message-content .streaming-formatted ol > li::marker {
-  content: counter(list-counter) ". ";
+  font-weight: 600;
+  color: var(--text-primary);
 }
 
 /* Trim outer margins in formatted block */
@@ -1064,6 +1073,12 @@ body[data-iframe="true"] {
   margin-top: 6px;
 }
 
+/* Add spacing between numbered list items and their bullet children for HTTP responses */
+.message-content ol + ul {
+  margin-top: 8px;
+  margin-bottom: 16px;
+}
+
 /* Streaming text node style (plain text before markdown is applied) */
 .streaming {
   white-space: pre-line; /* keep newlines, collapse spaces */
@@ -1110,12 +1125,26 @@ body[data-iframe="true"] {
 /* Links in messages */
 .message-content a {
   color: var(--link-color);
-  text-decoration: none;
+  text-decoration: underline;
+  cursor: pointer;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  pointer-events: auto;
+  position: relative;
+  z-index: 1;
 }
 
 .message-content a:hover {
   color: var(--link-hover-color, var(--link-color));
   text-decoration: underline;
+}
+
+/* Ensure streaming formatted links are clickable */
+.streaming-formatted a {
+  pointer-events: auto !important;
+  cursor: pointer;
+  position: relative;
+  z-index: 1;
 }
 
 /* === INTERCOM-STYLE MESSAGE HEADER === */
@@ -1161,6 +1190,7 @@ body[data-iframe="true"] {
 /* Text content wrapper */
 .message-text {
   position: relative;
+  pointer-events: auto;
 }
 
 /* Enhanced file attachment support */

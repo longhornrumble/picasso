@@ -1,51 +1,60 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Test Config Fetch</title>
+    <title>Config Fetch Test</title>
 </head>
 <body>
-  <h1>Testing Foster Village Config Fetch</h1>
-  <div id="result"></div>
-
-  <script>
-    const resultDiv = document.getElementById('result');
+    <h1>Config Fetch Test</h1>
+    <button onclick="testConfig()">Test Config Fetch</button>
+    <pre id="output"></pre>
     
-    async function testConfigFetch() {
-      const url = 'https://chat.myrecruiter.ai/Master_Function?action=get_config&t=fo85e6a06dcdf4';
-      
-      resultDiv.innerHTML = `<p>Fetching from: ${url}</p>`;
-      
-      try {
-        const response = await fetch(url, {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-          },
-          mode: 'cors',
-          credentials: 'omit',
-          cache: 'no-cache'
-        });
-        
-        resultDiv.innerHTML += `<p>Response status: ${response.status}</p>`;
-        resultDiv.innerHTML += `<p>Response headers:</p><pre>${JSON.stringify(Object.fromEntries(response.headers.entries()), null, 2)}</pre>`;
-        
-        if (response.ok) {
-          const data = await response.json();
-          resultDiv.innerHTML += `<p style="color: green;">✅ Config loaded successfully!</p>`;
-          resultDiv.innerHTML += `<pre>${JSON.stringify(data, null, 2)}</pre>`;
-        } else {
-          resultDiv.innerHTML += `<p style="color: red;">❌ Failed to load config: ${response.status} ${response.statusText}</p>`;
+    <script>
+        async function testConfig() {
+            const output = document.getElementById('output');
+            output.textContent = 'Fetching config...\n';
+            
+            try {
+                const response = await fetch('https://xo6tsuhi6u2fby3rkw4usa663q0igxjk.lambda-url.us-east-1.on.aws/?action=get_config&t=my87674d777bf9', {
+                    method: 'GET',
+                    headers: {
+                        'Origin': window.location.origin
+                    }
+                });
+                
+                output.textContent += `Status: ${response.status}\n`;
+                output.textContent += `OK: ${response.ok}\n`;
+                output.textContent += `Headers:\n`;
+                for (let [key, value] of response.headers) {
+                    output.textContent += `  ${key}: ${value}\n`;
+                }
+                
+                const rawResponse = await response.json();
+                output.textContent += `\nRaw Response Type: ${typeof rawResponse}\n`;
+                output.textContent += `Has statusCode: ${'statusCode' in rawResponse}\n`;
+                output.textContent += `Has body: ${'body' in rawResponse}\n`;
+                output.textContent += `Body type: ${typeof rawResponse.body}\n`;
+                
+                let config = rawResponse;
+                if (rawResponse.statusCode && rawResponse.body) {
+                    output.textContent += '\nUnwrapping Lambda response...\n';
+                    if (typeof rawResponse.body === 'string') {
+                        config = JSON.parse(rawResponse.body);
+                        output.textContent += 'Parsed body from string\n';
+                    } else {
+                        config = rawResponse.body;
+                        output.textContent += 'Used body directly\n';
+                    }
+                }
+                
+                output.textContent += `\nConfig tenant_hash: ${config.tenant_hash}\n`;
+                output.textContent += `Config chat_title: ${config.chat_title}\n`;
+                output.textContent += `Config has branding: ${!!config.branding}\n`;
+                output.textContent += `\nFull config keys: ${Object.keys(config).join(', ')}`;
+                
+            } catch (error) {
+                output.textContent += `\nError: ${error.message}\n${error.stack}`;
+            }
         }
-      } catch (error) {
-        resultDiv.innerHTML += `<p style="color: red;">❌ Fetch error: ${error.message}</p>`;
-        console.error('Full error:', error);
-      }
-    }
-    
-    testConfigFetch();
-  </script>
+    </script>
 </body>
 </html>

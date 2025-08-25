@@ -79,7 +79,7 @@ Environment-specific variables are correctly injected into builds:
 ```javascript
 {
   __API_BASE_URL__: "https://xkjbyi3ushhuiytcfbuk5uaqom0ivhfk.lambda-url.us-east-1.on.aws",
-  __WIDGET_DOMAIN__: "https://chat-staging.myrecruiter.ai", 
+  __WIDGET_DOMAIN__: "https://picassostaging.s3.amazonaws.com", 
   __CONFIG_DOMAIN__: "https://picasso-staging.s3.amazonaws.com",
   __ENVIRONMENT__: "staging"
 }

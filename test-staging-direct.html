@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Staging Streaming Test - Direct</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            padding: 40px;
+            background: #f9f9f9;
+        }
+        .controls {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .status {
+            background: #f0f0f0;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 20px;
+            font-family: monospace;
+        }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .info { background: #d1ecf1; color: #0c5460; }
+    </style>
+</head>
+<body>
+    <h1>🌊 Staging Streaming Test</h1>
+    
+    <div class="controls">
+        <h3>Step 1: Force Staging & Enable Streaming</h3>
+        <button onclick="setupStaging()">Setup Staging Environment</button>
+        <button onclick="enableStreaming()">Enable Streaming</button>
+        <button onclick="checkStatus()">Check Status</button>
+        
+        <h3>Step 2: Test Widget</h3>
+        <button onclick="openWidget()">Open Widget</button>
+        <button onclick="testMessage()">Test Streaming Message</button>
+        
+        <div id="status" class="status"></div>
+    </div>
+    
+    <script>
+        // Force staging environment before widget loads
+        window.PICASSO_ENV = 'staging';
+        window.PICASSO_FORCE_STREAMING = true;
+        
+        console.log('Pre-widget settings:', {
+            PICASSO_ENV: window.PICASSO_ENV,
+            PICASSO_FORCE_STREAMING: window.PICASSO_FORCE_STREAMING
+        });
+    </script>
+
+    <!-- Load widget AFTER setting environment -->
+    <script 
+        src="dist/production/widget.js" 
+        data-tenant="my87674d777bf9"
+        data-env="staging">
+    </script>
+
+    <script>
+        function setupStaging() {
+            // Force staging in multiple ways
+            window.PICASSO_ENV = 'staging';
+            
+            // Try to access iframe and set there too
+            const iframe = document.querySelector('iframe[id*="picasso"]');
+            if (iframe && iframe.contentWindow) {
+                try {
+                    iframe.contentWindow.PICASSO_ENV = 'staging';
+                    // Switch environment if function exists
+                    if (iframe.contentWindow.switchPicassoEnv) {
+                        iframe.contentWindow.switchPicassoEnv('staging');
+                    }
+                } catch (e) {
+                    console.log('Cannot access iframe:', e.message);
+                }
+            }
+            
+            updateStatus('Staging environment forced', 'success');
+        }
+        
+        function enableStreaming() {
+            window.PICASSO_FORCE_STREAMING = true;
+            
+            // Try to enable in iframe too
+            const iframe = document.querySelector('iframe[id*="picasso"]');
+            if (iframe && iframe.contentWindow) {
+                try {
+                    iframe.contentWindow.PICASSO_FORCE_STREAMING = true;
+                    if (iframe.contentWindow.enablePicassoStreaming) {
+                        iframe.contentWindow.enablePicassoStreaming();
+                    }
+                } catch (e) {
+                    console.log('Cannot access iframe:', e.message);
+                }
+            }
+            
+            updateStatus('Streaming enabled! Refresh page to apply.', 'success');
+        }
+        
+        function checkStatus() {
+            const hostStatus = {
+                environment: window.PICASSO_ENV,
+                streamingForced: window.PICASSO_FORCE_STREAMING,
+                widgetLoaded: !!window.PicassoWidget,
+                configLoaded: !!window.picassoConfig
+            };
+            
+            let iframeStatus = {};
+            const iframe = document.querySelector('iframe[id*="picasso"]');
+            if (iframe && iframe.contentWindow) {
+                try {
+                    iframeStatus = {
+                        environment: iframe.contentWindow.picassoEnv,
+                        streamingForced: iframe.contentWindow.PICASSO_FORCE_STREAMING,
+                        configLoaded: !!iframe.contentWindow.picassoConfig,
+                        streamingEndpoint: iframe.contentWindow.picassoConfig?.STREAMING_ENDPOINT
+                    };
+                } catch (e) {
+                    iframeStatus = { error: 'Cannot access iframe' };
+                }
+            }
+            
+            const statusHTML = `
+                <strong>Host Status:</strong><br>
+                ${JSON.stringify(hostStatus, null, 2)}<br><br>
+                <strong>Iframe Status:</strong><br>
+                ${JSON.stringify(iframeStatus, null, 2)}
+            `;
+            
+            updateStatus(statusHTML, 'info');
+            console.log('Host status:', hostStatus);
+            console.log('Iframe status:', iframeStatus);
+        }
+        
+        function openWidget() {
+            if (window.PicassoWidget) {
+                window.PicassoWidget.open();
+                updateStatus('Widget opened', 'success');
+            } else {
+                updateStatus('Widget not loaded!', 'error');
+            }
+        }
+        
+        function testMessage() {
+            updateStatus('Please type "What is streaming?" in the chat to test', 'info');
+        }
+        
+        function updateStatus(message, type = '') {
+            const statusEl = document.getElementById('status');
+            statusEl.innerHTML = message;
+            statusEl.className = 'status ' + type;
+        }
+        
+        // Check status on load
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                console.log('Page loaded, checking initial status...');
+                checkStatus();
+            }, 2000);
+        });
+    </script>
+</body>
+</html>

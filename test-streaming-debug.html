@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Streaming Debug - Conversation Context</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 20px;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .pending {
+            background: #fff3cd;
+            color: #856404;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            border: none;
+            border-radius: 4px;
+            background: #007bff;
+            color: white;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        pre {
+            background: #f4f4f4;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        h1 {
+            color: #28a745;
+        }
+        .highlight {
+            background: yellow;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔍 Streaming Endpoint Debug - Conversation Context</h1>
+    
+    <div class="test-section">
+        <h2>Test Setup</h2>
+        <div id="setup-status" class="status pending">Setting up test conversation...</div>
+    </div>
+
+    <div class="test-section">
+        <h2>Step 1: Initialize Session</h2>
+        <button onclick="testInitSession()">Initialize Session</button>
+        <div id="test1-status"></div>
+        <pre id="test1-response"></pre>
+    </div>
+
+    <div class="test-section">
+        <h2>Step 2: Save Conversation with Name</h2>
+        <button onclick="testSaveWithName()">Save "My name is Chris Miller"</button>
+        <div id="test2-status"></div>
+        <pre id="test2-response"></pre>
+    </div>
+
+    <div class="test-section">
+        <h2>Step 3: Test Streaming with Context</h2>
+        <button onclick="testStreamingWithContext()">Ask "What's my name?" via Streaming</button>
+        <div id="test3-status"></div>
+        <pre id="test3-request"></pre>
+        <pre id="test3-response"></pre>
+    </div>
+
+    <div class="test-section">
+        <h2>Step 4: Debug Request Body</h2>
+        <button onclick="debugRequestBody()">Show Full Request Body</button>
+        <div id="test4-status"></div>
+        <pre id="test4-response"></pre>
+    </div>
+
+    <script>
+        const LAMBDA_URL = 'https://xo6tsuhi6u2fby3rkw4usa663q0igxjk.lambda-url.us-east-1.on.aws';
+        const STREAMING_URL = 'https://7pluzq3axftklmb4gbgchfdahu0lcnqd.lambda-url.us-east-1.on.aws';
+        const TENANT_HASH = 'my87674d777bf9';
+        let stateToken = null;
+        let sessionId = 'debug_test_' + Date.now();
+        let conversationContext = null;
+
+        async function testInitSession() {
+            const statusEl = document.getElementById('test1-status');
+            const responseEl = document.getElementById('test1-response');
+            
+            statusEl.className = 'status pending';
+            statusEl.textContent = 'Initializing session...';
+            
+            try {
+                const response = await fetch(`${LAMBDA_URL}?action=init_session&t=${TENANT_HASH}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Origin': window.location.origin
+                    },
+                    body: JSON.stringify({
+                        tenant_hash: TENANT_HASH,
+                        session_id: sessionId
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (response.ok && (data.state_token || data.body)) {
+                    statusEl.className = 'status success';
+                    statusEl.textContent = '✅ Session initialized!';
+                    
+                    // Extract token
+                    if (data.body) {
+                        const parsed = typeof data.body === 'string' ? JSON.parse(data.body) : data.body;
+                        stateToken = parsed.state_token;
+                    } else {
+                        stateToken = data.state_token;
+                    }
+                    
+                    console.log('State token:', stateToken);
+                } else {
+                    statusEl.className = 'status error';
+                    statusEl.textContent = `❌ Init failed: ${response.status}`;
+                }
+                
+                responseEl.textContent = JSON.stringify(data, null, 2);
+            } catch (error) {
+                statusEl.className = 'status error';
+                statusEl.textContent = `❌ Error: ${error.message}`;
+                responseEl.textContent = error.stack;
+            }
+        }
+
+        async function testSaveWithName() {
+            const statusEl = document.getElementById('test2-status');
+            const responseEl = document.getElementById('test2-response');
+            
+            if (!stateToken) {
+                statusEl.className = 'status error';
+                statusEl.textContent = '❌ No state token - run Step 1 first';
+                return;
+            }
+            
+            statusEl.className = 'status pending';
+            statusEl.textContent = 'Saving conversation with name...';
+            
+            try {
+                const response = await fetch(`${LAMBDA_URL}?action=conversation&operation=save&t=${TENANT_HASH}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${stateToken}`,
+                        'Origin': window.location.origin
+                    },
+                    body: JSON.stringify({
+                        turn: 0,
+                        delta: {
+                            lastMessages: [
+                                { role: 'user', content: 'My name is Chris Miller', timestamp: new Date().toISOString() },
+                                { role: 'assistant', content: 'Nice to meet you, Chris Miller!', timestamp: new Date().toISOString() }
+                            ]
+                        }
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    statusEl.className = 'status success';
+                    statusEl.textContent = '✅ Name saved to conversation!';
+                    
+                    // Update token if provided
+                    if (data.body) {
+                        const parsed = typeof data.body === 'string' ? JSON.parse(data.body) : data.body;
+                        if (parsed.stateToken) stateToken = parsed.stateToken;
+                    } else if (data.stateToken) {
+                        stateToken = data.stateToken;
+                    }
+                    
+                    // Build conversation context like ConversationManager does
+                    conversationContext = {
+                        conversationId: sessionId,
+                        turn: 1,
+                        messageCount: 2,
+                        recentMessages: [
+                            { role: 'user', content: 'My name is Chris Miller', timestamp: new Date().toISOString() },
+                            { role: 'assistant', content: 'Nice to meet you, Chris Miller!', timestamp: new Date().toISOString() }
+                        ]
+                    };
+                    
+                } else {
+                    statusEl.className = 'status error';
+                    statusEl.textContent = `❌ Save failed: ${response.status}`;
+                }
+                
+                responseEl.textContent = JSON.stringify(data, null, 2);
+            } catch (error) {
+                statusEl.className = 'status error';
+                statusEl.textContent = `❌ Error: ${error.message}`;
+                responseEl.textContent = error.stack;
+            }
+        }
+
+        async function testStreamingWithContext() {
+            const statusEl = document.getElementById('test3-status');
+            const requestEl = document.getElementById('test3-request');
+            const responseEl = document.getElementById('test3-response');
+            
+            if (!stateToken) {
+                statusEl.className = 'status error';
+                statusEl.textContent = '❌ No state token - run Step 1 first';
+                return;
+            }
+            
+            if (!conversationContext) {
+                statusEl.className = 'status error';
+                statusEl.textContent = '❌ No conversation context - run Step 2 first';
+                return;
+            }
+            
+            statusEl.className = 'status pending';
+            statusEl.textContent = 'Asking "What\'s my name?" via streaming...';
+            
+            const requestBody = {
+                tenant_hash: TENANT_HASH,
+                user_input: "What's my name?",
+                session_id: sessionId,
+                conversation_context: conversationContext,
+                conversation_id: sessionId,
+                turn: 2,
+                stream: true,
+                streaming_message_id: `bot_${Date.now()}`
+            };
+            
+            // Show the request body
+            requestEl.textContent = 'REQUEST BODY:\n' + JSON.stringify(requestBody, null, 2);
+            
+            try {
+                const response = await fetch(STREAMING_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${stateToken}`,
+                        'Accept': 'text/event-stream, application/json'
+                    },
+                    body: JSON.stringify(requestBody)
+                });
+
+                if (response.ok) {
+                    const text = await response.text();
+                    
+                    // Check if response mentions Chris Miller
+                    if (text.includes('Chris Miller') || text.includes('Chris')) {
+                        statusEl.className = 'status success';
+                        statusEl.textContent = '✅ Bot remembered your name!';
+                        responseEl.innerHTML = text.replace(/(Chris Miller?)/g, '<span class="highlight">$1</span>');
+                    } else {
+                        statusEl.className = 'status error';
+                        statusEl.textContent = '❌ Bot did not remember your name';
+                        responseEl.textContent = text;
+                    }
+                } else {
+                    statusEl.className = 'status error';
+                    statusEl.textContent = `❌ Streaming failed: ${response.status}`;
+                    const errorText = await response.text();
+                    responseEl.textContent = errorText;
+                }
+                
+            } catch (error) {
+                statusEl.className = 'status error';
+                statusEl.textContent = `❌ Error: ${error.message}`;
+                responseEl.textContent = error.stack;
+            }
+        }
+
+        async function debugRequestBody() {
+            const statusEl = document.getElementById('test4-status');
+            const responseEl = document.getElementById('test4-response');
+            
+            statusEl.className = 'status success';
+            statusEl.textContent = 'Full request body that would be sent:';
+            
+            const fullRequestBody = {
+                tenant_hash: TENANT_HASH,
+                user_input: "What's my name?",
+                session_id: sessionId,
+                conversation_context: conversationContext || {
+                    conversationId: sessionId,
+                    turn: 2,
+                    messageCount: 2,
+                    recentMessages: [
+                        { role: 'user', content: 'My name is Chris Miller', timestamp: new Date().toISOString() },
+                        { role: 'assistant', content: 'Nice to meet you, Chris Miller!', timestamp: new Date().toISOString() }
+                    ]
+                },
+                conversation_id: sessionId,
+                turn: 2,
+                stream: true,
+                streaming_message_id: `bot_${Date.now()}`,
+                files: [],
+                messageId: `msg_${Date.now()}`
+            };
+            
+            responseEl.textContent = JSON.stringify(fullRequestBody, null, 2);
+        }
+
+        // Auto-run setup
+        document.addEventListener('DOMContentLoaded', () => {
+            const setupStatus = document.getElementById('setup-status');
+            setupStatus.className = 'status success';
+            setupStatus.textContent = '✅ Test page ready! Follow steps 1-4 to debug streaming context.';
+        });
+    </script>
+</body>
+</html>

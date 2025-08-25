@@ -137,7 +137,7 @@ Important: ALWAYS include complete URLs exactly as they appear in the search res
 Please provide a helpful response:""".strip()
 
 def call_claude_with_prompt(prompt, config):
-    model_id = config.get("model_id", "anthropic.claude-3-sonnet-20240229-v1:0")
+    model_id = config.get("model_id", "us.anthropic.claude-3-5-haiku-20241022-v1:0")
     logger.info(f"🧠 Calling Claude model {model_id} with constructed prompt")
     
     try:
@@ -165,6 +165,14 @@ def call_claude_with_prompt(prompt, config):
 
 def lambda_handler(event, context):
     try:
+        # Log the raw event for debugging
+        logger.info(f"Raw event received: {json.dumps(event)[:500]}")
+        
+        # Handle Function URL wrapper
+        if 'body' in event and isinstance(event.get('body'), str):
+            logger.info("Detected Function URL event wrapper, parsing body")
+            event = json.loads(event['body'])
+        
         user_input = event.get('user_input', '')
         tenant_id = event.get('tenant_id', '')
         config = event.get('config', {})

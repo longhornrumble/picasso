@@ -211,9 +211,20 @@ var __spreadValues = (a, b) => {
         widgetDomain = scriptUrl.origin;
         pathPrefix = '/staging';
         console.log(`🧪 Staging detected from script path`);
+      } else if (scriptUrl && scriptUrl.origin.includes('picassostaging')) {
+        // Staging S3 bucket
+        widgetDomain = scriptUrl.origin;
+        pathPrefix = '';
+        console.log(`🧪 Staging S3 bucket detected: ${widgetDomain}`);
+      } else if (scriptUrl && scriptUrl.origin.includes('picassocode')) {
+        // Production S3 bucket
+        widgetDomain = scriptUrl.origin;
+        pathPrefix = '';
+        console.log(`🚀 Production S3 bucket detected: ${widgetDomain}`);
       } else {
-        // Production
-        widgetDomain = "https://chat.myrecruiter.ai";
+        // Fallback - use script origin if available
+        widgetDomain = scriptUrl ? scriptUrl.origin : "https://chat.myrecruiter.ai";
+        console.log(`📍 Using origin: ${widgetDomain}`);
       }
       
       // Store the expected origin for security validation
@@ -222,7 +233,26 @@ var __spreadValues = (a, b) => {
       
       // Use the standard iframe HTML file
       const htmlFile = 'iframe.html';
-      const iframeUrl = `${widgetDomain}${pathPrefix}/${htmlFile}?t=${this.tenantHash}`;
+      let iframeUrl = `${widgetDomain}${pathPrefix}/${htmlFile}?t=${this.tenantHash}`;
+      
+      // Pass environment to iframe
+      // Get the script element that loaded this widget
+      const widgetScript = document.querySelector('script[src*="widget.js"][data-tenant]') || 
+                          document.querySelector('script[src*="widget.js"]') ||
+                          document.currentScript;
+      const scriptEnv = widgetScript?.getAttribute('data-env');
+      
+      if (scriptEnv) {
+        iframeUrl += `&env=${scriptEnv}`;
+        console.log(`📌 Passing env=${scriptEnv} to iframe (from data-env attribute)`);
+      } else if (isStaging) {
+        iframeUrl += '&env=staging';
+        console.log(`📌 Passing env=staging to iframe (detected staging mode)`);
+      } else if (devMode) {
+        iframeUrl += '&env=development';
+        console.log(`📌 Passing env=development to iframe (dev mode)`);
+      }
+      
       console.log(`🌐 Loading iframe from: ${iframeUrl} (${devMode ? "DEV" : isStaging ? "STAGING" : "PROD"} mode)`);
       console.log(`💡 To use dev mode, add ?picasso-dev=true to URL or data-dev="true" to script tag`);
       Object.assign(this.iframe, {
@@ -299,6 +329,10 @@ var __spreadValues = (a, b) => {
             console.log("📏 Resizing iframe");
             this.handleResize(event.data.dimensions);
             break;
+          case "PICASSO_ERROR":
+            console.log("⚠️ Widget error:", event.data.error || event.data.message);
+            // Errors are logged but don't require action from the host
+            break;
           default:
             console.log("❓ Unknown message type:", event.data.type);
         }
@@ -350,6 +384,10 @@ var __spreadValues = (a, b) => {
           console.log("📢 Callout state changed:", payload);
           // Resize container for callout regardless of open state
           this.resizeForCallout(payload.calloutConfig);
+          break;
+        case "SIZE_CHANGE":
+          console.log("📐 Size change event received:", payload);
+          // Size change is handled internally by the iframe, no action needed
           break;
         default:
           console.log("❓ Unknown PICASSO_EVENT:", event);

@@ -1,21 +1,52 @@
 import json
-import jwt
-import boto3
 import logging
 import os
 import time
-from datetime import datetime, timedelta
-from botocore.exceptions import ClientError
 
-# Initialize logger
+# Set up logging immediately
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-# Initialize AWS clients
-secrets_client = boto3.client('secretsmanager')
-dynamodb = boto3.resource('dynamodb')
-bedrock = boto3.client('bedrock-runtime')
-bedrock_agent = boto3.client('bedrock-agent-runtime')
+try:
+    import jwt
+    JWT_AVAILABLE = True
+except ImportError:
+    logger.warning("JWT module not available")
+    JWT_AVAILABLE = False
+
+try:
+    import boto3
+    from botocore.exceptions import ClientError
+    BOTO3_AVAILABLE = True
+except ImportError:
+    logger.warning("Boto3 not available")
+    BOTO3_AVAILABLE = False
+    
+try:
+    from datetime import datetime, timedelta
+except ImportError:
+    logger.warning("datetime not available")
+    datetime = None
+    timedelta = None
+
+# Initialize AWS clients only if boto3 is available
+if BOTO3_AVAILABLE:
+    try:
+        secrets_client = boto3.client('secretsmanager')
+        dynamodb = boto3.resource('dynamodb')
+        bedrock = boto3.client('bedrock-runtime')
+        bedrock_agent = boto3.client('bedrock-agent-runtime')
+    except Exception as e:
+        logger.error(f"Failed to initialize AWS clients: {e}")
+        secrets_client = None
+        dynamodb = None
+        bedrock = None
+        bedrock_agent = None
+else:
+    secrets_client = None
+    dynamodb = None
+    bedrock = None
+    bedrock_agent = None
 
 # Environment variables
 JWT_SECRET_KEY_NAME = os.environ.get('JWT_SECRET_KEY_NAME', 'picasso/jwt/signing-key')
@@ -49,27 +80,78 @@ def lambda_handler(event, context):
     """
     try:
         logger.info("🌊 Streaming handler invoked with security monitoring")
-        security_context = get_security_context(event, context)
+        
+        # Safely get security context
+        try:
+            security_context = get_security_context(event, context)
+        except Exception as e:
+            logger.warning(f"Could not get security context: {e}")
+            security_context = {"source_ip": "unknown", "user_agent": "unknown", "request_id": "unknown"}
+        
+        # Log the full event for debugging
+        logger.info(f"Full event structure: {json.dumps(event, default=str)[:1000]}")
         
         # Handle OPTIONS requests for CORS
-        if event.get('requestContext', {}).get('http', {}).get('method') == 'OPTIONS':
+        http_method = event.get('httpMethod') or event.get('requestContext', {}).get('http', {}).get('method', 'GET')
+        logger.info(f"HTTP method detected: {http_method}")
+        
+        if http_method == 'OPTIONS':
             return cors_response(200, "")
         
+        # For EventSource GET requests, check if this is a health check
+        if http_method == 'GET':
+            # This might be an EventSource initial connection
+            logger.info("🔍 GET request detected - likely EventSource connection")
+            
+            # EventSource always uses GET, so return SSE format for all GET requests
+            headers = event.get('headers', {})
+            logger.info(f"📋 GET request headers: {json.dumps(dict(headers), default=str)[:500]}")
+            
+            # For health check or initial connection, return simple SSE response
+            logger.info("✅ Returning SSE health response for GET request")
+            sse_message = json.dumps({
+                "type": "health", 
+                "status": "ready", 
+                "message": "Streaming endpoint ready for JWT authentication"
+            })
+            
+            return {
+                'statusCode': 200,
+                'headers': {
+                    'Content-Type': 'text/event-stream',
+                    'Cache-Control': 'no-cache',
+                    'Connection': 'keep-alive',
+                    'X-Accel-Buffering': 'no'
+                    # CORS headers removed - Lambda Function URL handles CORS automatically
+                },
+                'body': f'data: {sse_message}\n\n'
+            }
+        
         # Validate JWT token from headers
+        # Lambda Function URLs normalize headers to lowercase
         headers = event.get('headers', {})
-        jwt_token = headers.get('x-jwt-token') or headers.get('Authorization', '').replace('Bearer ', '')
+        logger.info(f"🔍 Received headers: {list(headers.keys())}")
+        jwt_token = (
+            headers.get('x-jwt-token') or 
+            headers.get('X-JWT-Token') or
+            headers.get('authorization', '').replace('Bearer ', '') or
+            headers.get('Authorization', '').replace('Bearer ', '')
+        )
         
         if not jwt_token:
             logger.warning("❌ Missing JWT token in streaming request")
             
-            # Log unauthorized access attempt
-            if SECURITY_MONITOR_AVAILABLE:
-                log_unauthorized_access_attempt(
-                    tenant_hash=None,
-                    access_type="streaming_request",
-                    reason="missing_jwt_token",
-                    **security_context
-                )
+            # For GET requests without JWT, return SSE format error to prevent MIME type issues
+            if http_method == 'GET':
+                return {
+                    'statusCode': 401,
+                    'headers': {
+                        'Content-Type': 'text/event-stream; charset=utf-8',
+                        'Cache-Control': 'no-cache'
+                        # CORS headers removed - Lambda Function URL handles CORS
+                    },
+                    'body': 'data: {"type": "error", "error": "Missing JWT token", "details": "Include JWT token in x-jwt-token header or Authorization: Bearer header"}\n\n'
+                }
             
             return error_response(401, "Missing JWT token", 
                                "Include JWT token in x-jwt-token header or Authorization: Bearer header")
@@ -308,11 +390,9 @@ def handle_streaming_request(event, tenant_id, session_id, context, security_con
         # Store recent message for conversation continuity
         store_recent_message(session_id, tenant_id, user_input, 'user')
         
-        # Generate streaming response based on type
-        if stream_type == 'sse':
-            return generate_sse_streaming_response(user_input, tenant_id, session_id, config, context)
-        else:
-            return generate_json_streaming_response(user_input, tenant_id, session_id, config, context)
+        # Generate streaming response - ALWAYS use SSE for EventSource clients
+        # Browser EventSource API requires SSE format
+        return generate_sse_streaming_response(user_input, tenant_id, session_id, config, context)
             
     except json.JSONDecodeError:
         return error_response(400, "Invalid JSON", "Request body must be valid JSON")
@@ -417,16 +497,14 @@ def generate_sse_streaming_response(user_input, tenant_id, session_id, config, c
         # Log performance metrics
         logger.info(f"⚡ Streaming performance - First token: {first_token_time:.3f}s, Total: {completion_time:.3f}s, Tokens: {token_count}")
         
-        # Return SSE response
+        # Return SSE response with correct Content-Type for EventSource
         return {
             'statusCode': 200,
             'headers': {
-                'Content-Type': 'text/plain; charset=utf-8',
+                'Content-Type': 'text/event-stream; charset=utf-8',  # CRITICAL: Must be text/event-stream for SSE
                 'Cache-Control': 'no-cache',
                 'Connection': 'keep-alive',
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Headers': 'Content-Type,x-jwt-token,Authorization',
-                'Access-Control-Allow-Methods': 'POST,OPTIONS',
+                # CORS headers removed - Lambda Function URL handles CORS
                 'x-session-id': session_id,
                 'x-first-token-ms': str(int(first_token_time * 1000)) if first_token_time else '0',
                 'x-total-tokens': str(token_count)
@@ -462,9 +540,7 @@ def generate_json_streaming_response(user_input, tenant_id, session_id, config, 
             'statusCode': 200,
             'headers': {
                 'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Headers': 'Content-Type,x-jwt-token,Authorization',
-                'Access-Control-Allow-Methods': 'POST,OPTIONS',
+                # CORS headers removed - Lambda Function URL handles CORS
                 'x-session-id': session_id
             },
             'body': json.dumps({
@@ -625,6 +701,8 @@ def update_conversation_summary(session_id, tenant_id, user_input, assistant_res
 
 def error_response(status_code, error, details=None):
     """Return standardized error response with CORS"""
+    from datetime import datetime
+    
     error_body = {
         'error': error,
         'timestamp': datetime.utcnow().isoformat(),
@@ -633,27 +711,32 @@ def error_response(status_code, error, details=None):
     
     if details:
         error_body['details'] = details
-        
+    
+    # Check if this is an EventSource request and return SSE format error
+    # This prevents MIME type errors in the browser
+    import json
+    headers = {
+        'Content-Type': 'text/event-stream; charset=utf-8',  # Always use SSE format
+        'Cache-Control': 'no-cache'
+        # CORS headers removed - Lambda Function URL handles CORS
+    }
+    
+    # Format error as SSE
+    sse_error = f'data: {json.dumps(error_body)}\n\n'
+    
     return {
         'statusCode': status_code,
-        'headers': {
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Headers': 'Content-Type,x-jwt-token,Authorization',
-            'Access-Control-Allow-Methods': 'POST,OPTIONS'
-        },
-        'body': json.dumps(error_body)
+        'headers': headers,
+        'body': sse_error
     }
 
 def cors_response(status_code, body):
     """Return CORS preflight response"""
+    # Lambda Function URL handles CORS automatically
     return {
         'statusCode': status_code,
         'headers': {
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Headers': 'Content-Type,x-jwt-token,Authorization',
-            'Access-Control-Allow-Methods': 'POST,OPTIONS',
-            'Access-Control-Max-Age': '86400'
+            'Content-Type': 'text/plain'
         },
         'body': body if isinstance(body, str) else json.dumps(body)
     }

@@ -11,6 +11,17 @@ logger.setLevel(logging.INFO)
 TENANT_ID_PATTERN = re.compile(r'^[a-zA-Z0-9_-]{3,50}$')
 SESSION_ID_PATTERN = re.compile(r'^[a-zA-Z0-9_-]{8,50}$')
 
+def generate_session_id():
+    """
+    Generate a unique session ID for chat sessions
+    Format: session_{timestamp}_{random_string}
+    """
+    timestamp = int(time.time() * 1000)  # Milliseconds since epoch
+    random_str = uuid.uuid4().hex[:12]  # 12 character random string
+    session_id = f"session_{timestamp}_{random_str}"
+    logger.info(f"Generated new session ID: {session_id[:16]}...")
+    return session_id
+
 def extract_session_data(event, tenant_info=None):
     """
     Enhanced session data extraction with tenant inference integration

@@ -12,7 +12,7 @@ const ENVIRONMENT_CONFIG = {
   },
   staging: {
     API_BASE_URL: 'https://xkjbyi3ushhuiytcfbuk5uaqom0ivhfk.lambda-url.us-east-1.on.aws',
-    WIDGET_DOMAIN: 'https://chat-staging.myrecruiter.ai',
+    WIDGET_DOMAIN: 'https://picassostaging.s3.amazonaws.com',
     CONFIG_DOMAIN: 'https://picasso-staging.s3.amazonaws.com'
   },
   production: {

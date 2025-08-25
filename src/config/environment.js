@@ -10,6 +10,9 @@
  * - Enhanced request timeout settings for performance targets
  */
 
+// Import centralized streaming configuration
+import { isStreamingEnabled as checkStreamingEnabled } from './streaming-config';
+
 // Validation utilities
 const isValidUrl = (url) => {
   try {
@@ -176,7 +179,8 @@ const ENVIRONMENTS = {
     CHAT_ENDPOINT: typeof __CHAT_ENDPOINT__ !== 'undefined' ? __CHAT_ENDPOINT__ : 'https://chat.myrecruiter.ai/Master_Function?action=chat',
     CONVERSATION_ENDPOINT: typeof __CONVERSATION_ENDPOINT__ !== 'undefined' ? __CONVERSATION_ENDPOINT__ : 'https://chat.myrecruiter.ai/Master_Function?action=conversation', // Added for testing conversation persistence
     ERROR_REPORTING_ENDPOINT: typeof __ERROR_REPORTING_ENDPOINT__ !== 'undefined' ? __ERROR_REPORTING_ENDPOINT__ : 'https://chat.myrecruiter.ai/Master_Function?action=log_error',
-    STREAMING_ENDPOINT: typeof __STREAMING_ENDPOINT__ !== 'undefined' ? __STREAMING_ENDPOINT__ : null, // Disabled in development to avoid CORS issues
+    STREAMING_ENDPOINT: typeof __STREAMING_ENDPOINT__ !== 'undefined' ? __STREAMING_ENDPOINT__ : 'https://7pluzq3axftklmb4gbgchfdahu0lcnqd.lambda-url.us-east-1.on.aws', // Your working Lambda streaming endpoint
+    STREAMING_METHOD: 'POST', // Lambda expects POST requests with JSON body
     DEFAULT_TENANT_HASH: typeof __DEFAULT_TENANT_HASH__ !== 'undefined' ? __DEFAULT_TENANT_HASH__ : 'my87674d777bf9', // MyRecruiter default tenant for development
     
     // CONVERSATION API: Always enabled
@@ -190,14 +194,14 @@ const ENVIRONMENTS = {
     REQUEST_TIMEOUT: 10000, // PERFORMANCE: 10 seconds (reduced from 30s)
     RETRY_ATTEMPTS: 1,
     CORS_ENABLED: true,
-    STREAMING_DISABLED_REASON: 'CORS issues with staging endpoint'
+    STREAMING_DISABLED_REASON: null // Streaming now enabled
   },
   staging: {
     // STAGING ENDPOINTS: Use esbuild-defined staging Lambda endpoints or fallbacks
     API_BASE_URL: (typeof process !== 'undefined' && process.env && process.env.PICASSO_API_BASE_URL) || 
-                  (typeof __API_BASE_URL__ !== 'undefined' ? __API_BASE_URL__ : 'https://ylhilrvv7fbyfbtslvtxfya6va0zfhhx.lambda-url.us-east-1.on.aws'),
+                  (typeof __API_BASE_URL__ !== 'undefined' ? __API_BASE_URL__ : 'https://xo6tsuhi6u2fby3rkw4usa663q0igxjk.lambda-url.us-east-1.on.aws'),
     CHAT_API_URL: (typeof process !== 'undefined' && process.env && process.env.PICASSO_API_BASE_URL) || 
-                  (typeof __API_BASE_URL__ !== 'undefined' ? __API_BASE_URL__ : 'https://ylhilrvv7fbyfbtslvtxfya6va0zfhhx.lambda-url.us-east-1.on.aws'),
+                  (typeof __API_BASE_URL__ !== 'undefined' ? __API_BASE_URL__ : 'https://xo6tsuhi6u2fby3rkw4usa663q0igxjk.lambda-url.us-east-1.on.aws'),
     ASSET_BASE_URL: typeof __CONFIG_DOMAIN__ !== 'undefined' ? __CONFIG_DOMAIN__ : 'https://picasso-staging.s3.amazonaws.com',
     S3_BUCKET: 'picasso-staging',
     WIDGET_DOMAIN: typeof __WIDGET_DOMAIN__ !== 'undefined' ? __WIDGET_DOMAIN__ : 'https://chat-staging.myrecruiter.ai',
@@ -205,13 +209,14 @@ const ENVIRONMENTS = {
     
     // DIRECT FUNCTION URL: Use esbuild-defined endpoints for staging Lambda (UPDATED to correct URL)
     CONFIG_ENDPOINT: (typeof process !== 'undefined' && process.env && process.env.PICASSO_CONFIG_ENDPOINT) || 
-                     (typeof __CONFIG_ENDPOINT__ !== 'undefined' ? __CONFIG_ENDPOINT__ : 'https://ylhilrvv7fbyfbtslvtxfya6va0zfhhx.lambda-url.us-east-1.on.aws/?action=get_config'),
+                     (typeof __CONFIG_ENDPOINT__ !== 'undefined' ? __CONFIG_ENDPOINT__ : 'https://xo6tsuhi6u2fby3rkw4usa663q0igxjk.lambda-url.us-east-1.on.aws/?action=get_config'),
     CHAT_ENDPOINT: (typeof process !== 'undefined' && process.env && process.env.PICASSO_CHAT_ENDPOINT) || 
-                   (typeof __CHAT_ENDPOINT__ !== 'undefined' ? __CHAT_ENDPOINT__ : 'https://ylhilrvv7fbyfbtslvtxfya6va0zfhhx.lambda-url.us-east-1.on.aws/?action=chat'),
+                   (typeof __CHAT_ENDPOINT__ !== 'undefined' ? __CHAT_ENDPOINT__ : 'https://xo6tsuhi6u2fby3rkw4usa663q0igxjk.lambda-url.us-east-1.on.aws/?action=chat'),
     CONVERSATION_ENDPOINT: (typeof process !== 'undefined' && process.env && process.env.PICASSO_CONVERSATION_ENDPOINT) || 
-                           (typeof __CONVERSATION_ENDPOINT__ !== 'undefined' ? __CONVERSATION_ENDPOINT__ : 'https://ylhilrvv7fbyfbtslvtxfya6va0zfhhx.lambda-url.us-east-1.on.aws/?action=conversation'), // Track A+ conversation persistence
-    ERROR_REPORTING_ENDPOINT: typeof __ERROR_REPORTING_ENDPOINT__ !== 'undefined' ? __ERROR_REPORTING_ENDPOINT__ : 'https://ylhilrvv7fbyfbtslvtxfya6va0zfhhx.lambda-url.us-east-1.on.aws/?action=log_error',
+                           (typeof __CONVERSATION_ENDPOINT__ !== 'undefined' ? __CONVERSATION_ENDPOINT__ : 'https://xo6tsuhi6u2fby3rkw4usa663q0igxjk.lambda-url.us-east-1.on.aws/?action=conversation'), // Track A+ conversation persistence
+    ERROR_REPORTING_ENDPOINT: typeof __ERROR_REPORTING_ENDPOINT__ !== 'undefined' ? __ERROR_REPORTING_ENDPOINT__ : 'https://xo6tsuhi6u2fby3rkw4usa663q0igxjk.lambda-url.us-east-1.on.aws/?action=log_error',
     STREAMING_ENDPOINT: typeof __STREAMING_ENDPOINT__ !== 'undefined' ? __STREAMING_ENDPOINT__ : 'https://7pluzq3axftklmb4gbgchfdahu0lcnqd.lambda-url.us-east-1.on.aws', // Staging streaming handler with CORS
+    STREAMING_METHOD: 'POST', // Lambda expects POST requests with JSON body
     DEFAULT_TENANT_HASH: typeof __DEFAULT_TENANT_HASH__ !== 'undefined' ? __DEFAULT_TENANT_HASH__ : 'my87674d777bf9', // Use working tenant hash
     
     // CONVERSATION API: Always enabled (Track A+ ready)
@@ -237,7 +242,8 @@ const ENVIRONMENTS = {
     CONFIG_ENDPOINT: typeof __CONFIG_ENDPOINT__ !== 'undefined' ? __CONFIG_ENDPOINT__ : 'https://chat.myrecruiter.ai/Master_Function?action=get_config',
     CHAT_ENDPOINT: typeof __CHAT_ENDPOINT__ !== 'undefined' ? __CHAT_ENDPOINT__ : 'https://chat.myrecruiter.ai/Master_Function?action=chat',
     ERROR_REPORTING_ENDPOINT: typeof __ERROR_REPORTING_ENDPOINT__ !== 'undefined' ? __ERROR_REPORTING_ENDPOINT__ : 'https://chat.myrecruiter.ai/Master_Function?action=log_error',
-    STREAMING_ENDPOINT: typeof __STREAMING_ENDPOINT__ !== 'undefined' ? __STREAMING_ENDPOINT__ : null, // Production streaming not configured - requires explicit setup
+    STREAMING_ENDPOINT: typeof __STREAMING_ENDPOINT__ !== 'undefined' ? __STREAMING_ENDPOINT__ : 'https://7pluzq3axftklmb4gbgchfdahu0lcnqd.lambda-url.us-east-1.on.aws', // Your working Lambda streaming endpoint
+    STREAMING_METHOD: 'POST', // Lambda expects POST requests with JSON body
     DEFAULT_TENANT_HASH: typeof __DEFAULT_TENANT_HASH__ !== 'undefined' ? __DEFAULT_TENANT_HASH__ : 'my87674d777bf9', // MyRecruiter default tenant for production
     
     // CONVERSATION API: Always enabled when deployed
@@ -463,57 +469,61 @@ export const config = {
       throw new Error('getStreamingUrl: tenantHash is required');
     }
     
-    // Use configured streaming endpoint from environment
-    return ENVIRONMENTS[currentEnv].STREAMING_ENDPOINT || 
+    const streamingEndpoint = ENVIRONMENTS[currentEnv].STREAMING_ENDPOINT || 
            `https://chat.myrecruiter.ai/Bedrock_Streaming_Handler`;
+    
+    console.log('🌊 Streaming endpoint:', {
+      tenantHash,
+      currentEnv,
+      endpoint: streamingEndpoint,
+      configured: !!ENVIRONMENTS[currentEnv].STREAMING_ENDPOINT
+    });
+    
+    // Return the streaming endpoint - tenant_hash will be sent in POST body
+    // The Lambda streaming handler expects tenant_hash in the request body, not URL
+    return streamingEndpoint;
   },
   
   // Streaming feature flag evaluation with JWT support
   isStreamingEnabled: (tenantConfig) => {
+    // Use centralized streaming configuration (single source of truth)
+    const enabled = checkStreamingEnabled(tenantConfig);
+    console.log(`📡 environment.js: Streaming ${enabled ? 'ENABLED' : 'DISABLED'} (from streaming-config.js)`);
+    return enabled;
+    
+    // OLD CODE REMOVED - NOW USING CENTRALIZED CONFIG
+    /*
     // Global kill switch (for emergency disable)
     if (typeof window !== 'undefined' && window.PICASSO_DISABLE_STREAMING === true) {
       return false;
     }
     
-    // Environment-based enablement (disabled in staging due to endpoint issues, disabled in development due to CORS)
-    const environmentAllowsStreaming = false; // currentEnv === 'staging'; // Temporarily disabled for staging
-    
-    if (!environmentAllowsStreaming) {
-      return false;
-    }
-    
-    // Tenant-specific feature flags (including JWT/Function URL flags)
-    if (tenantConfig?.features?.streaming_enabled === true ||
-        tenantConfig?.features?.streaming === true ||
-        tenantConfig?.features?.eventSource === true ||
-        tenantConfig?.features?.jwt_streaming === true ||
-        tenantConfig?.features?.function_url_streaming === true) {
-      return true;
-    }
-    
-    // Development override
-    if (currentEnv === 'development' && (
-        typeof window !== 'undefined' && window.PICASSO_FORCE_STREAMING === true
-      )) {
-      return true;
-    }
-    
-    // URL parameter override (for testing)
+    // URL parameter override (for testing) - check this first to allow explicit control
     if (typeof window !== 'undefined') {
       try {
         const urlParams = new URLSearchParams(window.location.search);
-        if (urlParams.get('streaming') === 'true') {
-          return true;
-        }
         if (urlParams.get('streaming') === 'false') {
-          return false;
+          return false; // Allow explicit disable via URL
+        }
+        if (urlParams.get('streaming') === 'true') {
+          return true; // Allow explicit enable via URL
         }
       } catch {
         // Ignore URL parsing errors
       }
     }
     
-    return false;
+    // Tenant-specific feature flags can explicitly disable
+    if (tenantConfig?.features?.streaming_enabled === false ||
+        tenantConfig?.features?.streaming === false) {
+      return false; // Respect explicit tenant disable
+    }
+    
+    // Environment-based enablement - now enabled by default in all environments
+    const environmentAllowsStreaming = true; // Enable streaming in all environments
+    
+    // Default to enabled (streaming is now the default behavior)
+    return environmentAllowsStreaming;
   },
   
   // Check if JWT/Function URL streaming is enabled
@@ -523,10 +533,8 @@ export const config = {
       return false;
     }
     
-    // Only available in staging/production (not development due to CORS)
-    if (currentEnv === 'development') {
-      return false;
-    }
+    // Allow streaming in development with proper CORS headers
+    // (Lambda now has CORS configured)
     
     // Check for JWT-specific streaming features
     if (tenantConfig?.features?.jwt_streaming === true ||
@@ -548,6 +556,7 @@ export const config = {
     }
     
     return false;
+    */
   },
   
   // Version and build info
@@ -659,10 +668,14 @@ if (config.isDevelopment() || config.isStaging()) {
       return result;
     };
     
+    // Check if streaming is enabled by default (without tenant config)
+    const streamingStatus = config.isStreamingEnabled({ features: { streaming_enabled: true } }) ? 'ENABLED ✅' : 
+                            `DISABLED (${ENVIRONMENTS[currentEnv].STREAMING_DISABLED_REASON || 'Environment default'})`;
+    
     console.log(`
 🛠️  PICASSO DEVELOPMENT MODE ACTIVE
 Environment: ${currentEnv}
-Streaming: DISABLED (${ENVIRONMENTS[currentEnv].STREAMING_DISABLED_REASON || 'Environment default'})
+Streaming: ${streamingStatus}
 Debug Commands:
   window.picassoConfig              - View current config
   window.switchPicassoEnv('staging') - Switch environments

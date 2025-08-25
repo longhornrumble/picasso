@@ -103,19 +103,19 @@ console.log(`📦 Build mode: ${isDevelopment ? 'DEVELOPMENT' : 'PRODUCTION'}`);
 // Environment-specific configuration matching vite.config.js
 const ENVIRONMENT_CONFIG = {
   development: {
-    API_BASE_URL: 'http://localhost:3000/api',
+    API_BASE_URL: 'https://xo6tsuhi6u2fby3rkw4usa663q0igxjk.lambda-url.us-east-1.on.aws',
     WIDGET_DOMAIN: 'http://localhost:8000',
-    CONFIG_DOMAIN: 'https://picasso-staging.s3.amazonaws.com'
+    CONFIG_DOMAIN: 'https://picassostaging.s3.amazonaws.com'
   },
   staging: {
-    API_BASE_URL: 'https://xkjbyi3ushhuiytcfbuk5uaqom0ivhfk.lambda-url.us-east-1.on.aws',
-    WIDGET_DOMAIN: 'https://chat-staging.myrecruiter.ai',
-    CONFIG_DOMAIN: 'https://picasso-staging.s3.amazonaws.com'
+    API_BASE_URL: 'https://xo6tsuhi6u2fby3rkw4usa663q0igxjk.lambda-url.us-east-1.on.aws',
+    WIDGET_DOMAIN: 'https://picassostaging.s3.amazonaws.com',
+    CONFIG_DOMAIN: 'https://picassostaging.s3.amazonaws.com'
   },
   production: {
-    API_BASE_URL: 'https://api.myrecruiter.ai',
+    API_BASE_URL: 'https://chat.myrecruiter.ai/Master_Function',
     WIDGET_DOMAIN: 'https://chat.myrecruiter.ai',
-    CONFIG_DOMAIN: 'https://picasso-production.s3.amazonaws.com'
+    CONFIG_DOMAIN: 'https://picassocode.s3.amazonaws.com'
   }
 };
 
@@ -146,15 +146,25 @@ if (fs.existsSync(widgetFramePath)) {
 fs.copyFileSync('current-widget.js', path.join(distDir, 'widget.js'));
 console.log('📋 Copied current-widget.js as widget.js');
 
+// Copy test files and service worker from public directory
+const testFiles = ['test-staging.html', 'form-ui-examples.html', 'sw.js'];
+testFiles.forEach(file => {
+  const sourcePath = path.join('public', file);
+  if (fs.existsSync(sourcePath)) {
+    fs.copyFileSync(sourcePath, path.join(distDir, file));
+    console.log(`📋 Copied ${file} to dist`);
+  }
+});
+
 // Define environment variables for React app
 const defineVars = {
   // Existing environment variables
   __ENVIRONMENT__: JSON.stringify(environment),
   __API_BASE_URL__: JSON.stringify(envConfig.API_BASE_URL),
-  __CONFIG_ENDPOINT__: JSON.stringify(`${envConfig.API_BASE_URL}/?action=get_config`),
-  __CHAT_ENDPOINT__: JSON.stringify(`${envConfig.API_BASE_URL}/?action=chat`),
-  __CONVERSATION_ENDPOINT__: JSON.stringify(`${envConfig.API_BASE_URL}/?action=conversation`),
-  __ERROR_REPORTING_ENDPOINT__: JSON.stringify(`${envConfig.API_BASE_URL}/?action=log_error`),
+  __CONFIG_ENDPOINT__: JSON.stringify(`${envConfig.API_BASE_URL}?action=get_config`),
+  __CHAT_ENDPOINT__: JSON.stringify(`${envConfig.API_BASE_URL}?action=chat`),
+  __CONVERSATION_ENDPOINT__: JSON.stringify(`${envConfig.API_BASE_URL}?action=conversation`),
+  __ERROR_REPORTING_ENDPOINT__: JSON.stringify(`${envConfig.API_BASE_URL}?action=log_error`),
   __WIDGET_DOMAIN__: JSON.stringify(envConfig.WIDGET_DOMAIN),
   __CONFIG_DOMAIN__: JSON.stringify(envConfig.CONFIG_DOMAIN),
   __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
@@ -217,9 +227,9 @@ const buildOptions = {
     // Note: Code splitting plugin disabled due to circular dependency issues
   ],
   
-  // Production optimizations
+  // Production optimizations (only for actual production builds)
   ...(environment === 'production' && !isDevelopment ? {
-    drop: ['console', 'debugger'],
+    drop: ['console', 'debugger'], // Drop console logs in production only
     dropLabels: ['DEV'],
     legalComments: 'none',
     treeShaking: true,

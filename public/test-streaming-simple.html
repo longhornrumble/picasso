@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Streaming Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            background: #f0f0f0;
+        }
+        .enabled { background: #d4edda; color: #155724; }
+        .disabled { background: #f8d7da; color: #721c24; }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            cursor: pointer;
+        }
+        #log {
+            background: #1e1e1e;
+            color: #0f0;
+            padding: 10px;
+            height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Streaming Test</h1>
+    
+    <div id="status" class="status">Checking streaming status...</div>
+    
+    <div>
+        <button onclick="forceEnableStreaming()">Force Enable Streaming</button>
+        <button onclick="checkStatus()">Check Status</button>
+        <button onclick="testStreamingAPI()">Test Streaming API</button>
+    </div>
+    
+    <h3>Log:</h3>
+    <div id="log"></div>
+
+    <!-- Widget Script -->
+    <script>
+        // Force streaming immediately
+        window.PICASSO_FORCE_STREAMING = true;
+        console.log('Pre-widget: PICASSO_FORCE_STREAMING = true');
+    </script>
+    
+    <script src="widget.js" data-tenant="my87674d777bf9"></script>
+    
+    <script>
+        const log = (msg, color = '#0f0') => {
+            const logDiv = document.getElementById('log');
+            const time = new Date().toLocaleTimeString();
+            logDiv.innerHTML += `<div style="color: ${color}">[${time}] ${msg}</div>`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+            console.log(msg);
+        };
+
+        const updateStatus = (enabled) => {
+            const statusDiv = document.getElementById('status');
+            if (enabled) {
+                statusDiv.className = 'status enabled';
+                statusDiv.textContent = '✅ Streaming ENABLED';
+            } else {
+                statusDiv.className = 'status disabled';
+                statusDiv.textContent = '❌ Streaming DISABLED';
+            }
+        };
+
+        function forceEnableStreaming() {
+            window.PICASSO_FORCE_STREAMING = true;
+            log('Set window.PICASSO_FORCE_STREAMING = true');
+            
+            // Also try the legacy enable function
+            if (window.enablePicassoStreaming) {
+                window.enablePicassoStreaming();
+                log('Called enablePicassoStreaming()');
+            }
+            
+            setTimeout(() => {
+                checkStatus();
+            }, 500);
+        }
+
+        function checkStatus() {
+            log('Checking streaming status...');
+            
+            // Check global flag
+            log(`window.PICASSO_FORCE_STREAMING = ${window.PICASSO_FORCE_STREAMING}`);
+            
+            // Check feature flag test
+            if (window.testStreamingFeatureFlag) {
+                const result = window.testStreamingFeatureFlag();
+                log(`testStreamingFeatureFlag(): legacy=${result.legacy}, jwt=${result.jwt}`);
+                updateStatus(result.legacy || result.jwt);
+            } else {
+                log('testStreamingFeatureFlag not available', '#ff0');
+            }
+        }
+
+        async function testStreamingAPI() {
+            log('Testing streaming API directly...', '#0ff');
+            
+            const streamingUrl = 'https://7pluzq3axftklmb4gbgchfdahu0lcnqd.lambda-url.us-east-1.on.aws';
+            const tenantHash = 'my87674d777bf9';
+            
+            try {
+                // Test with GET request
+                const url = `${streamingUrl}?action=chat&t=${tenantHash}&stream=true`;
+                const body = {
+                    tenant_hash: tenantHash,
+                    user_input: 'Hello, test streaming',
+                    session_id: 'test_' + Date.now()
+                };
+                
+                log(`Calling: ${url}`);
+                
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'text/event-stream'
+                    },
+                    body: JSON.stringify(body)
+                });
+                
+                log(`Response status: ${response.status}`);
+                log(`Response headers: ${response.headers.get('content-type')}`);
+                
+                if (response.ok) {
+                    const text = await response.text();
+                    log(`Response (first 200 chars): ${text.substring(0, 200)}`);
+                } else {
+                    log(`Error: ${response.statusText}`, '#f00');
+                }
+            } catch (error) {
+                log(`Error: ${error.message}`, '#f00');
+            }
+        }
+
+        // Auto-check on load
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                log('Page loaded, forcing streaming and checking status...');
+                forceEnableStreaming();
+            }, 2000);
+        });
+
+        // Listen for widget events
+        window.addEventListener('message', (event) => {
+            if (event.data && typeof event.data === 'object') {
+                if (event.data.type && event.data.type.includes('PICASSO')) {
+                    log(`Widget message: ${JSON.stringify(event.data)}`, '#ff0');
+                }
+            }
+        });
+    </script>
+</body>
+</html>

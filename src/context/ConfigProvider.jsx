@@ -125,8 +125,41 @@ const ConfigProvider = ({ children }) => {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
-      // Get new config data
-      const newConfig = await response.json();
+      // Get new config data - DEBUGGING
+      console.log('Starting config parse - Response status:', response.status);
+      let rawResponse = await response.json();
+      console.log('Raw Lambda response keys:', Object.keys(rawResponse || {}));
+      console.log('Raw Lambda response type:', typeof rawResponse);
+      console.log('Raw Lambda response statusCode:', rawResponse?.statusCode);
+      console.log('Raw Lambda response body type:', typeof rawResponse?.body);
+      
+      let newConfig = rawResponse;
+      
+      // Check if Lambda returned wrapped response (statusCode + body structure)
+      if (rawResponse.statusCode && rawResponse.body) {
+        console.log('📦 Unwrapping Lambda response structure');
+        console.log('📦 Body type:', typeof rawResponse.body);
+        // Parse the body if it's a string
+        if (typeof rawResponse.body === 'string') {
+          try {
+            newConfig = JSON.parse(rawResponse.body);
+            console.log('✅ Parsed config from body string:', newConfig);
+          } catch (e) {
+            console.error('❌ Failed to parse body:', e);
+            newConfig = rawResponse;
+          }
+        } else {
+          newConfig = rawResponse.body;
+          console.log('✅ Extracted config from body object:', newConfig);
+        }
+      }
+      
+      console.log('📋 Final config object:', {
+        hasBranding: !!newConfig.branding,
+        brandingKeys: newConfig.branding ? Object.keys(newConfig.branding) : [],
+        hasFeatures: !!newConfig.features,
+        chatTitle: newConfig.chat_title
+      });
       
       // Get version info from Lambda response headers
       const version = response.headers.get('etag') || 
@@ -151,7 +184,10 @@ const ConfigProvider = ({ children }) => {
         chatTitle: newConfig.chat_title,
         hasBranding: !!newConfig.branding,
         hasFeatures: !!newConfig.features,
-        version: version
+        version: version,
+        configKeys: Object.keys(newConfig || {}),
+        configStructure: typeof newConfig,
+        hasStatusCode: !!newConfig.statusCode
       });
 
       return { config: newConfig, changed: true };

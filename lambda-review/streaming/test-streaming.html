@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Streaming Test</title>
+</head>
+<body>
+    <h1>Streaming Test</h1>
+    <button onclick="testStreaming()">Test Streaming</button>
+    <pre id="output"></pre>
+    
+    <script>
+    async function testStreaming() {
+        const output = document.getElementById('output');
+        output.textContent = 'Testing streaming...\n';
+        
+        const url = 'https://7pluzq3axftklmb4gbgchfdahu0lcnqd.lambda-url.us-east-1.on.aws/?t=my87674d777bf9&session_id=test123&message=hello';
+        
+        try {
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    'Accept': 'text/event-stream',
+                },
+                mode: 'cors',
+                credentials: 'omit'
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            
+            output.textContent += 'Response OK! Reading stream...\n';
+            
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                
+                const chunk = decoder.decode(value, { stream: true });
+                output.textContent += chunk;
+            }
+            
+            output.textContent += '\n\nStreaming complete!';
+            
+        } catch (error) {
+            output.textContent += 'Error: ' + error.message + '\n';
+            console.error('Streaming error:', error);
+        }
+    }
+    </script>
+</body>
+</html>
