@@ -1,54 +1,171 @@
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+*~
+Icon?
+.AppleDouble
+.LSOverride
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*.swn
+.project
+.classpath
+.settings/
+.claude/
+
+# Dependencies
+node_modules/
+*/node_modules/
+.pnp
+.pnp.js
+
+# Python dependencies (Lambda packages)
+lambda-functions/**/boto3/
+lambda-functions/**/boto3-*.dist-info/
+lambda-functions/**/botocore/
+lambda-functions/**/botocore-*.dist-info/
+lambda-functions/**/dateutil/
+lambda-functions/**/jmespath/
+lambda-functions/**/jmespath-*.dist-info/
+lambda-functions/**/jwt/
+lambda-functions/**/PyJWT-*.dist-info/
+lambda-functions/**/python_dateutil-*.dist-info/
+lambda-functions/**/s3transfer/
+lambda-functions/**/s3transfer-*.dist-info/
+lambda-functions/**/urllib3/
+lambda-functions/**/urllib3-*.dist-info/
+lambda-functions/**/bin/
+lambda-functions/**/*.dist-info/
+lambda-functions/**/six.py
+lambda-functions/**/*.tar.gz
+
+# Build outputs
+dist/
+build/
+*.zip
+deployment.zip
+*.tar.gz
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
 # Logs
-logs
+logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-pnpm-debug.log*
 lerna-debug.log*
+.pnpm-debug.log*
 
-node_modules
-dist
-dist-ssr
-*.local
+# Testing
+coverage/
+.nyc_output/
+*.lcov
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
 
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-.idea
-.DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
+# Temporary files
+*.tmp
+*.temp
+tmp/
+temp/
 
-# Large zip files
-lambda-review/lambda-deployment.zip
-lambda-cors-complete.zip
-*.zip
+# Cache
+.cache/
+.parcel-cache/
+.next/
+.nuxt/
+.vuepress/dist/
+.serverless/
+.fusebox/
+.dynamodb/
+.tern-port
+.sass-cache/
 
-# Deployment and test artifacts
-deployment-record-*.json
-test-*.html
-lambda-review/lambda-review/temp-*/
-*.zip
-*-fix.sh
-*-corrected.sh
-*-query.sh
-*-results.json
-current-*.json
-updated-*.json
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+ENV/
+env/
+.eggs/
+*.egg
 
-# One-off scripts
-add-tenant-*.sh
-fix-*.sh
-update-*.sh
-run-*.sh
+# AWS
+.aws-sam/
+samconfig.toml
 
-# Test files
-persistence-test-*.html
-iframe-test.html
-quick-test.html
-test-now.html
-test-modal.html
+# Mockups and non-source files
+mockups/
+examples/
+demos/
+prototypes/
+*.sketch
+*.fig
+*.xd
+*.psd
+
+# Backup files
+*.backup
+*.bak
+*.old
+*_backup
+*_old
+
+# Package files
+*.jar
+*.war
+*.nar
+*.ear
+*.tar
+*.rar
+
+# Windows specific
+Desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Media files (unless in assets)
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.ico
+*.svg
+*.mp4
+*.mp3
+*.mov
+*.avi
+!src/assets/**
