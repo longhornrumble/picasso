@@ -776,9 +776,45 @@ def handle_chat(event: Dict[str, Any], tenant_hash: str) -> Dict[str, Any]:
         
         logger.info(f"Routing chat to intent handler for tenant: {tenant_hash[:8]}...")
         
+        # Track timing for metrics
+        start_time = datetime.utcnow()
+        
         # Call the real intent router with conversation context
         logger.info(f"Calling route_intent with conversation_context: {conversation_context is not None}")
         response_data = route_intent(chat_event, conversation_context=conversation_context)
+        
+        # Calculate response time
+        end_time = datetime.utcnow()
+        response_time_ms = int((end_time - start_time).total_seconds() * 1000)
+        
+        # Extract tenant_id from tenant_hash
+        tenant_id = None
+        try:
+            from tenant_config_loader import resolve_tenant_hash
+            tenant_id = resolve_tenant_hash(tenant_hash)
+        except Exception as e:
+            logger.warning(f"Could not resolve tenant_id: {e}")
+        
+        # Log structured QA_COMPLETE for analytics (matching Bedrock_Streaming_Handler format)
+        if response_data and 'content' in response_data:
+            session_id = body.get('session_id', '')
+            conversation_id = body.get('conversation_id', session_id)
+            
+            qa_complete_log = {
+                "type": "QA_COMPLETE",
+                "timestamp": datetime.utcnow().isoformat(),
+                "session_id": session_id,
+                "tenant_hash": tenant_hash,
+                "tenant_id": tenant_id,
+                "conversation_id": conversation_id,
+                "question": body.get('user_input', ''),
+                "answer": response_data.get('content', ''),
+                "metrics": {
+                    "response_time_ms": response_time_ms,
+                    "source": "master_function_http"  # Identify non-streaming source
+                }
+            }
+            logger.info(json.dumps(qa_complete_log))
         
         response = {
             'statusCode': 200,

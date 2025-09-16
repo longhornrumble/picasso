@@ -92,6 +92,8 @@ async function loadConfig(tenantHash) {
       }
       
       if (config) {
+        // Add tenant_id to config for downstream use
+        config.tenant_id = mapping.tenant_id;
         CONFIG_CACHE[cacheKey] = { data: config, timestamp: Date.now() };
         console.log(`📋 KB ID in config: ${config?.aws?.knowledge_base_id || 'NOT SET'}`);
         console.log(`📋 Full AWS config:`, JSON.stringify(config?.aws || {}, null, 2));
@@ -290,14 +292,23 @@ const streamingHandler = async (event, responseStream, context) => {
   
   // Handle OPTIONS requests - Function URLs handle CORS automatically when configured
   if (event.httpMethod === 'OPTIONS' || event.requestContext?.http?.method === 'OPTIONS') {
-    responseStream.write('');
+    // Don't write empty string, just end the stream
     responseStream.end();
     return;
   }
   
+  // Track if stream has ended to prevent write-after-end errors
+  let streamEnded = false;
+  
+  // Buffer for complete Q&A logging - builds in parallel without blocking
+  let responseBuffer = '';
+  let questionBuffer = '';
+  
   // For Lambda Function URL streaming, we write the SSE response directly
   const write = (data) => {
-    responseStream.write(data);
+    if (!streamEnded) {
+      responseStream.write(data);
+    }
   };
   
   // Send prelude to open the pipe immediately
@@ -309,8 +320,14 @@ const streamingHandler = async (event, responseStream, context) => {
   let heartbeatInterval;
   
   try {
-    // Parse request
-    const body = event.body ? JSON.parse(event.body) : {};
+    // Parse request - handle both direct invocation and Function URL
+    console.log('📥 Event type:', typeof event);
+    console.log('📥 Event keys:', Object.keys(event));
+    
+    // For direct invocation, event IS the body. For Function URL, event.body contains the JSON string
+    const body = event.body ? JSON.parse(event.body) : event;
+    console.log('📥 Parsed body:', JSON.stringify(body).substring(0, 200));
+    
     const tenantHash = body.tenant_hash || '';
     const sessionId = body.session_id || 'default';
     const userInput = body.user_input || '';
@@ -319,9 +336,13 @@ const streamingHandler = async (event, responseStream, context) => {
       const error = !tenantHash ? 'Missing tenant_hash' : 'Missing user_input';
       write(`data: {"type": "error", "error": "${error}"}\n\n`);
       write('data: [DONE]\n\n');
+      streamEnded = true;
       responseStream.end();
       return;
     }
+    
+    // Capture the question for logging
+    questionBuffer = userInput;
     
     // Extract conversation history from the request
     const conversationHistory = body.conversation_history || 
@@ -393,12 +414,17 @@ const streamingHandler = async (event, responseStream, context) => {
               write(`: x-first-token-ms=${firstTokenTime}\n\n`);
               console.log(`⚡ First token in ${firstTokenTime}ms`);
             }
+            
+            // Stream to client immediately - NO DELAY
             const sseData = JSON.stringify({
               type: 'text',
               content: delta.text,
               session_id: sessionId
             });
             write(`data: ${sseData}\n\n`);
+            
+            // Also append to buffer in parallel (microseconds, no blocking)
+            responseBuffer += delta.text;
           }
         } else if (chunkData.type === 'message_stop') {
           console.log('✅ Bedrock stream complete');
@@ -413,6 +439,35 @@ const streamingHandler = async (event, responseStream, context) => {
     write(`: x-total-time-ms=${totalTime}\n`);
     console.log(`✅ Complete - ${tokenCount} tokens in ${totalTime}ms`);
     
+    // Log complete Q&A pair AFTER streaming is done (no impact on user experience)
+    if (questionBuffer && responseBuffer) {
+      console.log('📝 Q&A Pair Captured:');
+      console.log(`  Session: ${sessionId}`);
+      console.log(`  Tenant: ${tenantHash.substring(0, 8)}...`);
+      console.log(`  Question: "${questionBuffer.substring(0, 100)}${questionBuffer.length > 100 ? '...' : ''}"`);
+      console.log(`  Answer: "${responseBuffer.substring(0, 200)}${responseBuffer.length > 200 ? '...' : ''}"`);
+      console.log(`  Full Q Length: ${questionBuffer.length} chars`);
+      console.log(`  Full A Length: ${responseBuffer.length} chars`);
+      
+      // Log full Q&A in structured format for analytics
+      console.log(JSON.stringify({
+        type: 'QA_COMPLETE',
+        timestamp: new Date().toISOString(),
+        session_id: sessionId,
+        tenant_hash: tenantHash,
+        tenant_id: config?.tenant_id || null,  // Add tenant_id from config
+        conversation_id: body.conversation_id || sessionId,  // Add conversation_id
+        question: questionBuffer,
+        answer: responseBuffer,
+        metrics: {
+          first_token_ms: firstTokenTime,
+          total_tokens: tokenCount,
+          total_time_ms: totalTime,
+          answer_length: responseBuffer.length
+        }
+      }));
+    }
+    
   } catch (error) {
     console.error('❌ Stream error:', error);
     write(`data: {"type": "error", "error": "${error.message}"}\n\n`);
@@ -426,6 +481,7 @@ const streamingHandler = async (event, responseStream, context) => {
     write('data: [DONE]\n\n');
     
     // End the stream
+    streamEnded = true;
     responseStream.end();
   }
 
@@ -452,6 +508,8 @@ const bufferedHandler = async (event, context) => {
   
   const startTime = Date.now();
   const chunks = [];
+  let responseBuffer = '';
+  let questionBuffer = '';
   
   // Add prelude
   chunks.push(':ok\n\n');
@@ -462,6 +520,9 @@ const bufferedHandler = async (event, context) => {
     const tenantHash = body.tenant_hash || '';
     const sessionId = body.session_id || 'default';
     const userInput = body.user_input || '';
+    
+    // Capture the question
+    questionBuffer = userInput;
     
     // Extract conversation history from the request
     const conversationHistory = body.conversation_history || 
@@ -540,6 +601,7 @@ const bufferedHandler = async (event, context) => {
             }
             
             chunks.push(`data: {"type": "text", "content": ${JSON.stringify(text)}, "session_id": "${sessionId}"}\n\n`);
+            responseBuffer += text;
           }
         } else if (chunkData.type === 'message_stop') {
           break;
@@ -554,6 +616,26 @@ const bufferedHandler = async (event, context) => {
     chunks.push('data: [DONE]\n\n');
     
     console.log(`✅ Complete - ${tokenCount} tokens in ${totalTime}ms`);
+    
+    // Log complete Q&A pair for analytics
+    if (questionBuffer && responseBuffer) {
+      console.log(JSON.stringify({
+        type: 'QA_COMPLETE',
+        timestamp: new Date().toISOString(),
+        session_id: sessionId,
+        tenant_hash: tenantHash,
+        tenant_id: config?.tenant_id || null,  // Add tenant_id from config
+        conversation_id: body.conversation_id || sessionId,  // Add conversation_id
+        question: questionBuffer,
+        answer: responseBuffer,
+        metrics: {
+          first_token_ms: firstTokenTime,
+          total_tokens: tokenCount,
+          total_time_ms: totalTime,
+          answer_length: responseBuffer.length
+        }
+      }));
+    }
     
     // For Lambda Function URLs, we need to return the raw SSE content
     // The Function URL will handle setting the appropriate headers
