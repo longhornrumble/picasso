@@ -27,3 +27,28 @@ dist-ssr
 lambda-review/lambda-deployment.zip
 lambda-cors-complete.zip
 *.zip
+
+# Deployment and test artifacts
+deployment-record-*.json
+test-*.html
+lambda-review/lambda-review/temp-*/
+*.zip
+*-fix.sh
+*-corrected.sh
+*-query.sh
+*-results.json
+current-*.json
+updated-*.json
+
+# One-off scripts
+add-tenant-*.sh
+fix-*.sh
+update-*.sh
+run-*.sh
+
+# Test files
+persistence-test-*.html
+iframe-test.html
+quick-test.html
+test-now.html
+test-modal.html

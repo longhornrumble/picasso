@@ -171,20 +171,22 @@ const ENVIRONMENTS = {
   development: {
     API_BASE_URL: typeof __API_BASE_URL__ !== 'undefined' ? __API_BASE_URL__ : 'http://localhost:3000/api',
     CHAT_API_URL: typeof __API_BASE_URL__ !== 'undefined' ? __API_BASE_URL__ : 'http://localhost:3000/api',
-    ASSET_BASE_URL: typeof __CONFIG_DOMAIN__ !== 'undefined' ? __CONFIG_DOMAIN__ : 'https://picasso-staging.s3.amazonaws.com',
-    S3_BUCKET: 'picasso-staging',
+    ASSET_BASE_URL: typeof __CONFIG_DOMAIN__ !== 'undefined' ? __CONFIG_DOMAIN__ : 'https://myrecruiter-picasso.s3.amazonaws.com',
+    S3_BUCKET: 'myrecruiter-picasso',
     WIDGET_DOMAIN: typeof __WIDGET_DOMAIN__ !== 'undefined' ? __WIDGET_DOMAIN__ : 'http://localhost:5173',
     DEBUG: true,
-    CONFIG_ENDPOINT: typeof __CONFIG_ENDPOINT__ !== 'undefined' ? __CONFIG_ENDPOINT__ : 'https://chat.myrecruiter.ai/Master_Function?action=get_config',
-    CHAT_ENDPOINT: typeof __CHAT_ENDPOINT__ !== 'undefined' ? __CHAT_ENDPOINT__ : 'https://chat.myrecruiter.ai/Master_Function?action=chat',
-    CONVERSATION_ENDPOINT: typeof __CONVERSATION_ENDPOINT__ !== 'undefined' ? __CONVERSATION_ENDPOINT__ : 'https://chat.myrecruiter.ai/Master_Function?action=conversation', // Added for testing conversation persistence
-    ERROR_REPORTING_ENDPOINT: typeof __ERROR_REPORTING_ENDPOINT__ !== 'undefined' ? __ERROR_REPORTING_ENDPOINT__ : 'https://chat.myrecruiter.ai/Master_Function?action=log_error',
-    STREAMING_ENDPOINT: typeof __STREAMING_ENDPOINT__ !== 'undefined' ? __STREAMING_ENDPOINT__ : 'https://7pluzq3axftklmb4gbgchfdahu0lcnqd.lambda-url.us-east-1.on.aws', // Your working Lambda streaming endpoint
+    // Development uses Lambda function URL for config (has hash-to-ID mapping)
+    CONFIG_ENDPOINT: typeof __CONFIG_ENDPOINT__ !== 'undefined' ? __CONFIG_ENDPOINT__ : 'https://2ho6tw56ccvl6uvicra4f56j740dyxgo.lambda-url.us-east-1.on.aws/?action=get_config',
+    CHAT_ENDPOINT: typeof __CHAT_ENDPOINT__ !== 'undefined' ? __CHAT_ENDPOINT__ : 'https://2ho6tw56ccvl6uvicra4f56j740dyxgo.lambda-url.us-east-1.on.aws/?action=chat',
+    // Use Lambda Function URL for conversation to preserve JWT headers
+    CONVERSATION_ENDPOINT: typeof __CONVERSATION_ENDPOINT__ !== 'undefined' ? __CONVERSATION_ENDPOINT__ : 'https://2ho6tw56ccvl6uvicra4f56j740dyxgo.lambda-url.us-east-1.on.aws/?action=conversation',
+    ERROR_REPORTING_ENDPOINT: typeof __ERROR_REPORTING_ENDPOINT__ !== 'undefined' ? __ERROR_REPORTING_ENDPOINT__ : 'https://2ho6tw56ccvl6uvicra4f56j740dyxgo.lambda-url.us-east-1.on.aws/?action=log_error',
+    STREAMING_ENDPOINT: typeof __STREAMING_ENDPOINT__ !== 'undefined' ? __STREAMING_ENDPOINT__ : 'https://7pluzq3axftklmb4gbgchfdahu0lcnqd.lambda-url.us-east-1.on.aws', // Bedrock_Streaming_Handler_Staging
     STREAMING_METHOD: 'POST', // Lambda expects POST requests with JSON body
     DEFAULT_TENANT_HASH: typeof __DEFAULT_TENANT_HASH__ !== 'undefined' ? __DEFAULT_TENANT_HASH__ : 'my87674d777bf9', // MyRecruiter default tenant for development
     
-    // CONVERSATION API: Always enabled
-    CONVERSATION_ENDPOINT_AVAILABLE: true, // Default behavior - conversation memory always enabled
+    // CONVERSATION API: Temporarily disabled until separate endpoint is configured
+    CONVERSATION_ENDPOINT_AVAILABLE: false, // Disabled - using local storage fallback
     
     // Development-specific settings
     ENABLE_HOT_RELOAD: true,
@@ -199,28 +201,28 @@ const ENVIRONMENTS = {
   staging: {
     // STAGING ENDPOINTS: Use esbuild-defined staging Lambda endpoints or fallbacks
     API_BASE_URL: (typeof process !== 'undefined' && process.env && process.env.PICASSO_API_BASE_URL) || 
-                  (typeof __API_BASE_URL__ !== 'undefined' ? __API_BASE_URL__ : 'https://xo6tsuhi6u2fby3rkw4usa663q0igxjk.lambda-url.us-east-1.on.aws'),
+                  (typeof __API_BASE_URL__ !== 'undefined' ? __API_BASE_URL__ : 'https://2ho6tw56ccvl6uvicra4f56j740dyxgo.lambda-url.us-east-1.on.aws'),
     CHAT_API_URL: (typeof process !== 'undefined' && process.env && process.env.PICASSO_API_BASE_URL) || 
-                  (typeof __API_BASE_URL__ !== 'undefined' ? __API_BASE_URL__ : 'https://xo6tsuhi6u2fby3rkw4usa663q0igxjk.lambda-url.us-east-1.on.aws'),
-    ASSET_BASE_URL: typeof __CONFIG_DOMAIN__ !== 'undefined' ? __CONFIG_DOMAIN__ : 'https://picasso-staging.s3.amazonaws.com',
-    S3_BUCKET: 'picasso-staging',
+                  (typeof __API_BASE_URL__ !== 'undefined' ? __API_BASE_URL__ : 'https://2ho6tw56ccvl6uvicra4f56j740dyxgo.lambda-url.us-east-1.on.aws'),
+    ASSET_BASE_URL: typeof __CONFIG_DOMAIN__ !== 'undefined' ? __CONFIG_DOMAIN__ : 'https://myrecruiter-picasso.s3.amazonaws.com',
+    S3_BUCKET: 'myrecruiter-picasso',
     WIDGET_DOMAIN: typeof __WIDGET_DOMAIN__ !== 'undefined' ? __WIDGET_DOMAIN__ : 'https://chat-staging.myrecruiter.ai',
     DEBUG: true,
     
-    // DIRECT FUNCTION URL: Use esbuild-defined endpoints for staging Lambda (UPDATED to correct URL)
+    // Staging uses Lambda function URL for config (has hash-to-ID mapping)
     CONFIG_ENDPOINT: (typeof process !== 'undefined' && process.env && process.env.PICASSO_CONFIG_ENDPOINT) || 
-                     (typeof __CONFIG_ENDPOINT__ !== 'undefined' ? __CONFIG_ENDPOINT__ : 'https://xo6tsuhi6u2fby3rkw4usa663q0igxjk.lambda-url.us-east-1.on.aws/?action=get_config'),
+                     (typeof __CONFIG_ENDPOINT__ !== 'undefined' ? __CONFIG_ENDPOINT__ : 'https://2ho6tw56ccvl6uvicra4f56j740dyxgo.lambda-url.us-east-1.on.aws/?action=get_config'),
     CHAT_ENDPOINT: (typeof process !== 'undefined' && process.env && process.env.PICASSO_CHAT_ENDPOINT) || 
-                   (typeof __CHAT_ENDPOINT__ !== 'undefined' ? __CHAT_ENDPOINT__ : 'https://xo6tsuhi6u2fby3rkw4usa663q0igxjk.lambda-url.us-east-1.on.aws/?action=chat'),
+                   (typeof __CHAT_ENDPOINT__ !== 'undefined' ? __CHAT_ENDPOINT__ : 'https://2ho6tw56ccvl6uvicra4f56j740dyxgo.lambda-url.us-east-1.on.aws/?action=chat'),
     CONVERSATION_ENDPOINT: (typeof process !== 'undefined' && process.env && process.env.PICASSO_CONVERSATION_ENDPOINT) || 
-                           (typeof __CONVERSATION_ENDPOINT__ !== 'undefined' ? __CONVERSATION_ENDPOINT__ : 'https://xo6tsuhi6u2fby3rkw4usa663q0igxjk.lambda-url.us-east-1.on.aws/?action=conversation'), // Track A+ conversation persistence
-    ERROR_REPORTING_ENDPOINT: typeof __ERROR_REPORTING_ENDPOINT__ !== 'undefined' ? __ERROR_REPORTING_ENDPOINT__ : 'https://xo6tsuhi6u2fby3rkw4usa663q0igxjk.lambda-url.us-east-1.on.aws/?action=log_error',
-    STREAMING_ENDPOINT: typeof __STREAMING_ENDPOINT__ !== 'undefined' ? __STREAMING_ENDPOINT__ : 'https://7pluzq3axftklmb4gbgchfdahu0lcnqd.lambda-url.us-east-1.on.aws', // Staging streaming handler with CORS
+                           (typeof __CONVERSATION_ENDPOINT__ !== 'undefined' ? __CONVERSATION_ENDPOINT__ : 'https://2ho6tw56ccvl6uvicra4f56j740dyxgo.lambda-url.us-east-1.on.aws/?action=conversation'), // NEW staging Lambda URL (CORS in Lambda code only)
+    ERROR_REPORTING_ENDPOINT: typeof __ERROR_REPORTING_ENDPOINT__ !== 'undefined' ? __ERROR_REPORTING_ENDPOINT__ : 'https://2ho6tw56ccvl6uvicra4f56j740dyxgo.lambda-url.us-east-1.on.aws/?action=log_error',
+    STREAMING_ENDPOINT: typeof __STREAMING_ENDPOINT__ !== 'undefined' ? __STREAMING_ENDPOINT__ : 'https://7pluzq3axftklmb4gbgchfdahu0lcnqd.lambda-url.us-east-1.on.aws', // Bedrock_Streaming_Handler_Staging // Staging streaming handler with CORS
     STREAMING_METHOD: 'POST', // Lambda expects POST requests with JSON body
     DEFAULT_TENANT_HASH: typeof __DEFAULT_TENANT_HASH__ !== 'undefined' ? __DEFAULT_TENANT_HASH__ : 'my87674d777bf9', // Use working tenant hash
     
-    // CONVERSATION API: Always enabled (Track A+ ready)
-    CONVERSATION_ENDPOINT_AVAILABLE: true, // Default behavior - conversation memory always enabled
+    // CONVERSATION API: Temporarily disabled until separate endpoint is configured
+    CONVERSATION_ENDPOINT_AVAILABLE: false, // Disabled - using local storage fallback
     
     // Staging-specific settings
     ENABLE_HOT_RELOAD: false,
@@ -235,19 +237,21 @@ const ENVIRONMENTS = {
   production: {
     API_BASE_URL: typeof __API_BASE_URL__ !== 'undefined' ? __API_BASE_URL__ : 'https://api.myrecruiter.ai',
     CHAT_API_URL: typeof __API_BASE_URL__ !== 'undefined' ? __API_BASE_URL__ : 'https://api.myrecruiter.ai',
-    ASSET_BASE_URL: typeof __CONFIG_DOMAIN__ !== 'undefined' ? __CONFIG_DOMAIN__ : 'https://picasso-production.s3.amazonaws.com',
-    S3_BUCKET: 'picasso-production',
+    ASSET_BASE_URL: typeof __CONFIG_DOMAIN__ !== 'undefined' ? __CONFIG_DOMAIN__ : 'https://picassocode.s3.amazonaws.com',
+    S3_BUCKET: 'picassocode',
     WIDGET_DOMAIN: typeof __WIDGET_DOMAIN__ !== 'undefined' ? __WIDGET_DOMAIN__ : 'https://chat.myrecruiter.ai',
     DEBUG: false,
     CONFIG_ENDPOINT: typeof __CONFIG_ENDPOINT__ !== 'undefined' ? __CONFIG_ENDPOINT__ : 'https://chat.myrecruiter.ai/Master_Function?action=get_config',
     CHAT_ENDPOINT: typeof __CHAT_ENDPOINT__ !== 'undefined' ? __CHAT_ENDPOINT__ : 'https://chat.myrecruiter.ai/Master_Function?action=chat',
+    // Use Lambda Function URL for conversation to preserve JWT headers (CloudFront strips them)
+    CONVERSATION_ENDPOINT: typeof __CONVERSATION_ENDPOINT__ !== 'undefined' ? __CONVERSATION_ENDPOINT__ : 'https://hfkpcekuxi3z7kllmoitt7ngae0fggxf.lambda-url.us-east-1.on.aws?action=conversation', // NEW production Lambda URL (CORS in Lambda code only)
     ERROR_REPORTING_ENDPOINT: typeof __ERROR_REPORTING_ENDPOINT__ !== 'undefined' ? __ERROR_REPORTING_ENDPOINT__ : 'https://chat.myrecruiter.ai/Master_Function?action=log_error',
-    STREAMING_ENDPOINT: typeof __STREAMING_ENDPOINT__ !== 'undefined' ? __STREAMING_ENDPOINT__ : 'https://7pluzq3axftklmb4gbgchfdahu0lcnqd.lambda-url.us-east-1.on.aws', // Your working Lambda streaming endpoint
+    STREAMING_ENDPOINT: typeof __STREAMING_ENDPOINT__ !== 'undefined' ? __STREAMING_ENDPOINT__ : 'https://xqc4wnxwia2nytjkbw6xasjd6q0jckgb.lambda-url.us-east-1.on.aws', // Production Bedrock_Streaming_Handler endpoint
     STREAMING_METHOD: 'POST', // Lambda expects POST requests with JSON body
     DEFAULT_TENANT_HASH: typeof __DEFAULT_TENANT_HASH__ !== 'undefined' ? __DEFAULT_TENANT_HASH__ : 'my87674d777bf9', // MyRecruiter default tenant for production
     
-    // CONVERSATION API: Always enabled when deployed
-    CONVERSATION_ENDPOINT_AVAILABLE: true, // Default behavior - conversation memory always enabled
+    // CONVERSATION API: Enabled in production with dedicated endpoint
+    CONVERSATION_ENDPOINT_AVAILABLE: true, // Production has dedicated conversation endpoint
     
     // Production-specific settings
     ENABLE_HOT_RELOAD: false,
@@ -320,7 +324,10 @@ export const config = {
     if (!tenantHash) {
       throw new Error('getConfigUrl: tenantHash is required');
     }
-    return `${ENVIRONMENTS[currentEnv].CONFIG_ENDPOINT}&t=${encodeURIComponent(tenantHash)}`;
+    const endpoint = ENVIRONMENTS[currentEnv].CONFIG_ENDPOINT;
+    // All environments now use Lambda or API Gateway with query params
+    // Lambda handles the hash-to-ID mapping internally
+    return `${endpoint}&t=${encodeURIComponent(tenantHash)}`;
   },
   
   getChatUrl: (tenantHash) => {

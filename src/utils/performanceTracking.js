@@ -131,6 +131,9 @@ class PerformanceTracker {
    * Report metric to Lambda (fire-and-forget)
    */
   reportMetric(metric) {
+    // TEMPORARILY DISABLED: Lambda doesn't support log_error action yet
+    // TODO: Enable when Lambda endpoint is updated to handle performance metrics
+    /*
     try {
       const performanceEndpoint = environmentConfig.ERROR_REPORTING_ENDPOINT;
       if (!performanceEndpoint) return;
@@ -160,6 +163,7 @@ class PerformanceTracker {
     } catch {
       // Silently fail
     }
+    */
   }
 
   /**

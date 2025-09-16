@@ -298,9 +298,10 @@ function ChatWidget() {
     }
   }, [isOpen, messages.length]);
 
-  // Unread message handling
+  // Unread message handling - Only count bot/assistant messages received while closed
   useEffect(() => {
     if (isOpen) {
+      // When chat opens, reset unread count and update last read index
       setUnreadCount(0);
       setLastReadMessageIndex(messages.length);
       setHasOpenedChat(true);
@@ -313,27 +314,19 @@ function ChatWidget() {
           console.warn('Failed to save last read index:', e);
         }
       }
-    } else {
+    }
+  }, [isOpen, messages.length, config?.widget_behavior?.remember_state]);
+
+  // Update unread count only when new bot messages arrive while chat is closed
+  useEffect(() => {
+    if (!isOpen && messages.length > lastReadMessageIndex) {
+      // Only count bot/assistant messages that came after the last read index
       const newBotMessages = messages.slice(lastReadMessageIndex).filter(msg => 
         msg.role === "assistant" || msg.role === "bot"
       );
       
-      if (newBotMessages.length > 0) {
-        setUnreadCount(newBotMessages.length);
-      }
-    }
-  }, [isOpen, messages.length]);
-
-  useEffect(() => {
-    if (!isOpen && messages.length > lastReadMessageIndex) {
-      const newMessages = messages.slice(lastReadMessageIndex);
-      const newBotMessages = newMessages.filter(msg => 
-        msg.role === "assistant" || msg.role === "bot"
-      );
-      
-      if (newBotMessages.length > 0) {
-        setUnreadCount(newBotMessages.length);
-      }
+      // Update unread count to reflect only bot messages
+      setUnreadCount(newBotMessages.length);
     }
   }, [messages, isOpen, lastReadMessageIndex]);
 
@@ -481,7 +474,20 @@ function ChatWidget() {
           
           {/* 🔧 FIXED: Callout with proper state management and text override */}
           {showCallout && (
-            <div className={`chat-callout ${showCallout ? 'visible' : ''}`}>
+            <div 
+              className={`chat-callout ${showCallout ? 'visible' : ''}`}
+              onClick={(e) => {
+                // If clicking the close button, don't open the widget
+                if (e.target.closest('.chat-callout-close')) {
+                  return;
+                }
+                // Open the widget when clicking anywhere else on the callout
+                if (!isOpen) {
+                  handleToggle();
+                }
+              }}
+              style={{ cursor: 'pointer' }}
+            >
               <div className="chat-callout-header">
                 <div className="chat-callout-text" dangerouslySetInnerHTML={{ __html: calloutText }}/>
                 <button onClick={handleCalloutClose} className="chat-callout-close">

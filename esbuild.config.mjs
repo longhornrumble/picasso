@@ -103,19 +103,24 @@ console.log(`📦 Build mode: ${isDevelopment ? 'DEVELOPMENT' : 'PRODUCTION'}`);
 // Environment-specific configuration matching vite.config.js
 const ENVIRONMENT_CONFIG = {
   development: {
-    API_BASE_URL: 'https://xo6tsuhi6u2fby3rkw4usa663q0igxjk.lambda-url.us-east-1.on.aws',
+    API_BASE_URL: 'https://2ho6tw56ccvl6uvicra4f56j740dyxgo.lambda-url.us-east-1.on.aws',
     WIDGET_DOMAIN: 'http://localhost:8000',
-    CONFIG_DOMAIN: 'https://picassostaging.s3.amazonaws.com'
+    CONFIG_DOMAIN: 'https://picassostaging.s3.amazonaws.com',
+    STREAMING_ENDPOINT: 'https://7pluzq3axftklmb4gbgchfdahu0lcnqd.lambda-url.us-east-1.on.aws'
   },
   staging: {
-    API_BASE_URL: 'https://xo6tsuhi6u2fby3rkw4usa663q0igxjk.lambda-url.us-east-1.on.aws',
+    API_BASE_URL: 'https://2ho6tw56ccvl6uvicra4f56j740dyxgo.lambda-url.us-east-1.on.aws',
     WIDGET_DOMAIN: 'https://picassostaging.s3.amazonaws.com',
-    CONFIG_DOMAIN: 'https://picassostaging.s3.amazonaws.com'
+    CONFIG_DOMAIN: 'https://picassostaging.s3.amazonaws.com',
+    CONVERSATION_ENDPOINT: 'https://2ho6tw56ccvl6uvicra4f56j740dyxgo.lambda-url.us-east-1.on.aws?action=conversation', // NEW staging Lambda URL (CORS now fixed!)
+    STREAMING_ENDPOINT: 'https://7pluzq3axftklmb4gbgchfdahu0lcnqd.lambda-url.us-east-1.on.aws' // Bedrock_Streaming_Handler_Staging
   },
   production: {
     API_BASE_URL: 'https://chat.myrecruiter.ai/Master_Function',
     WIDGET_DOMAIN: 'https://chat.myrecruiter.ai',
-    CONFIG_DOMAIN: 'https://picassocode.s3.amazonaws.com'
+    CONFIG_DOMAIN: 'https://picassocode.s3.amazonaws.com',
+    CONVERSATION_ENDPOINT: 'https://hfkpcekuxi3z7kllmoitt7ngae0fggxf.lambda-url.us-east-1.on.aws?action=conversation', // NEW production Lambda URL (CORS in Lambda code only)
+    STREAMING_ENDPOINT: 'https://xqc4wnxwia2nytjkbw6xasjd6q0jckgb.lambda-url.us-east-1.on.aws' // Production Bedrock_Streaming_Handler endpoint
   }
 };
 
@@ -163,8 +168,9 @@ const defineVars = {
   __API_BASE_URL__: JSON.stringify(envConfig.API_BASE_URL),
   __CONFIG_ENDPOINT__: JSON.stringify(`${envConfig.API_BASE_URL}?action=get_config`),
   __CHAT_ENDPOINT__: JSON.stringify(`${envConfig.API_BASE_URL}?action=chat`),
-  __CONVERSATION_ENDPOINT__: JSON.stringify(`${envConfig.API_BASE_URL}?action=conversation`),
+  __CONVERSATION_ENDPOINT__: JSON.stringify(envConfig.CONVERSATION_ENDPOINT || `${envConfig.API_BASE_URL}?action=conversation`),
   __ERROR_REPORTING_ENDPOINT__: JSON.stringify(`${envConfig.API_BASE_URL}?action=log_error`),
+  __STREAMING_ENDPOINT__: JSON.stringify(envConfig.STREAMING_ENDPOINT || ''),
   __WIDGET_DOMAIN__: JSON.stringify(envConfig.WIDGET_DOMAIN),
   __CONFIG_DOMAIN__: JSON.stringify(envConfig.CONFIG_DOMAIN),
   __BUILD_TIME__: JSON.stringify(new Date().toISOString()),

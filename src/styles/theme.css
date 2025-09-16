@@ -3378,6 +3378,7 @@ body[data-iframe="true"].minimized {
 .confirm-clear {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
   padding: 10px 16px;
   background: #dc2626;

@@ -481,14 +481,137 @@ Host Page
    - Fast rebuilds and hot reload on port 8000
 
 ### Important Files
+
+#### Core Build & Configuration
 - `esbuild.config.js`: esbuild configuration with multiple entry points and environment handling
 - `package.json`: Updated scripts for esbuild workflow
 - `src/config/environment.js`: Environment detection and configuration
+- `src/config/simple-config.js`: Simplified configuration loader
+- `src/config/streaming-config.js`: Streaming-specific configuration
+- `src/config/configuration-manager.ts`: Advanced configuration management with hot-reload
+- `src/config/enhanced-configuration-manager.ts`: Enhanced config with monitoring
+- `src/config/environment-resolver.ts`: Environment resolution logic
+- `src/config/hot-reload-system.ts`: Configuration hot-reload implementation
+- `src/config/migration-utilities.ts`: Config migration utilities
+
+#### Widget Entry Points
+- `current-widget.js`: Production host script
+- `src/widget.js`: Widget loader
+- `src/widget-host.js`: Host-side widget implementation
+- `src/widget-standalone.js`: Standalone widget version
+- `public/widget-frame.html`: Iframe HTML template
+- `src/iframe-main.jsx`: Iframe React application entry
+- `src/main.jsx`: Main application entry
+
+#### Core Components
+- `src/styles/theme.css`: Complete widget styling
+- `src/styles/widget-entry.css`: Widget-specific styles
 - `src/utils/security.js`: Comprehensive security utilities
 - `src/utils/errorHandling.js`: Retry logic and error management
-- `current-widget.js`: Production host script
-- `public/widget-frame.html`: Iframe HTML template
-- `src/styles/theme.css`: Complete widget styling
+- `src/utils/conversationManager.js`: Chat conversation management
+- `src/utils/markdownToHTML.js`: Markdown processing with security
+- `src/utils/mobileCompatibility.js`: Mobile device handling
+- `src/utils/streamingRegistry.js`: Streaming connection registry
+
+#### Chat Providers (Multiple Implementations)
+- `src/context/ChatProvider.jsx`: Main production chat provider
+- `src/context/ChatProvider_streaming.jsx`: Streaming-enabled version
+- `src/context/ChatProvider_v2.jsx`: Version 2 with enhanced features
+- `src/context/HTTPChatProvider.jsx`: HTTP-only implementation
+- `src/context/StreamingChatProvider.jsx`: Pure streaming implementation
+- `src/context/ChatProviderOrchestrator.jsx`: Provider orchestration
+- `src/context/ConfigProvider.jsx`: Configuration provider
+
+#### TypeScript Provider System
+- `src/providers/ChatAPIProvider.tsx`: API layer provider
+- `src/providers/ChatContentProvider.tsx`: Content management provider
+- `src/providers/ChatStateProvider.tsx`: State management provider
+- `src/providers/ChatMonitoringProvider.tsx`: Monitoring integration
+- `src/providers/ChatDebugProvider.tsx`: Debug capabilities
+- `src/providers/ChatContextCompat.tsx`: Context compatibility layer
+
+#### Monitoring & Security
+- `src/monitoring/metrics-collector.ts`: Performance metrics collection
+- `src/monitoring/health-checks.ts`: System health monitoring
+- `src/monitoring/alert-system.ts`: Alert and notification system
+- `src/monitoring/dashboard.ts`: Monitoring dashboard
+- `src/security/access-control.ts`: Access control implementation
+- `src/security/config-encryption.ts`: Configuration encryption
+- `src/security/config-sanitizer.ts`: Configuration sanitization
+
+#### Testing Infrastructure
+- `src/test/setup.js`: Test environment setup
+- `src/test/smoke.test.js`: Smoke tests
+- `src/test/e2e-browser-automation.test.js`: End-to-end browser tests
+- `src/test/e2e-conversation-context.test.jsx`: Conversation context E2E tests
+- `src/test/jwt-function-url-integration.test.js`: JWT integration tests
+- `src/test/performance-load-testing.test.js`: Load testing suite
+
+### Lambda Function Files
+
+#### Core Lambda Functions (lambda-review/lambda-review/)
+- `lambda_function.py`: Main Lambda entry point (action routing)
+- `intent_router.py`: Chat orchestration and intent handling
+- `bedrock_handler.py`: Amazon Bedrock AI/KB integration
+- `bedrock_handler_optimized.py`: Optimized Bedrock handler
+- `response_formatter.py`: Response formatting and structure
+- `session_utils.py`: Session management utilities
+- `tenant_config_loader.py`: Tenant configuration loading and caching
+- `tenant_inference.py`: Tenant inference logic
+- `conversation_handler.py`: Conversation flow management
+- `state_clear_handler.py`: State clearing functionality
+
+#### Streaming Lambda Function (lambda-review/streaming/)
+- **`index.js`**: True Lambda Response Streaming handler with EventSource/SSE support
+  - Uses `awslambda.streamifyResponse` for real-time streaming
+  - No JWT required - uses simple tenant_hash/session_id authentication
+  - Implements Server-Sent Events (SSE) protocol
+  - Features:
+    - Real-time streaming with AWS Bedrock Runtime
+    - Knowledge Base retrieval via Bedrock Agent Runtime
+    - In-memory caching for configs and KB results (5-min TTL)
+    - Conversation history support
+    - Heartbeat mechanism to keep connections alive
+    - Automatic fallback to buffered response when streaming unavailable
+  - Model configuration:
+    - Default: `us.anthropic.claude-3-5-haiku-20241022-v1:0`
+    - Max tokens: 1000 (configurable)
+    - Temperature: 0.2 (configurable)
+  - Performance metrics:
+    - Tracks first token time
+    - Total token count
+    - Complete processing time
+
+#### Security & Monitoring
+- `audit_logger.py`: Audit logging system
+- `token_blacklist.py`: Token blacklist management
+- `aws_client_manager.py`: AWS client connection management
+
+#### Testing & Documentation
+- `test_audit_system.py`: Audit system tests
+- `test_endpoint_rate_limiting.py`: Rate limiting tests
+- `test_secure_conversation_system.py`: Security tests
+- `test_token_blacklist.py`: Token blacklist tests
+- `run_security_tests.py`: Security test runner
+- `AUDIT_SYSTEM_README.md`: Audit system documentation
+- `SECURITY_TEST_SUITE_README.md`: Security testing documentation
+- `TIMEOUT_PROTECTION_README.md`: Timeout protection guide
+- `TOKEN_BLACKLIST_README.md`: Token blacklist documentation
+
+#### Deployment & Build
+- `deploy-lambda-update.sh`: Lambda deployment script
+- `build-lambda.sh`: Lambda build script
+- `requirements.txt`: Python dependencies
+- Various `.zip` files: Deployment packages for different Lambda versions
+
+#### Dependencies (Included in Lambda)
+- `boto3/`: AWS SDK for Python
+- `botocore/`: Core AWS SDK functionality
+- `jwt/`: JWT token handling
+- `jmespath/`: JSON query language
+- `dateutil/`: Date utilities
+- `s3transfer/`: S3 transfer utilities
+- `urllib3/`: HTTP client library
 
 ### esbuild Configuration Features
 - **Multiple entry points**: widget.js, iframe-main.js, and widget-frame.html
@@ -547,6 +670,37 @@ GET https://chat.myrecruiter.ai/Master_Function?action=health_check&t={tenant_ha
 // Cache operations
 GET https://chat.myrecruiter.ai/Master_Function?action=cache_status
 POST https://chat.myrecruiter.ai/Master_Function?action=clear_cache&t={tenant_hash}
+```
+
+#### Streaming Lambda Function (Node.js) - For Real-time Chat
+The streaming Lambda provides true SSE/EventSource streaming:
+
+```javascript
+// Streaming endpoint (Lambda Function URL with response streaming enabled)
+POST https://streaming-lambda-url.lambda-url.region.on.aws/
+Headers: {
+  "Content-Type": "application/json",
+  "Accept": "text/event-stream"
+}
+Body: {
+  "tenant_hash": "HASH",
+  "user_input": "User's message",
+  "session_id": "session_123456",
+  "conversation_history": [  // optional
+    {"role": "user", "content": "Previous message"},
+    {"role": "assistant", "content": "Previous response"}
+  ]
+}
+
+// SSE Response Format:
+// :ok\n\n
+// data: {"type":"start"}\n\n
+// data: {"type":"text","content":"Hello","session_id":"session_123456"}\n\n
+// data: {"type":"text","content":" there","session_id":"session_123456"}\n\n
+// : x-first-token-ms=250\n\n
+// : x-total-tokens=42\n\n
+// : x-total-time-ms=1500\n\n
+// data: [DONE]\n\n
 ```
 
 #### 🚨 CRITICAL: Production 404 Fix (IMMEDIATE)

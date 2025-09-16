@@ -415,6 +415,9 @@ class ErrorLogger {
    * Report error to external service
    */
   reportToExternalService(logEntry) {
+    // TEMPORARILY DISABLED: Lambda doesn't support log_error action yet
+    // TODO: Enable when Lambda endpoint is updated to handle error logging
+    /*
     try {
       // Use environment-specific error reporting endpoint
       const errorEndpoint = environmentConfig.ERROR_REPORTING_ENDPOINT || 
@@ -444,6 +447,7 @@ class ErrorLogger {
     } catch (error) {
       console.warn('Error reporting failed:', error);
     }
+    */
   }
   
   /**

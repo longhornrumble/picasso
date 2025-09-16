@@ -347,13 +347,12 @@ def get_http_method(event):
 
 def cors_response(status_code, body):
     """Standardized CORS response"""
+    # Note: CORS headers are now handled by Lambda Function URL configuration
+    # to avoid duplicate headers. Only include non-CORS headers here.
     return {
         "statusCode": status_code,
         "headers": {
             "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Headers": "Content-Type,x-api-key,Authorization",
-            "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
             "Cache-Control": "no-cache" if status_code >= 400 else "public, max-age=300",
             "CloudFront-Domain": CLOUDFRONT_DOMAIN
         },
@@ -362,11 +361,10 @@ def cors_response(status_code, body):
 
 def ensure_cors_headers(response):
     """Ensure response has CORS headers"""
+    # Note: CORS headers are now handled by Lambda Function URL configuration
+    # Only add non-CORS headers that might be missing
     if isinstance(response, dict) and "headers" in response:
         response["headers"].update({
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Headers": "Content-Type,x-api-key,Authorization",
-            "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
             "CloudFront-Domain": CLOUDFRONT_DOMAIN
         })
     return response
