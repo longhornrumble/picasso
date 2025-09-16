@@ -4,817 +4,214 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Picasso is an iframe-based chat widget for the MyRecruiter SaaS platform. It provides complete CSS isolation and multi-tenant support through a dual-entry architecture: a host page script that creates the iframe, and a React application running inside the iframe.
+This workspace contains the Picasso chat widget system and its supporting Lambda functions:
 
-**⚡ Recently Migrated**: Build system upgraded from Vite to esbuild for 85% faster builds (August 2025). All development workflows remain the same but are significantly faster.
+1. **Picasso Frontend** (`/src`) - React-based chat widget with TypeScript support
+2. **Master_Function_Staging** (`/lambda-functions/lambda-functions/Master_Function_Staging`) - Python Lambda for JWT auth, conversation management, and Bedrock orchestration
+3. **Bedrock_Streaming_Handler_Staging** (`/lambda-functions/lambda-functions/lambda-functions/Bedrock_Streaming_Handler_Staging`) - Node.js Lambda for SSE streaming responses
+4. **Lex Integration** (Planned) - Amazon Lex for structured data collection within Picasso UX
+5. **Legacy Lex Architecture** (`/lambda-functions/AustinAngels_CoreFunction`) - Original per-client Lambda pattern for Lex fulfillment
 
-## Core Philosophy: Simplification Over Complexity
+## Commands
 
-**"Trim the fat"** - This codebase values:
-- **Defaults over configuration**: If it works well out-of-box, don't make it configurable
-- **Lean over complete**: 50 lines that work > 500 lines with edge cases  
-- **Pass-through over transformation**: Let data flow naturally between systems
-- **Production stability over feature richness**: Ship working code, iterate later
-
-**Example**: Foster Village's config is 84 lines instead of 500+ because we use CSS defaults for everything except logo/colors. This is the way.
-
-### Simplification Targets
-
-**Master_Function** (Current: 1,350 lines → Target: 600 lines)
-- `tenant_config_loader.py`: 535 lines → 200 lines (remove over-engineering)
-- Consolidate error handling across all modules
-- Extract shared constants to single location
-- Remove redundant logging and metrics
-
-**Picasso** (Ongoing)
-- Continue CSS variable approach (working well)
-- Remove unused component variations
-- Simplify build pipeline (see roadmap/build-architecture.md)
-
-## ⚡ Build Architecture - esbuild Migration COMPLETED (2025-08)
-
-**RESOLVED**: Migrated from Vite to esbuild with 85% faster builds and unified pipeline.
-
-### Migration Highlights:
-1. **Build Performance**:
-   - Cold builds: 15-20s → 2-3s (85% improvement)
-   - Rebuilds: 3-5s → <1s (80% improvement)
-   - Dev server startup: 2-3s → <1s (70% improvement)
-
-2. **Environment Management**:
-   - Unified `BUILD_ENV` variable controls all environments
-   - Single build script handles development/staging/production
-   - Automatic environment detection and configuration
-
-3. **Developer Experience**:
-   - Dev server moved to port 8000 (consistent)
-   - Path aliases configured (`@`, `@components`, `@utils`, `@styles`, `@config`)
-   - Bundle analysis available via `ANALYZE=true`
-   - All npm scripts updated but backward compatible
-
-### Previous Issues - RESOLVED:
-- ✅ File location chaos - unified under esbuild pipeline
-- ✅ Environment blindness - `BUILD_ENV` controls everything
-- ✅ Port mismatch - dev server consistently on 8000
-- ✅ Manual path fixing - automated in build process
-- ✅ Missing files - proper asset handling in esbuild
-
-**Result**: Developers can focus on features instead of build system issues.
-
-### Migration Guide for Developers
-
-#### Commands That Changed:
+### Bedrock Streaming Handler (Node.js Lambda)
 ```bash
-# OLD (Vite)                    # NEW (esbuild)
-npm run dev                     # npm run dev (now port 8000)
-npm run build                   # npm run build (85% faster)
-npm run build:production        # npm run build:prod (optimized)
-npm run preview                 # Use http-server dist/ (or similar)
+# Navigate to the Lambda directory
+cd lambda-functions/lambda-functions/lambda-functions/Bedrock_Streaming_Handler_Staging
+
+# Install dependencies
+npm ci --production
+
+# Package for deployment
+npm run package  # Creates deployment.zip
+
+# Run locally (requires AWS credentials)
+node index.js
 ```
 
-#### New Capabilities:
+### Master Function (Python Lambda)
 ```bash
-# Environment-specific builds
-BUILD_ENV=staging npm run build
-BUILD_ENV=production npm run build
+# Navigate to the Lambda directory  
+cd lambda-functions/lambda-functions/Master_Function_Staging
 
-# Bundle analysis
-ANALYZE=true npm run build
+# Package for deployment
+zip -r deployment.zip . -x "*.pyc" -x "__pycache__/*"
 
-# Clean imports with path aliases
-import Component from '@/components/Component'
-import { utility } from '@/utils/helpers'
-import '@/styles/component.css'
+# Run security tests
+python run_security_tests.py
+
+# Create DynamoDB tables (if needed)
+python create_audit_table.py
+python create_blacklist_table.py
 ```
 
-#### Key Differences:
-1. **Dev Server Port**: 5173 → 8000
-2. **Build Speed**: ~15s → ~2s
-3. **Configuration**: `vite.config.js` → `esbuild.config.js`
-4. **Environment Variables**: Now handled via `BUILD_ENV`
-5. **Bundle Analysis**: Built-in with `ANALYZE=true`
-
-#### Troubleshooting:
-- **Port conflicts**: Dev server now on 8000, update any hardcoded references
-- **Import paths**: Use new aliases (`@/components`) for cleaner imports
-- **Build errors**: Check `esbuild.config.js` for environment-specific settings
-- **Missing assets**: esbuild handles all assets automatically
-
-## Recent Fixes (2025-06-26)
-
-### URL and Email Link Preservation Issue - RESOLVED ✅
-
-**Problem**: URLs and emails were being stripped from chat messages, appearing as plain text or `[object Object]`
-
-**Root Cause**: 
-1. Custom marked.js link renderer was using `DOMPurify.sanitize()` on URL strings, converting them to objects
-2. Double processing of markdown content (in ChatProvider and MessageBubble)
-3. Missing `mangle: false` option causing email obfuscation
-
-**Solution**:
-1. **Removed problematic custom renderer** that was sanitizing URLs incorrectly
-2. **Added `mangle: false`** to marked.js options to preserve email addresses
-3. **Created autolink extension** to convert plain URLs/emails to clickable links
-4. **Post-process HTML** to add `target="_blank"` to all links
-5. **Updated MessageBubble** to use pre-processed HTML from ChatProvider
-
-**Lambda Prompt Updates**:
-```python
-# In bedrock_handler.py - Added instructions to preserve markdown
-- PRESERVE ALL MARKDOWN FORMATTING: If you see [text](url) keep it as [text](url), not plain text
-- For any dates, times, or locations of events: Direct users to check the events page or contact the team
-- Never include placeholder text like [date], [time], [location], or [topic] in your responses
-```
-
-**Result**: 
-- ✅ Inline markdown links from knowledge base are preserved
-- ✅ Plain URLs and emails are auto-linked
-- ✅ All links open in new browser tabs
-- ✅ No more `[object Object]` or stripped URLs
-- ✅ Event placeholders replaced with evergreen language
-
-**Files Modified**:
-- `src/context/ChatProvider.jsx` - Fixed markdown processing and link handling
-- `src/components/chat/MessageBubble.jsx` - Use pre-processed HTML
-- `src/utils/markdownToHTML.js` - Added autolink extension
-- `vite.config.js` - Added proxy for development CORS
-- `lambda-review/lambda-review/bedrock_handler.py` - Updated prompt instructions
-
-**Commits**:
-- "Fix URL and email stripping in chat messages"
-- "Update Lambda prompt to preserve markdown formatting"
-
-### Production Widget Issues - RESOLVED ✅ (2025-06-27)
-
-**Problems**:
-1. White pixels visible around chat header edges
-2. Widget iframe visible/open on page load (should start closed)
-3. Different behavior between header X close vs toggle close
-
-**Root Causes**:
-1. **White pixels**: Iframe body lacked transparent background, showing through the 4px padding
-2. **Start state**: Widget initialization had guard clause preventing `minimize()` from running
-3. **Close behavior**: Header close directly set state instead of calling `handleToggle()`
-
-**Solutions**:
-1. **Added transparent background** to iframe body in theme.css
-2. **Fixed initialization** by applying minimized styles directly (removed problematic `minimize()` call)
-3. **Updated header close** to use `handleToggle()` for consistent parent notification
-
-**Additional Fix - Cache Issue**:
-- **Problem**: Client saw postMessage errors and 404s for old asset files
-- **Cause**: Browser cached old `widget-frame.html` with outdated asset hashes
-- **Solution**: Client cleared browser cache (hard refresh)
-
-**Files Modified**:
-- `src/styles/theme.css` - Added `body[data-iframe="true"] { background: transparent }`
-- `current-widget.js` - Fixed widget initialization
-- `src/components/chat/ChatWidget.jsx` - Header close now uses `handleToggle()`
-
-**Tests Updated**:
-- `src/utils/__tests__/markdownToHTML.test.js` - Updated to expect target="_blank"
-- `src/components/chat/__tests__/MessageBubble.test.jsx` - Updated to expect pre-processed HTML
-
-**Deployment**:
-- Production deployment: 2025-06-27_01-07-53
-- Git tag: `deploy-prod-2025-06-27_01-07-53`
-- CloudFront invalidation: I8PL1SYA1II0I1BHVM41KYUDYV
-
-**Result**:
-- ✅ No white pixels around widget edges
-- ✅ Widget starts properly minimized
-- ✅ Both close methods behave consistently
-- ✅ All tests passing
-- ✅ Successfully deployed to production
-
-### Badge Count Persistence Issue - RESOLVED ✅ (2025-06-27)
-
-**Problem**: When users clicked internal links (same domain), the page would refresh and the unread message badge would show the total message count instead of only unread messages.
-
-**Root Cause**: 
-- Internal links correctly open in the same tab for better UX
-- Session data (messages, session ID) was persisted to sessionStorage
-- But `lastReadMessageIndex` was only stored in React state
-- On page refresh, `lastReadMessageIndex` reset to -1, making all messages appear unread
-
-**Solution**:
-1. **Added sessionStorage persistence** for `lastReadMessageIndex`
-2. **Initialize from saved state** on component mount (respects 30-minute session timeout)
-3. **Save index when closing chat** via the toggle button
-4. **Update saved index when opening chat** to mark all messages as read
-
-**Implementation** (ChatWidget.jsx):
-- Initialize `lastReadMessageIndex` from sessionStorage if session is valid
-- Save to `picasso_last_read_index` key when chat state changes
-- Maintains consistency with existing session persistence behavior
-
-**Result**:
-- ✅ Badge shows only truly unread messages after page refresh
-- ✅ Internal links continue to open in same tab (good UX)
-- ✅ Session state fully preserved across refreshes
-- ✅ Callout behavior more predictable with accurate message counts
-
-### Chat Container Border & Shadow Visibility Issue - RESOLVED ✅ (2025-06-27)
-
-**Problem**: Chat container border only showing on left/top sides, box shadow not visible
-
-**Root Cause**: CSS conflict between absolute positioning and `width: 100%; height: 100%` on the chat container caused it to exceed its parent boundaries, clipping the right/bottom borders and shadow
-
-**Solution**: Changed chat container dimensions from `width: 100%; height: 100%` to `width: auto; height: auto`, allowing the absolute positioning constraints (`top: 0; right: 0; bottom: 0; left: 0`) to properly determine the size
-
-**Files Modified**:
-- `src/styles/theme.css` - Updated `.chat-container` rule to use `width: auto; height: auto`
-
-**Commit**: e3ea9a9
-
-**Result**:
-- ✅ All four sides of border now visible
-- ✅ Box shadow properly renders around entire container
-- ✅ Container still fills parent correctly via positioning constraints
-
-## Common Development Commands (esbuild)
-
+### Picasso Frontend
 ```bash
-# Development
-npm run dev              # Start esbuild dev server on port 8000
-npm run test:watch       # Run tests in watch mode during development
-
-# Code Quality
-npm run lint             # Check for linting errors
-npm run lint:fix         # Auto-fix linting issues
-
-# Testing
-npm test                 # Run all tests once
-npm run test:coverage    # Generate coverage report
-npm run test:ui          # Open visual test runner
-
-# Building (esbuild-powered)
-npm run build            # Development build (default)
-npm run build:dev        # Development build (explicit)
-npm run build:prod       # Production build with optimizations
-npm run build:production # Alias for build:prod
-
-# Environment-specific builds
-BUILD_ENV=staging npm run build     # Build for staging
-BUILD_ENV=production npm run build  # Build for production
-
-# Bundle analysis
-ANALYZE=true npm run build      # Generate interactive bundle analysis
-
-# Deployment
-npm run deploy:staging   # Deploy to S3 staging
-npm run deploy:production # Deploy to S3 production
+# The frontend appears to be a Vite/React project but lacks package.json
+# Configuration files are in /src/config/
+# Build configuration schemas are in /src/config/schemas/
 ```
 
-### esbuild Performance Benefits:
-- **85% faster builds**: 2-3 seconds vs 15-20 seconds
-- **Instant rebuilds**: <1 second incremental builds
-- **Fast dev server**: Starts in <1 second on port 8000
-- **Bundle analysis**: Interactive size analysis with `ANALYZE=true`
-- **Environment targeting**: Single command with `BUILD_ENV` variable
+## Architecture
 
-## Architecture Overview
+### System Flow
+1. **Frontend (Picasso)** → Initiates chat sessions with tenant_hash
+2. **Master_Function_Staging** → Validates JWT, manages conversations, routes requests
+3. **Routing Decision**:
+   - **Conversational queries** → Bedrock (via Streaming Handler)
+   - **Structured data collection** → Lex (for forms/slots)
+4. **Bedrock_Streaming_Handler_Staging** → Handles SSE streaming for real-time responses
 
-### Dual-Entry System
+### Key Components
 
-The widget uses a sophisticated iframe-based architecture that provides complete CSS/JS isolation:
+#### Frontend Architecture (`/src`)
+- **Context Providers**: Multiple ChatProvider implementations for different streaming modes
+  - `ChatProvider.jsx` - Main provider
+  - `StreamingChatProvider.jsx` - SSE streaming support  
+  - `HTTPChatProvider.jsx` - Standard HTTP requests
+- **Configuration System**: Enterprise-grade environment detection (BERS Phase 1)
+  - Auto-detects environment from multiple sources
+  - S3-based tenant configuration loading
+  - Sub-100ms performance target
+- **Security**: Multi-layer XSS protection with DOMPurify
+- **Monitoring**: Built-in observability with health checks and metrics
 
-1. **Host Script** (`current-widget.js`)
-   - Injected on customer websites via `<script src="widget.js" data-tenant="HASH">`
-   - Creates and manages the iframe container
-   - Handles responsive sizing (90x90 minimized, 360x640 desktop, full-screen mobile)
-   - Provides public API: `PicassoWidget.open()`, `.close()`, `.toggle()`, `.isOpen()`, `.onEvent()`
-   - Manages widget positioning and animations
+#### Master Function Architecture
+- **JWT Authentication**: Token validation and blacklisting
+- **Tenant Management**: Multi-tenant configuration from S3
+- **Conversation State**: DynamoDB-backed session management
+- **Bedrock Integration**: Routes to AWS Bedrock for AI responses
+- **Lex Integration** (Planned): Routes structured data collection to Lex
+- **Intent Router**: Determines whether to use Bedrock or Lex based on context
+- **Audit Logging**: Comprehensive audit trail in DynamoDB
+- **CORS Support**: Configurable CORS headers for cross-origin requests
 
-2. **Iframe Bridge** (`widget-frame.html`)
-   - Minimal HTML that bootstraps the React application
-   - Detects environment (dev/staging/production) and loads appropriate assets
-   - Establishes PostMessage communication channel
-   - Monitors state changes and notifies parent
+#### Bedrock Streaming Handler Architecture  
+- **True Lambda Streaming**: Uses `awslambda.streamifyResponse` for SSE
+- **Knowledge Base Integration**: Bedrock Agent Runtime for RAG
+- **Caching Strategy**: In-memory cache with 5-minute TTL
+- **Model Configuration**: Claude 3.5 Haiku as default model
+- **Error Handling**: Graceful fallback to buffered responses
 
-3. **React Application** (`iframe-main.jsx`)
-   - Runs inside iframe for complete isolation
-   - Fetches tenant configuration from API
-   - Renders chat UI with full React component tree
-   - Handles all user interactions and API communications
+### Environment Configuration
 
-### Component Hierarchy
+The system uses hierarchical environment detection:
+1. Config files (highest priority)
+2. Environment variables (`NODE_ENV`, `PICASSO_ENV`)
+3. URL parameters (`?picasso-env=staging`)
+4. Hostname patterns
+5. Build context
+6. Default fallback (production)
 
-```
-Host Page
-└── current-widget.js
-    └── iframe (widget-frame.html)
-        └── React App (iframe-main.jsx)
-            └── ConfigProvider (tenant config & features)
-                └── CSSVariablesProvider (dynamic theming)
-                    └── ChatProvider (chat state & API)
-                        └── ChatWidget / FullPageChat
-                            ├── ChatHeader (logo, title, subtitle)
-                            ├── MessageList
-                            │   └── MessageBubble
-                            │       ├── Markdown content (sanitized)
-                            │       ├── Action chips
-                            │       └── File previews
-                            ├── TypingIndicator
-                            ├── InputBar
-                            │   └── AttachmentMenu
-                            └── ChatFooter
-                                └── FollowUpPromptBar
-```
+### Security Considerations
+- JWT tokens required for Master Function
+- Tenant hash validation with branded types
+- XSS protection in frontend
+- CORS headers configured per environment
+- Token blacklisting for revocation
+- Audit logging for compliance
 
-### Data Flow Architecture
+## Testing
 
-1. **Configuration Flow**
-   - Tenant hash extracted from script tag or URL
-   - Config fetched from `https://chat.myrecruiter.ai/v1/widget/config/{hash}`
-   - Cached in sessionStorage for 5 minutes
-   - Config includes: branding, features, API endpoints, UI customization
-   - Polling every 5 minutes for updates
+### Frontend Tests
+```bash
+# Run component tests
+npm test -- src/components/chat/__tests__/
 
-2. **Message Flow**
-   - User input → ChatProvider → API call with retry logic
-   - API: `POST /v1/widget/chat/{tenant_hash}`
-   - Exponential backoff with jitter for failures
-   - Network-aware retry (auto-retry when connection restored)
-   - Optimistic UI updates with rollback on failure
+# Run provider tests  
+npm test -- src/providers/__tests__/
 
-3. **State Management**
-   - **ConfigProvider**: Tenant configuration, features, branding
-   - **ChatProvider**: Messages, typing state, API communication
-   - **Local State**: Widget open/closed, unread count, callout visibility
-
-### Communication Protocol
-
-**Host → Iframe Messages:**
-```javascript
-{
-  type: 'PICASSO_COMMAND',
-  command: 'OPEN_CHAT' | 'CLOSE_CHAT' | 'UPDATE_CONFIG' | 'SIZE_CHANGE',
-  data: { /* command-specific data */ }
-}
+# Run environment resolver tests
+npm test -- src/config/__tests__/environment-resolver.test.ts
 ```
 
-**Iframe → Host Events:**
-```javascript
-{
-  type: 'PICASSO_EVENT',
-  event: 'CHAT_OPENED' | 'CHAT_CLOSED' | 'MESSAGE_SENT' | 'RESIZE_REQUEST',
-  data: { /* event-specific data */ }
-}
+### Lambda Function Tests
+```bash
+# Master Function security tests
+cd lambda-functions/lambda-functions/Master_Function_Staging
+python run_security_tests.py
+
+# Test JWT validation
+python -c "from lambda_function import validate_token; print(validate_token('test_token'))"
 ```
 
-### Security Architecture
-
-1. **Input Sanitization**
-   - DOMPurify for HTML content (strict allowlist)
-   - Markdown sanitization before rendering
-   - URL validation (HTTPS enforcement in production)
-   - File path sanitization to prevent traversal
-   - Tenant hash validation (alphanumeric only)
-
-2. **API Security**
-   - CORS-compliant requests
-   - No credentials in URLs
-   - Request timeout enforcement
-   - Error message sanitization
-
-3. **Iframe Isolation**
-   - No sandbox attribute (but still isolated)
-   - Content Security Policy headers
-   - Cross-origin communication only via PostMessage
-
-### CSS Architecture
-
-- **2000+ lines** of scoped CSS in `src/styles/theme.css`
-- **CSS Variables** for complete theming control
-- **Container queries** for responsive design within iframe
-- **Feature flags** control display of UI elements
-- **No viewport media queries** - all responsive behavior via container queries
-
-### Multi-Tenant Features
-
-1. **Configuration Options**
-   - Branding: logo, colors, header text
-   - Features: voice input, file upload, quick help menu
-   - Behavior: auto-open, typing indicators, action chips
-   - Position: bottom-right, bottom-left, top-right, top-left
-
-2. **Tenant Identification**
-   - Hash in script tag: `data-tenant="HASH"`
-   - URL parameter: `?tenant=HASH`
-   - Configuration endpoint: `/v1/widget/config/{hash}`
-
-### Performance Optimizations
-
-1. **Bundle Size**
-   - Widget.js: <150KB (gzipped)
-   - Lazy loading of markdown parser
-   - CSS code splitting
-
-2. **Caching Strategy**
-   - Config: 5-minute sessionStorage cache
-   - Static assets: 1-year cache (hashed filenames)
-   - Widget.js: 5-minute cache for updates
-
-3. **Load Performance**
-   - Target: <500ms iframe load
-   - Target: <200ms config fetch
-   - Performance metrics logged in development
-
-### Testing Infrastructure
-
-1. **Test Pages**
-   - `harsh-css-test.html`: CSS isolation validation
-   - `size-test.html`: Responsive design testing
-   - `tenant-*-demo.html`: Multi-tenant testing
-   - `iframe-test.html`: Communication protocol testing
-
-2. **Test Utilities**
-   - Comprehensive browser API mocks in `src/test/setup.js`
-   - Security testing for XSS prevention
-   - Error handling and retry logic tests
-   - Component rendering tests
-
-### Deployment Architecture
-
-1. **Build Outputs**
-   - `widget.js`: Host-side script (IIFE format)
-   - `widget-frame.html`: Iframe HTML
-   - `iframe-main.js`: React application
-   - `widget.css`: All styles
-
-2. **AWS Infrastructure**
-   - S3 buckets: `picassostaging`, `picassocode`
-   - CloudFront CDN distribution
-   - Automated deployment via `npm run deploy:*`
-
-3. **Cache Control**
-   - Short (5 min): widget.js, widget-frame.html
-   - Medium (1 hour): iframe-main.js
-   - Long (1 year): hashed assets
-
-### Key Development Patterns
-
-1. **Iframe Development**: The widget auto-detects localhost and loads from esbuild dev server (port 8000) in development mode.
-
-2. **CSS Isolation**: All styles are scoped within the iframe. Use `data-iframe-context` attributes for targeting.
-
-3. **Multi-Tenant Support**: Tenants identified by hash in script tag. Config cached for 5 minutes in sessionStorage.
-
-4. **Performance Targets**:
-   - Iframe load: < 500ms
-   - Config fetch: < 200ms
-   - Widget.js bundle: < 150KB
-   - Build time: < 3 seconds (achieved with esbuild)
-
-5. **Testing Strategy**: 
-   - Component tests with React Testing Library
-   - Mocked browser APIs (postMessage, IntersectionObserver, etc.)
-   - Test setup in `src/test/setup.js`
-
-6. **Security**: XSS protection via DOMPurify, CORS-compliant APIs, iframe sandboxing
-
-7. **Build System (esbuild)**:
-   - Path aliases: `@/components`, `@/utils`, `@/styles`, `@/config`
-   - Environment switching via `BUILD_ENV=staging|production`
-   - Bundle analysis with `ANALYZE=true`
-   - Fast rebuilds and hot reload on port 8000
-
-### Important Files
-- `esbuild.config.js`: esbuild configuration with multiple entry points and environment handling
-- `package.json`: Updated scripts for esbuild workflow
-- `src/config/environment.js`: Environment detection and configuration
-- `src/utils/security.js`: Comprehensive security utilities
-- `src/utils/errorHandling.js`: Retry logic and error management
-- `current-widget.js`: Production host script
-- `public/widget-frame.html`: Iframe HTML template
-- `src/styles/theme.css`: Complete widget styling
-
-### esbuild Configuration Features
-- **Multiple entry points**: widget.js, iframe-main.js, and widget-frame.html
-- **Environment-aware**: Automatic configuration based on `BUILD_ENV`
-- **Path aliases**: Clean imports with `@`, `@components`, `@utils`, `@styles`, `@config`
-- **Bundle analysis**: Optional bundle composition analysis
-- **Asset handling**: Automatic CSS and asset bundling
-- **Development server**: Hot reload on port 8000
-
-## PRODUCTION LAUNCH STATUS - January 2025
-
-### Current Infrastructure
-- **Bubble**: Admin console, tenant management, API configuration
-- **AWS Lambda**: 2-function system (deploy_tenant_stack + Master_Function)
-- **S3/CloudFront**: Hosts Picasso widget and tenant config.json files
-- **Config Flow**: Bubble → deploy_tenant_stack → S3 → Master_Function → Picasso
-
-### Lambda Architecture & Integration
-
-#### Master_Function Overview
-Master_Function is a modular Lambda with 6 components:
-
-1. **lambda_function.py** (372 lines) - Entry point, action routing
-2. **intent_router.py** (191 lines) - Chat orchestration
-3. **bedrock_handler.py** (75 lines) - AI/KB integration
-4. **response_formatter.py** (155 lines) - Output formatting
-5. **session_utils.py** (28 lines) - Session management
-6. **tenant_config_loader.py** (535 lines) - Config & caching
-
-**Key Features:**
-- Hash-only security (no tenant_id exposure)
-- 5-minute in-memory config caching
-- S3 fallback for resilience
-- CloudFront integration
-- Supports both Lex and HTTP requests
-
-#### Master_Function API Endpoints
-The production Lambda uses action-based routing with query parameters:
-
-```javascript
-// Config endpoint (WORKING IN PRODUCTION)
-GET https://chat.myrecruiter.ai/Master_Function?action=get_config&t={tenant_hash}
-
-// Chat endpoint
-POST https://chat.myrecruiter.ai/Master_Function?action=chat&t={tenant_hash}
-Body: {
-  "tenant_hash": "HASH",
-  "user_input": "Hello, how can I get help?",
-  "session_id": "session_123456",
-  "context": {} // optional
-}
-
-// Health check
-GET https://chat.myrecruiter.ai/Master_Function?action=health_check&t={tenant_hash}
-
-// Cache operations
-GET https://chat.myrecruiter.ai/Master_Function?action=cache_status
-POST https://chat.myrecruiter.ai/Master_Function?action=clear_cache&t={tenant_hash}
-```
-
-#### 🚨 CRITICAL: Production 404 Fix (IMMEDIATE)
-
-If you see 404 errors on config fetching:
-
-1. **Check CloudFront Query String Forwarding**:
-   ```bash
-   # CloudFront must forward query strings
-   # Console → Behaviors → Edit → Cache Key and Origin Requests → Query Strings → "All"
-   ```
-
-2. **Update ConfigProvider.jsx**:
-   ```javascript
-   // CORRECT endpoint format with fallbacks
-   const configUrl = `https://chat.myrecruiter.ai/Master_Function?action=get_config&t=${tenantHash}`;
-   
-   // Add fallback for resilience
-   const fetchConfig = async () => {
-     const urls = [
-       `https://chat.myrecruiter.ai/Master_Function?action=get_config&t=${tenantHash}`,
-       `https://chat.myrecruiter.ai/v1/widget/config/${tenantHash}`, // Legacy fallback
-     ];
-     
-     for (const url of urls) {
-       try {
-         const response = await fetch(url);
-         if (response.ok) return await response.json();
-       } catch (e) {
-         console.warn(`Config attempt failed: ${url}`);
-       }
-     }
-     throw new Error('Config loading failed');
-   };
-   ```
-
-3. **Update ChatProvider.jsx**:
-   ```javascript
-   // Chat endpoint with proper timeout
-   const chatUrl = `https://chat.myrecruiter.ai/Master_Function?action=chat&t=${tenantHash}`;
-   
-   // 25-second timeout (Lambda has 30s limit)
-   const controller = new AbortController();
-   const timeoutId = setTimeout(() => controller.abort(), 25000);
-   ```
-
-#### 3. **Add Lambda Timeout Protection** ⚠️ HIGH
-Lambda has 30s timeout, need to handle gracefully:
-- Add 25s client-side timeout
-- Show user-friendly message
-- Enable retry for timeout errors
-
-#### 4. **Fix Config Caching** ⚠️ HIGH
-Current 5-minute cache doesn't check for updates:
-- Add version field to config.json
-- Check version before using cache
-- Reduce cache to 2 minutes for faster updates
-
-#### 5. **Add Error Boundaries** ⚠️ MEDIUM
-Prevent white screen crashes:
-- Wrap App in ErrorBoundary
-- Log errors to Lambda endpoint
-- Show fallback UI with reload option
-
-### Work Division for Tonight
-
-**Cursor Claude Should Focus On:**
-1. Update ConfigProvider.jsx for S3 config fetching
-2. Update ChatProvider.jsx for Lambda endpoint
-3. Add timeout handling in ChatProvider
-4. Test changes locally with a real tenant
-
-**Web Claude Should Focus On:**
-1. Update deployment scripts for production URLs
-2. Create smoke test script
-3. Document rollback procedure
-4. Monitor deployment and provide guidance
-
-### Production Checklist
-- [ ] ConfigProvider fetches from S3 CloudFront URL
-- [ ] ChatProvider points to production Lambda API Gateway
-- [ ] 25-second timeout protection added
-- [ ] Config version checking implemented  
-- [ ] Error boundaries added to prevent crashes
-- [ ] Build completes without errors
-- [ ] Smoke tests pass with test tenant
-- [ ] CloudFront cache invalidated after deploy
-- [ ] Rollback procedure documented
-
-### Key URLs and Values
-```javascript
-// DYNAMIC VALUES FROM ENVIRONMENT.JS:
-DEFAULT_TENANT_HASH = "my87674d777bf9" // MyRecruiter default tenant
-CLOUDFRONT_URL = "https://your-actual-cloudfront.com"
-API_GATEWAY_URL = "https://your-actual-api-gateway.com"
-S3_BUCKET = "your-actual-bucket-name"
-
-// TENANT DETECTION LOGIC:
-// 1. URL parameter: ?tenant=HASH
-// 2. Fallback: environment.js DEFAULT_TENANT_HASH
-// 3. Methods: getTenantHashFromURL(), getDefaultTenantHash(), getTenantHash()
-```
-
-### If Something Goes Wrong
-1. **Config not loading**: Check S3 bucket permissions and CORS
-2. **Chat not responding**: Check Lambda logs in CloudWatch
-3. **Widget not appearing**: Check CloudFront distribution status
-4. **Errors in console**: Check browser network tab for failed requests
-
-### Post-Launch TODOs
-- Add connection status indicator
-- Add message retry queue for offline
-- Add conversation continuity (localStorage)
-- Add typing indicators from Lex
-- Add CloudWatch metrics dashboard
-
-## PHASE 1 IMPLEMENTATION PLAN - LAUNCH NIGHT
-
-### Timeline: 2-3 Hours Total
-
-#### Phase 1.1: Update ConfigProvider for S3/CloudFront (30 mins)
-**Owner: Agent 1 - Config Specialist**
-- Update fetch URL from API to S3: `https://your-cloudfront.com/tenants/${tenantHash}/config.json`
-- Remove authentication headers
-- Add version checking to cache
-- Reduce cache timeout: 5 min → 2 min
-- Handle 404 errors gracefully
-
-**Test Checkpoints:**
-- [ ] Valid tenant loads config from S3
-- [ ] Invalid tenant shows fallback config
-- [ ] Cache refreshes after 2 minutes
-- [ ] No console errors in production
-
-#### Phase 1.2: Update ChatProvider for Lambda (30 mins)
-**Owner: Agent 2 - API Integration Specialist**
-- Update endpoint to Lambda API Gateway
-- Add required headers: x-tenant-id, x-session-id
-- Implement 25-second timeout (Lambda limit: 30s)
-- Add user-friendly timeout messages
-- Enable retry for timeout errors only
-
-**Test Checkpoints:**
-- [ ] Messages reach Lambda endpoint
-- [ ] Timeout triggers at 25 seconds
-- [ ] Retry button appears on timeout
-- [ ] Headers properly sent with requests
-
-#### Phase 1.3: Security & Build Configuration (30 mins)
-**Owner: Agent 3 - Security Specialist**
-- Fix postMessage wildcard vulnerability
-- Configure production terser settings
-- Remove all console.logs in production
-- Set up proper CORS origins
-- Add Content Security Policy headers
-
-**Test Checkpoints:**
-- [ ] PostMessage only accepts allowed origins
-- [ ] No console.logs in production build
-- [ ] Bundle size < 150KB
-- [ ] Security headers properly set
-
-#### Phase 1.4: Error Handling & Monitoring (30 mins)
-**Owner: Agent 4 - Reliability Specialist**
-- Create ErrorBoundary component
-- Add Lambda error logging endpoint
-- Implement graceful fallbacks
-- Add basic performance tracking
-- Set up health check endpoint
-
-**Test Checkpoints:**
-- [ ] Errors don't crash widget
-- [ ] Errors logged to Lambda
-- [ ] Fallback UI displays correctly
-- [ ] Performance metrics captured
-
-#### Phase 1.5: Testing & Validation (30 mins)
-**Owner: Agent 5 - QA Specialist**
-- Create production smoke tests
-- Test with real tenant data
-- Validate all API endpoints
-- Check mobile responsiveness
-- Document any issues found
-
-**Test Checkpoints:**
-- [ ] All smoke tests pass
-- [ ] Real tenant config loads
-- [ ] Chat messages send/receive
-- [ ] Mobile layout works
-
-### AGENT TEAM COORDINATION
-
-**Project Lead (This Agent):**
-- Coordinate all agents
-- Update CLAUDE.md documentation
-- Monitor progress
-- Handle blockers
-- Final integration testing
-
-**Communication Protocol:**
-1. Each agent works in their lane
-2. Report completion of test checkpoints
-3. Flag blockers immediately
-4. No cross-dependencies until integration
-
-### CRITICAL SUCCESS FACTORS
-1. **NO BREAKING CHANGES** - Widget must remain backward compatible
-2. **TEST AFTER EACH CHANGE** - Don't batch changes without testing
-3. **ROLLBACK READY** - Keep current version accessible
-4. **DOCUMENT EVERYTHING** - Update this file with actual values
-
-### Production Configuration Philosophy
-
-**Defaults Over Configuration**: Picasso uses smart defaults in theme.css. Only configure what's different:
-- ✅ Logo URL, tenant hash, custom messages
-- ❌ Border radius, shadows, spacing (use CSS defaults)
-
-**Lean Configs**: Foster Village's config is only 84 lines because it relies on defaults:
-```json
-{
-  "tenant_hash": "HASH",
-  "branding": {
-    "primary_color": "#2db8be",  // Only what's different
-    "logo_url": "..."            // Only what's needed
-  }
-  // Everything else uses theme.css defaults
-}
-```
-
-### Lambda Architecture Plan
-
-#### Phase 1: NEED IT NOW (Production 404 Fix)
-- [x] Fix query parameter handling in Master_Function
-- [x] Add CloudFront query string forwarding
-- [x] Implement config loading fallbacks
-- [x] Update deploy_tenant_stack with iframe-aware embed codes
-- [ ] Deploy and verify with Foster Village
-
-#### Phase 2: Stability (This Week)
-- [ ] Fix session_utils.py tenant_id references
-- [ ] Centralize CloudFront domain configuration
-- [ ] Implement consistent error response format
-- [ ] Set up CloudWatch alarms for 4xx/5xx
-
-#### Phase 3: Simplification (Next Sprint)
-Based on Master_Function analysis:
-- [ ] Reduce tenant_config_loader.py from 535 to ~200 lines
-- [ ] Extract shared constants to config module
-- [ ] Simplify config loading logic (remove over-engineering)
-- [ ] Consolidate error handling patterns
-
-#### Phase 4: Optimization (Next Month)
-- [ ] Add S3 connection pooling
-- [ ] Implement config pre-loading for known tenants
-- [ ] Move to Lambda@Edge for config serving
-- [ ] Add config inheritance (base + tenant overrides)
-
-### EMERGENCY ROLLBACK PROCEDURE
-1. Revert to previous S3 version: `aws s3 cp s3://backup/widget.js s3://prod/widget.js`
-2. Invalidate CloudFront: `aws cloudfront create-invalidation --distribution-id EXXXXXXXXXX --paths "/*"`
-3. Update Lambda alias to previous version
-4. Notify customers of temporary rollback
-
-### PHASE 1 COMPLETION CHECKLIST
-- [ ] All agents report completion
-- [ ] Integration tests pass
-- [ ] Production smoke tests pass
-- [ ] Performance within budget (<500ms load)
-- [ ] Security vulnerabilities fixed
-- [ ] Documentation updated
-- [ ] Rollback procedure tested
+## Deployment Considerations
+
+### Lambda Functions
+- **Runtime**: Python 3.x for Master Function, Node.js 20.x for Streaming Handler
+- **Memory**: Minimum 512MB recommended for both functions
+- **Timeout**: 30 seconds for Master Function, 5 minutes for Streaming Handler
+- **Environment Variables Required**:
+  - `S3_CONFIG_BUCKET`: Tenant configuration bucket
+  - `DYNAMODB_AUDIT_TABLE`: Audit log table name
+  - `DYNAMODB_BLACKLIST_TABLE`: Token blacklist table name
+  - `BEDROCK_MODEL_ID`: Model identifier (defaults to Claude 3.5 Haiku)
+
+### Frontend Deployment
+- Build system supports environment-specific configurations
+- Assets can be deployed to S3 with CloudFront
+- Environment detection works across different deployment targets
+- Configuration schemas validate deployment settings
+
+## Monitoring & Observability
+
+The system includes comprehensive monitoring:
+- Real-time metrics collection (ChatProvider performance, API latency)
+- Health checks for all components
+- Alert system with configurable thresholds
+- Dashboard interface for operational visibility
+- Integration with BERS monitoring framework
+
+## Known Issues & Limitations
+
+1. Frontend lacks `package.json` - dependency management unclear
+2. Lambda functions have nested directory structure (`lambda-functions/lambda-functions/`)
+3. Multiple ChatProvider implementations may cause confusion
+4. Streaming support depends on Lambda runtime configuration
+5. Cache invalidation strategy not fully documented
+
+## Development Tips
+
+1. Use environment resolver for consistent environment detection
+2. Check streaming availability before attempting SSE responses
+3. Validate JWT tokens early in request lifecycle
+4. Monitor cache hit rates for performance optimization
+5. Use typed configurations to prevent runtime errors
+6. Test CORS headers across different origins
+7. Implement proper error boundaries in React components
+
+## Lex Integration Strategy
+
+### Hybrid Approach
+- **Bedrock** handles 80-90% of interactions (conversations, Q&A, explanations)
+- **Lex** handles 10-20% of interactions (structured data collection, forms)
+- Picasso provides unified UX regardless of backend engine
+
+### Response Card Routing
+- Cards configured as "questions" route to Bedrock
+- Cards configured as "actions" route to Lex for slot collection
+- Configuration-driven through tenant settings, not hard-coded
+
+### Legacy Architecture (Pre-Picasso)
+The original Lex-only architecture (`AustinAngels_CoreFunction`) shows the pattern we're migrating from:
+- **One Lambda per client**: Each Lex bot had its own dedicated fulfillment Lambda
+- **Direct Lex integration**: Lambda processed Lex events directly without routing layers
+- **Simple data flow**: Lex → Lambda → Email/Google Sheets
+- **Slot collection focus**: 5 main intents for structured data (donations, applications)
+- **UTM tracking**: Campaign attribution via session attributes
+- **No conversational AI**: Pure form collection and fulfillment
+
+### Migration Strategy
+The new architecture consolidates fulfillment logic into Master Function:
+- **From**: Multiple client-specific Lambdas → **To**: Single multi-tenant Master Function
+- **From**: Hard-coded slot mappings → **To**: Configuration-driven slot handling
+- **From**: Direct SES/Sheets integration → **To**: Modular fulfillment handlers
+- **From**: Lex session attributes → **To**: DynamoDB session state
+- **Preserve**: Email routing, Google Sheets integration, UTM tracking
+
+### Implementation Notes
+- Master Function contains Lex routing placeholder in `intent_router.py`
+- Session state shared between Lambda functions via DynamoDB
+- Austin Angels bot (ID: OUAGEMKBLO) serves as proof of concept
+- Legacy fulfillment logic will be ported to `lex_handler.py` module
+- See `/docs/Lex_Project_Summary.md` for detailed integration plan
