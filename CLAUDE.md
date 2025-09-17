@@ -4,46 +4,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This workspace contains the Picasso chat widget system and its supporting Lambda functions:
+This repository contains the **Picasso Frontend** - a React-based chat widget with TypeScript support.
 
-1. **Picasso Frontend** (`/src`) - React-based chat widget with TypeScript support
-2. **Master_Function_Staging** (`/lambda-functions/lambda-functions/Master_Function_Staging`) - Python Lambda for JWT auth, conversation management, and Bedrock orchestration
-3. **Bedrock_Streaming_Handler_Staging** (`/lambda-functions/lambda-functions/lambda-functions/Bedrock_Streaming_Handler_Staging`) - Node.js Lambda for SSE streaming responses
-4. **Lex Integration** (Planned) - Amazon Lex for structured data collection within Picasso UX
-5. **Legacy Lex Architecture** (`/lambda-functions/AustinAngels_CoreFunction`) - Original per-client Lambda pattern for Lex fulfillment
+The Lambda functions supporting this widget are maintained in a separate repository:
+- **Lambda Functions Repository**: https://github.com/longhornrumble/lambda
+
+### Related Components
+1. **Picasso Frontend** (`/src`) - React-based chat widget (this repository)
+2. **Lambda Functions** (separate repo):
+   - Master_Function_Staging - Python Lambda for JWT auth, conversation management
+   - Bedrock_Streaming_Handler_Staging - Node.js Lambda for SSE streaming
+   - Analytics_Function - Usage analytics and metrics
+   - Aggregator_Function - Data aggregation
 
 ## Commands
-
-### Bedrock Streaming Handler (Node.js Lambda)
-```bash
-# Navigate to the Lambda directory
-cd lambda-functions/lambda-functions/lambda-functions/Bedrock_Streaming_Handler_Staging
-
-# Install dependencies
-npm ci --production
-
-# Package for deployment
-npm run package  # Creates deployment.zip
-
-# Run locally (requires AWS credentials)
-node index.js
-```
-
-### Master Function (Python Lambda)
-```bash
-# Navigate to the Lambda directory  
-cd lambda-functions/lambda-functions/Master_Function_Staging
-
-# Package for deployment
-zip -r deployment.zip . -x "*.pyc" -x "__pycache__/*"
-
-# Run security tests
-python run_security_tests.py
-
-# Create DynamoDB tables (if needed)
-python create_audit_table.py
-python create_blacklist_table.py
-```
 
 ### Picasso Frontend
 ```bash
