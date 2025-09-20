@@ -1,0 +1,377 @@
+{
+  "tenant_id": "ATL642715",
+  "tenant_hash": "at807c3896fbd2",
+  "subscription_tier": "Standard",
+  "chat_title": "Atlanta Angels",
+  "tone_prompt": "You are a warm, friendly, and knowledgeable team member of Atlanta Angels, a foster care support organization serving the Atlanta, Georgia area. Respond with genuine care and enthusiasm for helping children, youth, and families in foster care. Keep your answers brief, clear, and actionable - provide the essential information users need without overwhelming them. Always include relevant inline links, application forms, contact information, or calls to action when available to help users take their next step, whether that's volunteering with our Love Box program, mentoring through Dare to Dream, joining our Angel Alliance, or getting involved in any other way. Your goal is to make it easy for people to connect with our mission and find meaningful ways to make a difference in the foster care community.",
+  "welcome_message": "Welcome to Atlanta Angels! I can help guide you and answer your questions. How can I help?",
+  "callout_text": "Hi! 👋 Ask me about Atlanta Angels.",
+  "version": "1.1",
+  "generated_at": 1750067246,
+  "branding": {
+    "logo_background_color": "#000000",
+    "primary_color": "#a1905f",
+    "avatar_background_color": "#000000",
+    "header_text_color": "#FFFFFF",
+    "widget_icon_color": "#FFFFFF",
+    "font_family": "Inter",
+    "logo_url": "https://chat.myrecruiter.ai",
+    "avatar_url": "https://chat.myrecruiter.ai"
+  },
+  "features": {
+    "uploads": false,
+    "photo_uploads": false,
+    "voice_input": false,
+    "callout": {
+      "enabled": true,
+      "text": "Hi! 👋 Ask me about Atlanta Angels.",
+      "auto_dismiss": false
+    },
+    "streaming": false,
+    "conversational_forms": true,
+    "smart_cards": true
+  },
+  "quick_help": {
+    "enabled": true,
+    "title": "Common Questions",
+    "toggle_text": "Help Menu ⬆️",
+    "close_after_selection": true,
+    "prompts": [
+      "👥 Who do you help?",
+      "📚 What training do you provide?",
+      "⏰ How long is the commitment?",
+      "🔍 Do you require background checks?",
+      "📍 What areas do you serve?",
+      "☎️ How can I contact you?"
+    ]
+  },
+  "action_chips": {
+    "enabled": true,
+    "max_display": 4,
+    "show_on_welcome": true,
+    "default_chips": [
+      {
+        "label": "🤝 How can I volunteer?",
+        "value": "How can I volunteer?"
+      },
+      {
+        "label": "🎯 Our programs.",
+        "value": "What programs do you offer?"
+      },
+      {
+        "label": "💝 Donate",
+        "value": "How can I donate or support?"
+      },
+      {
+        "label": "❓Contact us.",
+        "value": "How do I contact Atlanta Angels?"
+      }
+    ]
+  },
+  "widget_behavior": {
+    "start_open": false,
+    "remember_state": true
+  },
+  "aws": {
+    "knowledge_base_id": "U4C98SJCRY",
+    "aws_region": "us-east-1"
+  },
+  "metadata": {
+    "transformation_version": "1.1",
+    "original_field_count": 42,
+    "deployment_timestamp": 1750067246,
+    "s3_bucket": "myrecruiter-picasso",
+    "cloudfront_domain": "chat.myrecruiter.ai"
+  },
+  "model_id": "us.anthropic.claude-3-5-haiku-20241022-v1:0",
+
+  "card_inventory": {
+    "strategy": "qualification_first",
+    "primary_cta": {
+      "type": "volunteer_signup",
+      "title": "Schedule Discovery Session",
+      "url": "https://www.atlantaangels.org/volunteer.html",
+      "trigger_phrases": ["volunteer", "help", "get involved", "discovery session"]
+    },
+    "requirements": [
+      {
+        "type": "age",
+        "value": "22+",
+        "critical": true,
+        "display_text": "Must be at least 22 years old"
+      },
+      {
+        "type": "commitment",
+        "value": "1 year minimum",
+        "critical": true,
+        "emphasis": "high",
+        "display_text": "MINIMUM ONE YEAR commitment required"
+      },
+      {
+        "type": "background_check",
+        "value": "Required",
+        "critical": true,
+        "display_text": "Background check required"
+      }
+    ],
+    "program_cards": [
+      {
+        "name": "Love Box",
+        "description": "Provide wraparound support to foster families",
+        "commitment": "2-3 hours/month",
+        "url": "https://www.atlantaangels.org/programs.html#lovebox"
+      },
+      {
+        "name": "Dare to Dream",
+        "description": "One-on-one mentoring for youth aging out of care",
+        "commitment": "2 hours biweekly",
+        "url": "https://www.atlantaangels.org/programs.html#d2d"
+      }
+    ],
+    "readiness_thresholds": {
+      "show_requirements": 0.0,
+      "show_programs": 0.3,
+      "show_cta": 0.7,
+      "show_forms": 0.8
+    }
+  },
+
+  "conversational_forms": {
+    "volunteer_signup": {
+      "enabled": true,
+      "trigger_card": "volunteer_signup",
+      "qualification_gates": [
+        {
+          "field": "age_check",
+          "prompt": "Before we continue, I need to verify you meet our requirements. Are you at least 22 years old?",
+          "type": "boolean",
+          "required": true,
+          "failure_response": "I'm sorry, but volunteers must be at least 22 years old. Consider our Angel Alliance program for other ways to support our mission."
+        },
+        {
+          "field": "commitment_check",
+          "prompt": "Atlanta Angels requires a MINIMUM one-year commitment to provide consistency for the children we serve. Can you commit to at least one full year of volunteering?",
+          "type": "boolean",
+          "required": true,
+          "emphasis": "high",
+          "failure_response": "We understand that's a significant commitment. Please come back when your schedule allows for a full year of volunteering. In the meantime, consider supporting us through donations or our Angel Alliance program."
+        }
+      ],
+      "fields": [
+        {
+          "name": "program_interest",
+          "prompt": "Excellent! Which program interests you more?",
+          "type": "select",
+          "options": ["Love Box (family support)", "Dare to Dream (youth mentoring)", "Tell me more about both"],
+          "required": true
+        },
+        {
+          "name": "first_name",
+          "prompt": "Great choice! Let's get you started. What's your first name?",
+          "type": "text",
+          "validation": "name",
+          "required": true
+        },
+        {
+          "name": "last_name",
+          "prompt": "Thank you, {first_name}! What's your last name?",
+          "type": "text",
+          "validation": "name",
+          "required": true
+        },
+        {
+          "name": "email",
+          "prompt": "What email address should we use to contact you?",
+          "type": "email",
+          "validation": "email",
+          "required": true
+        },
+        {
+          "name": "phone",
+          "prompt": "And what's the best phone number to reach you?",
+          "type": "tel",
+          "validation": "phone",
+          "required": true
+        },
+        {
+          "name": "zipcode",
+          "prompt": "What's your zip code?",
+          "type": "text",
+          "validation": "zipcode",
+          "required": true
+        },
+        {
+          "name": "newsletter",
+          "prompt": "Would you like to receive our newsletter with volunteer opportunities and updates?",
+          "type": "boolean",
+          "required": false,
+          "default": true
+        },
+        {
+          "name": "motivation",
+          "prompt": "Finally, we'd love to know - what motivates you to help families and youth in foster care?",
+          "type": "textarea",
+          "required": false,
+          "max_length": 500
+        }
+      ],
+      "confirmation": {
+        "message": "Perfect, {first_name}! We've received your volunteer application for {program_interest}. Our team will contact you within 48 hours to schedule your discovery session. Thank you for stepping up to make a difference!",
+        "show_summary": true
+      },
+      "fulfillment": {
+        "type": "lambda",
+        "function": "Master_Function_Staging",
+        "action": "process_volunteer_signup",
+        "metadata": {
+          "source": "conversational_form",
+          "form_type": "volunteer_signup"
+        }
+      },
+      "notifications": {
+        "enabled": true,
+        "immediate": true,
+        "recipients": ["volunteer@atlantaangels.org"],
+        "sms_alert": false
+      }
+    },
+
+    "donation": {
+      "enabled": true,
+      "trigger_card": "donation",
+      "fields": [
+        {
+          "name": "donation_frequency",
+          "prompt": "Would you like to make a one-time donation or become a monthly supporter?",
+          "type": "select",
+          "options": ["One-time donation", "Monthly recurring", "Quarterly", "Annually"],
+          "required": true
+        },
+        {
+          "name": "amount",
+          "prompt": "How much would you like to donate?",
+          "type": "select",
+          "options": ["$25", "$50", "$100", "$250", "$500", "Other amount"],
+          "required": true
+        },
+        {
+          "name": "custom_amount",
+          "prompt": "Please enter the amount you'd like to donate:",
+          "type": "currency",
+          "validation": "min:10",
+          "conditional": {
+            "show_when": "amount",
+            "equals": "Other amount"
+          }
+        },
+        {
+          "name": "dedication",
+          "prompt": "Would you like to dedicate this gift in honor or memory of someone? (Reply with their name or 'No')",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "email",
+          "prompt": "What email should we send your tax-deductible receipt to?",
+          "type": "email",
+          "required": true
+        }
+      ],
+      "confirmation": {
+        "message": "Thank you for your generous {donation_frequency} gift of {amount}! You're making a real difference in the lives of children and families.",
+        "show_summary": false
+      },
+      "fulfillment": {
+        "type": "redirect",
+        "url": "https://secure.donation-processor.com/atlantaangels",
+        "pass_data": true
+      }
+    },
+
+    "contact": {
+      "enabled": true,
+      "trigger_card": "contact",
+      "fields": [
+        {
+          "name": "inquiry_type",
+          "prompt": "What would you like to contact us about?",
+          "type": "select",
+          "options": [
+            "Volunteering questions",
+            "Donation information",
+            "Partnership opportunities",
+            "Media inquiries",
+            "General questions",
+            "Other"
+          ],
+          "required": true
+        },
+        {
+          "name": "name",
+          "prompt": "What's your name?",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "email",
+          "prompt": "What's your email address?",
+          "type": "email",
+          "required": true
+        },
+        {
+          "name": "message",
+          "prompt": "What's your message or question?",
+          "type": "textarea",
+          "required": true,
+          "min_length": 10,
+          "max_length": 1000
+        },
+        {
+          "name": "preferred_contact",
+          "prompt": "How would you prefer we respond?",
+          "type": "select",
+          "options": ["Email", "Phone call"],
+          "required": false
+        }
+      ],
+      "confirmation": {
+        "message": "Thank you, {name}! We've received your {inquiry_type} inquiry and will respond within 24 business hours.",
+        "show_summary": true
+      },
+      "fulfillment": {
+        "type": "lambda",
+        "function": "Master_Function_Staging",
+        "action": "process_contact_form"
+      },
+      "notifications": {
+        "enabled": true,
+        "immediate": true,
+        "recipients": ["info@atlantaangels.org"],
+        "route_by_type": {
+          "Volunteering questions": ["volunteer@atlantaangels.org"],
+          "Donation information": ["development@atlantaangels.org"],
+          "Partnership opportunities": ["partnerships@atlantaangels.org"],
+          "Media inquiries": ["media@atlantaangels.org"]
+        }
+      }
+    }
+  },
+
+  "form_settings": {
+    "max_retries": 2,
+    "retry_prompt": "I didn't quite catch that. {original_prompt}",
+    "abandon_prompt": "No worries! Feel free to come back anytime to complete this. Is there anything else I can help you with?",
+    "progress_indicator": true,
+    "allow_back_navigation": true,
+    "save_partial": true,
+    "timeout_minutes": 10,
+    "validation_messages": {
+      "email": "Please provide a valid email address (example: name@domain.com)",
+      "phone": "Please provide a valid phone number (example: 404-555-1234)",
+      "zipcode": "Please provide a valid 5-digit zip code",
+      "required": "This information is required to continue",
+      "min_length": "Please provide at least {min} characters",
+      "max_length": "Please keep your response under {max} characters"
+    }
+  }
+}

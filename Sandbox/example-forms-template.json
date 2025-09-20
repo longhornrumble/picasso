@@ -1,0 +1,235 @@
+{
+  "tenant_id": "{{TENANT_ID}}",
+  "conversational_forms": {
+    "volunteer_signup": {
+      "enabled": true,
+      "trigger_card": "volunteer_signup",
+      "qualification_gates": [
+        {
+          "field": "age_check",
+          "prompt": "Before we continue, I need to verify you meet our requirements. Are you at least {{MIN_AGE}} years old?",
+          "type": "boolean",
+          "required": true,
+          "failure_response": "I'm sorry, but volunteers must be at least {{MIN_AGE}} years old."
+        },
+        {
+          "field": "commitment_check",
+          "prompt": "This organization requires a {{COMMITMENT_PERIOD}} commitment. Can you commit to this timeframe?",
+          "type": "boolean",
+          "required": true,
+          "failure_response": "We understand that's a significant commitment. Please consider joining when your schedule allows."
+        }
+      ],
+      "fields": [
+        {
+          "name": "first_name",
+          "prompt": "Great! Let's get started. What's your first name?",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "last_name",
+          "prompt": "Thank you, {first_name}! What's your last name?",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "email",
+          "prompt": "What email should we use to contact you?",
+          "type": "email",
+          "required": true
+        },
+        {
+          "name": "phone",
+          "prompt": "What's the best phone number to reach you?",
+          "type": "tel",
+          "required": true
+        },
+        {
+          "name": "zipcode",
+          "prompt": "What's your zip code?",
+          "type": "text",
+          "validation": "zipcode",
+          "required": true
+        },
+        {
+          "name": "program_interest",
+          "prompt": "Which program interests you most?",
+          "type": "select",
+          "options": "{{PROGRAM_OPTIONS}}",
+          "required": true
+        },
+        {
+          "name": "motivation",
+          "prompt": "What motivates you to volunteer with us?",
+          "type": "textarea",
+          "required": false
+        }
+      ],
+      "confirmation": {
+        "message": "Perfect, {first_name}! We'll contact you within {{RESPONSE_TIME}} to discuss next steps."
+      },
+      "fulfillment": {
+        "type": "lambda",
+        "function": "Master_Function_Staging",
+        "action": "process_volunteer_signup"
+      }
+    },
+
+    "donation": {
+      "enabled": true,
+      "trigger_card": "donation",
+      "fields": [
+        {
+          "name": "amount",
+          "prompt": "How much would you like to donate?",
+          "type": "select",
+          "options": ["$25", "$50", "$100", "$250", "$500", "Other"],
+          "required": true
+        },
+        {
+          "name": "custom_amount",
+          "prompt": "Please enter the amount:",
+          "type": "currency",
+          "conditional": {
+            "show_when": "amount",
+            "equals": "Other"
+          }
+        },
+        {
+          "name": "frequency",
+          "prompt": "Would you like to make this a recurring donation?",
+          "type": "select",
+          "options": ["One-time", "Monthly", "Quarterly", "Annually"],
+          "required": true
+        },
+        {
+          "name": "email",
+          "prompt": "Email for your tax-deductible receipt?",
+          "type": "email",
+          "required": true
+        }
+      ],
+      "confirmation": {
+        "message": "Thank you for your generous donation!"
+      },
+      "fulfillment": {
+        "type": "redirect",
+        "url": "{{DONATION_URL}}"
+      }
+    },
+
+    "contact": {
+      "enabled": true,
+      "trigger_card": "contact",
+      "fields": [
+        {
+          "name": "inquiry_type",
+          "prompt": "What would you like to contact us about?",
+          "type": "select",
+          "options": [
+            "General information",
+            "Volunteering",
+            "Donations",
+            "Support services",
+            "Partnership opportunities",
+            "Other"
+          ],
+          "required": true
+        },
+        {
+          "name": "name",
+          "prompt": "What's your name?",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "email",
+          "prompt": "What's your email address?",
+          "type": "email",
+          "required": true
+        },
+        {
+          "name": "message",
+          "prompt": "What's your message or question?",
+          "type": "textarea",
+          "required": true
+        }
+      ],
+      "confirmation": {
+        "message": "Thank you, {name}! We'll respond within 24-48 hours."
+      },
+      "fulfillment": {
+        "type": "lambda",
+        "function": "Master_Function_Staging",
+        "action": "process_contact_form"
+      }
+    },
+
+    "request_support": {
+      "enabled": false,
+      "trigger_card": "request_support",
+      "fields": [
+        {
+          "name": "relationship",
+          "prompt": "What's your relationship to the child/children?",
+          "type": "select",
+          "options": [
+            "Foster parent",
+            "Kinship caregiver",
+            "Adoptive parent",
+            "Caseworker",
+            "Other"
+          ],
+          "required": true
+        },
+        {
+          "name": "need_type",
+          "prompt": "What type of support do you need?",
+          "type": "multiselect",
+          "options": [
+            "Material goods",
+            "Services",
+            "Information",
+            "Emotional support",
+            "Other"
+          ],
+          "required": true
+        },
+        {
+          "name": "urgency",
+          "prompt": "How urgent is this need?",
+          "type": "select",
+          "options": ["Immediate", "This week", "This month", "No rush"],
+          "required": true
+        },
+        {
+          "name": "contact_info",
+          "prompt": "How can we reach you? (phone or email)",
+          "type": "text",
+          "required": true
+        }
+      ],
+      "confirmation": {
+        "message": "We've received your request and will contact you soon."
+      },
+      "fulfillment": {
+        "type": "lambda",
+        "function": "Master_Function_Staging",
+        "action": "process_support_request"
+      }
+    }
+  },
+
+  "form_settings": {
+    "max_retries": 2,
+    "abandon_prompt": "No worries! Feel free to come back anytime.",
+    "progress_indicator": true,
+    "validation_messages": {
+      "email": "Please provide a valid email address",
+      "phone": "Please provide a valid phone number",
+      "zipcode": "Please provide a valid zip code",
+      "required": "This information is required to continue"
+    }
+  }
+}

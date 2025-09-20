@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Response Cards - Real Examples from KB Extraction</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            color: white;
+            text-align: center;
+            margin-bottom: 10px;
+            font-size: 2.5rem;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        }
+
+        .subtitle {
+            color: rgba(255,255,255,0.9);
+            text-align: center;
+            margin-bottom: 50px;
+            font-size: 1.1rem;
+        }
+
+        .organization-section {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            margin-bottom: 40px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+        }
+
+        .org-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+
+        .org-name {
+            font-size: 1.8rem;
+            color: #333;
+            font-weight: 600;
+        }
+
+        .strategy-badge {
+            padding: 8px 20px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .strategy-exploration {
+            background: #e3f2fd;
+            color: #1976d2;
+        }
+
+        .strategy-qualification {
+            background: #fce4ec;
+            color: #c2185b;
+        }
+
+        .chat-container {
+            background: #f8f9fa;
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 30px;
+        }
+
+        .ai-message {
+            background: white;
+            padding: 20px;
+            border-radius: 15px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+
+        .message-text {
+            color: #333;
+            line-height: 1.6;
+            margin-bottom: 20px;
+        }
+
+        .cards-container {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+
+        /* Card Base Styles */
+        .response-card {
+            background: white;
+            border-radius: 12px;
+            padding: 16px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            transition: all 0.3s ease;
+            border: 2px solid transparent;
+            cursor: pointer;
+            flex: 1;
+            min-width: 250px;
+            max-width: 350px;
+        }
+
+        .response-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.12);
+        }
+
+        /* Primary Action Card */
+        .card-action {
+            border-color: #007bff;
+            background: linear-gradient(135deg, #ffffff 0%, #f0f8ff 100%);
+        }
+
+        .card-action .card-title {
+            color: #007bff;
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .card-action .card-subtitle {
+            color: #666;
+            font-size: 0.9rem;
+            margin-bottom: 12px;
+        }
+
+        .card-action .card-button {
+            background: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            border: none;
+            font-size: 0.95rem;
+            font-weight: 500;
+            cursor: pointer;
+            width: 100%;
+            transition: background 0.3s ease;
+        }
+
+        .card-action .card-button:hover {
+            background: #0056b3;
+        }
+
+        /* Info/Requirement Card */
+        .card-info {
+            border-color: #ffc107;
+            background: linear-gradient(135deg, #ffffff 0%, #fffbf0 100%);
+        }
+
+        .card-warning {
+            border-color: #ff6b6b;
+            background: linear-gradient(135deg, #ffffff 0%, #fff5f5 100%);
+        }
+
+        .card-info .card-title,
+        .card-warning .card-title {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .card-info .card-title {
+            color: #f57c00;
+        }
+
+        .card-warning .card-title {
+            color: #dc3545;
+        }
+
+        .card-content {
+            color: #333;
+            line-height: 1.5;
+        }
+
+        .card-list {
+            list-style: none;
+            padding: 0;
+        }
+
+        .card-list li {
+            padding: 8px 0;
+            display: flex;
+            align-items: flex-start;
+        }
+
+        .card-list li:before {
+            content: "•";
+            color: #666;
+            font-weight: bold;
+            display: inline-block;
+            width: 1em;
+            margin-right: 8px;
+        }
+
+        /* Program Card */
+        .card-program {
+            border-color: #28a745;
+            background: linear-gradient(135deg, #ffffff 0%, #f0fff4 100%);
+        }
+
+        .card-program .card-title {
+            color: #28a745;
+            font-size: 1.05rem;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .card-program .card-description {
+            color: #666;
+            font-size: 0.9rem;
+            margin-bottom: 10px;
+        }
+
+        .card-program .commitment-badge {
+            display: inline-block;
+            background: #e8f5e9;
+            color: #2e7d32;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+
+        /* Contact Card */
+        .card-contact {
+            border-color: #6c757d;
+            background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+        }
+
+        .card-contact .card-title {
+            color: #495057;
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 12px;
+        }
+
+        .contact-methods {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .contact-method {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            text-decoration: none;
+            color: #333;
+            transition: background 0.3s ease;
+        }
+
+        .contact-method:hover {
+            background: #e9ecef;
+        }
+
+        /* Icons */
+        .icon {
+            width: 20px;
+            height: 20px;
+            display: inline-block;
+        }
+
+        .readiness-indicator {
+            margin-top: 30px;
+            padding: 20px;
+            background: #f0f0f0;
+            border-radius: 10px;
+        }
+
+        .readiness-label {
+            font-size: 0.9rem;
+            color: #666;
+            margin-bottom: 8px;
+        }
+
+        .readiness-bar {
+            height: 8px;
+            background: #ddd;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .readiness-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4caf50 0%, #8bc34a 100%);
+            transition: width 0.5s ease;
+        }
+
+        .scenario-title {
+            font-size: 1.2rem;
+            color: #333;
+            font-weight: 600;
+            margin: 30px 0 15px 0;
+            padding-top: 20px;
+            border-top: 2px solid #f0f0f0;
+        }
+
+        .scenario-context {
+            color: #666;
+            font-style: italic;
+            margin-bottom: 20px;
+            padding: 10px;
+            background: #fafafa;
+            border-left: 3px solid #ccc;
+        }
+
+        .metadata-box {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 20px;
+            font-size: 0.85rem;
+            color: #666;
+        }
+
+        .metadata-item {
+            display: inline-block;
+            margin-right: 20px;
+        }
+
+        .metadata-label {
+            font-weight: 600;
+            color: #495057;
+        }
+
+        @media (max-width: 768px) {
+            .cards-container {
+                flex-direction: column;
+            }
+
+            .response-card {
+                max-width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Smart Response Cards</h1>
+        <p class="subtitle">Real examples extracted from Knowledge Base documents</p>
+
+        <!-- Foster Village Austin -->
+        <div class="organization-section">
+            <div class="org-header">
+                <h2 class="org-name">🏘️ Foster Village Austin</h2>
+                <span class="strategy-badge strategy-exploration">Exploration First Strategy</span>
+            </div>
+
+            <!-- Scenario 1: User asks about helping -->
+            <h3 class="scenario-title">Scenario 1: Initial Engagement</h3>
+            <p class="scenario-context">User: "I want to help foster families in Austin"</p>
+
+            <div class="chat-container">
+                <div class="ai-message">
+                    <p class="message-text">
+                        That's wonderful! Foster Village Austin supports foster, adoptive, and kinship families in Travis County.
+                        We provide free support through community-powered programs. Here are some ways you can make a difference:
+                    </p>
+
+                    <div class="cards-container">
+                        <!-- Primary Action Card - Give -->
+                        <div class="response-card card-action">
+                            <div class="card-title">
+                                💝 Make a Donation
+                            </div>
+                            <div class="card-subtitle">
+                                Support families with your contribution
+                            </div>
+                            <button class="card-button" onclick="alert('Would navigate to: https://www.fostervillageaustin.org/give')">
+                                Give Today
+                            </button>
+                        </div>
+
+                        <!-- Contact Card -->
+                        <div class="response-card card-contact">
+                            <div class="card-title">
+                                📞 Contact Us
+                            </div>
+                            <div class="contact-methods">
+                                <a href="tel:5125994144" class="contact-method">
+                                    <span class="icon">📱</span>
+                                    <span>(512) 599-4144</span>
+                                </a>
+                                <a href="mailto:info@fostervillageaustin.org" class="contact-method">
+                                    <span class="icon">✉️</span>
+                                    <span>Email Us</span>
+                                </a>
+                            </div>
+                        </div>
+
+                        <!-- Info Card -->
+                        <div class="response-card card-info">
+                            <div class="card-title">
+                                ℹ️ About Our Support
+                            </div>
+                            <div class="card-content">
+                                <ul class="card-list">
+                                    <li>Free services for families</li>
+                                    <li>Community-powered programs</li>
+                                    <li>Two resource centers in Austin</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Scenario 2: Ready to volunteer -->
+            <h3 class="scenario-title">Scenario 2: Ready to Take Action</h3>
+            <p class="scenario-context">User has been asking questions and showing high engagement</p>
+
+            <div class="chat-container">
+                <div class="ai-message">
+                    <p class="message-text">
+                        Based on your interest, here are specific programs where you can make an immediate impact:
+                    </p>
+
+                    <div class="cards-container">
+                        <!-- Program Card 1 -->
+                        <div class="response-card card-program">
+                            <div class="card-title">
+                                Oak Haven Resource Center
+                            </div>
+                            <div class="card-description">
+                                Our Dripping Springs location serving families with essential supplies and support
+                            </div>
+                            <span class="commitment-badge">Flexible Hours</span>
+                        </div>
+
+                        <!-- Program Card 2 -->
+                        <div class="response-card card-program">
+                            <div class="card-title">
+                                North Austin Center
+                            </div>
+                            <div class="card-description">
+                                10545 Dessau Rd location providing resources and community connections
+                            </div>
+                            <span class="commitment-badge">Various Opportunities</span>
+                        </div>
+
+                        <!-- Requirement Card -->
+                        <div class="response-card card-info">
+                            <div class="card-title">
+                                ✅ Volunteer Requirements
+                            </div>
+                            <div class="card-content">
+                                <ul class="card-list">
+                                    <li>Must be 18 years or older</li>
+                                    <li>Background check required</li>
+                                    <li>Training provided</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="readiness-indicator">
+                        <div class="readiness-label">User Engagement Level: High (Ready for Action)</div>
+                        <div class="readiness-bar">
+                            <div class="readiness-fill" style="width: 85%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="metadata-box">
+                <span class="metadata-item"><span class="metadata-label">Tenant ID:</span> FOS402334</span>
+                <span class="metadata-item"><span class="metadata-label">Primary CTA:</span> Contact/Give</span>
+                <span class="metadata-item"><span class="metadata-label">Actions Found:</span> 474</span>
+                <span class="metadata-item"><span class="metadata-label">Confidence:</span> 93%</span>
+            </div>
+        </div>
+
+        <!-- Atlanta Angels -->
+        <div class="organization-section">
+            <div class="org-header">
+                <h2 class="org-name">😇 Atlanta Angels</h2>
+                <span class="strategy-badge strategy-qualification">Qualification First Strategy</span>
+            </div>
+
+            <!-- Scenario 1: Initial Interest in Volunteering -->
+            <h3 class="scenario-title">Scenario 1: Volunteer Interest</h3>
+            <p class="scenario-context">User: "I'd like to volunteer with Atlanta Angels"</p>
+
+            <div class="chat-container">
+                <div class="ai-message">
+                    <p class="message-text">
+                        Thank you for your interest in volunteering with Atlanta Angels! We match volunteers with youth
+                        in foster care to provide consistent, caring relationships. Before we continue, there are some
+                        important requirements to review:
+                    </p>
+
+                    <div class="cards-container">
+                        <!-- Requirements Card (FIRST - Qualification Strategy) -->
+                        <div class="response-card card-warning">
+                            <div class="card-title">
+                                ⚠️ Important Requirements
+                            </div>
+                            <div class="card-content">
+                                <ul class="card-list">
+                                    <li><strong>Minimum Age:</strong> 22 years old</li>
+                                    <li><strong>Commitment:</strong> MINIMUM ONE YEAR</li>
+                                    <li><strong>Background Check:</strong> Required</li>
+                                    <li><strong>Training:</strong> Mandatory orientation</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <!-- Info Card about Programs -->
+                        <div class="response-card card-info">
+                            <div class="card-title">
+                                📋 Our Programs
+                            </div>
+                            <div class="card-content">
+                                <ul class="card-list">
+                                    <li><strong>Love Box:</strong> Support foster families</li>
+                                    <li><strong>Dare to Dream:</strong> Mentor youth 14-24</li>
+                                    <li>Both require long-term commitment</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Scenario 2: After Qualification Confirmed -->
+            <h3 class="scenario-title">Scenario 2: Qualified Volunteer</h3>
+            <p class="scenario-context">User has confirmed they meet all requirements</p>
+
+            <div class="chat-container">
+                <div class="ai-message">
+                    <p class="message-text">
+                        Excellent! Since you meet our requirements, let's get you started with a discovery session
+                        where you'll learn more about our programs and find the best fit for your interests and availability.
+                    </p>
+
+                    <div class="cards-container">
+                        <!-- Primary CTA - Discovery Session -->
+                        <div class="response-card card-action">
+                            <div class="card-title">
+                                🎯 Schedule Discovery Session
+                            </div>
+                            <div class="card-subtitle">
+                                Learn about our programs and find your fit
+                            </div>
+                            <button class="card-button" onclick="alert('Would navigate to: https://www.atlantaangels.org/volunteer.html')">
+                                Book Your Session
+                            </button>
+                        </div>
+
+                        <!-- Program Card - Love Box -->
+                        <div class="response-card card-program">
+                            <div class="card-title">
+                                Love Box Program
+                            </div>
+                            <div class="card-description">
+                                Provide wraparound support to foster families through consistent care teams
+                            </div>
+                            <span class="commitment-badge">2-3 hours/month</span>
+                        </div>
+
+                        <!-- Program Card - Dare to Dream -->
+                        <div class="response-card card-program">
+                            <div class="card-title">
+                                Dare to Dream
+                            </div>
+                            <div class="card-description">
+                                One-on-one mentorship for youth aging out of foster care
+                            </div>
+                            <span class="commitment-badge">2 hours biweekly</span>
+                        </div>
+                    </div>
+
+                    <div class="readiness-indicator">
+                        <div class="readiness-label">User Qualification: Verified ✓</div>
+                        <div class="readiness-bar">
+                            <div class="readiness-fill" style="width: 100%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="metadata-box">
+                <span class="metadata-item"><span class="metadata-label">Tenant ID:</span> ATL001234</span>
+                <span class="metadata-item"><span class="metadata-label">Primary CTA:</span> Discovery Session</span>
+                <span class="metadata-item"><span class="metadata-label">Actions Found:</span> 30</span>
+                <span class="metadata-item"><span class="metadata-label">Confidence:</span> 93%</span>
+            </div>
+        </div>
+
+        <!-- Explanation Section -->
+        <div class="organization-section">
+            <div class="org-header">
+                <h2 class="org-name">📊 Card Strategy Comparison</h2>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px;">
+                <div>
+                    <h3 style="color: #1976d2; margin-bottom: 15px;">Exploration First (Foster Village)</h3>
+                    <ul style="line-height: 1.8;">
+                        <li>Shows options and opportunities immediately</li>
+                        <li>Lets users explore different ways to help</li>
+                        <li>Requirements mentioned but not blocking</li>
+                        <li>Encourages engagement through variety</li>
+                        <li>Best for organizations with flexible involvement</li>
+                    </ul>
+                </div>
+
+                <div>
+                    <h3 style="color: #c2185b; margin-bottom: 15px;">Qualification First (Atlanta Angels)</h3>
+                    <ul style="line-height: 1.8;">
+                        <li>Shows requirements upfront</li>
+                        <li>Protects both volunteers and beneficiaries</li>
+                        <li>Prevents wasted time for unqualified users</li>
+                        <li>CTAs appear after qualification confirmed</li>
+                        <li>Best for organizations with strict requirements</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div style="margin-top: 30px; padding: 20px; background: #f8f9fa; border-radius: 10px;">
+                <h4 style="color: #333; margin-bottom: 10px;">🎯 Key Insight</h4>
+                <p style="color: #666; line-height: 1.6;">
+                    The card extraction automatically determines the best strategy based on the requirements found in the
+                    knowledge base. Organizations with age restrictions and long-term commitments get "qualification_first"
+                    strategy, while those with flexible options get "exploration_first" strategy.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Add click animations to cards
+        document.querySelectorAll('.response-card').forEach(card => {
+            card.addEventListener('click', function() {
+                this.style.transform = 'scale(0.98)';
+                setTimeout(() => {
+                    this.style.transform = '';
+                }, 100);
+            });
+        });
+
+        // Simulate progressive disclosure
+        const readinessBars = document.querySelectorAll('.readiness-fill');
+        setTimeout(() => {
+            readinessBars.forEach(bar => {
+                bar.style.width = bar.style.width;
+            });
+        }, 500);
+    </script>
+</body>
+</html>
