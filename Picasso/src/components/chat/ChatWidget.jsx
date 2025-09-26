@@ -8,6 +8,7 @@ import { initializeMobileCompatibility } from "../../utils/mobileCompatibility";
 import ChatHeader from "./ChatHeader";
 import InputBar from "./InputBar";
 import ChatFooter from "./ChatFooter";
+import "./ChatWidget.css";
 import AttachmentMenu from "./AttachmentMenu";
 import MessageBubble from "./MessageBubble";
 import TypingIndicator from "./TypingIndicator";
@@ -438,14 +439,7 @@ function ChatWidget() {
   // Don't render anything if config is still loading to prevent null reference errors
   if (!config) {
     return (
-      <div style={{ 
-        display: 'flex', 
-        alignItems: 'center', 
-        justifyContent: 'center', 
-        height: '100%', 
-        color: '#666',
-        fontFamily: 'system-ui'
-      }}>
+      <div className="chat-widget-loading">
         Loading...
       </div>
     );
@@ -474,8 +468,8 @@ function ChatWidget() {
           
           {/* 🔧 FIXED: Callout with proper state management and text override */}
           {showCallout && (
-            <div 
-              className={`chat-callout ${showCallout ? 'visible' : ''}`}
+            <div
+              className={`chat-callout clickable ${showCallout ? 'visible' : ''}`}
               onClick={(e) => {
                 // If clicking the close button, don't open the widget
                 if (e.target.closest('.chat-callout-close')) {
@@ -486,7 +480,6 @@ function ChatWidget() {
                   handleToggle();
                 }
               }}
-              style={{ cursor: 'pointer' }}
             >
               <div className="chat-callout-header">
                 <div className="chat-callout-text" dangerouslySetInnerHTML={{ __html: calloutText }}/>

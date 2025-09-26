@@ -1,0 +1,115 @@
+/* ChatProviderOrchestrator.css - Styles for chat provider orchestration */
+
+/* Loading state - hidden by default */
+.chat-provider-loading {
+  display: none;
+  padding: var(--spacing-md, 1rem);
+  text-align: center;
+  color: var(--text-secondary, #666);
+  font-family: var(--font-family);
+  font-size: var(--font-size-base, 14px);
+}
+
+/* Provider wrapper container */
+.chat-provider-wrapper {
+  height: 100%;
+  width: 100%;
+  position: relative;
+  font-family: var(--font-family);
+}
+
+/* Error state for provider */
+.chat-provider-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  width: 100%;
+  padding: var(--spacing-lg, 1.5rem);
+  text-align: center;
+}
+
+.chat-provider-error-message {
+  color: var(--text-danger, #dc2626);
+  font-size: var(--font-size-base, 14px);
+  line-height: var(--line-height-base, 1.5);
+  max-width: 400px;
+}
+
+/* Provider state indicator */
+.chat-provider-state {
+  position: absolute;
+  top: 0;
+  right: 0;
+  padding: 4px 8px;
+  background-color: var(--bg-secondary, #f9fafb);
+  border-radius: var(--border-radius-small, 8px);
+  font-size: 11px;
+  color: var(--text-muted, #9ca3af);
+  z-index: 10;
+  opacity: 0.8;
+  display: none; /* Hidden by default, shown in development */
+}
+
+/* Development mode indicator */
+.chat-provider-wrapper[data-env="development"] .chat-provider-state {
+  display: block;
+}
+
+/* Provider fallback container */
+.chat-provider-fallback {
+  padding: var(--spacing-md, 1rem);
+  background-color: var(--card-warning-bg, #fef3c7);
+  border: 1px solid var(--card-warning-border, #fbbf24);
+  border-radius: var(--border-radius, 12px);
+  margin: var(--spacing-sm, 0.5rem);
+}
+
+.chat-provider-fallback-text {
+  color: var(--card-warning-text, #92400e);
+  font-size: var(--font-size-base, 14px);
+  line-height: var(--line-height-base, 1.5);
+}
+
+/* Provider initialization */
+.chat-provider-initializing {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  width: 100%;
+  color: var(--text-secondary, #666);
+  font-size: var(--font-size-base, 14px);
+}
+
+.chat-provider-spinner {
+  margin-right: 8px;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border-color);
+  border-top-color: var(--primary-color);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Mobile responsiveness */
+@media (max-width: 640px) {
+  .chat-provider-error-message {
+    font-size: 13px;
+    padding: var(--spacing-md, 1rem);
+  }
+
+  .chat-provider-state {
+    font-size: 10px;
+    padding: 3px 6px;
+  }
+}

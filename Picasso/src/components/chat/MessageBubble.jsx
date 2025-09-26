@@ -8,6 +8,7 @@ import ResponseCard from "./ResponseCard";
 import { CTAButtonGroup } from "./CTAButton";
 import { streamingRegistry } from "../../utils/streamingRegistry";
 import { marked } from 'marked';
+import "./MessageBubble.css";
 import DOMPurify from 'dompurify';
 
 // Configure marked for streaming markdown
@@ -596,23 +597,12 @@ export default function MessageBubble({
           suppressHydrationWarning
           // For messages that were streamed, content is managed imperatively
           // For non-streamed messages, use React's dangerouslySetInnerHTML
+          className={`message-content-rendered ${streamingFlag ? 'streaming' : ''}`}
           dangerouslySetInnerHTML={
             (!streamingFlag) && typeof content === 'string' && content.length
               ? { __html: content }
               : undefined
           }
-          style={{
-            display: "block",
-            visibility: "visible",
-            opacity: 1,
-            whiteSpace: "normal",
-            wordBreak: "break-word",
-            transition: "none",
-            willChange: streamingFlag ? "contents" : "auto",
-            contentVisibility: "visible",
-            contain: "none",
-            isolation: "auto"
-          }}
         />
 
         {/* Retry button for failed messages */}

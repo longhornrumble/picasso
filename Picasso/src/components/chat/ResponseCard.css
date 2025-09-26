@@ -1,0 +1,316 @@
+/* ResponseCard.css - Styles for KB-driven smart response cards */
+
+.response-card {
+  margin: 12px 0;
+  animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Base card styles */
+.response-card > div {
+  border-radius: var(--border-radius, 12px);
+  padding: 16px;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  box-shadow: var(--card-shadow);
+  transition: all 0.2s ease;
+}
+
+.response-card > div:hover {
+  box-shadow: var(--card-shadow-hover);
+}
+
+.card-title {
+  font-size: var(--font-size-heading, 16px);
+  font-weight: var(--font-weight-semibold, 600);
+  color: var(--card-title-color);
+  margin: 0 0 8px 0;
+}
+
+.card-subtitle {
+  font-size: var(--font-size-base, 14px);
+  color: var(--card-subtitle-color);
+  margin: 0 0 12px 0;
+}
+
+.card-description {
+  font-size: var(--font-size-base, 14px);
+  color: var(--card-description-color);
+  line-height: var(--line-height-base, 1.5);
+  margin: 8px 0;
+}
+
+/* Info Card */
+.info-card {
+  background: var(--card-bg-secondary);
+}
+
+.info-card.warning {
+  background: var(--card-warning-bg);
+  border-color: var(--card-warning-border);
+}
+
+.info-card.high {
+  border-width: 2px;
+  border-color: var(--card-warning-border);
+}
+
+.info-list {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0 0;
+}
+
+.info-list li {
+  display: flex;
+  align-items: center;
+  padding: 6px 0;
+  font-size: 14px;
+}
+
+.info-list li.critical {
+  color: var(--text-danger);
+  font-weight: 500;
+}
+
+.info-list .label {
+  font-weight: 500;
+  margin-right: 8px;
+  color: var(--text-emphasis);
+}
+
+.info-list .value {
+  color: var(--card-description-color);
+}
+
+/* Action Card */
+.action-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--card-premium-gradient);
+  border: none;
+  color: var(--text-inverse);
+}
+
+.action-card .card-title {
+  color: var(--text-inverse);
+}
+
+.action-card .card-subtitle {
+  color: var(--card-premium-subtitle);
+}
+
+.action-button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: var(--card-glass-bg);
+  border: 1px solid var(--card-glass-border);
+  border-radius: var(--border-radius-small, 8px);
+  color: var(--text-inverse);
+  font-size: var(--font-size-base, 14px);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.action-button:hover {
+  background: var(--card-glass-border);
+  transform: translateX(2px);
+}
+
+.arrow-icon {
+  transition: transform 0.2s ease;
+}
+
+.action-button:hover .arrow-icon {
+  transform: translateX(3px);
+}
+
+/* Program Card */
+.program-card {
+  background: var(--card-info-bg);
+  border-color: var(--card-info-border);
+}
+
+.commitment-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: var(--bg-primary);
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--card-info-text);
+  margin: 8px 0;
+}
+
+.clock-icon {
+  color: var(--card-info-border);
+}
+
+.program-link {
+  display: inline-block;
+  margin-top: 8px;
+  color: var(--link-color, var(--primary-color));
+  text-decoration: none;
+  font-size: var(--font-size-base, 14px);
+  font-weight: 500;
+  transition: color 0.2s ease;
+}
+
+.program-link:hover {
+  color: var(--primary-dark, var(--card-info-text));
+}
+
+/* Requirement Card */
+.requirement-card {
+  background: var(--card-error-bg);
+  border-color: var(--card-error-border);
+}
+
+.requirement-card.warning {
+  background: var(--card-warning-bg);
+  border-color: var(--card-warning-border);
+}
+
+.requirement-card.high {
+  border-width: 2px;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    border-color: var(--card-error-border);
+  }
+  50% {
+    border-color: var(--text-danger);
+  }
+}
+
+.requirement-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.warning-icon {
+  color: var(--card-error-border);
+}
+
+.requirement-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.requirement-list li {
+  padding: 8px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.critical-requirement {
+  font-weight: 600;
+  color: var(--card-error-text);
+}
+
+.critical-badge {
+  background: var(--card-error-border);
+  color: var(--text-inverse);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.req-label {
+  font-weight: 500;
+  color: var(--card-error-text);
+}
+
+.req-value {
+  color: var(--card-error-text);
+}
+
+/* Contact Card */
+.contact-card {
+  background: var(--bg-tertiary);
+}
+
+.contact-details {
+  margin-top: 12px;
+}
+
+.contact-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  font-size: 14px;
+}
+
+.contact-icon {
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.contact-item a {
+  color: var(--link-color, var(--primary-color));
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.contact-item a:hover {
+  color: var(--primary-dark, var(--card-info-text));
+  text-decoration: underline;
+}
+
+/* Emphasis modifiers */
+.response-card.high > div {
+  transform: scale(1.02);
+  box-shadow: var(--card-shadow-hover);
+}
+
+/* Mobile responsiveness */
+@media (max-width: 640px) {
+  .response-card > div {
+    padding: 12px;
+  }
+
+  .card-title {
+    font-size: 15px;
+  }
+
+  .action-card {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .action-button {
+    margin-top: 12px;
+    width: 100%;
+    justify-content: center;
+  }
+
+  .commitment-badge {
+    display: flex;
+  }
+}

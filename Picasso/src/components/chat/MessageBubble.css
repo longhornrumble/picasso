@@ -1,0 +1,133 @@
+/* MessageBubble.css - Styles for message bubbles using CSS variables */
+
+/* Message content base styles */
+.message-content-rendered {
+  display: block;
+  visibility: visible;
+  opacity: 1;
+  white-space: normal;
+  word-break: break-word;
+  transition: none;
+  contain: none;
+  isolation: auto;
+  content-visibility: visible;
+}
+
+/* Streaming state optimization */
+.message-content-rendered.streaming {
+  will-change: contents;
+}
+
+.message-content-rendered:not(.streaming) {
+  will-change: auto;
+}
+
+/* Message bubble container */
+.message-bubble-container {
+  display: flex;
+  margin-bottom: var(--message-spacing, 20px);
+  line-height: var(--line-height-base, 1.4);
+}
+
+/* User message alignment */
+.message-bubble-container.user {
+  justify-content: flex-end;
+}
+
+/* Bot message alignment */
+.message-bubble-container.bot {
+  justify-content: flex-start;
+}
+
+/* Message bubble content */
+.message-bubble-content {
+  max-width: 75%;
+  padding: var(--bubble-padding, 12px 16px);
+  font-size: var(--font-size-base, 14px);
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  border-radius: var(--border-radius, 12px);
+  box-shadow: var(--bubble-shadow);
+}
+
+/* User message styles */
+.message-bubble-content.user {
+  background-color: var(--user-bubble-color);
+  color: var(--user-bubble-text-color);
+  margin-left: auto;
+}
+
+/* Bot message styles */
+.message-bubble-content.bot {
+  background-color: var(--bot-bubble-color);
+  color: var(--bot-bubble-text-color);
+  margin-right: auto;
+}
+
+/* Error message styles */
+.message-bubble-content.error {
+  background-color: var(--card-error-bg, #fee2e2);
+  color: var(--text-danger, #dc2626);
+  border: 1px solid var(--card-error-border, #ef4444);
+}
+
+/* Links within messages */
+.message-bubble-content a {
+  color: var(--link-color, var(--primary-color));
+  text-decoration: underline;
+}
+
+.message-bubble-content.user a {
+  color: var(--user-bubble-text-color);
+}
+
+/* Code blocks within messages */
+.message-bubble-content pre {
+  background-color: var(--bg-tertiary, #f3f4f6);
+  border-radius: var(--border-radius-small, 8px);
+  padding: 8px;
+  margin: 8px 0;
+  overflow-x: auto;
+}
+
+.message-bubble-content code {
+  background-color: var(--bg-secondary, #f9fafb);
+  padding: 2px 4px;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 0.9em;
+}
+
+/* Avatar styles */
+.message-avatar {
+  width: var(--avatar-size, 32px);
+  height: var(--avatar-size, 32px);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-color: var(--avatar-background-color, transparent);
+  border-radius: var(--avatar-border-radius, 50%);
+  margin-right: 8px;
+  margin-top: 4px;
+  flex-shrink: 0;
+}
+
+/* Timestamp styles */
+.message-timestamp {
+  font-size: 11px;
+  color: var(--text-muted, #9ca3af);
+  margin-top: 4px;
+  opacity: 0.8;
+}
+
+/* Mobile responsiveness */
+@media (max-width: 640px) {
+  .message-bubble-content {
+    max-width: 85%;
+    padding: 10px 14px;
+  }
+
+  .message-bubble-container {
+    margin-bottom: 16px;
+  }
+}

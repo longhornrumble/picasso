@@ -1,0 +1,159 @@
+/* ErrorBoundary.css - Styles for error UI using CSS variables */
+
+.error-boundary-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+  width: 100%;
+  padding: var(--spacing-lg, 1.5rem);
+  background-color: var(--error-bg, var(--bg-tertiary));
+  font-family: var(--font-family);
+}
+
+.error-boundary-panel {
+  background-color: var(--error-bg, var(--bg-primary));
+  border: 1px solid var(--error-border);
+  border-radius: var(--border-radius, 12px);
+  padding: var(--spacing-lg, 1.5rem);
+  max-width: 500px;
+  width: 100%;
+  box-shadow: var(--container-shadow);
+  text-align: center;
+}
+
+.error-icon {
+  margin: 0 auto 16px;
+  display: block;
+}
+
+.error-icon svg {
+  width: 48px;
+  height: 48px;
+  stroke: var(--error-icon-color);
+}
+
+.error-heading {
+  font-size: 18px;
+  font-weight: var(--font-weight-semibold, 600);
+  color: var(--error-heading-color);
+  margin: 0 0 8px 0;
+  line-height: 1.4;
+}
+
+.error-message {
+  font-size: var(--font-size-base, 14px);
+  color: var(--error-text-color);
+  line-height: var(--line-height-base, 1.5);
+  margin: 0 0 20px 0;
+}
+
+.error-message-subtitle {
+  display: block;
+  margin-top: 4px;
+  font-size: 13px;
+  opacity: 0.8;
+}
+
+.error-reload-button {
+  background-color: var(--error-button-bg, var(--primary-color));
+  color: var(--error-button-text);
+  padding: 10px 20px;
+  border-radius: var(--border-radius-small, 8px);
+  font-size: var(--font-size-base, 14px);
+  font-weight: 500;
+  border: none;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.error-reload-button:hover {
+  background-color: var(--error-button-hover-bg, var(--primary-dark));
+}
+
+.error-reload-button:active {
+  transform: scale(0.98);
+}
+
+.error-details {
+  margin-top: 20px;
+  text-align: left;
+  border-top: 1px solid var(--error-border);
+  padding-top: 16px;
+}
+
+.error-details-summary {
+  cursor: pointer;
+  margin-bottom: 8px;
+  font-size: var(--font-size-base, 14px);
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.error-details-summary:hover {
+  color: var(--text-primary);
+}
+
+.error-details-content {
+  background-color: var(--error-details-bg);
+  border: 1px solid var(--error-details-border);
+  border-radius: var(--border-radius-small, 8px);
+  padding: 12px;
+  font-size: 12px;
+  font-family: monospace;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 200px;
+  overflow-y: auto;
+  color: var(--text-primary);
+}
+
+/* Mobile responsiveness */
+@media (max-width: 640px) {
+  .error-boundary-panel {
+    padding: var(--spacing-md, 1rem);
+    max-width: calc(100% - 32px);
+  }
+
+  .error-heading {
+    font-size: 16px;
+  }
+
+  .error-message {
+    font-size: 13px;
+  }
+
+  .error-reload-button {
+    width: 100%;
+  }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .error-boundary-panel {
+    border-width: 2px;
+  }
+
+  .error-reload-button {
+    border: 2px solid currentColor;
+  }
+}
+
+/* Dark mode support (when implemented) */
+@media (prefers-color-scheme: dark) {
+  .error-boundary-container {
+    background-color: var(--bg-tertiary, #1f2937);
+  }
+
+  .error-boundary-panel {
+    background-color: var(--bg-secondary, #111827);
+    border-color: var(--border-color, #374151);
+  }
+
+  .error-details-content {
+    background-color: var(--bg-primary, #030712);
+    border-color: var(--border-color, #374151);
+  }
+}

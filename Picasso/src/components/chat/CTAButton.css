@@ -1,0 +1,80 @@
+/* CTAButton.css - Styles for context-aware CTA buttons */
+/* Uses CSS variables defined in theme.css and applied by useCSSVariables */
+
+.cta-button-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--message-gap, 8px);
+  margin-top: var(--message-gap, 12px);
+  padding: 0 var(--message-padding-horizontal, 8px);
+}
+
+.cta-button {
+  padding: 10px 16px;
+  border-radius: var(--action-chip-border-radius, 20px);
+  border: none;
+  font-size: var(--action-chip-font-size, 14px);
+  font-weight: var(--action-chip-font-weight, 500);
+  font-family: var(--font-family);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+  line-height: var(--action-chip-line-height, 1.2);
+}
+
+/* Primary CTA - Form triggers, main actions */
+.cta-button.cta-primary {
+  background: var(--primary-color);
+  color: var(--primary-text-color, white);
+  box-shadow: var(--action-chip-shadow, 0 2px 4px rgba(0, 0, 0, 0.1));
+}
+
+.cta-button.cta-primary:hover:not(:disabled) {
+  background: var(--primary-hover-color, var(--primary-color));
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+/* Secondary CTA - External links, alternate actions */
+.cta-button.cta-secondary {
+  background: var(--action-chip-secondary-bg, transparent);
+  color: var(--primary-color);
+  border: 1px solid var(--primary-color);
+}
+
+.cta-button.cta-secondary:hover:not(:disabled) {
+  background: var(--primary-color);
+  color: var(--primary-text-color, white);
+}
+
+/* Info CTA - Information requests */
+.cta-button.cta-info {
+  background: var(--action-chip-info-bg, var(--message-bg-user, #f0f0f0));
+  color: var(--action-chip-info-color, var(--text-primary));
+}
+
+.cta-button.cta-info:hover:not(:disabled) {
+  background: var(--action-chip-info-hover-bg, #e0e0e0);
+}
+
+/* Disabled state */
+.cta-button:disabled {
+  opacity: var(--disabled-opacity, 0.5);
+  cursor: not-allowed;
+}
+
+/* Responsive - uses same breakpoint as action chips */
+@media (max-width: 480px) {
+  .cta-button-group {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .cta-button {
+    max-width: 100%;
+    justify-content: center;
+  }
+}

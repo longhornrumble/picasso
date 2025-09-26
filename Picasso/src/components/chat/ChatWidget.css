@@ -1,0 +1,58 @@
+/* ChatWidget.css - Styles for chat widget using CSS variables */
+
+/* Loading state container */
+.chat-widget-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-secondary, #666);
+  font-family: var(--font-family);
+  font-size: var(--font-size-base, 14px);
+}
+
+/* Callout container - clickable to open chat */
+.chat-callout.clickable {
+  cursor: pointer;
+}
+
+/* Callout close button */
+.callout-close-button {
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.2s ease;
+}
+
+.callout-close-button:hover {
+  opacity: 0.8;
+}
+
+.callout-close-button:active {
+  transform: scale(0.95);
+}
+
+/* Widget container - already defined in theme.css but adding here for clarity */
+.chat-widget-container {
+  position: fixed;
+  bottom: var(--widget-bottom, 24px);
+  right: var(--widget-right, 24px);
+  z-index: 999999;
+  font-family: var(--font-family);
+}
+
+/* Ensure proper isolation */
+.chat-widget-root {
+  all: initial;
+  position: fixed !important;
+  z-index: 999999 !important;
+  pointer-events: none !important;
+}
+
+.chat-widget-root * {
+  pointer-events: auto !important;
+}
