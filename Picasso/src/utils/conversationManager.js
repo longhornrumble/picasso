@@ -1269,7 +1269,9 @@ export class ConversationManager {
       content: content,
       timestamp: message.timestamp,
       metadata: message.metadata || {},
-      actions: message.actions || []
+      actions: message.actions || [],
+      ctaButtons: message.ctaButtons || [],
+      cards: message.cards || []
     };
   }
   
