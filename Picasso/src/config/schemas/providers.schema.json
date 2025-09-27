@@ -1,0 +1,591 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://chat.myrecruiter.ai/schemas/providers.schema.json",
+  "title": "Distributed ChatProvider Configuration Schema",
+  "description": "Schema for distributed ChatProvider architecture configuration with 9 specialized providers",
+  "type": "object",
+  "properties": {
+    "providers": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "$ref": "#/definitions/stateProvider"
+        },
+        "api": {
+          "$ref": "#/definitions/apiProvider"
+        },
+        "streaming": {
+          "$ref": "#/definitions/streamingProvider"
+        },
+        "content": {
+          "$ref": "#/definitions/contentProvider"
+        },
+        "monitoring": {
+          "$ref": "#/definitions/monitoringProvider"
+        },
+        "debug": {
+          "$ref": "#/definitions/debugProvider"
+        },
+        "security": {
+          "$ref": "#/definitions/securityProvider"
+        },
+        "analytics": {
+          "$ref": "#/definitions/analyticsProvider"
+        },
+        "integration": {
+          "$ref": "#/definitions/integrationProvider"
+        }
+      },
+      "required": ["state", "api", "streaming", "content", "monitoring", "debug"],
+      "additionalProperties": false
+    },
+    "orchestration": {
+      "type": "object",
+      "properties": {
+        "initializationOrder": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["state", "api", "streaming", "content", "monitoring", "debug", "security", "analytics", "integration"]
+          },
+          "minItems": 6,
+          "maxItems": 9,
+          "uniqueItems": true,
+          "description": "Provider initialization order"
+        },
+        "circuitBreakerEnabled": {
+          "type": "boolean",
+          "description": "Enable circuit breaker pattern for provider failures"
+        },
+        "maxRetries": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10,
+          "description": "Maximum retry attempts for provider operations"
+        },
+        "timeoutMs": {
+          "type": "number",
+          "minimum": 100,
+          "maximum": 30000,
+          "description": "Provider operation timeout in milliseconds"
+        },
+        "healthCheckIntervalMs": {
+          "type": "number",
+          "minimum": 1000,
+          "maximum": 300000,
+          "description": "Health check interval in milliseconds"
+        }
+      },
+      "required": ["initializationOrder", "circuitBreakerEnabled", "maxRetries", "timeoutMs", "healthCheckIntervalMs"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["providers", "orchestration"],
+  "additionalProperties": false,
+  "definitions": {
+    "baseProvider": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable this provider"
+        },
+        "priority": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 10,
+          "description": "Provider priority (1-10, higher is more important)"
+        },
+        "config": {
+          "type": "object",
+          "description": "Provider-specific configuration"
+        }
+      },
+      "required": ["enabled", "priority"],
+      "additionalProperties": true
+    },
+    "stateProvider": {
+      "allOf": [
+        {"$ref": "#/definitions/baseProvider"},
+        {
+          "properties": {
+            "config": {
+              "type": "object",
+              "properties": {
+                "persistState": {
+                  "type": "boolean",
+                  "description": "Persist chat state across sessions"
+                },
+                "stateStorage": {
+                  "type": "string",
+                  "enum": ["memory", "localStorage", "sessionStorage", "indexedDB"],
+                  "description": "State storage mechanism"
+                },
+                "maxHistoryEntries": {
+                  "type": "number",
+                  "minimum": 10,
+                  "maximum": 1000,
+                  "description": "Maximum chat history entries to maintain"
+                },
+                "stateValidation": {
+                  "type": "boolean",
+                  "description": "Enable state validation"
+                },
+                "compressionEnabled": {
+                  "type": "boolean",
+                  "description": "Enable state compression"
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        }
+      ]
+    },
+    "apiProvider": {
+      "allOf": [
+        {"$ref": "#/definitions/baseProvider"},
+        {
+          "properties": {
+            "config": {
+              "type": "object",
+              "properties": {
+                "endpoints": {
+                  "type": "object",
+                  "properties": {
+                    "chat": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "Chat API endpoint"
+                    },
+                    "config": {
+                      "type": "string", 
+                      "format": "uri",
+                      "description": "Configuration API endpoint"
+                    },
+                    "health": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "Health check endpoint"
+                    }
+                  },
+                  "required": ["chat", "config"],
+                  "additionalProperties": false
+                },
+                "authentication": {
+                  "type": "object",
+                  "properties": {
+                    "method": {
+                      "type": "string",
+                      "enum": ["bearer", "apiKey", "custom"],
+                      "description": "Authentication method"
+                    },
+                    "tokenHeader": {
+                      "type": "string",
+                      "description": "Authentication token header name"
+                    }
+                  },
+                  "required": ["method"],
+                  "additionalProperties": false
+                },
+                "requestDefaults": {
+                  "type": "object",
+                  "properties": {
+                    "timeout": {
+                      "type": "number",
+                      "minimum": 1000,
+                      "maximum": 120000
+                    },
+                    "retries": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 5
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "required": ["endpoints"],
+              "additionalProperties": false
+            }
+          }
+        }
+      ]
+    },
+    "streamingProvider": {
+      "allOf": [
+        {"$ref": "#/definitions/baseProvider"},
+        {
+          "properties": {
+            "config": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "description": "Enable streaming responses"
+                },
+                "protocol": {
+                  "type": "string",
+                  "enum": ["sse", "websocket", "fetch-stream"],
+                  "description": "Streaming protocol"
+                },
+                "reconnectAttempts": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 10,
+                  "description": "Maximum reconnection attempts"
+                },
+                "reconnectDelay": {
+                  "type": "number",
+                  "minimum": 100,
+                  "maximum": 30000,
+                  "description": "Reconnection delay in milliseconds"
+                },
+                "chunkSize": {
+                  "type": "number",
+                  "minimum": 1,
+                  "maximum": 8192,
+                  "description": "Stream chunk size in bytes"
+                },
+                "bufferSize": {
+                  "type": "number", 
+                  "minimum": 1024,
+                  "maximum": 65536,
+                  "description": "Stream buffer size in bytes"
+                }
+              },
+              "required": ["enabled", "protocol"],
+              "additionalProperties": false
+            }
+          }
+        }
+      ]
+    },
+    "contentProvider": {
+      "allOf": [
+        {"$ref": "#/definitions/baseProvider"},
+        {
+          "properties": {
+            "config": {
+              "type": "object",
+              "properties": {
+                "sanitization": {
+                  "type": "object",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean",
+                      "description": "Enable content sanitization"
+                    },
+                    "allowedTags": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "Allowed HTML tags"
+                    },
+                    "allowedAttributes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "Allowed HTML attributes"
+                    }
+                  },
+                  "required": ["enabled"],
+                  "additionalProperties": false
+                },
+                "markdown": {
+                  "type": "object",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean",
+                      "description": "Enable markdown processing"
+                    },
+                    "extensions": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": ["tables", "strikethrough", "autolink", "tasklist", "code"]
+                      },
+                      "description": "Enabled markdown extensions"
+                    }
+                  },
+                  "required": ["enabled"],
+                  "additionalProperties": false  
+                },
+                "maxMessageLength": {
+                  "type": "number",
+                  "minimum": 100,
+                  "maximum": 32768,
+                  "description": "Maximum message length in characters"
+                }
+              },
+              "required": ["sanitization", "markdown"],
+              "additionalProperties": false
+            }
+          }
+        }
+      ]
+    },
+    "monitoringProvider": {
+      "allOf": [
+        {"$ref": "#/definitions/baseProvider"},
+        {
+          "properties": {
+            "config": {
+              "type": "object",
+              "properties": {
+                "metrics": {
+                  "type": "object",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "endpoint": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "interval": {
+                      "type": "number",
+                      "minimum": 1000,
+                      "maximum": 300000
+                    }
+                  },
+                  "required": ["enabled"],
+                  "additionalProperties": false
+                },
+                "logging": {
+                  "type": "object",
+                  "properties": {
+                    "level": {
+                      "type": "string",
+                      "enum": ["debug", "info", "warn", "error"]
+                    },
+                    "remoteLogging": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": ["level"],
+                  "additionalProperties": false
+                },
+                "errorTracking": {
+                  "type": "object",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "service": {
+                      "type": "string",
+                      "enum": ["sentry", "bugsnag", "custom"]
+                    },
+                    "dsn": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["enabled"],
+                  "additionalProperties": false
+                }
+              },
+              "required": ["metrics", "logging", "errorTracking"],
+              "additionalProperties": false
+            }
+          }
+        }
+      ]
+    },
+    "debugProvider": {
+      "allOf": [
+        {"$ref": "#/definitions/baseProvider"},
+        {
+          "properties": {
+            "config": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "description": "Enable debug mode"
+                },
+                "verboseLogging": {
+                  "type": "boolean",
+                  "description": "Enable verbose debug logging"
+                },
+                "showDebugPanel": {
+                  "type": "boolean",
+                  "description": "Show debug panel in UI"
+                },
+                "captureNetworkLogs": {
+                  "type": "boolean",
+                  "description": "Capture network request/response logs"
+                },
+                "performanceMetrics": {
+                  "type": "boolean",
+                  "description": "Collect detailed performance metrics"
+                }
+              },
+              "required": ["enabled"],
+              "additionalProperties": false
+            }
+          }
+        }
+      ]
+    },
+    "securityProvider": {
+      "allOf": [
+        {"$ref": "#/definitions/baseProvider"},
+        {
+          "properties": {
+            "config": {
+              "type": "object",
+              "properties": {
+                "csp": {
+                  "type": "object",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "nonce": {
+                      "type": "string"
+                    },
+                    "reportUri": {
+                      "type": "string",
+                      "format": "uri"
+                    }
+                  },
+                  "required": ["enabled"],
+                  "additionalProperties": false
+                },
+                "inputValidation": {
+                  "type": "object",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "maxInputLength": {
+                      "type": "number",
+                      "minimum": 1,
+                      "maximum": 10000
+                    }
+                  },
+                  "required": ["enabled"],
+                  "additionalProperties": false
+                }
+              },
+              "required": ["csp", "inputValidation"],
+              "additionalProperties": false
+            }
+          }
+        }
+      ]
+    },
+    "analyticsProvider": {
+      "allOf": [
+        {"$ref": "#/definitions/baseProvider"},
+        {
+          "properties": {
+            "config": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "service": {
+                  "type": "string",
+                  "enum": ["google", "mixpanel", "amplitude", "custom"]
+                },
+                "trackingId": {
+                  "type": "string"
+                },
+                "events": {
+                  "type": "object",
+                  "properties": {
+                    "pageViews": {
+                      "type": "boolean"
+                    },
+                    "interactions": {
+                      "type": "boolean"
+                    },
+                    "errors": {
+                      "type": "boolean"
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "privacy": {
+                  "type": "object",
+                  "properties": {
+                    "anonymizeIP": {
+                      "type": "boolean"
+                    },
+                    "respectDNT": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": ["anonymizeIP", "respectDNT"],
+                  "additionalProperties": false
+                }
+              },
+              "required": ["enabled"],
+              "additionalProperties": false
+            }
+          }
+        }
+      ]
+    },
+    "integrationProvider": {
+      "allOf": [
+        {"$ref": "#/definitions/baseProvider"},
+        {
+          "properties": {
+            "config": {
+              "type": "object",
+              "properties": {
+                "webhooks": {
+                  "type": "object",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "endpoints": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "format": "uri"
+                      }
+                    },
+                    "events": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": ["enabled"],
+                  "additionalProperties": false
+                },
+                "apis": {
+                  "type": "object",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "endpoints": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string",
+                        "format": "uri"
+                      }
+                    }
+                  },
+                  "required": ["enabled"],
+                  "additionalProperties": false
+                }
+              },
+              "required": ["webhooks", "apis"],
+              "additionalProperties": false
+            }
+          }
+        }
+      ]
+    }
+  }
+}

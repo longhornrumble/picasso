@@ -17,6 +17,9 @@ import StateManagementPanel from "./StateManagementPanel";
 function ChatWidget() {
   const { messages, isTyping, renderMode } = useChat();
   const { config } = useConfig();
+
+  // Debug: Log messages to see what's being received
+  console.log('[ChatWidget] Rendering with messages:', messages.length, messages);
   
   // In iframe mode, we don't need breakpoints - the iframe container handles responsive sizing
   // The widget should always fill its container
@@ -143,6 +146,14 @@ function ChatWidget() {
       isOpen: newOpen,
       size: newOpen ? { width: 360, height: 640 } : { width: 90, height: 90 }
     });
+
+    // Also send the PICASSO_SIZE_CHANGE message that widget-host.js expects
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage({
+        type: 'PICASSO_SIZE_CHANGE',
+        isOpen: newOpen
+      }, '*');
+    }
     
     if (config?.widget_behavior?.remember_state) {
       try {
@@ -433,6 +444,13 @@ function ChatWidget() {
       notifyParentEvent('CALLOUT_STATE_CHANGE', {
         calloutConfig: calloutData
       });
+
+      // Also send simplified callout change message for iframe resizing
+      window.parent.postMessage({
+        type: 'PICASSO_CALLOUT_CHANGE',
+        isVisible: showCallout,
+        width: showCallout ? 360 : 90
+      }, '*');
     }
   }, [config, showCallout, calloutText, calloutEnabled, notifyParentEvent]);
 
