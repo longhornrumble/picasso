@@ -389,8 +389,8 @@ function initializeWidget() {
     container.style.display = 'flex';
     container.style.flexDirection = 'column';
     
-    // Add a temporary loading indicator
-    container.innerHTML = '<div style="display: flex; align-items: center; justify-content: center; height: 100%; background: #f0f0f0; color: #333; font-family: system-ui; flex-direction: column; gap: 10px;"><div>🎨 Loading Picasso...</div><div style="font-size: 12px; opacity: 0.7;">Iframe mode detected</div></div>';
+    // Add a temporary loading indicator with CSS class
+    container.innerHTML = '<div class="picasso-iframe-loading"><div>🎨 Loading Picasso...</div><div class="picasso-iframe-loading-subtitle">Iframe mode detected</div></div>';
     
     // Verify attributes were set
     const isIframe = document.body.getAttribute('data-iframe');
@@ -481,8 +481,8 @@ function initializeWidget() {
 
   } catch (error) {
     console.error("❌ Error initializing Picasso Widget:", error);
-    // Show error in iframe
-    container.innerHTML = `<div style="display: flex; align-items: center; justify-content: center; height: 100%; background: #ffe6e6; color: #d63031; font-family: system-ui; text-align: center; padding: 20px;">
+    // Show error in iframe with CSS class
+    container.innerHTML = `<div class="picasso-iframe-error">
       <div>
         <h3>Picasso Widget Error</h3>
         <p>${error.message}</p>

@@ -10,6 +10,55 @@ body[data-iframe="true"] {
   box-sizing: border-box !important;
 }
 
+/* Collapsed state transparency - when chat is not open */
+body[data-iframe="true"]:not(.chat-open) .chat-widget {
+  background: transparent !important;
+}
+
+body[data-iframe="true"]:not(.chat-open) .chat-container {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+body[data-iframe="true"]:not(.chat-open) .chat-widget-root {
+  background: transparent !important;
+}
+
+/* Callout visibility state */
+body[data-iframe="true"].callout-visible:not(.chat-open) {
+  background: transparent !important;
+}
+
+/* === IFRAME LOADING AND ERROR STATES === */
+.picasso-iframe-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  background: #f0f0f0;
+  color: #333;
+  font-family: system-ui, -apple-system, sans-serif;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.picasso-iframe-loading-subtitle {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.picasso-iframe-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  background: #ffe6e6;
+  color: #d63031;
+  font-family: system-ui, -apple-system, sans-serif;
+  text-align: center;
+  padding: 20px;
+}
+
 /* CSS Variables for Multi-Tenant Support */
 :root {
   /* Base System Variables (Static) */
