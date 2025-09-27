@@ -5,8 +5,11 @@
   "main": "src/widget.js",
   "type": "module",
   "scripts": {
-    "dev": "node esbuild.config.mjs --serve",
-    "build": "node esbuild.config.mjs",
+    "dev": "BUILD_ENV=development node esbuild.config.mjs --serve",
+    "dev:staging": "BUILD_ENV=staging node esbuild.config.mjs --serve",
+    "dev:production": "BUILD_ENV=production node esbuild.config.mjs --serve",
+    "build": "BUILD_ENV=production node esbuild.config.mjs",
+    "build:dev": "BUILD_ENV=development node esbuild.config.mjs",
     "build:staging": "BUILD_ENV=staging node esbuild.config.mjs",
     "build:production": "BUILD_ENV=production node esbuild.config.mjs",
     "build:analyze": "ANALYZE=true BUILD_ENV=production node esbuild.config.mjs",

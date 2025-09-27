@@ -100,27 +100,40 @@ const shouldAnalyze = process.env.ANALYZE === 'true';
 console.log(`🏗️ ESBuild for environment: ${environment.toUpperCase()}`);
 console.log(`📦 Build mode: ${isDevelopment ? 'DEVELOPMENT' : 'PRODUCTION'}`);
 
-// Environment-specific configuration matching vite.config.js
+// Environment-specific configuration aligned with environment.js
 const ENVIRONMENT_CONFIG = {
   development: {
+    // Development uses Lambda Function URLs directly for all endpoints
     API_BASE_URL: 'https://2ho6tw56ccvl6uvicra4f56j740dyxgo.lambda-url.us-east-1.on.aws',
     WIDGET_DOMAIN: 'http://localhost:8000',
     CONFIG_DOMAIN: 'https://picassostaging.s3.amazonaws.com',
+    CONFIG_ENDPOINT: 'https://2ho6tw56ccvl6uvicra4f56j740dyxgo.lambda-url.us-east-1.on.aws/?action=get_config',
+    CHAT_ENDPOINT: 'https://2ho6tw56ccvl6uvicra4f56j740dyxgo.lambda-url.us-east-1.on.aws/?action=chat',
+    CONVERSATION_ENDPOINT: 'https://2ho6tw56ccvl6uvicra4f56j740dyxgo.lambda-url.us-east-1.on.aws/?action=conversation',
+    ERROR_REPORTING_ENDPOINT: 'https://2ho6tw56ccvl6uvicra4f56j740dyxgo.lambda-url.us-east-1.on.aws/?action=log_error',
     STREAMING_ENDPOINT: 'https://7pluzq3axftklmb4gbgchfdahu0lcnqd.lambda-url.us-east-1.on.aws'
   },
   staging: {
+    // Staging uses Lambda Function URLs directly for all endpoints
     API_BASE_URL: 'https://2ho6tw56ccvl6uvicra4f56j740dyxgo.lambda-url.us-east-1.on.aws',
     WIDGET_DOMAIN: 'https://picassostaging.s3.amazonaws.com',
     CONFIG_DOMAIN: 'https://picassostaging.s3.amazonaws.com',
-    CONVERSATION_ENDPOINT: 'https://2ho6tw56ccvl6uvicra4f56j740dyxgo.lambda-url.us-east-1.on.aws?action=conversation', // NEW staging Lambda URL (CORS now fixed!)
-    STREAMING_ENDPOINT: 'https://7pluzq3axftklmb4gbgchfdahu0lcnqd.lambda-url.us-east-1.on.aws' // Bedrock_Streaming_Handler_Staging
+    CONFIG_ENDPOINT: 'https://2ho6tw56ccvl6uvicra4f56j740dyxgo.lambda-url.us-east-1.on.aws/?action=get_config',
+    CHAT_ENDPOINT: 'https://2ho6tw56ccvl6uvicra4f56j740dyxgo.lambda-url.us-east-1.on.aws/?action=chat',
+    CONVERSATION_ENDPOINT: 'https://2ho6tw56ccvl6uvicra4f56j740dyxgo.lambda-url.us-east-1.on.aws/?action=conversation',
+    ERROR_REPORTING_ENDPOINT: 'https://2ho6tw56ccvl6uvicra4f56j740dyxgo.lambda-url.us-east-1.on.aws/?action=log_error',
+    STREAMING_ENDPOINT: 'https://7pluzq3axftklmb4gbgchfdahu0lcnqd.lambda-url.us-east-1.on.aws'
   },
   production: {
+    // Production uses API Gateway/CloudFront for main endpoints, Lambda URLs only where needed
     API_BASE_URL: 'https://chat.myrecruiter.ai/Master_Function',
     WIDGET_DOMAIN: 'https://chat.myrecruiter.ai',
     CONFIG_DOMAIN: 'https://picassocode.s3.amazonaws.com',
-    CONVERSATION_ENDPOINT: 'https://hfkpcekuxi3z7kllmoitt7ngae0fggxf.lambda-url.us-east-1.on.aws?action=conversation', // NEW production Lambda URL (CORS in Lambda code only)
-    STREAMING_ENDPOINT: 'https://xqc4wnxwia2nytjkbw6xasjd6q0jckgb.lambda-url.us-east-1.on.aws' // Production Bedrock_Streaming_Handler endpoint
+    CONFIG_ENDPOINT: 'https://chat.myrecruiter.ai/Master_Function?action=get_config',
+    CHAT_ENDPOINT: 'https://chat.myrecruiter.ai/Master_Function?action=chat',
+    CONVERSATION_ENDPOINT: 'https://hfkpcekuxi3z7kllmoitt7ngae0fggxf.lambda-url.us-east-1.on.aws?action=conversation', // Lambda URL for JWT support
+    ERROR_REPORTING_ENDPOINT: 'https://chat.myrecruiter.ai/Master_Function?action=log_error',
+    STREAMING_ENDPOINT: 'https://xqc4wnxwia2nytjkbw6xasjd6q0jckgb.lambda-url.us-east-1.on.aws'
   }
 };
 
@@ -165,10 +178,10 @@ const defineVars = {
   // Existing environment variables
   __ENVIRONMENT__: JSON.stringify(environment),
   __API_BASE_URL__: JSON.stringify(envConfig.API_BASE_URL),
-  __CONFIG_ENDPOINT__: JSON.stringify(`${envConfig.API_BASE_URL}?action=get_config`),
-  __CHAT_ENDPOINT__: JSON.stringify(`${envConfig.API_BASE_URL}?action=chat`),
+  __CONFIG_ENDPOINT__: JSON.stringify(envConfig.CONFIG_ENDPOINT || `${envConfig.API_BASE_URL}?action=get_config`),
+  __CHAT_ENDPOINT__: JSON.stringify(envConfig.CHAT_ENDPOINT || `${envConfig.API_BASE_URL}?action=chat`),
   __CONVERSATION_ENDPOINT__: JSON.stringify(envConfig.CONVERSATION_ENDPOINT || `${envConfig.API_BASE_URL}?action=conversation`),
-  __ERROR_REPORTING_ENDPOINT__: JSON.stringify(`${envConfig.API_BASE_URL}?action=log_error`),
+  __ERROR_REPORTING_ENDPOINT__: JSON.stringify(envConfig.ERROR_REPORTING_ENDPOINT || `${envConfig.API_BASE_URL}?action=log_error`),
   __STREAMING_ENDPOINT__: JSON.stringify(envConfig.STREAMING_ENDPOINT || ''),
   __WIDGET_DOMAIN__: JSON.stringify(envConfig.WIDGET_DOMAIN),
   __CONFIG_DOMAIN__: JSON.stringify(envConfig.CONFIG_DOMAIN),

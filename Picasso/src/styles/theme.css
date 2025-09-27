@@ -776,6 +776,7 @@ body[data-iframe="true"].callout-visible:not(.chat-open) {
     flex-shrink: 0 !important;
   }
 
+
   /* Ensure message bubbles use full width in iframe context */
   body[data-iframe="true"] .message-content {
     max-width: 100% !important;

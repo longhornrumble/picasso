@@ -56,3 +56,15 @@
 .chat-widget-root * {
   pointer-events: auto !important;
 }
+
+/* In iframe mode, make widget root fill the viewport */
+body[data-iframe="true"] .chat-widget-root {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  pointer-events: auto !important;
+}
