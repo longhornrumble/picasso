@@ -94,7 +94,7 @@ body[data-iframe="true"].callout-visible:not(.chat-open) {
   --font-size-base: 14px;
   --font-size-heading: 16px;
   --font-weight-semibold: 600;
-  --line-height-base: 1.28;
+  --line-height-base: 1.5; /* Increased from 1.28 for better readability */
   
   /* Layout & Spacing */
   --border-radius: 12px;
@@ -1031,84 +1031,170 @@ body[data-iframe="true"].callout-visible:not(.chat-open) {
   box-sizing: border-box;
 }
 
-/* Reset margins on markdown-generated content (formatted layer only) */
-.message-content .streaming-formatted p {
-  margin: 0;
-  padding: 0;
+/* === MARKDOWN TYPOGRAPHY (from production) === */
+/* Reset margins on markdown-generated content */
+.message-content .streaming-formatted p,
+.message-content p,
+.streaming-formatted p,
+.message-wrapper p,
+.message-text p,
+.streaming p {
+  display: block !important;
+  margin: 16px 0 16px 0 !important; /* Top and bottom margin for paragraph spacing */
+  padding: 0 !important;
+  line-height: 1.6 !important; /* Comfortable reading line-height for paragraphs */
+  white-space: normal !important;
 }
 
-.message-content .streaming-formatted p + p {
-  margin-top: 8px;
+/* Even more specific for streaming containers */
+.message-text.streaming p,
+.streaming .streaming-formatted p,
+.message.bot .message-content p,
+.message.bot .message-text p,
+.message-text.message-content-rendered p,
+.message-content-rendered .streaming-formatted p,
+div.streaming-formatted p {
+  display: block !important;
+  margin: 16px 0 !important;
+  padding: 0 !important;
 }
 
-/* Add spacing between paragraphs and lists */
+/* Force block display and margins with maximum specificity */
+.message.bot .message-content .message-text.message-content-rendered .streaming-formatted p,
+.picasso-widget p,
+.picasso-widget .message-content p,
+.picasso-widget .streaming-formatted p {
+  display: block !important;
+  margin-top: 16px !important;
+  margin-bottom: 16px !important;
+  padding: 0 !important;
+}
+
+/* Override any initial resets for paragraphs */
+p {
+  display: block !important;
+  margin-block-start: 1em !important;
+  margin-block-end: 1em !important;
+}
+
+/* Target the exact structure from DOM */
+.streaming-formatted > p {
+  display: block !important;
+  margin: 16px 0 !important;
+  padding: 0 !important;
+}
+
+/* First and last paragraph adjustments */
+.streaming-formatted > p:first-of-type {
+  margin-top: 0 !important;
+}
+
+.streaming-formatted > p:last-of-type {
+  margin-bottom: 0 !important;
+}
+
+/* Ensure spacing between consecutive paragraphs */
+.streaming-formatted > p + p {
+  margin-top: 16px !important;
+}
+
+.message-content .streaming-formatted p:first-child,
+.message-content p:first-child {
+  margin-top: 0 !important; /* Remove top margin from first paragraph */
+}
+
+.message-content .streaming-formatted p:last-child,
+.message-content p:last-child {
+  margin-bottom: 8px !important; /* Keep some bottom margin for last paragraph */
+}
+
+/* Ensure br tags create line breaks */
+.message-content br,
+.streaming-formatted br {
+  display: block !important;
+  content: "" !important;
+  margin: 0.5em 0 !important;
+}
+
+
+/* Headers need proper spacing */
+.message-content .streaming-formatted h1,
+.message-content .streaming-formatted h2,
+.message-content .streaming-formatted h3,
+.message-content .streaming-formatted h4,
+.message-content .streaming-formatted h5,
+.message-content .streaming-formatted h6 {
+  font-weight: 600;
+}
+
+.message-content .streaming-formatted h1:first-child,
+.message-content .streaming-formatted h2:first-child,
+.message-content .streaming-formatted h3:first-child {
+  margin-top: 0;
+}
+
+/* Spacing between paragraphs and lists */
 .message-content .streaming-formatted p + ul,
 .message-content .streaming-formatted p + ol {
-  margin-top: 12px;
+  margin-top: 12px !important; /* Ensure space after "Key features:" etc */
 }
 
 .message-content .streaming-formatted ul + p,
 .message-content .streaming-formatted ol + p {
-  margin-top: 12px;
+  margin-top: 8px; /* Reduced from 16px to prevent additive spacing */
 }
 
-/* Add spacing between consecutive numbered lists */
+/* Lists followed by headers need extra space */
+.message-content .streaming-formatted ul + h1,
+.message-content .streaming-formatted ul + h2,
+.message-content .streaming-formatted ul + h3,
+.message-content .streaming-formatted ul + h4,
+.message-content .streaming-formatted ul + h5,
+.message-content .streaming-formatted ul + h6,
+.message-content .streaming-formatted ol + h1,
+.message-content .streaming-formatted ol + h2,
+.message-content .streaming-formatted ol + h3,
+.message-content .streaming-formatted ol + h4,
+.message-content .streaming-formatted ol + h5,
+.message-content .streaming-formatted ol + h6 {
+  margin-top: 0px !important; /* Removed spacing completely */
+}
+
+
+/* Consecutive ordered lists */
 .message-content .streaming-formatted ol + ol {
   margin-top: 16px;
 }
 
-/* Add spacing between numbered list items and their bullet children */
+/* Special spacing for ol followed by ul */
 .message-content .streaming-formatted ol + ul {
-  margin-top: 8px;
-  margin-bottom: 16px;
+  margin-top: 8px; /* Reduced from 12px */
+  /* Removed margin-bottom as it's handled by base list styles */
 }
 
-/* Add spacing between list items that start with numbers (like 1., 2., 3.) */
-.message-content .streaming-formatted > ol > li:not(:first-child) {
-  margin-top: 16px;
+/* Keep list items tight together */
+.message-content .streaming-formatted ol > li,
+.message-content .streaming-formatted ul > li {
+  margin: 4px 0; /* Increased from 1px for better visual separation */
 }
 
+/* Base list styles */
 .message-content .streaming-formatted ul,
 .message-content .streaming-formatted ol {
-  margin: 8px 0;
+  margin: 12px 0 0 0; /* Removed bottom margin to reduce spacing */
   padding-left: 1rem;
 }
 
-/* === MARKDOWN TYPOGRAPHY (CENTRALIZED) === */
-/* Ensure list markers are visible and spaced consistently (formatted only) */
+/* Ordered lists - use native browser numbering */
 .message-content .streaming-formatted ol {
   list-style-type: decimal;
   list-style-position: outside;
-  margin: 8px 0;
-  padding-left: 1rem;
-  /* Removed counter-reset to allow start attribute to work */
 }
 
+/* Unordered lists - use native browser bullets */
 .message-content .streaming-formatted ul {
   list-style-type: disc;
   list-style-position: outside;
-  margin: 8px 0;
-  padding-left: 1rem;
-}
-
-/* Bump specificity within chat window to beat iframe overrides (formatted only) */
-.chat-window .message-content .streaming-formatted ol {
-  list-style-type: decimal;
-  list-style-position: outside;
-  margin: 8px 0;
-  padding-left: 1rem;
-}
-
-.chat-window .message-content .streaming-formatted ul {
-  list-style-type: disc;
-  list-style-position: outside;
-  margin: 8px 0;
-  padding-left: 1rem;
-}
-
-.chat-window .message-content .streaming-formatted li {
-  display: list-item;
-  margin: 1px 0;
 }
 
 /* Nested list styles for readability (formatted only) */
@@ -1117,34 +1203,32 @@ body[data-iframe="true"].callout-visible:not(.chat-open) {
 .message-content .streaming-formatted ul ul { list-style-type: circle; }
 .message-content .streaming-formatted ul ul ul { list-style-type: square; }
 
-/* List item spacing (formatted only) */
-.message-content .streaming-formatted li { margin: 1px 0; }
-
-/* Collapse paragraphs generated inside list items for tighter spacing (formatted only) */
-.message-content .streaming-formatted li > p { 
-  margin: 0;
-}
-.message-content .streaming-formatted li > p + p {
-  margin-top: 1px;
-}
-
-/* Tighter list line-height for compact bullets (formatted only) */
+/* List item spacing */
 .message-content .streaming-formatted li {
-  line-height: 1.24;
-}
-.message-content .streaming-formatted li > p {
-  line-height: 1.24;
+  margin: 4px 0; /* Increased from 1px for better separation */
+  line-height: 1.5; /* Increased from 1.24 for breathing room */
 }
 
-/* Ordered list marker styles (formatted only) - removed counter to allow native numbering */
+/* Collapse paragraphs inside list items */
+.message-content .streaming-formatted li > p {
+  margin: 0; /* Keep zero margin for paragraphs INSIDE list items only */
+  line-height: 1.5; /* Increased from 1.24 for consistency */
+}
+
+.message-content .streaming-formatted li > p + p {
+  margin-top: 8px; /* Increased from 1px for better separation */
+}
+
+/* List marker styles */
 .message-content .streaming-formatted ol > li::marker {
   font-weight: 600;
   color: var(--text-primary);
 }
 
-/* Trim outer margins in formatted block */
-.message-content .streaming-formatted > :first-child { margin-top: 0; }
-.message-content .streaming-formatted > :last-child { margin-bottom: 0; }
+/* Trim outer margins in formatted block - but preserve paragraph spacing */
+.message-content .streaming-formatted > :first-child:not(p) { margin-top: 0; }
+.message-content .streaming-formatted > :last-child:not(p) { margin-bottom: 0; }
+/* For paragraphs, use the specific rules defined earlier */
 
 /* Headings inside bot bubbles */
 .message-content h1,
@@ -1197,25 +1281,30 @@ body[data-iframe="true"].callout-visible:not(.chat-open) {
 }
 
 /* Tighten paragraph + list adjacency (avoid double gaps) */
-.message-content p + ol,
-.message-content p + ul,
-.message-content ol + p,
-.message-content ul + p {
+.message-content .streaming-formatted p + ol,
+.message-content .streaming-formatted p + ul {
   margin-top: 6px;
+}
+/* Don't override paragraph margins after lists */
+.message-content .streaming-formatted ol + p,
+.message-content .streaming-formatted ul + p {
+  /* Use default paragraph margin from line 1038 */
 }
 
 /* Add spacing between numbered list items and their bullet children for HTTP responses */
 .message-content ol + ul {
   margin-top: 8px;
-  margin-bottom: 16px;
+  /* Removed margin-bottom to prevent additive spacing */
 }
 
 /* Streaming text node style (plain text before markdown is applied) */
 .streaming {
-  white-space: pre-line; /* keep newlines, collapse spaces */
+  white-space: normal; /* Changed from pre-line to allow block-level spacing */
   line-height: 1.2;      /* slightly tighter for streamed plaintext */
   margin: 0;             /* ensure no block margins on container */
 }
+
+/* Line breaks are preserved via <br> tags, not white-space property */
 
 .message-content h1,
 .message-content h2,
@@ -1223,7 +1312,7 @@ body[data-iframe="true"].callout-visible:not(.chat-open) {
 .message-content h4,
 .message-content h5,
 .message-content h6 {
-  margin: 8px 0 4px 0;
+  margin: 0 0 4px 0; /* Removed top margin to reduce spacing */
   font-family: var(--font-family);
   color: inherit;
 }
@@ -3045,13 +3134,10 @@ body[data-iframe="true"].minimized {
 
 /* Picasso Widget - Scoped CSS Isolation */
 .picasso-widget {
-  /* Reset and isolation for widget container */
-  all: initial;
+  /* Widget container styling without destructive reset */
   font-family: system-ui, -apple-system, sans-serif;
-  color: initial;
-  background: initial;
   box-sizing: border-box;
-  
+
   /* Ensure widget container behavior */
   position: fixed;
   z-index: 999999;
@@ -3749,4 +3835,69 @@ body[data-iframe="true"].minimized {
 /* === STREAMING MESSAGE SUPPORT === */
 .streaming {
   white-space: pre-wrap;
+}
+
+/* Removed overly complex paragraph rules - using clean semantic CSS above instead */
+
+/* Clean markdown element spacing */
+.streaming-formatted h1 { margin: 1.5em 0 0.5em 0; font-size: 1.8em; font-weight: 600; }
+.streaming-formatted h2 { margin: 1.3em 0 0.5em 0; font-size: 1.5em; font-weight: 600; }
+.streaming-formatted h3 { margin: 1.2em 0 0.5em 0; font-size: 1.3em; font-weight: 600; }
+.streaming-formatted h4 { margin: 1em 0 0.5em 0; font-size: 1.1em; font-weight: 600; }
+.streaming-formatted h5 { margin: 1em 0 0.5em 0; font-size: 1em; font-weight: 600; }
+.streaming-formatted h6 { margin: 1em 0 0.5em 0; font-size: 0.9em; font-weight: 600; }
+
+.streaming-formatted p {
+  display: block;
+  margin: 1em 0;
+  line-height: 1.6;
+}
+
+.streaming-formatted ul,
+.streaming-formatted ol {
+  margin: 1em 0;
+  padding-left: 2em;
+}
+
+.streaming-formatted li {
+  margin: 0.25em 0;
+  line-height: 1.6;
+}
+
+.streaming-formatted blockquote {
+  margin: 1em 0;
+  padding-left: 1em;
+  border-left: 3px solid var(--border-color);
+  color: var(--text-secondary);
+}
+
+.streaming-formatted pre {
+  margin: 1em 0;
+  padding: 1em;
+  background: var(--code-bg, #f6f6f6);
+  border-radius: 4px;
+  overflow-x: auto;
+}
+
+.streaming-formatted code {
+  background: var(--code-bg, #f6f6f6);
+  padding: 0.2em 0.4em;
+  border-radius: 3px;
+  font-family: monospace;
+}
+
+.streaming-formatted hr {
+  margin: 1.5em 0;
+  border: 0;
+  border-top: 1px solid var(--border-color);
+}
+
+/* First element in message should have no top margin */
+.streaming-formatted > :first-child {
+  margin-top: 0;
+}
+
+/* Last element in message should have no bottom margin */
+.streaming-formatted > :last-child {
+  margin-bottom: 0;
 }

@@ -11,7 +11,7 @@
 /* Ensure widget container isolation */
 #picasso-widget-root,
 #picasso-fullpage-root {
-  all: initial;
+  /* Removed destructive all: initial */
   position: fixed !important;
   z-index: 999999 !important;
   pointer-events: none !important;

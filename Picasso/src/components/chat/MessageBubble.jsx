@@ -272,8 +272,10 @@ export default function MessageBubble({
     if (renderMode !== "streaming") {
       return;
     }
-    
+
     if (!streamingFlag || !messageId) return;
+
+    // Reset the ordered list counter for this new message
 
     let el = resolveLiveEl();
 
@@ -306,133 +308,92 @@ export default function MessageBubble({
       
       const nextText = bufferRef.current.length ? bufferRef.current : '\u200B';
       
-      // Full markdown processing for streaming content
+      // Simple markdown to HTML for streaming content
+      // The server sends markdown text that needs formatting
       try {
         let html = nextText;
-        
-        // Process headers (H1-H6) first
-        html = html.replace(/^######\s+(.+)$/gm, '<h6>$1</h6>');
-        html = html.replace(/^#####\s+(.+)$/gm, '<h5>$1</h5>');
-        html = html.replace(/^####\s+(.+)$/gm, '<h4>$1</h4>');
-        html = html.replace(/^###\s+(.+)$/gm, '<h3>$1</h3>');
-        html = html.replace(/^##\s+(.+)$/gm, '<h2>$1</h2>');
-        html = html.replace(/^#\s+(.+)$/gm, '<h1>$1</h1>');
-        
-        // Process markdown links BEFORE auto-linking to prevent double processing
-        // This must happen before auto-link to avoid matching URLs inside markdown links
+
+        // First, escape any HTML to prevent XSS
+        html = html.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+        // Convert markdown to basic HTML
+        // Headers
+        html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+        html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+        html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+
+        // Blockquotes (useful for testimonials or important notes)
+        html = html.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
+
+        // Horizontal rules (for section breaks)
+        html = html.replace(/^---+$/gm, '<hr>');
+
+        // Links - both markdown style and plain URLs
+        // Markdown links [text](url)
         html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
-        
-        // Now auto-link plain URLs (but not those already in HTML tags)
-        // Negative lookbehind to avoid URLs already in href="..." or already linked
-        html = html.replace(/(?<!href=")(?<!>)(https?:\/\/[^\s<"]+)(?![^<]*<\/a>)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
-        
-        // Process lists - preserve as single block without extra line breaks
-        const lines = html.split('\n');
-        let result = [];
-        let inList = false;
-        let listType = null;
-        
-        for (let i = 0; i < lines.length; i++) {
-          const line = lines[i];
-          const bulletMatch = line.match(/^\s*[-*+]\s+(.+)$/);
-          const numberMatch = line.match(/^\s*(\d+)\.\s+(.+)$/);
-          
-          if (bulletMatch) {
-            // Process any inline formatting in the list item
-            let itemContent = bulletMatch[1]
-              .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-              .replace(/__([^_]+)__/g, '<strong>$1</strong>')
-              .replace(/\*([^*]+)\*/g, '<em>$1</em>')
-              .replace(/_([^_]+)_/g, '<em>$1</em>')
-              .replace(/`([^`]+)`/g, '<code>$1</code>');
-            
-            if (!inList || listType !== 'ul') {
-              if (inList) result.push(`</${listType}>`);
-              result.push('<ul>');
-              inList = true;
-              listType = 'ul';
-            }
-            result.push(`<li>${itemContent}</li>`);
-          } else if (numberMatch) {
-            // Process any inline formatting in the list item
-            let itemContent = numberMatch[2]
-              .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-              .replace(/__([^_]+)__/g, '<strong>$1</strong>')
-              .replace(/\*([^*]+)\*/g, '<em>$1</em>')
-              .replace(/_([^_]+)_/g, '<em>$1</em>')
-              .replace(/`([^`]+)`/g, '<code>$1</code>');
-            
-            if (!inList || listType !== 'ol') {
-              if (inList) result.push(`</${listType}>`);
-              result.push('<ol>');
-              inList = true;
-              listType = 'ol';
-            }
-            result.push(`<li>${itemContent}</li>`);
-          } else {
-            // Not a list item
-            if (inList) {
-              result.push(`</${listType}>`);
-              inList = false;
-              listType = null;
-            }
-            
-            // Only add line breaks between non-list paragraphs
-            if (line.trim() === '') {
-              result.push('<br>');
-            } else {
-              result.push(line);
-            }
-          }
-        }
-        
-        // Close any open list
-        if (inList) {
-          result.push(`</${listType}>`);
-        }
-        
-        html = result.join('');
-        
-        // Process remaining inline formatting (for non-list content)
-        // Bold/strong
+        // Auto-link plain URLs
+        html = html.replace(/(^|[^">])(https?:\/\/[^\s<"]+)/g, '$1<a href="$2" target="_blank" rel="noopener noreferrer">$2</a>');
+        // Email links
+        html = html.replace(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g, '<a href="mailto:$1">$1</a>');
+
+        // Bold and italic (do this after links to avoid conflicts)
         html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-        html = html.replace(/__([^_]+)__/g, '<strong>$1</strong>');
-        
-        // Italic/emphasis  
-        html = html.replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, '<em>$1</em>');
-        html = html.replace(/(?<!_)_([^_]+)_(?!_)/g, '<em>$1</em>');
-        
-        // Code blocks (multi-line)
-        html = html.replace(/```([^`]*)```/gs, '<pre><code>$1</code></pre>');
-        
-        // Inline code
-        html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
-        
-        // Blockquotes
-        html = html.replace(/^>\s+(.+)$/gm, '<blockquote>$1</blockquote>');
-        
-        // Horizontal rules
-        html = html.replace(/^([-*_]){3,}$/gm, '<hr>');
-        
-        // Paragraphs - wrap non-HTML content in <p> tags for better spacing
-        // Split by double newlines for paragraph detection
-        const paragraphs = html.split(/\n\n+/);
-        html = paragraphs.map(p => {
-          // Don't wrap if it's already HTML (starts with <)
-          if (p.trim().startsWith('<')) return p;
-          // Don't wrap empty lines
-          if (p.trim() === '') return '';
-          // Wrap text content in paragraph
-          return `<p>${p.replace(/\n/g, ' ')}</p>`;
-        }).join('');
-        
-        // Apply HTML to element with streaming-formatted wrapper for CSS
-        // This ensures all theme.css rules for streaming content are applied
+        html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+
+        // Line breaks (two spaces at end of line = <br>)
+        html = html.replace(/  $/gm, '<br>');
+
+        // Lists - handle bullets with various markers and indentation
+        html = html.replace(/^(\s*)[-•*+]\s+(.+)$/gm, (match, spaces, content) => {
+          const level = Math.floor(spaces.length / 2);
+          return `<li data-level="${level}">${content}</li>`;
+        });
+        html = html.replace(/^(\s*)\d+\.\s+(.+)$/gm, (match, spaces, content) => {
+          const level = Math.floor(spaces.length / 2);
+          return `<li data-level="${level}" data-ordered="true">${content}</li>`;
+        });
+
+        // Wrap consecutive list items in ul/ol tags
+        html = html.replace(/((?:<li[^>]*>.*<\/li>\s*)+)/g, (match) => {
+          // Check if numbered or bulleted
+          if (match.includes('data-ordered="true"')) {
+            return '<ol>' + match + '</ol>';
+          }
+          return '<ul>' + match + '</ul>';
+        });
+
+        // Paragraphs - only wrap complete paragraphs during streaming
+        // Check if we're still mid-stream (no ending punctuation or still receiving)
+        const isLikelyComplete = nextText.match(/[.!?]\s*$/);
+        const hasDoubleNewline = html.includes('\n\n');
+
+        if (hasDoubleNewline || isLikelyComplete) {
+          // Split by double newlines for proper paragraphs
+          const paragraphs = html.split(/\n\n+/);
+          html = paragraphs.map((p, idx) => {
+            // Don't wrap if already has HTML tags
+            if (p.match(/^<[hul]/)) return p;
+            // For the last paragraph during streaming, only wrap if it looks complete
+            if (idx === paragraphs.length - 1 && !isLikelyComplete && !hasDoubleNewline) {
+              return p.trim() || '';
+            }
+            return p.trim() ? `<p>${p}</p>` : '';
+          }).join('\n');
+        } else {
+          // During active streaming of first paragraph, don't wrap yet
+          // Just replace single newlines with spaces for flow
+          html = html.replace(/([^>])\n([^<])/g, '$1 $2');
+        }
+
+        // Apply formatted HTML
         elNode.innerHTML = `<div class="streaming-formatted">${html}</div>`;
       } catch (err) {
-        // Fallback to plain text if processing fails
-        console.error('[Bubble] Error with inline markdown:', err);
-        elNode.textContent = nextText;
+        console.error('[Bubble] Markdown processing error:', err);
+        // Fallback to plain text
+        const textNode = ensureTextNode();
+        if (textNode) {
+          textNode.nodeValue = nextText;
+        }
       }
       
       lastLenRef.current = nextText.length;
@@ -460,6 +421,7 @@ export default function MessageBubble({
       try { unsubscribe && unsubscribe(); } catch {}
     };
   }, [streamingFlag, messageId, scheduleCommit, resolveLiveEl]);
+
 
   useEffect(() => {
     // Only set up mutation observer when in streaming mode
@@ -588,7 +550,7 @@ export default function MessageBubble({
         {/* Single container for entire lifecycle - streaming and markdown */}
         <div
           ref={streamingContainerRef}
-          className={`message-text ${streamingFlag ? 'streaming' : ''}`}
+          className={`message-text message-content-rendered ${streamingFlag ? 'streaming' : ''}`}
           data-streaming={streamingFlag ? "true" : "false"}
           data-stream-id={messageId}
           data-was-streamed={metadata?.streamCompleted ? "true" : "false"}
@@ -597,10 +559,9 @@ export default function MessageBubble({
           suppressHydrationWarning
           // For messages that were streamed, content is managed imperatively
           // For non-streamed messages, use React's dangerouslySetInnerHTML
-          className={`message-content-rendered ${streamingFlag ? 'streaming' : ''}`}
           dangerouslySetInnerHTML={
             (!streamingFlag) && typeof content === 'string' && content.length
-              ? { __html: content }
+              ? { __html: `<div class="streaming-formatted">${content}</div>` } // Wrap in streaming-formatted for CSS rules
               : undefined
           }
         />

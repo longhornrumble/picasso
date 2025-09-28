@@ -47,7 +47,7 @@
 
 /* Ensure proper isolation */
 .chat-widget-root {
-  all: initial;
+  /* Removed destructive all: initial */
   position: fixed !important;
   z-index: 999999 !important;
   pointer-events: none !important;

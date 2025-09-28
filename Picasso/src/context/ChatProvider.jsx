@@ -17,98 +17,20 @@ import { initializeMobileCompatibility } from "../utils/mobileCompatibility";
 import { createLogger } from "../utils/logger";
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
-// --- Compact Marked renderer to prevent blocky reflow on post-render ---
-// Create a proper marked.Renderer instance for v14 compatibility
-const compactRenderer = new marked.Renderer();
-
-// Override paragraph rendering - in v14, receives token object
-compactRenderer.paragraph = function(token) {
-  // Extract the text from the token
-  const text = typeof token === 'string' ? token : (token?.text || '');
-  // Don't add any custom classes - let theme.css handle it
-  return `<p>${text}</p>`;
-};
-
-// Override list rendering - receives token object in v14
-compactRenderer.list = function(token) {
-  // Extract properties from the token
-  if (typeof token === 'string') {
-    // Fallback for string input
-    return `<ul>${token}</ul>`;
-  }
-  
-  const ordered = token.ordered || false;
-  const start = token.start || 1;
-  const items = token.items || [];
-  
-  // Render each list item by recursively parsing its tokens
-  const renderedItems = items.map(item => {
-    // Each item has tokens that need to be rendered recursively
-    // Use marked's parser to render the item's tokens
-    let itemContent = '';
-    if (item.tokens && Array.isArray(item.tokens)) {
-      // Parse the tokens within this list item
-      itemContent = marked.parser(item.tokens);
-      // Remove wrapping <p> tags if present (for tight lists)
-      itemContent = itemContent.replace(/^<p[^>]*>|<\/p>$/g, '');
-    } else {
-      // Fallback to text
-      itemContent = item.text || item.raw || '';
-    }
-    // Trim whitespace
-    itemContent = itemContent.trim();
-    return `<li>${itemContent}</li>`;
-  }).join('');
-  
-  const tag = ordered ? 'ol' : 'ul';
-  const startAttr = ordered && start !== 1 ? ` start="${start}"` : '';
-  return `<${tag}${startAttr}>${renderedItems}</${tag}>`;
-};
-
-// Override list item rendering - receives token object
-compactRenderer.listitem = function(token) {
-  // Extract the text from the token
-  const text = typeof token === 'string' ? token : (token?.text || token?.raw || '');
-  // Collapse internal newlines to prevent phantom spacing
-  const collapsed = String(text).replace(/\s*\n+\s*/g, ' ').trim();
-  return `<li>${collapsed}</li>`;
-};
-
-// Override heading rendering - receives token object
-compactRenderer.heading = function(token) {
-  // Extract text and level from token
-  if (typeof token === 'string') {
-    // Fallback for string with level as second parameter
-    return `<h1>${token}</h1>`;
-  }
-  const text = token.text || token.raw || '';
-  const level = token.depth || 1;
-  return `<h${level}>${text}</h${level}>`;
-};
-
-// Configure marked globally with the renderer instance
+// Configure marked with default settings for proper markdown rendering
 marked.setOptions({
   gfm: true,              // GitHub Flavored Markdown (tables, strikethrough, etc.)
-  breaks: false,          // IMPORTANT: avoid automatic <br> that inflate spacing
+  breaks: true,           // Convert line breaks to <br> tags for proper formatting
   smartLists: true,       // Use proper list indentation
   sanitize: false,        // We sanitize with DOMPurify separately
   mangle: false,          // Don't obfuscate email addresses
-  renderer: compactRenderer,
+  // Use default renderer for standard markdown output
   pedantic: false,        // Don't be strict about markdown syntax
   smartypants: false      // Don't use smart quotes
 });
 
-// Utility: tighten HTML emitted by marked before sanitization
-function tightenHtml(html) {
-  return html
-    // remove totally empty paragraphs
-    .replace(/<p>\s*<\/p>/g, '')
-    .replace(/<p>(?:\s*<br\s*\/?>(\s|&nbsp;)*)*<\/p>/gi, '')
-    // collapse stacks of <br> to a single break
-    .replace(/(?:<br\s*\/?>(\s|&nbsp;)*){2,}/gi, '<br/>')
-    // trim whitespace around list boundaries to avoid extra line boxes
-    .replace(/\s*(<\/?:?li>|<\/?ul>|<\/?ol>)\s*/gi, '$1');
-}
+
+// Removed tightenHtml function - we want to preserve markdown's natural spacing
 
 // --- Linkification helpers (URLs + emails) ---
 const URL_REGEX = /(?:(?:https?:\/\/)|(?:www\.))[\w\-._~:/?#%\[\]@!$&'()*+,;=]+/gi;
@@ -489,15 +411,30 @@ async function sanitizeMessage(content) {
   logger.debug('sanitizeMessage - Input content:', raw);
 
   try {
-    // 1) Convert bare URLs/emails in the plain text to markdown links BEFORE marked
-    const withLinks = linkifyPlaintext(raw);
+    // Pre-process to fix any malformed markdown patterns
+    let preprocessed = raw;
 
-    // 2) Markdown → HTML using the globally configured marked renderer
-    const html = marked.parse(withLinks);
+    // Fix double-bracketed links that might be malformed
+    preprocessed = preprocessed.replace(/\[([^\]]+)\]\]\(([^)]+)\)\)/g, '[$1]($2)');
+
+
+    // 1) Convert bare URLs/emails in the plain text to markdown links BEFORE marked
+    const withLinks = linkifyPlaintext(preprocessed);
+
+    // 2) Parse with marked using default renderer (not the compact one)
+    // The compact renderer might be breaking standard markdown processing
+    let html = marked.parse(withLinks, {
+      gfm: true,
+      breaks: true,  // Need this for Bedrock KB markdown
+      pedantic: false,
+      smartypants: false,
+      mangle: false,
+      headerIds: false,
+      renderer: new marked.Renderer() // Use default renderer instead of compactRenderer
+    });
     logger.debug('After marked.parse:', html);
 
-    // 3) Tighten the HTML to avoid spurious spacing
-    const tightened = tightenHtml(html);
+    // 3) Use the HTML as-is from marked (no tightening needed)
 
     // 4) One-time DOMPurify hook to enforce safe anchors + new-tab behavior
     if (!__sanitizeHookInstalled && typeof DOMPurify?.addHook === 'function') {
@@ -516,7 +453,7 @@ async function sanitizeMessage(content) {
     }
 
     // 5) Sanitize. Explicitly allow target/rel on links.
-    const cleanHtml = DOMPurify.sanitize(tightened, {
+    const cleanHtml = DOMPurify.sanitize(html, {
       ALLOWED_TAGS: [
         'p','br','strong','b','em','i','u','strike','del','s',
         'ul','ol','li','blockquote','code','pre','hr',
@@ -1108,14 +1045,14 @@ const ChatProvider = ({ children }) => {
         const welcomeActions = generateWelcomeActions(tenantConfig);
         console.log('[ChatProvider] Generated welcome actions:', welcomeActions);
 
-        // Sanitize welcome message async and wrap with streaming-formatted
+        // Sanitize welcome message async
         sanitizeMessage(tenantConfig.welcome_message || "Hello! How can I help you today?")
           .then(sanitizedContent => {
-            const wrappedContent = sanitizedContent ? `<div class="streaming-formatted">${sanitizedContent}</div>` : sanitizedContent;
+            // Don't wrap content here - MessageBubble handles the streaming-formatted wrapper
             const welcomeMsg = {
               id: "welcome",
               role: "assistant",
-              content: wrappedContent,
+              content: sanitizedContent,
               actions: welcomeActions
             };
             console.log('[ChatProvider] Setting welcome message:', welcomeMsg);
@@ -1152,11 +1089,11 @@ const ChatProvider = ({ children }) => {
         const welcomeActions = generateWelcomeActions(tenantConfig);
         sanitizeMessage(tenantConfig.welcome_message || "Hello! How can I help you today?")
           .then(sanitizedContent => {
-            const wrappedContent = sanitizedContent ? `<div class="streaming-formatted">${sanitizedContent}</div>` : sanitizedContent;
+            // Don't wrap here - MessageBubble handles the streaming-formatted wrapper
             const welcomeMsg = {
               id: "welcome",
               role: "assistant",
-              content: wrappedContent,
+              content: sanitizedContent,
               actions: welcomeActions
             };
             console.log('[ChatProvider] Setting welcome message (no msgs case):', welcomeMsg);
@@ -1795,11 +1732,10 @@ const ChatProvider = ({ children }) => {
                 }
               }
 
-              // finalize once - wrap with streaming-formatted for consistent styling
-              const wrappedBotContent = botContent ? `<div class="streaming-formatted">${botContent}</div>` : botContent;
+              // finalize once - MessageBubble handles the streaming-formatted wrapper
               setMessages(prev => prev.map(msg =>
                 msg.id === streamingMessageId
-                  ? { ...msg, content: wrappedBotContent, isStreaming: false, streaming: false, status: 'final', actions: botActions }
+                  ? { ...msg, content: botContent, isStreaming: false, streaming: false, status: 'final', actions: botActions }
                   : msg
               ));
 
@@ -1866,53 +1802,54 @@ const ChatProvider = ({ children }) => {
                 onDone: async (fullText) => {
                   streamingRegistry.endStream(streamingMessageId);
                   const isCanceled = fullText === '[Message canceled]';
-                  const safe = isCanceled ? fullText : await sanitizeMessage(fullText);
-                  
-                  console.log('[ChatProvider] 📝 Streaming complete, updating message with final content:', {
+
+                  console.log('[ChatProvider] 📝 Streaming complete:', {
                     id: streamingMessageId,
-                    fullText: fullText?.substring(0, 100) + '...',
                     fullTextLen: fullText?.length,
-                    sanitizedContent: safe?.substring(0, 100) + '...',
-                    sanitizedLen: safe?.length
+                    isCanceled
                   });
-                  
-                  // Skip DOM update - MessageBubble already handled markdown during streaming
-                  // This prevents overwriting the properly rendered links
-                  console.log('[ChatProvider] ⏭️ Skipping DOM update - content already rendered during streaming');
-                  
-                  // Then update the React state
-                  // Keep isStreaming false but mark as streamCompleted
-                  // Wrap content with streaming-formatted class for theme.css styling
-                  const wrappedContent = safe ? `<div class="streaming-formatted">${safe}</div>` : safe;
-                  
+
+                  // DO NOT update content - MessageBubble already has the properly formatted content
+                  // Just update the streaming flags to mark completion
                   setMessages(prev => {
                     const updated = prev.map(msg =>
                       msg.id === streamingMessageId
-                        ? { 
-                            ...msg, 
-                            content: wrappedContent, // Wrapped with streaming-formatted class
-                            isStreaming: false, 
-                            streaming: false, 
-                            status: 'final', 
-                            metadata: { 
-                              ...(msg.metadata || {}), 
-                              canceled: isCanceled, 
-                              isStreaming: false, 
-                              streaming: false, 
+                        ? {
+                            ...msg,
+                            // Keep existing content - do not overwrite!
+                            isStreaming: false,
+                            streaming: false,
+                            status: 'final',
+                            metadata: {
+                              ...(msg.metadata || {}),
+                              canceled: isCanceled,
+                              isStreaming: false,
+                              streaming: false,
                               status: 'final',
-                              streamCompleted: true
-                            } 
+                              streamCompleted: true,
+                              rawContent: fullText // Store raw content for reference
+                            }
                           }
                         : msg
                     );
-                    console.log('[ChatProvider] Message state updated:', {
-                      id: streamingMessageId,
-                      hasContent: !!updated.find(m => m.id === streamingMessageId)?.content,
-                      wrapped: true
+                    console.log('[ChatProvider] Streaming flags updated (content preserved):', {
+                      id: streamingMessageId
                     });
                     return updated;
                   });
                   console.log('[ChatProvider] ✅ finalized', { id: streamingMessageId, len: fullText?.length });
+
+                  // Sanitize in background for future use (don't await)
+                  sanitizeMessage(fullText).then(safe => {
+                    // Store sanitized version in metadata for potential future use
+                    setMessages(prev => prev.map(msg =>
+                      msg.id === streamingMessageId
+                        ? { ...msg, metadata: { ...(msg.metadata || {}), sanitizedContent: safe } }
+                        : msg
+                    ));
+                  }).catch(err => {
+                    console.error('[ChatProvider] Background sanitization error:', err);
+                  });
 
                   try {
                     if (conversationManager) {
@@ -2024,8 +1961,7 @@ const ChatProvider = ({ children }) => {
               }
             }
 
-            // finally commit once - wrap with streaming-formatted for consistent styling
-            const wrappedBotContent = botContent ? `<div class="streaming-formatted">${botContent}</div>` : botContent;
+            // finally commit once - MessageBubble handles the streaming-formatted wrapper
             
             if (!actuallyUseStreaming) {
               // HTTP MODE: Add complete message directly (no placeholder exists)
@@ -2033,7 +1969,7 @@ const ChatProvider = ({ children }) => {
               setMessages(prev => [...prev, {
                 id: streamingMessageId,
                 role: "assistant",
-                content: wrappedBotContent,
+                content: botContent,
                 timestamp: new Date().toISOString(),
                 isStreaming: false,
                 streaming: false,
@@ -2048,7 +1984,7 @@ const ChatProvider = ({ children }) => {
               // STREAMING MODE: Update existing placeholder (shouldn't reach here when streaming disabled)
               setMessages(prev => prev.map(msg =>
                 msg.id === streamingMessageId
-                  ? { ...msg, content: wrappedBotContent, isStreaming: false, actions: botActions }
+                  ? { ...msg, content: botContent, isStreaming: false, actions: botActions }
                   : msg
               ));
             }
@@ -2272,7 +2208,7 @@ const ChatProvider = ({ children }) => {
     retryMessage,
     loadConversationHistory,
     installPWA,
-    renderMode: 'default', // Add renderMode
+    renderMode: 'streaming', // Enable streaming display
     // Internal helpers
     sessionId: sessionIdRef.current,
     getTenantHash,
