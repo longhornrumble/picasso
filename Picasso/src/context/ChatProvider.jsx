@@ -853,6 +853,19 @@ const ChatProvider = ({ children }) => {
   // Throttle per-message partial updates to ~1 frame
   const partialUpdateRafRef = useRef(new Map()); // id -> { handle: number|null, latest: string }
 
+  // PERFORMANCE: Simple debounce utility
+  function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+      const later = () => {
+        clearTimeout(timeout);
+        func(...args);
+      };
+      clearTimeout(timeout);
+      timeout = setTimeout(later, wait);
+    };
+  }
+
   // PERFORMANCE: Debounced message persistence to avoid excessive storage writes
   const debouncedPersistMessages = useRef(
     debounce((messages, hasInitializedMessages) => {
@@ -918,20 +931,7 @@ const ChatProvider = ({ children }) => {
   // Persist messages whenever they change (debounced)
   useEffect(() => {
     debouncedPersistMessages(messages, hasInitializedMessages);
-  }, [messages, hasInitializedMessages, debouncedPersistMessages]);
-  
-  // PERFORMANCE: Simple debounce utility
-  function debounce(func, wait) {
-    let timeout;
-    return function executedFunction(...args) {
-      const later = () => {
-        clearTimeout(timeout);
-        func(...args);
-      };
-      clearTimeout(timeout);
-      timeout = setTimeout(later, wait);
-    };
-  }
+  }, [messages, hasInitializedMessages]);
 
   // SIMPLIFIED INITIALIZATION - HTTP only
   const [isConversationManagerInitialized, setIsConversationManagerInitialized] = useState(false);

@@ -7,6 +7,7 @@ import FilePreview from "./FIlePreview";  // Note: File has unusual capitalizati
 import { streamingRegistry } from "../../utils/streamingRegistry";
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
+import CTAButton, { CTAButtonGroup } from './CTAButton';
 
 // Configure marked for streaming markdown
 marked.setOptions({
@@ -91,6 +92,8 @@ export default function MessageBubble({
   content,
   files = [],
   actions = [],
+  ctaButtons = [],  // CTA buttons from backend
+  cards = [],       // Response cards from backend
   uploadState,
   onCancel,
   metadata = {},
@@ -496,6 +499,30 @@ export default function MessageBubble({
     addMessage({ role: "user", content: messageText });
   };
 
+  const handleCtaClick = (cta) => {
+    if (isTyping) return;
+    console.log('[MessageBubble] CTA clicked:', cta);
+
+    // Handle different CTA action types
+    if (cta.action === 'external_link' && cta.url) {
+      window.open(cta.url, '_blank', 'noopener,noreferrer');
+    } else if (cta.action === 'start_form' && cta.formId) {
+      // TODO: Trigger form mode in ChatProvider
+      console.log('[MessageBubble] Form trigger:', cta.formId);
+      if (addMessage) {
+        // Send a message to indicate form start
+        addMessage({
+          role: "user",
+          content: `I'd like to apply`,
+          metadata: { formTrigger: cta.formId }
+        });
+      }
+    } else if (cta.action === 'show_info' && addMessage) {
+      // Send as a user prompt to get info
+      addMessage({ role: "user", content: cta.text || cta.label });
+    }
+  };
+
   const getActionChipsLayoutClass = (acts) => {
     if (!acts || acts.length === 0) return "";
     const maxShortTextLength = config?.action_chips?.short_text_threshold || 16;
@@ -570,6 +597,15 @@ export default function MessageBubble({
           >
             Try again
           </button>
+        )}
+
+        {/* CTA Buttons (assistant/bot only) */}
+        {(role === "assistant" || role === "bot") && ctaButtons && ctaButtons.length > 0 && (
+          <CTAButtonGroup
+            ctas={ctaButtons}
+            onCtaClick={handleCtaClick}
+            disabled={isTyping}
+          />
         )}
 
         {/* Action Chips (assistant/bot only) */}

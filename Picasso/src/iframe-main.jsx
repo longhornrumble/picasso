@@ -4,7 +4,7 @@ import './utils/stringPolyfill.js';
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { ConfigProvider } from './context/ConfigProvider.jsx';
-import { ChatProvider } from './context/ChatProvider.jsx';
+import ChatProviderOrchestrator from './context/ChatProviderOrchestrator.jsx';
 import ChatWidget from './components/chat/ChatWidget.jsx';
 import { CSSVariablesProvider } from './components/chat/useCSSVariables.js';
 import { config as environmentConfig } from './config/environment.js';
@@ -402,9 +402,9 @@ function initializeWidget() {
     root.render(
       <ConfigProvider>
         <CSSVariablesProvider>
-          <ChatProvider>
+          <ChatProviderOrchestrator>
             <ChatWidget />
-          </ChatProvider>
+          </ChatProviderOrchestrator>
         </CSSVariablesProvider>
       </ConfigProvider>
     );
