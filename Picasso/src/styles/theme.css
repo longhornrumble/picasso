@@ -874,8 +874,10 @@ body[data-iframe="true"].callout-visible:not(.chat-open) {
 .chat-header-text {
   display: flex;
   flex-direction: column;
-  gap: 1px; /* Reduced from 3px to fit within 80px constraint */
+  gap: 6px; /* 6px spacing between title and subtitle */
   min-width: 0; /* Allows text to truncate if needed */
+  height: fit-content; /* Fit to content height */
+  justify-content: center; /* Center content vertically */
 }
 
 /* Title styling - enhanced from original */
@@ -894,13 +896,17 @@ body[data-iframe="true"].callout-visible:not(.chat-open) {
 }
 
 /* New subtitle styling */
-.chat-subtitle {
-  margin: 0;
+.chat-subtitle,
+p.chat-subtitle {
+  margin: 0 !important;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  padding: 0 !important;
   font-size: calc(var(--font-size-heading) * 0.85); /* 85% of title size */
   font-weight: 400; /* Regular weight */
   color: var(--header-subtitle-color, rgba(255, 255, 255, 0.8)); /* 20% more transparent */
   font-family: var(--font-family);
-  line-height: 1.1; /* Reduced from 1.3 */
+  line-height: 1; /* Tighter line height */
   letter-spacing: 0.005em;
   white-space: nowrap;
   overflow: hidden;
@@ -1017,6 +1023,7 @@ body[data-iframe="true"].callout-visible:not(.chat-open) {
 
 .message-content {
   width: 100%;
+  height: fit-content; /* Fit to content height */
   padding: var(--bubble-padding);
   font-size: var(--font-size-base);
   border-radius: var(--border-radius);
@@ -1328,12 +1335,20 @@ p {
 /* BOT BUBBLES - Intercom-style layout with internal header */
 .message.bot .message-content {
   width: 100%;
+  height: fit-content;
   background-color: var(--bot-bubble-color);
   color: var(--bot-bubble-text-color);
   border: var(--bot-bubble-border, 1px solid var(--border-color));
   border-bottom-left-radius: 8px;
   display: flex;
   flex-direction: column;
+}
+
+/* Bot message bubble content */
+.message.bot .bubble-content,
+[data-role="assistant"] .bubble-content {
+  padding: 12px 16px !important; /* Proper padding for bot messages */
+  height: fit-content !important;
 }
 
 /* HOVER EFFECTS */
@@ -1400,11 +1415,56 @@ p {
 }
 
 .message-sender-name {
-  font-size: var(--message-sender-font-size, 13px);
+  font-size: var(--message-sender-font-size, 14px);
   font-weight: var(--message-sender-font-weight, 600);
   color: var(--message-sender-color, var(--font-color));
   font-family: var(--font-family);
   line-height: 1;
+}
+
+/* Bubble content base styling */
+.bubble-content {
+  height: fit-content !important;
+  padding: 0 !important; /* Remove default padding */
+}
+
+/* User message specific styling - green bar messages */
+[data-role="user"] .bubble-content,
+.bubble-content.user,
+.message.user .bubble-content {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  justify-content: flex-start !important;
+  padding: 8px 12px !important; /* Tighter padding for user messages */
+  height: fit-content !important;
+}
+
+[data-role="user"] .message-icon,
+.bubble-content.user .message-icon,
+.message.user .message-icon {
+  flex-shrink: 0 !important;
+  align-self: center !important;
+}
+
+[data-role="user"] .message-text,
+.bubble-content.user .message-text,
+.message.user .message-text {
+  flex: 1 !important;
+  align-self: center !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* Remove margins from all text elements inside user messages */
+.message.user .message-text p,
+.message.user .message-text span,
+.message.user .message-text div,
+[data-role="user"] .message-text p,
+[data-role="user"] .message-text span,
+[data-role="user"] .message-text div {
+  margin: 0 !important;
+  padding: 0 !important;
 }
 
 /* Text content wrapper */
