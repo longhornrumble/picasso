@@ -522,31 +522,25 @@ const ChatProvider = ({ children }) => {
   // Initialize refs early to avoid "before initialization" errors
   const conversationManagerRef = useRef(null);
   
-  // 🔧 FIX: Enhanced session validation and memory purge
+  // 🔧 FIX: Session validation - ALWAYS reuse for widget persistence
   const validateAndPurgeSession = () => {
     const stored = sessionStorage.getItem(STORAGE_KEYS.SESSION_ID);
-    const lastActivity = sessionStorage.getItem(STORAGE_KEYS.LAST_ACTIVITY);
-    
-    // Check if session is still valid (within timeout)
-    if (stored && lastActivity) {
-      const timeSinceActivity = Date.now() - parseInt(lastActivity);
-      if (timeSinceActivity < SESSION_TIMEOUT) {
-        // Session is valid, update activity and continue using it
-        sessionStorage.setItem(STORAGE_KEYS.LAST_ACTIVITY, Date.now().toString());
-        // Session is valid - log less frequently to reduce console spam
-        return stored;
-      } else {
-        // Session expired, perform memory purge
-        logger.debug('Session validation: Session expired, performing memory purge');
-        performMemoryPurge();
-      }
+
+    // ALWAYS reuse existing session for widget persistence
+    // Session should only expire on browser tab close, not widget close
+    if (stored) {
+      // Update activity timestamp
+      sessionStorage.setItem(STORAGE_KEYS.LAST_ACTIVITY, Date.now().toString());
+      logger.debug('Session validation: Reusing existing session for widget persistence', stored);
+      return stored;
     }
-    
-    // Create new session after purge or if no session exists
-    const newSessionId = `session_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
+
+    // Only create new session if none exists (first time)
+    // Use consistent format with ConversationManager: session_TIMESTAMP
+    const newSessionId = `session_${Date.now()}`;
     sessionStorage.setItem(STORAGE_KEYS.SESSION_ID, newSessionId);
     sessionStorage.setItem(STORAGE_KEYS.LAST_ACTIVITY, Date.now().toString());
-    logger.debug('Session validation: Created new session', newSessionId.slice(0, 12) + '...');
+    logger.debug('Session validation: Created new session (first time)', newSessionId);
     return newSessionId;
   };
 
@@ -600,24 +594,93 @@ const ChatProvider = ({ children }) => {
     return validateAndPurgeSession();
   };
   
-  const sessionIdRef = useRef(getOrCreateSessionId());
-  
+  // Initialize with null - let useEffect handle session creation/retrieval
+  const sessionIdRef = useRef(null);
+  const [sessionReady, setSessionReady] = useState(false);
+  const [hasInitializedMessages, setHasInitializedMessages] = useState(false);
+
   // 🔧 FIX: Session validation on page refresh/reload
   useEffect(() => {
-    // Validate session on component mount (page refresh)
-    const currentSessionId = sessionIdRef.current;
-    const storedSessionId = sessionStorage.getItem(STORAGE_KEYS.SESSION_ID);
-    
-    if (currentSessionId !== storedSessionId) {
-      logger.debug('Session mismatch detected on mount, performing validation');
-      const validSessionId = validateAndPurgeSession();
-      sessionIdRef.current = validSessionId;
-    } else {
-      // Update activity timestamp for valid session
-      sessionStorage.setItem(STORAGE_KEYS.LAST_ACTIVITY, Date.now().toString());
-      logger.debug('Session validated on mount:', currentSessionId.slice(0, 12) + '...');
+    console.log('🟢 WIDGET OPENING - ChatProvider mounting');
+
+    // DEBUG: Show ALL sessionStorage keys
+    try {
+      const allKeys = Object.keys(sessionStorage);
+      console.log('📦 ALL SessionStorage keys:', allKeys.length, 'keys');
+      allKeys.forEach(key => {
+        if (key.startsWith('picasso')) {
+          const value = sessionStorage.getItem(key);
+          console.log(`📦 ${key}:`, value ? value.slice(0, 100) : 'null');
+        }
+      });
+    } catch (e) {
+      console.log('📦 Error reading sessionStorage:', e);
     }
+
+    // Check for existing session first, create new one only if needed
+    const storedSessionId = sessionStorage.getItem(STORAGE_KEYS.SESSION_ID);
+    const storedMessages = sessionStorage.getItem(STORAGE_KEYS.MESSAGES);
+    const lastActivity = sessionStorage.getItem(STORAGE_KEYS.LAST_ACTIVITY);
+
+    console.log('🟢 SessionStorage on mount:', {
+      sessionId: storedSessionId?.slice(0, 12),
+      messagesExist: !!storedMessages,
+      messageCount: storedMessages ? JSON.parse(storedMessages).length : 0,
+      lastActivity
+    });
+
+    if (storedSessionId) {
+      // ALWAYS reuse existing session for widget close/reopen persistence
+      // Session should only expire when browser tab closes, not widget close
+      console.log('🟢 REUSING existing session for widget persistence:', storedSessionId.slice(0, 12) + '...');
+      sessionIdRef.current = storedSessionId;
+      sessionStorage.setItem(STORAGE_KEYS.LAST_ACTIVITY, Date.now().toString());
+
+      // Note: We're NOT checking SESSION_TIMEOUT here because:
+      // 1. Widget close/reopen should maintain session (user expectation)
+      // 2. Session should persist as long as browser tab is open
+      // 3. Only clear session on explicit "Clear All" or browser tab close
+    } else {
+      // No existing session, create new one
+      console.log('🟢 CREATING new session (no existing session found)');
+      const newSessionId = `session_${Date.now()}`;
+      sessionIdRef.current = newSessionId;
+      sessionStorage.setItem(STORAGE_KEYS.SESSION_ID, newSessionId);
+      sessionStorage.setItem(STORAGE_KEYS.LAST_ACTIVITY, Date.now().toString());
+    }
+
+    // Signal that session is ready
+    setSessionReady(true);
   }, []); // Run once on mount
+
+  // Load messages AFTER session ID is set
+  useEffect(() => {
+    console.log('🟢 Message loading effect - conditions:', {
+      sessionReady,
+      hasSessionId: !!sessionIdRef.current,
+      sessionId: sessionIdRef.current?.slice(0, 12),
+      hasInitializedMessages,
+      shouldLoad: sessionReady && sessionIdRef.current && !hasInitializedMessages
+    });
+
+    if (sessionReady && sessionIdRef.current && !hasInitializedMessages) {
+      console.log('🟢 Session ready, loading persisted messages');
+      const restoredMessages = loadPersistedMessages();
+      console.log('🟢 loadPersistedMessages returned:', restoredMessages?.length || 0, 'messages');
+
+      if (restoredMessages && restoredMessages.length > 0) {
+        console.log('🟢 Setting restored messages:', restoredMessages.length);
+        console.log('🟢 First restored message:', restoredMessages[0]);
+        setMessages(restoredMessages);
+        setHasInitializedMessages(true);
+      } else {
+        console.log('🟢 No messages to restore');
+        // Don't set hasInitializedMessages here - let the welcome message effect handle it
+        // This allows the welcome message to be added when conversation manager is ready
+        // setHasInitializedMessages(true);  // REMOVED - this was blocking welcome message
+      }
+    }
+  }, [sessionReady, hasInitializedMessages]);
   
   // Phase 3.2: Conversation Manager Integration
   // conversationManagerRef is now declared at the top to avoid initialization errors
@@ -639,31 +702,73 @@ const ChatProvider = ({ children }) => {
   
   // Load persisted messages
   const loadPersistedMessages = () => {
+    console.log('🔵 loadPersistedMessages called');
     try {
       const stored = sessionStorage.getItem(STORAGE_KEYS.MESSAGES);
       const lastActivity = sessionStorage.getItem(STORAGE_KEYS.LAST_ACTIVITY);
-      
-      if (stored && lastActivity) {
-        const timeSinceActivity = Date.now() - parseInt(lastActivity);
-        if (timeSinceActivity < SESSION_TIMEOUT) {
-          const messages = JSON.parse(stored);
-          errorLogger.logInfo('📂 Restored conversation from previous page', {
-            messageCount: messages.length,
-            sessionId: sessionIdRef.current
-          });
-          return messages;
-        }
+      const storedSessionId = sessionStorage.getItem(STORAGE_KEYS.SESSION_ID);
+      const currentSessionId = sessionIdRef.current;
+
+      console.log('🔵 Persisted message check:', {
+        hasStored: !!stored,
+        storedCount: stored ? JSON.parse(stored).length : 0,
+        storedSessionId: storedSessionId,  // Show full ID for debugging
+        currentSessionId: currentSessionId,  // Show full ID for debugging
+        sessionsMatch: storedSessionId === currentSessionId,
+        lastActivity
+      });
+
+      // DEBUG: Show exact comparison
+      console.log('🔵 Session comparison:', {
+        stored: `"${storedSessionId}"`,
+        current: `"${currentSessionId}"`,
+        areEqual: storedSessionId === currentSessionId,
+        typeOfStored: typeof storedSessionId,
+        typeOfCurrent: typeof currentSessionId
+      });
+
+      // CRITICAL: Only load messages if they belong to the current session
+      if (stored && storedSessionId === currentSessionId) {
+        // Don't check SESSION_TIMEOUT - widget persistence should work regardless
+        // Messages should persist as long as browser tab is open
+        const messages = JSON.parse(stored);
+        console.log('🔵 LOADING MESSAGES FROM STORAGE:', messages.length, 'messages');
+        console.log('🔵 First message in storage:', messages[0]);
+        errorLogger.logInfo('📂 Restored conversation from widget reopen', {
+          messageCount: messages.length,
+          sessionId: currentSessionId
+        });
+        return messages;
+      } else if (storedSessionId !== currentSessionId) {
+        console.log('🔵 SESSION MISMATCH - not loading messages', {
+          storedSession: storedSessionId?.slice(0, 12),
+          currentSession: currentSessionId?.slice(0, 12)
+        });
+        logger.debug('🔄 Session mismatch, not loading old messages', {
+          storedSession: storedSessionId?.slice(0, 12),
+          currentSession: currentSessionId?.slice(0, 12)
+        });
+        // Clear old session data
+        sessionStorage.removeItem(STORAGE_KEYS.MESSAGES);
+      } else {
+        console.log('🔵 NO MESSAGES TO LOAD:', {
+          hasStored: !!stored,
+          hasLastActivity: !!lastActivity,
+          hasStoredSessionId: !!storedSessionId,
+          hasCurrentSessionId: !!currentSessionId
+        });
       }
     } catch (error) {
+      console.log('🔵 ERROR loading messages:', error);
       errorLogger.logError(error, { context: 'loadPersistedMessages' });
     }
+    console.log('🔵 RETURNING EMPTY MESSAGES ARRAY');
     return [];
   };
   
-  // PERFORMANCE: Use lazy initial state to avoid repeated function calls
-  const [messages, setMessages] = useState(() => loadPersistedMessages());
+  // Don't use lazy initial state - we need to wait for session ID to be set
+  const [messages, setMessages] = useState([]);
   const [isTyping, setIsTyping] = useState(false);
-  const [hasInitializedMessages, setHasInitializedMessages] = useState(false);
   
   // Set global flag when messages exist for ConfigProvider to check
   useEffect(() => {
@@ -702,7 +807,18 @@ const ChatProvider = ({ children }) => {
         }
 
         if (Array.isArray(messages) && messages.length > 0 && hasInitializedMessages) {
-          sessionStorage.setItem(STORAGE_KEYS.MESSAGES, JSON.stringify(messages));
+          // Fix bot messages that have content in metadata.rawContent or metadata.sanitizedContent
+          const messagesToPersist = messages.map(msg => {
+            if (msg.role === 'assistant' && !msg.content && msg.metadata) {
+              // Bot message with content in metadata - extract it
+              return {
+                ...msg,
+                content: msg.metadata.sanitizedContent || msg.metadata.rawContent || msg.content || ""
+              };
+            }
+            return msg;
+          });
+          sessionStorage.setItem(STORAGE_KEYS.MESSAGES, JSON.stringify(messagesToPersist));
           sessionStorage.setItem(STORAGE_KEYS.LAST_ACTIVITY, Date.now().toString());
           errorLogger.logInfo('💾 Persisted conversation state', {
             messageCount: messages.length,
@@ -852,12 +968,72 @@ const ChatProvider = ({ children }) => {
           });
           
           conversationManagerRef.current = createConversationManager(tenantHash, sessionId);
-          
-          logger.debug('🔍 Conversation manager created (initialization happens automatically in constructor)');
-          
-          // Wait a moment for automatic initialization to complete
-          await new Promise(resolve => setTimeout(resolve, 100));
-          
+
+          logger.debug('🔍 Conversation manager created, waiting for initialization...');
+
+          // Wait for the initialization promise to complete
+          let initResult = null;
+          if (conversationManagerRef.current.initializationPromise) {
+            initResult = await conversationManagerRef.current.initializationPromise;
+            logger.debug('✅ Conversation manager initialization complete', {
+              success: initResult?.success,
+              restored: initResult?.restored,
+              messageCount: initResult?.messageCount
+            });
+          }
+
+          // Check if conversation manager loaded messages from server
+          // Use the getMessages() method to properly access the message buffer
+          if (conversationManagerRef.current && conversationManagerRef.current.getMessages) {
+            const loadedMessages = conversationManagerRef.current.getMessages();
+
+            if (loadedMessages && loadedMessages.length > 0) {
+              const restoredMessages = loadedMessages.map(msg => ({
+              id: msg.id || `restored_${Date.now()}_${Math.random()}`,
+              role: msg.role,
+              // CRITICAL FIX: Extract content from multiple possible locations
+              // Lambda returns 'text' field, metadata may have rawContent/sanitizedContent
+              content: msg.content || msg.text || msg.metadata?.sanitizedContent || msg.metadata?.rawContent || "",
+              timestamp: msg.timestamp || new Date().toISOString(),
+              metadata: {
+                ...msg.metadata,
+                restored: true
+              }
+            }));
+
+            logger.debug('📚 Restoring messages from server to UI', {
+              messageCount: restoredMessages.length,
+              sessionId: conversationManagerRef.current.conversationId,
+              firstMessage: restoredMessages[0]?.content?.substring(0, 50)
+            });
+
+              // Always replace UI messages with server messages for session consistency
+              setMessages(restoredMessages);
+
+              // Update sessionStorage to match server state
+              sessionStorage.setItem(STORAGE_KEYS.MESSAGES, JSON.stringify(restoredMessages));
+              sessionStorage.setItem(STORAGE_KEYS.SESSION_ID, conversationManagerRef.current.conversationId);
+
+              errorLogger.logInfo('✅ Synchronized UI with server messages', {
+                sessionId: conversationManagerRef.current.conversationId,
+                messageCount: restoredMessages.length
+              });
+            }
+          } else {
+            // No messages from server - ensure we're not showing stale messages
+            const currentSessionId = conversationManagerRef.current?.conversationId || sessionIdRef.current;
+            const storedSessionId = sessionStorage.getItem(STORAGE_KEYS.SESSION_ID);
+
+            if (storedSessionId && storedSessionId !== currentSessionId) {
+              logger.debug('🧹 Clearing stale messages from different session', {
+                storedSession: storedSessionId?.slice(0, 12),
+                currentSession: currentSessionId?.slice(0, 12)
+              });
+              setMessages([]);
+              sessionStorage.removeItem(STORAGE_KEYS.MESSAGES);
+            }
+          }
+
           // Update conversation metadata
           const metadata = conversationManagerRef.current.getMetadata();
           setConversationMetadata({
@@ -898,7 +1074,7 @@ const ChatProvider = ({ children }) => {
             tenantHash: tenantHash.slice(0, 8) + '...',
             sessionId: sessionId
           });
-          
+
         } catch (error) {
           errorLogger.logError(error, {
             context: 'conversation_manager_init',
@@ -916,23 +1092,36 @@ const ChatProvider = ({ children }) => {
       return await initPromise;
     };
     
-    initializeConversationManager();
-  }, [tenantConfig?.tenant_hash, isConversationManagerInitialized]);
+    // Only initialize if we have a session ID ready
+    if (sessionReady && sessionIdRef.current) {
+      initializeConversationManager();
+    } else {
+      logger.debug('⏳ Waiting for session ID before initializing ConversationManager');
+    }
+  }, [tenantConfig?.tenant_hash, isConversationManagerInitialized, sessionReady]);
 
-  // 🔧 FIX: Cleanup conversation manager on unmount to prevent memory leaks
+  // 🔧 FIX: DON'T clear conversation manager on unmount - preserve state for widget reopen
   useEffect(() => {
     return () => {
-      logger.debug('🧹 ChatProvider unmounting, cleaning up conversation manager');
-      if (conversationManagerRef.current) {
-        try {
-          conversationManagerRef.current.clearStateToken();
-          conversationManagerRef.current = null;
-        } catch (error) {
-          logger.warn('🧹 Error during unmount cleanup:', error);
-        }
-      }
-      
-      // Clear initialization lock
+      console.log('🔴 WIDGET CLOSING - ChatProvider unmounting');
+      console.log('🔴 Current messages in state:', messages.length);
+      console.log('🔴 SessionStorage contents:', {
+        sessionId: sessionStorage.getItem(STORAGE_KEYS.SESSION_ID),
+        messagesExist: !!sessionStorage.getItem(STORAGE_KEYS.MESSAGES),
+        messageCount: JSON.parse(sessionStorage.getItem(STORAGE_KEYS.MESSAGES) || '[]').length
+      });
+      console.log('🔴 ConversationManager state:', {
+        exists: !!conversationManagerRef.current,
+        messageBufferLength: conversationManagerRef.current?.messageBuffer?.length,
+        stateToken: conversationManagerRef.current?.stateToken ? 'exists' : 'missing'
+      });
+
+      logger.debug('📌 ChatProvider unmounting, preserving conversation state for potential reopen');
+      // Don't clear the conversation manager or state token!
+      // We want to preserve conversation state when the widget is just closed and reopened
+      // The state will be cleared on actual page unload/refresh
+
+      // Only clear the initialization lock to allow re-initialization if needed
       initializationLockRef.current = {
         isInitializing: false,
         initializationPromise: null
@@ -1017,11 +1206,13 @@ const ChatProvider = ({ children }) => {
       tenantConfig: !!tenantConfig,
       hasInitializedMessages,
       messagesLength: messages.length,
-      messages: messages
+      messages: messages,
+      isConversationManagerInitialized
     });
 
-    // Set up welcome message when config loads
-    if (tenantConfig) {
+    // Set up welcome message when config loads AND conversation manager is ready
+    // This ensures proper initialization order
+    if (tenantConfig && isConversationManagerInitialized) {
       console.log('[ChatProvider] Welcome message effect - config loaded:', {
         has_tenant_hash: !!tenantConfig.tenant_hash,
         tenant_hash: tenantConfig.tenant_hash,
@@ -1108,7 +1299,7 @@ const ChatProvider = ({ children }) => {
           });
       }
     }
-  }, [tenantConfig, generateWelcomeActions, hasInitializedMessages, messages]);
+  }, [tenantConfig, generateWelcomeActions, hasInitializedMessages, messages, isConversationManagerInitialized]);
 
   const getTenantHash = () => {
     return tenantConfig?.tenant_hash || 
@@ -2127,7 +2318,8 @@ const ChatProvider = ({ children }) => {
         const historicalMessages = history.messages.map(msg => ({
           id: msg.id || `historical_${Date.now()}_${Math.random()}`,
           role: msg.type === 'user' ? 'user' : 'assistant',
-          content: msg.content,
+          // FIX: Extract content from all possible locations
+          content: msg.content || msg.text || msg.metadata?.sanitizedContent || msg.metadata?.rawContent || "",
           timestamp: msg.timestamp || new Date().toISOString(),
           metadata: {
             ...msg.metadata,
