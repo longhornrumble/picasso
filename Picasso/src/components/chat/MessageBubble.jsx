@@ -3,12 +3,9 @@ import React, { useState, useRef, useEffect, useMemo, useCallback, useLayoutEffe
 import { useConfig } from "../../hooks/useConfig";
 import { useChat } from "../../hooks/useChat";
 import { config as environmentConfig } from "../../config/environment";
-import FilePreview from "./FilePreview";
-import ResponseCard from "./ResponseCard";
-import { CTAButtonGroup } from "./CTAButton";
+import FilePreview from "./FIlePreview";  // Note: File has unusual capitalization
 import { streamingRegistry } from "../../utils/streamingRegistry";
 import { marked } from 'marked';
-import "./MessageBubble.css";
 import DOMPurify from 'dompurify';
 
 // Configure marked for streaming markdown
@@ -94,8 +91,6 @@ export default function MessageBubble({
   content,
   files = [],
   actions = [],
-  cards = [], // Smart response cards from KB inventory
-  ctaButtons: ctaButtonsProp, // Context-aware CTA buttons from response enhancer
   uploadState,
   onCancel,
   metadata = {},
@@ -109,19 +104,6 @@ export default function MessageBubble({
   // New prop to control rendering mode
   renderMode = "static", // "static" or "streaming"
 }) {
-  // Debug: Log raw prop received
-  console.log('[MessageBubble] Raw ctaButtonsProp:', {
-    messageIdProp,
-    role,
-    ctaButtonsProp,
-    isArray: Array.isArray(ctaButtonsProp),
-    length: ctaButtonsProp?.length,
-    type: typeof ctaButtonsProp
-  });
-
-  // Process CTA buttons safely - don't default to empty array during destructuring
-  const ctaButtons = Array.isArray(ctaButtonsProp) ? ctaButtonsProp : [];
-
   const { config } = useConfig();
   const { addMessage, isTyping, retryMessage } = useChat();
   const [avatarError, setAvatarError] = useState(false);
@@ -150,13 +132,26 @@ export default function MessageBubble({
     if (renderMode !== "streaming") {
       return false;
     }
-    
+
     if (typeof isStreamingProp === 'boolean') return isStreamingProp;
     const metaFlag = (metadata.isStreaming === true) || (metadata.streaming === true) || (metadata.status === 'streaming');
     const registryFlag = (typeof streamingRegistry?.isActive === 'function') ? !!streamingRegistry.isActive(messageId) : false;
     return !!(metaFlag || registryFlag);
   }, [isStreamingProp, metadata, messageId, renderMode]);
 
+  // Debug restored message rendering
+  if (role === "assistant" && content) {
+    console.log('🎯 Bot message render check:', {
+      id: explicitId || messageIdProp,
+      streamingFlag,
+      renderMode,
+      hasContent: !!content,
+      contentLength: content?.length,
+      willRender: (!streamingFlag) && typeof content === 'string' && content.length > 0
+    });
+  }
+
+  // try { console.log('[Bubble] render flags', { id: messageId, streamingFlag, hasContent: !!content, len: (content || '').length }); } catch {}
 
   // --- Streaming DOM refs ---
   const streamingContainerRef = useRef(null); // wraps the text node
@@ -202,6 +197,7 @@ export default function MessageBubble({
       if (bubble && messageId != null) {
         bubble.setAttribute('data-message-id', String(messageId));
       }
+      console.log('[Bubble] mount: tag stream id', { id: messageId, hasAttr: el.hasAttribute('data-stream-id') });
     } catch {}
 
     // Remove any children; streaming will be managed imperatively
@@ -213,6 +209,8 @@ export default function MessageBubble({
     lastLenRef.current = 1;
     bufferRef.current = '';
 
+    try { console.log('[Bubble] streaming text node created', { id: messageId, nodeType: tn.nodeType }); } catch {}
+    try { console.log('[Bubble] streaming container ready', { id: messageId, className: el.className, hasStreamId: el.hasAttribute('data-stream-id') }); } catch {}
 
     return () => {
       textNodeRef.current = null;
@@ -272,10 +270,8 @@ export default function MessageBubble({
     if (renderMode !== "streaming") {
       return;
     }
-
+    
     if (!streamingFlag || !messageId) return;
-
-    // Reset the ordered list counter for this new message
 
     let el = resolveLiveEl();
 
@@ -308,92 +304,135 @@ export default function MessageBubble({
       
       const nextText = bufferRef.current.length ? bufferRef.current : '\u200B';
       
-      // Simple markdown to HTML for streaming content
-      // The server sends markdown text that needs formatting
+      // Full markdown processing for streaming content
       try {
         let html = nextText;
-
-        // First, escape any HTML to prevent XSS
-        html = html.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
-        // Convert markdown to basic HTML
-        // Headers
-        html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
-        html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
-        html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
-
-        // Blockquotes (useful for testimonials or important notes)
-        html = html.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
-
-        // Horizontal rules (for section breaks)
-        html = html.replace(/^---+$/gm, '<hr>');
-
-        // Links - both markdown style and plain URLs
-        // Markdown links [text](url)
+        
+        // Process headers (H1-H6) first
+        html = html.replace(/^######\s+(.+)$/gm, '<h6>$1</h6>');
+        html = html.replace(/^#####\s+(.+)$/gm, '<h5>$1</h5>');
+        html = html.replace(/^####\s+(.+)$/gm, '<h4>$1</h4>');
+        html = html.replace(/^###\s+(.+)$/gm, '<h3>$1</h3>');
+        html = html.replace(/^##\s+(.+)$/gm, '<h2>$1</h2>');
+        html = html.replace(/^#\s+(.+)$/gm, '<h1>$1</h1>');
+        
+        // Process markdown links BEFORE auto-linking to prevent double processing
+        // This must happen before auto-link to avoid matching URLs inside markdown links
         html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
-        // Auto-link plain URLs
-        html = html.replace(/(^|[^">])(https?:\/\/[^\s<"]+)/g, '$1<a href="$2" target="_blank" rel="noopener noreferrer">$2</a>');
-        // Email links
-        html = html.replace(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g, '<a href="mailto:$1">$1</a>');
-
-        // Bold and italic (do this after links to avoid conflicts)
-        html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-        html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
-
-        // Line breaks (two spaces at end of line = <br>)
-        html = html.replace(/  $/gm, '<br>');
-
-        // Lists - handle bullets with various markers and indentation
-        html = html.replace(/^(\s*)[-•*+]\s+(.+)$/gm, (match, spaces, content) => {
-          const level = Math.floor(spaces.length / 2);
-          return `<li data-level="${level}">${content}</li>`;
-        });
-        html = html.replace(/^(\s*)\d+\.\s+(.+)$/gm, (match, spaces, content) => {
-          const level = Math.floor(spaces.length / 2);
-          return `<li data-level="${level}" data-ordered="true">${content}</li>`;
-        });
-
-        // Wrap consecutive list items in ul/ol tags
-        html = html.replace(/((?:<li[^>]*>.*<\/li>\s*)+)/g, (match) => {
-          // Check if numbered or bulleted
-          if (match.includes('data-ordered="true"')) {
-            return '<ol>' + match + '</ol>';
-          }
-          return '<ul>' + match + '</ul>';
-        });
-
-        // Paragraphs - only wrap complete paragraphs during streaming
-        // Check if we're still mid-stream (no ending punctuation or still receiving)
-        const isLikelyComplete = nextText.match(/[.!?]\s*$/);
-        const hasDoubleNewline = html.includes('\n\n');
-
-        if (hasDoubleNewline || isLikelyComplete) {
-          // Split by double newlines for proper paragraphs
-          const paragraphs = html.split(/\n\n+/);
-          html = paragraphs.map((p, idx) => {
-            // Don't wrap if already has HTML tags
-            if (p.match(/^<[hul]/)) return p;
-            // For the last paragraph during streaming, only wrap if it looks complete
-            if (idx === paragraphs.length - 1 && !isLikelyComplete && !hasDoubleNewline) {
-              return p.trim() || '';
+        
+        // Now auto-link plain URLs (but not those already in HTML tags)
+        // Negative lookbehind to avoid URLs already in href="..." or already linked
+        html = html.replace(/(?<!href=")(?<!>)(https?:\/\/[^\s<"]+)(?![^<]*<\/a>)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+        
+        // Process lists - preserve as single block without extra line breaks
+        const lines = html.split('\n');
+        let result = [];
+        let inList = false;
+        let listType = null;
+        
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i];
+          const bulletMatch = line.match(/^\s*[-*+]\s+(.+)$/);
+          const numberMatch = line.match(/^\s*(\d+)\.\s+(.+)$/);
+          
+          if (bulletMatch) {
+            // Process any inline formatting in the list item
+            let itemContent = bulletMatch[1]
+              .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+              .replace(/__([^_]+)__/g, '<strong>$1</strong>')
+              .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+              .replace(/_([^_]+)_/g, '<em>$1</em>')
+              .replace(/`([^`]+)`/g, '<code>$1</code>');
+            
+            if (!inList || listType !== 'ul') {
+              if (inList) result.push(`</${listType}>`);
+              result.push('<ul>');
+              inList = true;
+              listType = 'ul';
             }
-            return p.trim() ? `<p>${p}</p>` : '';
-          }).join('\n');
-        } else {
-          // During active streaming of first paragraph, don't wrap yet
-          // Just replace single newlines with spaces for flow
-          html = html.replace(/([^>])\n([^<])/g, '$1 $2');
+            result.push(`<li>${itemContent}</li>`);
+          } else if (numberMatch) {
+            // Process any inline formatting in the list item
+            let itemContent = numberMatch[2]
+              .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+              .replace(/__([^_]+)__/g, '<strong>$1</strong>')
+              .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+              .replace(/_([^_]+)_/g, '<em>$1</em>')
+              .replace(/`([^`]+)`/g, '<code>$1</code>');
+            
+            if (!inList || listType !== 'ol') {
+              if (inList) result.push(`</${listType}>`);
+              result.push('<ol>');
+              inList = true;
+              listType = 'ol';
+            }
+            result.push(`<li>${itemContent}</li>`);
+          } else {
+            // Not a list item
+            if (inList) {
+              result.push(`</${listType}>`);
+              inList = false;
+              listType = null;
+            }
+            
+            // Only add line breaks between non-list paragraphs
+            if (line.trim() === '') {
+              result.push('<br>');
+            } else {
+              result.push(line);
+            }
+          }
         }
-
-        // Apply formatted HTML
+        
+        // Close any open list
+        if (inList) {
+          result.push(`</${listType}>`);
+        }
+        
+        html = result.join('');
+        
+        // Process remaining inline formatting (for non-list content)
+        // Bold/strong
+        html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+        html = html.replace(/__([^_]+)__/g, '<strong>$1</strong>');
+        
+        // Italic/emphasis  
+        html = html.replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, '<em>$1</em>');
+        html = html.replace(/(?<!_)_([^_]+)_(?!_)/g, '<em>$1</em>');
+        
+        // Code blocks (multi-line)
+        html = html.replace(/```([^`]*)```/gs, '<pre><code>$1</code></pre>');
+        
+        // Inline code
+        html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+        
+        // Blockquotes
+        html = html.replace(/^>\s+(.+)$/gm, '<blockquote>$1</blockquote>');
+        
+        // Horizontal rules
+        html = html.replace(/^([-*_]){3,}$/gm, '<hr>');
+        
+        // Paragraphs - wrap non-HTML content in <p> tags for better spacing
+        // Split by double newlines for paragraph detection
+        const paragraphs = html.split(/\n\n+/);
+        html = paragraphs.map(p => {
+          // Don't wrap if it's already HTML (starts with <)
+          if (p.trim().startsWith('<')) return p;
+          // Don't wrap empty lines
+          if (p.trim() === '') return '';
+          // Wrap text content in paragraph
+          return `<p>${p.replace(/\n/g, ' ')}</p>`;
+        }).join('');
+        
+        // Apply HTML to element with streaming-formatted wrapper for CSS
+        // This ensures all theme.css rules for streaming content are applied
         elNode.innerHTML = `<div class="streaming-formatted">${html}</div>`;
+        console.log('[Bubble] writeAccumulated -> el.innerHTML set with streaming-formatted wrapper', { id: messageId, len: nextText.length });
       } catch (err) {
-        console.error('[Bubble] Markdown processing error:', err);
-        // Fallback to plain text
-        const textNode = ensureTextNode();
-        if (textNode) {
-          textNode.nodeValue = nextText;
-        }
+        // Fallback to plain text if processing fails
+        console.error('[Bubble] Error with inline markdown:', err);
+        elNode.textContent = nextText;
+        console.log('[Bubble] writeAccumulated -> el.textContent set (fallback)', { id: messageId, len: nextText.length });
       }
       
       lastLenRef.current = nextText.length;
@@ -407,6 +446,7 @@ export default function MessageBubble({
     };
 
     const handleEnd = () => {
+      try { console.log('[Bubble] onEnd', { id: messageId, len: bufferRef.current.length }); } catch {}
     };
 
     const unsubscribe = streamingRegistry.subscribe(messageId, handleChunk, handleEnd);
@@ -421,7 +461,6 @@ export default function MessageBubble({
       try { unsubscribe && unsubscribe(); } catch {}
     };
   }, [streamingFlag, messageId, scheduleCommit, resolveLiveEl]);
-
 
   useEffect(() => {
     // Only set up mutation observer when in streaming mode
@@ -455,65 +494,6 @@ export default function MessageBubble({
     if (isTyping) return;
     const messageText = action.value || action.label;
     addMessage({ role: "user", content: messageText });
-  };
-
-  const handleCardAction = (cardAction) => {
-    if (isTyping) return;
-
-    // Handle different card action types
-    if (cardAction.formType) {
-      // Start conversational form
-      addMessage({
-        role: "user",
-        content: `I'd like to ${cardAction.formType.replace('_', ' ')}`,
-        metadata: { triggerForm: cardAction.formType }
-      });
-    } else if (cardAction.action) {
-      // Generic action
-      addMessage({
-        role: "user",
-        content: cardAction.action,
-        metadata: { cardAction: true }
-      });
-    }
-  };
-
-  const handleCtaClick = (cta) => {
-    if (isTyping) return;
-    if (!cta) return;
-
-    // Handle different CTA action types
-    if (cta.action === 'start_form' && cta.formId) {
-      // Trigger conversational form
-      addMessage({
-        role: "user",
-        content: cta.text || cta.label || `I'd like to ${cta.formId.replace('_', ' ')}`,
-        metadata: {
-          triggerForm: cta.formId,
-          ctaAction: true
-        }
-      });
-    } else if (cta.action === 'external_link' && cta.url) {
-      // Open external link
-      window.open(cta.url, '_blank', 'noopener,noreferrer');
-    } else if (cta.action === 'show_info') {
-      // Request more information
-      addMessage({
-        role: "user",
-        content: cta.text || cta.label,
-        metadata: {
-          infoRequest: cta.infoType,
-          ctaAction: true
-        }
-      });
-    } else {
-      // Default: Send as user message
-      addMessage({
-        role: "user",
-        content: cta.text || cta.label,
-        metadata: { ctaAction: true }
-      });
-    }
   };
 
   const getActionChipsLayoutClass = (acts) => {
@@ -550,7 +530,7 @@ export default function MessageBubble({
         {/* Single container for entire lifecycle - streaming and markdown */}
         <div
           ref={streamingContainerRef}
-          className={`message-text message-content-rendered ${streamingFlag ? 'streaming' : ''}`}
+          className={`message-text ${streamingFlag ? 'streaming' : ''}`}
           data-streaming={streamingFlag ? "true" : "false"}
           data-stream-id={messageId}
           data-was-streamed={metadata?.streamCompleted ? "true" : "false"}
@@ -561,9 +541,21 @@ export default function MessageBubble({
           // For non-streamed messages, use React's dangerouslySetInnerHTML
           dangerouslySetInnerHTML={
             (!streamingFlag) && typeof content === 'string' && content.length
-              ? { __html: `<div class="streaming-formatted">${content}</div>` } // Wrap in streaming-formatted for CSS rules
+              ? { __html: content }
               : undefined
           }
+          style={{
+            display: "block",
+            visibility: "visible",
+            opacity: 1,
+            whiteSpace: "normal",
+            wordBreak: "break-word",
+            transition: "none",
+            willChange: streamingFlag ? "contents" : "auto",
+            contentVisibility: "visible",
+            contain: "none",
+            isolation: "auto"
+          }}
         />
 
         {/* Retry button for failed messages */}
@@ -587,35 +579,6 @@ export default function MessageBubble({
               <button key={index} onClick={() => handleActionClick(action)} disabled={isTyping} className="action-chip">
                 {action.label}
               </button>
-            ))}
-          </div>
-        )}
-
-        {/* CTA Buttons (assistant/bot only) - Context-aware from response enhancer */}
-        {console.log('[MessageBubble] CTA Render Check:', {
-          messageId,
-          role,
-          ctaButtons,
-          ctaButtonsLength: ctaButtons?.length,
-          shouldRender: (role === "assistant" || role === "bot") && ctaButtons && ctaButtons.length > 0
-        })}
-        {(role === "assistant" || role === "bot") && ctaButtons && ctaButtons.length > 0 && (
-          <CTAButtonGroup
-            ctas={ctaButtons}
-            onCtaClick={handleCtaClick}
-            disabled={isTyping}
-          />
-        )}
-
-        {/* Smart Response Cards (assistant/bot only) */}
-        {(role === "assistant" || role === "bot") && cards && cards.length > 0 && (
-          <div className="response-cards-container">
-            {cards.map((card, index) => (
-              <ResponseCard
-                key={index}
-                card={card}
-                onAction={handleCardAction}
-              />
             ))}
           </div>
         )}

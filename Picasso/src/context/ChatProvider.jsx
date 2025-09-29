@@ -418,12 +418,13 @@ async function sanitizeMessage(content) {
     preprocessed = preprocessed.replace(/\[([^\]]+)\]\]\(([^)]+)\)\)/g, '[$1]($2)');
 
 
-    // 1) Convert bare URLs/emails in the plain text to markdown links BEFORE marked
-    const withLinks = linkifyPlaintext(preprocessed);
+    // 1) Skip linkifyPlaintext - let marked handle URLs naturally
+    // This prevents double-processing that was breaking markdown links
+    // const withLinks = linkifyPlaintext(preprocessed);
 
     // 2) Parse with marked using default renderer (not the compact one)
     // The compact renderer might be breaking standard markdown processing
-    let html = marked.parse(withLinks, {
+    let html = marked.parse(preprocessed, {
       gfm: true,
       breaks: true,  // Need this for Bedrock KB markdown
       pedantic: false,
@@ -731,9 +732,67 @@ const ChatProvider = ({ children }) => {
       if (stored && storedSessionId === currentSessionId) {
         // Don't check SESSION_TIMEOUT - widget persistence should work regardless
         // Messages should persist as long as browser tab is open
-        const messages = JSON.parse(stored);
-        console.log('🔵 LOADING MESSAGES FROM STORAGE:', messages.length, 'messages');
-        console.log('🔵 First message in storage:', messages[0]);
+        const storedMessages = JSON.parse(stored);
+        console.log('🔵 LOADING MESSAGES FROM STORAGE:', storedMessages.length, 'messages');
+        console.log('🔵 First message in storage:', storedMessages[0]);
+
+        // Fix bot messages that might have content in metadata instead of content field
+        // This handles legacy messages before the fix
+        const messages = storedMessages.map(msg => {
+          if (msg.role === 'assistant') {
+            console.log('🔵 Processing bot message on load:', {
+              id: msg.id,
+              hasContent: !!msg.content,
+              contentLength: msg.content?.length,
+              hasMetadata: !!msg.metadata,
+              hasSanitized: !!msg.metadata?.sanitizedContent,
+              hasRaw: !!msg.metadata?.rawContent
+            });
+
+            // Check if content needs to be extracted from metadata (for legacy messages)
+            if (!msg.content || msg.content === "") {
+              // Prefer sanitized HTML over raw markdown
+              const extractedContent = msg.metadata?.sanitizedContent || "";
+
+              if (extractedContent) {
+                console.log('🔵 Extracting sanitized content from metadata:', {
+                  id: msg.id,
+                  extractedLength: extractedContent.length,
+                  extractedPreview: extractedContent.substring(0, 50)
+                });
+                return {
+                  ...msg,
+                  content: extractedContent
+                };
+              } else if (msg.metadata?.rawContent) {
+                // Fallback: if only raw markdown exists, we need to parse it
+                console.log('🔵 Found only raw content, needs parsing:', {
+                  id: msg.id,
+                  rawLength: msg.metadata.rawContent.length
+                });
+                // Note: This is async, but we can't await here
+                // For now, return empty and let the message re-render when loaded
+                return {
+                  ...msg,
+                  content: msg.metadata.rawContent // Will show raw markdown temporarily
+                };
+              }
+            }
+          }
+          return msg;
+        });
+
+        // Debug bot messages specifically
+        const botMessages = messages.filter(m => m.role === 'assistant');
+        console.log('🔵 Bot messages after extraction:', botMessages.length);
+        botMessages.forEach(msg => {
+          console.log('🔵 Bot message check:', {
+            id: msg.id,
+            hasContent: !!msg.content,
+            contentLength: msg.content?.length,
+            contentPreview: msg.content?.substring(0, 100)
+          });
+        });
         errorLogger.logInfo('📂 Restored conversation from widget reopen', {
           messageCount: messages.length,
           sessionId: currentSessionId
@@ -809,12 +868,37 @@ const ChatProvider = ({ children }) => {
         if (Array.isArray(messages) && messages.length > 0 && hasInitializedMessages) {
           // Fix bot messages that have content in metadata.rawContent or metadata.sanitizedContent
           const messagesToPersist = messages.map(msg => {
-            if (msg.role === 'assistant' && !msg.content && msg.metadata) {
-              // Bot message with content in metadata - extract it
-              return {
-                ...msg,
-                content: msg.metadata.sanitizedContent || msg.metadata.rawContent || msg.content || ""
-              };
+            if (msg.role === 'assistant') {
+              console.log('💾 Saving bot message:', {
+                id: msg.id,
+                hasContent: !!msg.content,
+                contentLength: msg.content?.length,
+                hasMetadata: !!msg.metadata,
+                hasSanitized: !!msg.metadata?.sanitizedContent,
+                hasRaw: !!msg.metadata?.rawContent,
+                isStreaming: msg.isStreaming,
+                status: msg.status
+              });
+
+              // Ensure content is in the main content field for persistence
+              // For messages that might have content only in metadata
+              if (!msg.content || msg.content === "") {
+                const extractedContent = msg.metadata?.sanitizedContent ||
+                                         msg.metadata?.rawContent ||
+                                         msg.content ||
+                                         "";
+
+                if (extractedContent && extractedContent !== msg.content) {
+                  console.log('💾 Extracting for save:', {
+                    id: msg.id,
+                    extractedLength: extractedContent.length
+                  });
+                  return {
+                    ...msg,
+                    content: extractedContent
+                  };
+                }
+              }
             }
             return msg;
           });
@@ -2000,14 +2084,17 @@ const ChatProvider = ({ children }) => {
                     isCanceled
                   });
 
-                  // DO NOT update content - MessageBubble already has the properly formatted content
-                  // Just update the streaming flags to mark completion
+                  // Sanitize the content for persistence
+                  const sanitizedContent = await sanitizeMessage(fullText);
+
+                  // Update the message with sanitized content and flags
                   setMessages(prev => {
                     const updated = prev.map(msg =>
                       msg.id === streamingMessageId
                         ? {
                             ...msg,
-                            // Keep existing content - do not overwrite!
+                            // Store the sanitized content for persistence
+                            content: sanitizedContent,
                             isStreaming: false,
                             streaming: false,
                             status: 'final',
@@ -2018,29 +2105,19 @@ const ChatProvider = ({ children }) => {
                               streaming: false,
                               status: 'final',
                               streamCompleted: true,
-                              rawContent: fullText // Store raw content for reference
+                              rawContent: fullText, // Keep raw for reference
+                              sanitizedContent: sanitizedContent // Also store sanitized version
                             }
                           }
                         : msg
                     );
-                    console.log('[ChatProvider] Streaming flags updated (content preserved):', {
-                      id: streamingMessageId
+                    console.log('[ChatProvider] Streaming complete with content:', {
+                      id: streamingMessageId,
+                      contentLength: sanitizedContent?.length
                     });
                     return updated;
                   });
                   console.log('[ChatProvider] ✅ finalized', { id: streamingMessageId, len: fullText?.length });
-
-                  // Sanitize in background for future use (don't await)
-                  sanitizeMessage(fullText).then(safe => {
-                    // Store sanitized version in metadata for potential future use
-                    setMessages(prev => prev.map(msg =>
-                      msg.id === streamingMessageId
-                        ? { ...msg, metadata: { ...(msg.metadata || {}), sanitizedContent: safe } }
-                        : msg
-                    ));
-                  }).catch(err => {
-                    console.error('[ChatProvider] Background sanitization error:', err);
-                  });
 
                   try {
                     if (conversationManager) {

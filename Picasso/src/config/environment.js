@@ -194,10 +194,10 @@ const ENVIRONMENTS = {
     STREAMING_ENDPOINT: typeof __STREAMING_ENDPOINT__ !== 'undefined' ? __STREAMING_ENDPOINT__ : 'https://7pluzq3axftklmb4gbgchfdahu0lcnqd.lambda-url.us-east-1.on.aws', // Bedrock_Streaming_Handler_Staging
     STREAMING_METHOD: 'POST', // Lambda expects POST requests with JSON body
     DEFAULT_TENANT_HASH: typeof __DEFAULT_TENANT_HASH__ !== 'undefined' ? __DEFAULT_TENANT_HASH__ : 'my87674d777bf9', // MyRecruiter default tenant for development
-    
-    // CONVERSATION API: Temporarily disabled until separate endpoint is configured
-    CONVERSATION_ENDPOINT_AVAILABLE: false, // Disabled - using local storage fallback
-    
+
+    // CONVERSATION API: Enabled for development testing
+    CONVERSATION_ENDPOINT_AVAILABLE: true, // Enabled for development environment
+
     // Development-specific settings
     ENABLE_HOT_RELOAD: true,
     LOG_LEVEL: 'debug',
