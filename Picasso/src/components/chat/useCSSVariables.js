@@ -336,6 +336,44 @@ export function useCSSVariables(config) {
       '--upload-error-bg': branding.upload_error_bg || 'rgba(239, 68, 68, 0.1)',
       '--upload-warning-border': branding.upload_warning_border || '#f59e0b',
       '--upload-warning-bg': branding.upload_warning_bg || 'rgba(245, 158, 11, 0.1)',
+
+      /* === CONVERSATIONAL FORMS === */
+      '--form-input-bg': branding.form_input_bg || branding.input_background_color || branding.background_color || '#ffffff',
+      '--form-input-border': branding.form_input_border || branding.input_border_color || branding.border_color || 'rgba(59, 130, 246, 0.2)',
+      '--form-input-border-focus': branding.form_input_border_focus || branding.input_focus_border_color || branding.primary_color || '#3b82f6',
+      '--form-input-text': branding.form_input_text || branding.input_text_color || branding.font_color || '#374151',
+      '--form-input-placeholder': branding.form_input_placeholder || branding.input_placeholder_color || '#9ca3af',
+      '--form-input-padding': branding.form_input_padding || '12px 16px',
+      '--form-input-radius': ensurePixelUnit(branding.form_input_radius || branding.input_border_radius || '8px'),
+      '--form-input-font-size': ensurePixelUnit(branding.form_input_font_size || '14px'),
+      '--form-input-shadow': branding.form_input_shadow || '0 1px 3px rgba(0, 0, 0, 0.1)',
+      '--form-input-shadow-focus': branding.form_input_shadow_focus || generateInputFocusShadow(branding.primary_color),
+
+      '--form-select-option-bg': branding.form_select_option_bg || 'rgba(59, 130, 246, 0.08)',
+      '--form-select-option-bg-hover': branding.form_select_option_bg_hover || branding.primary_color || '#3b82f6',
+      '--form-select-option-text': branding.form_select_option_text || branding.primary_color || '#3b82f6',
+      '--form-select-option-text-hover': branding.form_select_option_text_hover || '#ffffff',
+      '--form-select-option-border': branding.form_select_option_border || '2px solid rgba(59, 130, 246, 0.2)',
+      '--form-select-option-border-hover': branding.form_select_option_border_hover || branding.primary_color || '#3b82f6',
+
+      '--form-submit-button-bg': branding.form_submit_button_bg || branding.primary_color || '#3b82f6',
+      '--form-submit-button-text': branding.form_submit_button_text || '#ffffff',
+      '--form-submit-button-bg-hover': branding.form_submit_button_bg_hover || darkenColor(branding.primary_color || '#3b82f6', 10),
+      '--form-submit-button-disabled-bg': branding.form_submit_button_disabled_bg || '#e5e7eb',
+      '--form-submit-button-disabled-text': branding.form_submit_button_disabled_text || '#9ca3af',
+
+      '--form-cancel-button-bg': branding.form_cancel_button_bg || 'transparent',
+      '--form-cancel-button-text': branding.form_cancel_button_text || branding.secondary_color || '#6b7280',
+      '--form-cancel-button-border': branding.form_cancel_button_border || branding.border_color || 'rgba(0, 0, 0, 0.1)',
+
+      '--form-progress-bg': branding.form_progress_bg || '#e5e7eb',
+      '--form-progress-fill': branding.form_progress_fill || branding.primary_color || '#3b82f6',
+      '--form-error-color': branding.form_error_color || '#ef4444',
+
+      '--form-completion-bg': branding.form_completion_bg || '#f0fdf4',
+      '--form-completion-border': branding.form_completion_border || '#bbf7d0',
+      '--form-completion-icon-color': branding.form_completion_icon_color || '#16a34a',
+      '--form-completion-text-color': branding.form_completion_text_color || branding.font_color || '#374151',
     };
 
     // Check iframe context and filter variables BEFORE applying

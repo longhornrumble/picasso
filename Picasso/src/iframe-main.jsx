@@ -4,6 +4,7 @@ import './utils/stringPolyfill.js';
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { ConfigProvider } from './context/ConfigProvider.jsx';
+import { FormModeProvider } from './context/FormModeContext.jsx';
 import ChatProviderOrchestrator from './context/ChatProviderOrchestrator.jsx';
 import ChatWidget from './components/chat/ChatWidget.jsx';
 import { CSSVariablesProvider } from './components/chat/useCSSVariables.js';
@@ -402,9 +403,11 @@ function initializeWidget() {
     root.render(
       <ConfigProvider>
         <CSSVariablesProvider>
-          <ChatProviderOrchestrator>
-            <ChatWidget />
-          </ChatProviderOrchestrator>
+          <FormModeProvider>
+            <ChatProviderOrchestrator>
+              <ChatWidget />
+            </ChatProviderOrchestrator>
+          </FormModeProvider>
         </CSSVariablesProvider>
       </ConfigProvider>
     );

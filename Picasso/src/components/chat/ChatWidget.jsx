@@ -13,13 +13,19 @@ import AttachmentMenu from "./AttachmentMenu";
 import MessageBubble from "./MessageBubble";
 import TypingIndicator from "./TypingIndicator";
 import StateManagementPanel from "./StateManagementPanel";
+import FormFieldPrompt from "../forms/FormFieldPrompt";
+import FormCompletionCard from "../forms/FormCompletionCard";
+import { useFormMode } from "../../context/FormModeContext";
 
 function ChatWidget() {
-  const { messages, isTyping, renderMode } = useChat();
+  const { messages, isTyping, renderMode, recordFormCompletion } = useChat();
   const { config } = useConfig();
+  const { isFormMode, cancelForm, isFormComplete, completedFormData, completedFormConfig, currentFormId, clearCompletionState } = useFormMode();
 
   // Debug: Log messages to see what's being received
   console.log('[ChatWidget] Rendering with messages:', messages.length, messages);
+  console.log('[ChatWidget] Form mode active:', isFormMode);
+  console.log('[ChatWidget] Form complete?', isFormComplete, 'Has data?', !!completedFormData);
   
   // In iframe mode, we don't need breakpoints - the iframe container handles responsive sizing
   // The widget should always fill its container
@@ -525,7 +531,7 @@ function ChatWidget() {
             {messages.map((msg, idx) => {
               const isLastMessage = idx === messages.length - 1;
               return (
-                <div 
+                <div
                   key={msg.id || idx}
                   ref={isLastMessage ? lastMessageRef : null}
                 >
@@ -546,7 +552,33 @@ function ChatWidget() {
                 </div>
               );
             })}
-            {isTyping && <TypingIndicator />}
+            {/* Render form field prompt when in form mode */}
+            {isFormMode && (
+              <div ref={lastMessageRef}>
+                <FormFieldPrompt onCancel={cancelForm} />
+              </div>
+            )}
+            {/* Render form completion card when form is complete */}
+            {isFormComplete && completedFormData && (
+              <div ref={lastMessageRef}>
+                <FormCompletionCard
+                  formId={currentFormId}
+                  formData={completedFormData}
+                  formFields={completedFormConfig?.fields}
+                  config={completedFormConfig?.post_submission}
+                  onEndSession={() => {
+                    clearCompletionState();
+                  }}
+                  onContinue={() => {
+                    clearCompletionState();
+                    if (recordFormCompletion) {
+                      recordFormCompletion(currentFormId, completedFormData);
+                    }
+                  }}
+                />
+              </div>
+            )}
+            {isTyping && !isFormMode && <TypingIndicator />}
           </div>
 
           <div className="chat-footer-container">

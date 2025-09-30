@@ -1,13 +1,15 @@
 // MessageBubble.jsx — Streaming-aware bubble with imperative writer
-import React, { useState, useRef, useEffect, useMemo, useCallback, useLayoutEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo, useCallback, useLayoutEffect, useContext } from "react";
 import { useConfig } from "../../hooks/useConfig";
 import { useChat } from "../../hooks/useChat";
+import FormModeContext from "../../context/FormModeContext";
 import { config as environmentConfig } from "../../config/environment";
 import FilePreview from "./FIlePreview";  // Note: File has unusual capitalization
 import { streamingRegistry } from "../../utils/streamingRegistry";
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import CTAButton, { CTAButtonGroup } from './CTAButton';
+import FormCompletionCard from '../forms/FormCompletionCard';
 
 // Configure marked for streaming markdown
 marked.setOptions({
@@ -108,7 +110,8 @@ export default function MessageBubble({
   renderMode = "static", // "static" or "streaming"
 }) {
   const { config } = useConfig();
-  const { addMessage, isTyping, retryMessage } = useChat();
+  const { addMessage, isTyping, retryMessage, recordFormCompletion } = useChat();
+  const formMode = useContext(FormModeContext);
   const [avatarError, setAvatarError] = useState(false);
 
   const isUser = role === "user";
@@ -501,21 +504,137 @@ export default function MessageBubble({
 
   const handleCtaClick = (cta) => {
     if (isTyping) return;
-    console.log('[MessageBubble] CTA clicked:', cta);
+    console.log('[MessageBubble] CTA clicked - full data:', JSON.stringify(cta, null, 2));
+    console.log('[MessageBubble] CTA properties:', {
+      action: cta.action,
+      type: cta.type,
+      formId: cta.formId,
+      form_id: cta.form_id,
+      label: cta.label,
+      fields: cta.fields,
+      hasFormMode: !!formMode,
+      hasStartFormWithConfig: !!(formMode && formMode.startFormWithConfig)
+    });
+
+    // Check if this is a form-related CTA by looking at the label
+    const isLoveBoxForm = cta.label && cta.label.toLowerCase().includes('love box');
+    const isDareToDreamForm = cta.label && cta.label.toLowerCase().includes('dare to dream');
+    const isAngelAllianceForm = cta.label && cta.label.toLowerCase().includes('angel alliance');
 
     // Handle different CTA action types
     if (cta.action === 'external_link' && cta.url) {
       window.open(cta.url, '_blank', 'noopener,noreferrer');
-    } else if (cta.action === 'start_form' && cta.formId) {
-      // TODO: Trigger form mode in ChatProvider
-      console.log('[MessageBubble] Form trigger:', cta.formId);
-      if (addMessage) {
-        // Send a message to indicate form start
-        addMessage({
-          role: "user",
-          content: `I'd like to apply`,
-          metadata: { formTrigger: cta.formId }
-        });
+    } else if (cta.action === 'start_form' || cta.action === 'form_trigger' || cta.type === 'form_trigger' || isLoveBoxForm || isDareToDreamForm || isAngelAllianceForm) {
+      // Determine form ID based on CTA label if not provided
+      let formId = cta.formId || cta.form_id || cta.id;
+      if (!formId && isLoveBoxForm) {
+        formId = 'lovebox_application';
+      } else if (!formId && isDareToDreamForm) {
+        formId = 'dare_to_dream_application';
+      } else if (!formId && isAngelAllianceForm) {
+        formId = 'angel_alliance_application';
+      }
+
+      // Trigger form mode using FormModeContext
+      console.log('[MessageBubble] Form trigger detected:', {
+        formId,
+        action: cta.action,
+        type: cta.type,
+        hasFields: !!cta.fields,
+        fieldsCount: cta.fields?.length,
+        isLoveBoxForm,
+        isDareToDreamForm,
+        isAngelAllianceForm
+      });
+
+      if (!formId) {
+        console.error('[MessageBubble] No form ID found in CTA:', cta);
+        return;
+      }
+
+      if (formMode && formMode.startFormWithConfig) {
+        // Get form fields from config if not provided in CTA
+        let fields = cta.fields || [];
+
+        // If no fields provided, try to get from config
+        if ((!fields || fields.length === 0) && config?.conversational_forms?.[formId]) {
+          fields = config.conversational_forms[formId].fields || [];
+          console.log('[MessageBubble] Loading fields from config for form:', formId, 'Fields count:', fields.length);
+        }
+
+        // Fallback fields for Love Box application if still no fields
+        if ((!fields || fields.length === 0) && formId === 'lovebox_application') {
+          fields = [
+            { id: 'first_name', type: 'text', label: 'First Name', prompt: "Let's get started! What's your first name?", required: true },
+            { id: 'last_name', type: 'text', label: 'Last Name', prompt: "Thanks! And what's your last name?", required: true },
+            { id: 'email', type: 'email', label: 'Email', prompt: "What email address should we use to contact you?", required: true },
+            { id: 'phone', type: 'phone', label: 'Phone', prompt: "What's the best phone number to reach you at?", required: true },
+            { id: 'age_confirm', type: 'select', label: 'Age Confirmation', prompt: "Are you at least 22 years old?", required: true,
+              options: [
+                { value: 'yes', label: 'Yes, I am 22 or older' },
+                { value: 'no', label: 'No, I am under 22' }
+              ],
+              eligibility_gate: true,
+              failure_message: 'You must be 22 or older to apply for the Love Box program.'
+            },
+            { id: 'commitment_confirm', type: 'select', label: 'Commitment', prompt: "Can you commit to one year with your Love Box family?", required: true,
+              options: [
+                { value: 'yes', label: 'Yes, I can commit to one year' },
+                { value: 'no', label: 'No, I cannot commit to one year' }
+              ]
+            },
+            { id: 'comments', type: 'textarea', label: 'Additional Comments', prompt: "Is there anything else you'd like to share? (optional)", required: false }
+          ];
+          console.log('[MessageBubble] Using fallback Love Box fields');
+        }
+
+        // Use the form config from the CTA button or build it
+        const formConfig = {
+          form_id: formId,
+          title: cta.label || cta.title || config?.conversational_forms?.[formId]?.title || 'Application Form',
+          fields: fields,
+          welcome_message: cta.welcome_message || config?.conversational_forms?.[formId]?.welcome_message || `Great! Let's get started with your application.`
+        };
+
+        console.log('[MessageBubble] Starting form with config:', formConfig);
+        const success = formMode.startFormWithConfig(formId, formConfig);
+        console.log('[MessageBubble] Form start result:', success);
+        if (success && addMessage) {
+          // Send welcome message for the form
+          addMessage({
+            role: "assistant",
+            content: formConfig.welcome_message
+          });
+          // Show the first field prompt
+          if (formConfig.fields && formConfig.fields.length > 0) {
+            const firstField = formConfig.fields[0];
+            setTimeout(() => {
+              addMessage({
+                role: "assistant",
+                content: firstField.prompt || `Please provide your ${firstField.label}`,
+                metadata: { isFormPrompt: true, fieldId: firstField.id }
+              });
+            }, 500);
+          }
+        } else if (!success) {
+          console.error('[MessageBubble] Failed to start form:', formId);
+        }
+      } else if (formMode && formMode.startForm) {
+        // Try legacy method
+        const success = formMode.startForm(formId);
+        if (!success) {
+          console.error('[MessageBubble] Failed to start form:', formId);
+        }
+      } else {
+        // Fallback if FormModeContext not available
+        console.log('[MessageBubble] FormModeContext not available, sending as message');
+        if (addMessage) {
+          addMessage({
+            role: "user",
+            content: `I'd like to apply`,
+            metadata: { formTrigger: cta.formId }
+          });
+        }
       }
     } else if (cta.action === 'show_info' && addMessage) {
       // Send as a user prompt to get info

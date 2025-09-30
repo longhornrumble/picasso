@@ -3961,3 +3961,357 @@ body[data-iframe="true"].minimized {
 .streaming-formatted > :last-child {
   margin-bottom: 0;
 }
+
+
+/* === CONVERSATIONAL FORMS === */
+
+/* Form field prompt container */
+.form-field-prompt {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  background: var(--bot-bubble-color);
+  border-radius: var(--border-radius);
+  border: 1px solid var(--border-color);
+  box-shadow: var(--bubble-shadow);
+}
+
+/* Progress bar */
+.form-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-progress-bar {
+  width: 100%;
+  height: 4px;
+  background: var(--form-progress-bg);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.form-progress-fill {
+  height: 100%;
+  background: var(--form-progress-fill);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.form-progress-text {
+  font-size: 12px;
+  color: var(--secondary-color);
+  font-family: var(--font-family);
+  text-align: right;
+}
+
+/* Field content */
+.form-field-content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.form-field-label {
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  color: var(--font-color);
+  font-family: var(--font-family);
+  line-height: 1.4;
+}
+
+.form-field-hint {
+  font-size: 12px;
+  color: var(--secondary-color);
+  font-family: var(--font-family);
+  font-style: italic;
+}
+
+.form-field-error {
+  font-size: 13px;
+  color: var(--form-error-color);
+  font-family: var(--font-family);
+  font-weight: var(--font-weight-medium);
+}
+
+.form-field-required {
+  font-size: 12px;
+  color: var(--secondary-color);
+  font-family: var(--font-family);
+}
+
+/* Input container */
+.form-field-input-container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Text inputs */
+.form-field-input,
+.form-field-textarea {
+  width: 100%;
+  padding: var(--form-input-padding);
+  background: var(--form-input-bg);
+  border: 2px solid var(--form-input-border);
+  border-radius: var(--form-input-radius);
+  font-size: var(--form-input-font-size);
+  color: var(--form-input-text);
+  font-family: var(--font-family);
+  box-shadow: var(--form-input-shadow);
+  transition: all 0.2s ease;
+  box-sizing: border-box;
+}
+
+.form-field-input::placeholder,
+.form-field-textarea::placeholder {
+  color: var(--form-input-placeholder);
+}
+
+.form-field-input:focus,
+.form-field-textarea:focus {
+  outline: none;
+  border-color: var(--form-input-border-focus);
+  box-shadow: var(--form-input-shadow-focus);
+}
+
+.form-field-textarea {
+  resize: vertical;
+  min-height: 80px;
+  line-height: 1.5;
+}
+
+/* Select options */
+.form-select-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.form-select-option {
+  width: 100%;
+  padding: 12px 16px;
+  background: var(--form-select-option-bg);
+  border: var(--form-select-option-border);
+  border-radius: var(--form-input-radius);
+  font-size: var(--form-input-font-size);
+  color: var(--form-select-option-text);
+  font-family: var(--font-family);
+  font-weight: var(--font-weight-medium);
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: var(--form-input-shadow);
+}
+
+.form-select-option:hover {
+  background: var(--form-select-option-bg-hover);
+  color: var(--form-select-option-text-hover);
+  border-color: var(--form-select-option-border-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.form-select-option:active {
+  transform: translateY(0);
+}
+
+/* Submit button */
+.form-submit-button {
+  width: 100%;
+  padding: 12px 16px;
+  background: var(--form-submit-button-bg);
+  color: var(--form-submit-button-text);
+  border: none;
+  border-radius: var(--form-input-radius);
+  font-size: var(--form-input-font-size);
+  font-weight: var(--font-weight-semibold);
+  font-family: var(--font-family);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: var(--bubble-shadow);
+}
+
+.form-submit-button:hover:not(:disabled) {
+  background: var(--form-submit-button-bg-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.form-submit-button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.form-submit-button:disabled {
+  background: var(--form-submit-button-disabled-bg);
+  color: var(--form-submit-button-disabled-text);
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* Cancel button */
+.form-field-actions {
+  display: flex;
+  justify-content: center;
+  margin-top: 4px;
+}
+
+.form-cancel-button {
+  padding: 8px 16px;
+  background: var(--form-cancel-button-bg);
+  color: var(--form-cancel-button-text);
+  border: 1px solid var(--form-cancel-button-border);
+  border-radius: var(--form-input-radius);
+  font-size: 13px;
+  font-family: var(--font-family);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.form-cancel-button:hover {
+  background: rgba(0, 0, 0, 0.05);
+  border-color: var(--secondary-color);
+}
+
+/* Form completion card */
+.form-completion-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px;
+  background: var(--form-completion-bg);
+  border: 2px solid var(--form-completion-border);
+  border-radius: var(--border-radius);
+  box-shadow: var(--bubble-shadow);
+}
+
+.form-completion-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.form-completion-icon {
+  width: 32px;
+  height: 32px;
+  color: var(--form-completion-icon-color);
+  flex-shrink: 0;
+}
+
+.form-completion-title {
+  font-size: 16px;
+  font-weight: var(--font-weight-semibold);
+  color: var(--form-completion-text-color);
+  font-family: var(--font-family);
+  margin: 0;
+}
+
+.form-completion-message {
+  font-size: var(--font-size-base);
+  color: var(--form-completion-text-color);
+  font-family: var(--font-family);
+  line-height: 1.5;
+}
+
+.form-completion-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: var(--border-radius-small);
+}
+
+.form-completion-summary-title {
+  font-size: 13px;
+  font-weight: var(--font-weight-semibold);
+  color: var(--font-color);
+  font-family: var(--font-family);
+  margin: 0 0 4px 0;
+}
+
+.form-completion-field {
+  display: flex;
+  gap: 8px;
+  font-size: 13px;
+  font-family: var(--font-family);
+  line-height: 1.4;
+}
+
+.form-completion-field-label {
+  font-weight: var(--font-weight-semibold);
+  color: var(--font-color);
+  min-width: 100px;
+}
+
+.form-completion-field-value {
+  color: var(--secondary-color);
+}
+
+.form-completion-next-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.form-completion-next-steps-title {
+  font-size: 13px;
+  font-weight: var(--font-weight-semibold);
+  color: var(--font-color);
+  font-family: var(--font-family);
+  margin: 0 0 4px 0;
+}
+
+.form-completion-next-steps-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-left: 20px;
+  margin: 0;
+}
+
+.form-completion-next-step {
+  font-size: 13px;
+  color: var(--font-color);
+  font-family: var(--font-family);
+  line-height: 1.4;
+}
+
+.form-completion-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.form-completion-action-button {
+  flex: 1;
+  padding: 10px 16px;
+  background: var(--form-submit-button-bg);
+  color: var(--form-submit-button-text);
+  border: none;
+  border-radius: var(--border-radius-small);
+  font-size: 14px;
+  font-weight: var(--font-weight-semibold);
+  font-family: var(--font-family);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: var(--bubble-shadow);
+}
+
+.form-completion-action-button:hover {
+  background: var(--form-submit-button-bg-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.form-completion-action-button.secondary {
+  background: transparent;
+  color: var(--form-cancel-button-text);
+  border: 1px solid var(--form-cancel-button-border);
+}
+
+.form-completion-action-button.secondary:hover {
+  background: rgba(0, 0, 0, 0.05);
+  transform: translateY(-1px);
+}

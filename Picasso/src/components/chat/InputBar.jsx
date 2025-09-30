@@ -2,12 +2,14 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useChat } from "../../hooks/useChat";
 import { useConfig } from "../../hooks/useConfig";
+import { useFormMode } from "../../context/FormModeContext";
 import { Plus, ArrowRight, Mic } from "lucide-react";
 import AttachmentMenu from "./AttachmentMenu";
 
 export default function InputBar({ input, setInput }) {
   const { addMessage, isTyping } = useChat();
   const { config } = useConfig();
+  const { isFormMode, submitField, getCurrentField } = useFormMode();
   const features = config?.features || {};
   const [showAttachments, setShowAttachments] = useState(false);
   const [_uploadingFiles, setUploadingFiles] = useState(new Set());
@@ -65,9 +67,32 @@ export default function InputBar({ input, setInput }) {
   const handleSubmit = () => {
     const trimmed = actualInput.trim();
     if (!trimmed || isTyping) return;
-    addMessage({ role: "user", content: trimmed });
-    actualSetInput("");
-    setShowAttachments(false);
+
+    // Check if we're in form mode
+    if (isFormMode) {
+      console.log('[InputBar] Form mode active, submitting field value:', trimmed);
+      const result = submitField(trimmed);
+
+      if (result.valid) {
+        // Clear input after successful field submission
+        actualSetInput("");
+
+        // If form is complete, no need to send message - FormModeContext handles it
+        if (result.formComplete) {
+          console.log('[InputBar] Form complete - completion handled by FormModeContext');
+          // Form completion card will be displayed by MessageBubble
+        }
+      } else {
+        // Field validation failed - keep the input but show error
+        console.log('[InputBar] Field validation failed:', result.error);
+        // The error is shown by FormFieldPrompt component
+      }
+    } else {
+      // Normal chat mode
+      addMessage({ role: "user", content: trimmed });
+      actualSetInput("");
+      setShowAttachments(false);
+    }
 
     setTimeout(() => {
       if (textareaRef.current) {
@@ -205,7 +230,7 @@ export default function InputBar({ input, setInput }) {
                 value={actualInput}
                 onChange={handleInputChange}
                 onKeyDown={handleKeyDown}
-                placeholder="How can I help you today?"
+                placeholder={isFormMode && getCurrentField() ? "Enter your response..." : "How can I help you today?"}
                 autoComplete="off"
                 className="input-textarea inline-textarea auto-resize-textarea"
               />

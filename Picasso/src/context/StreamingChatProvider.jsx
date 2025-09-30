@@ -28,6 +28,7 @@ import { logger } from '../utils/logger';
 import { config as envConfig } from '../config/environment';
 import { streamingRegistry } from '../utils/streamingRegistry';
 import { createConversationManager } from '../utils/conversationManager';
+import { useFormMode } from './FormModeContext';
 
 // Streaming timeout constants
 const STREAMING_TIMEOUT = 25000; // 25 seconds (Lambda has 30s limit)
@@ -283,14 +284,20 @@ export default function StreamingChatProvider({ children }) {
   const [isTyping, setIsTyping] = useState(false);
   const [error, setError] = useState(null);
   const [isInitializing, setIsInitializing] = useState(true);
-  
+
+  // Session context tracking for forms
+  const [sessionContext, setSessionContext] = useState({
+    completed_forms: [],
+    form_submissions: {}
+  });
+
   // Refs for stable values
   const sessionIdRef = useRef(null);
   const tenantHashRef = useRef(getTenantHash());
   const conversationManagerRef = useRef(null);
   const abortControllersRef = useRef(new Map());
   const pendingCtasRef = useRef(null); // Fix: Use ref instead of closure variable
-  
+
   // Get config
   const { config: tenantConfig } = useConfig();
   
@@ -520,7 +527,9 @@ export default function StreamingChatProvider({ children }) {
         stream: true,
         // Include these for compatibility
         conversation_history: conversationContext?.recentMessages || [],
-        original_user_input: userInput
+        original_user_input: userInput,
+        // Include session context for form tracking
+        session_context: sessionContext
       };
       
       // Include state token if available (matching original)
@@ -834,6 +843,24 @@ export default function StreamingChatProvider({ children }) {
       await sendMessage(message.content);
     }
   }, [sendMessage]);
+
+  /**
+   * Record form completion in session context
+   */
+  const recordFormCompletion = useCallback((formId, formData) => {
+    logger.info('Recording form completion', { formId, formData });
+    setSessionContext(prev => ({
+      ...prev,
+      completed_forms: [...prev.completed_forms, formId],
+      form_submissions: {
+        ...prev.form_submissions,
+        [formId]: {
+          data: formData,
+          timestamp: Date.now()
+        }
+      }
+    }));
+  }, []);
   
   // Cleanup on unmount
   useEffect(() => {
@@ -893,6 +920,7 @@ export default function StreamingChatProvider({ children }) {
       messages,
       isTyping,
       sessionId: sessionIdRef.current,
+      sessionContext,
 
       // Core actions
       sendMessage,
@@ -900,6 +928,7 @@ export default function StreamingChatProvider({ children }) {
       clearMessages,
       retryMessage,
       updateMessage,
+      recordFormCompletion,
 
     // Metadata
     conversationMetadata: {
@@ -936,7 +965,7 @@ export default function StreamingChatProvider({ children }) {
       isMobileSafari: /iPad|iPhone|iPod/.test(navigator.userAgent) && /^((?!chrome|android).)*safari/i.test(navigator.userAgent)
     }
   };
-  }, [messages, isTyping, isInitializing, error, tenantConfig, sendMessage, addMessage, clearMessages, retryMessage, updateMessage]);
+  }, [messages, isTyping, isInitializing, error, tenantConfig, sessionContext, sendMessage, addMessage, clearMessages, retryMessage, updateMessage, recordFormCompletion]);
 
   
   return (
