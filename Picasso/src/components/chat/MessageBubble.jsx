@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback, useLayoutEffect, useContext } from "react";
 import { useConfig } from "../../hooks/useConfig";
 import { useChat } from "../../hooks/useChat";
-import FormModeContext from "../../context/FormModeContext";
+import FormModeContext, { useFormMode } from "../../context/FormModeContext";
 import { config as environmentConfig } from "../../config/environment";
 import FilePreview from "./FIlePreview";  // Note: File has unusual capitalization
 import { streamingRegistry } from "../../utils/streamingRegistry";
@@ -110,9 +110,13 @@ export default function MessageBubble({
   renderMode = "static", // "static" or "streaming"
 }) {
   const { config } = useConfig();
+  const { isFormMode } = useFormMode();
   const { addMessage, isTyping, retryMessage, recordFormCompletion } = useChat();
   const formMode = useContext(FormModeContext);
   const [avatarError, setAvatarError] = useState(false);
+
+  // Track which CTA buttons have been clicked (by button ID) for this message
+  const [clickedButtonIds, setClickedButtonIds] = useState(new Set());
 
   const isUser = role === "user";
   const avatarSrc = getAvatarUrl(config);
@@ -504,8 +508,14 @@ export default function MessageBubble({
 
   const handleCtaClick = (cta) => {
     if (isTyping) return;
+
+    // Mark this button as clicked immediately to disable it
+    const buttonId = cta.id || cta.formId || cta.form_id || cta.label;
+    setClickedButtonIds(prev => new Set([...prev, buttonId]));
+
     console.log('[MessageBubble] CTA clicked - full data:', JSON.stringify(cta, null, 2));
     console.log('[MessageBubble] CTA properties:', {
+      buttonId,
       action: cta.action,
       type: cta.type,
       formId: cta.formId,
@@ -724,6 +734,7 @@ export default function MessageBubble({
             ctas={ctaButtons}
             onCtaClick={handleCtaClick}
             disabled={isTyping}
+            clickedButtonIds={clickedButtonIds}
           />
         )}
 

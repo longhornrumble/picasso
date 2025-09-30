@@ -285,10 +285,24 @@ export default function StreamingChatProvider({ children }) {
   const [error, setError] = useState(null);
   const [isInitializing, setIsInitializing] = useState(true);
 
-  // Session context tracking for forms
-  const [sessionContext, setSessionContext] = useState({
-    completed_forms: [],
-    form_submissions: {}
+  // Session context tracking for forms - load from sessionStorage if available
+  const [sessionContext, setSessionContext] = useState(() => {
+    console.log('🔍🔍🔍 [StreamingChatProvider] INITIALIZING SESSION CONTEXT 🔍🔍🔍');
+    const saved = getFromSession('picasso_session_context');
+    console.log('🔍🔍🔍 [StreamingChatProvider] Raw sessionStorage value:', saved);
+    if (saved) {
+      console.log('🔍🔍🔍 [StreamingChatProvider] ✅ Restored session context from storage:', {
+        completed_forms: saved.completed_forms,
+        form_count: saved.completed_forms?.length || 0,
+        full_data: saved
+      });
+      return saved;
+    }
+    console.log('🔍🔍🔍 [StreamingChatProvider] ❌ No saved session context, using empty state');
+    return {
+      completed_forms: [],
+      form_submissions: {}
+    };
   });
 
   // Refs for stable values
@@ -528,9 +542,17 @@ export default function StreamingChatProvider({ children }) {
         // Include these for compatibility
         conversation_history: conversationContext?.recentMessages || [],
         original_user_input: userInput,
-        // Include session context for form tracking
-        session_context: sessionContext
+        // Include session context for form tracking - read from sessionStorage to get latest value
+        session_context: getFromSession('picasso_session_context') || sessionContext
       };
+
+      // Debug: Log session context being sent
+      const actualSessionContext = getFromSession('picasso_session_context') || sessionContext;
+      console.log('[StreamingChatProvider] 📤 Sending request with session_context:', {
+        completed_forms: actualSessionContext.completed_forms,
+        form_count: actualSessionContext.completed_forms?.length || 0,
+        full_context: actualSessionContext
+      });
       
       // Include state token if available (matching original)
       if (stateToken && stateToken !== 'undefined' && stateToken !== 'null') {
@@ -846,20 +868,53 @@ export default function StreamingChatProvider({ children }) {
 
   /**
    * Record form completion in session context
+   * Extracts program from formData (e.g., "lovebox", "daretodream") for backend filtering
    */
   const recordFormCompletion = useCallback((formId, formData) => {
     logger.info('Recording form completion', { formId, formData });
-    setSessionContext(prev => ({
-      ...prev,
-      completed_forms: [...prev.completed_forms, formId],
-      form_submissions: {
-        ...prev.form_submissions,
-        [formId]: {
-          data: formData,
-          timestamp: Date.now()
+
+    // Extract program identifier from form data
+    // Priority: program_interest field > formId mapping
+    let programId = formId; // Default to formId
+
+    if (formData.program_interest) {
+      // User selected program from dropdown (e.g., "lovebox", "daretodream", "both", "unsure")
+      programId = formData.program_interest;
+      console.log('[StreamingChatProvider] 📋 Extracted program from form data:', programId);
+    } else if (formId === 'lb_apply') {
+      // Love Box specific form
+      programId = 'lovebox';
+    } else if (formId === 'dd_apply') {
+      // Dare to Dream specific form
+      programId = 'daretodream';
+    }
+
+    setSessionContext(prev => {
+      const updated = {
+        ...prev,
+        completed_forms: [...prev.completed_forms, programId], // Store program, not formId
+        form_submissions: {
+          ...prev.form_submissions,
+          [formId]: {
+            data: formData,
+            program: programId, // Track the program for reference
+            timestamp: Date.now()
+          }
         }
-      }
-    }));
+      };
+      console.log('[StreamingChatProvider] ✅ Updated session context with program:', {
+        formId,
+        programId,
+        completed_forms: updated.completed_forms,
+        total_submissions: Object.keys(updated.form_submissions).length
+      });
+
+      // CRITICAL: Persist to sessionStorage so it survives re-renders
+      saveToSession('picasso_session_context', updated);
+      console.log('🚨🚨🚨 SESSION CONTEXT SAVED TO STORAGE 🚨🚨🚨', updated);
+
+      return updated;
+    });
   }, []);
   
   // Cleanup on unmount

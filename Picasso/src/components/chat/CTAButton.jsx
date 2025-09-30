@@ -39,30 +39,27 @@ export default function CTAButton({ cta, onClick, disabled = false }) {
  * CTAButtonGroup Component
  * Renders a group of CTA buttons
  */
-export function CTAButtonGroup({ ctas = [], onCtaClick, disabled = false }) {
-  console.log('[CTAButtonGroup] Render called:', {
-    ctasReceived: ctas,
-    ctasLength: ctas?.length || 0,
-    disabled,
-    hasOnCtaClick: !!onCtaClick
-  });
-
+export function CTAButtonGroup({ ctas = [], onCtaClick, disabled = false, clickedButtonIds = new Set() }) {
   if (!ctas || ctas.length === 0) {
-    console.log('[CTAButtonGroup] Returning null - no CTAs');
     return null;
   }
 
-  console.log('[CTAButtonGroup] Rendering CTA buttons');
   return (
     <div className="cta-button-group">
-      {ctas.map((cta, index) => (
-        <CTAButton
-          key={cta.id || `cta-${index}`}
-          cta={cta}
-          onClick={onCtaClick}
-          disabled={disabled}
-        />
-      ))}
+      {ctas.map((cta, index) => {
+        // Generate button ID (must match the ID generation in handleCtaClick)
+        const buttonId = cta.id || cta.formId || cta.form_id || cta.label;
+        const isClicked = clickedButtonIds.has(buttonId);
+
+        return (
+          <CTAButton
+            key={cta.id || `cta-${index}`}
+            cta={cta}
+            onClick={onCtaClick}
+            disabled={disabled || isClicked}
+          />
+        );
+      })}
     </div>
   );
 }
