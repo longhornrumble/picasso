@@ -40,14 +40,93 @@ export default function HTTPChatProvider({ children }) {
   const [isTyping, setIsTyping] = useState(false);
   const [error, setError] = useState(null);
   const [isInitializing, setIsInitializing] = useState(true);
-  
+
+  // PHASE 1B: Session context for form completion tracking
+  const [sessionContext, setSessionContext] = useState(() => {
+    // Try to restore from sessionStorage
+    const saved = getFromSession('picasso_session_context');
+    return saved || {
+      completed_forms: [],
+      form_submissions: {}
+    };
+  });
+
+  // CRITICAL: Use a ref to always have the latest session context value
+  // This prevents stale closures in sendMessage
+  const sessionContextRef = useRef(sessionContext);
+  useEffect(() => {
+    sessionContextRef.current = sessionContext;
+  }, [sessionContext]);
+
   // Refs for stable values
   const sessionIdRef = useRef(null);
   const tenantHashRef = useRef(getTenantHash());
   const conversationManagerRef = useRef(null);
-  
+
   // Get config
   const { config: tenantConfig } = useConfig();
+
+  // PHASE 1B: Persist session context when it changes AND filter CTAs from existing messages
+  useEffect(() => {
+    saveToSession('picasso_session_context', sessionContext);
+
+    // When completed_forms changes, retroactively filter CTAs from all messages
+    const completedPrograms = sessionContext.completed_forms || [];
+    if (completedPrograms.length > 0) {
+      console.log('[HTTPChatProvider] 🔄 Session context updated. Filtering CTAs from current messages.');
+
+      setMessages(prevMessages => {
+        const updatedMessages = prevMessages.map(msg => {
+          if (msg.role === 'assistant' && msg.ctaButtons && msg.ctaButtons.length > 0) {
+            const originalCTACount = msg.ctaButtons.length;
+
+            const filteredCTAs = msg.ctaButtons.filter(cta => {
+              // SPECIAL CASE: volunteer_apply is a multi-program form
+              // If user has completed ANY program, hide the generic volunteer_apply CTA
+              if (cta.formId === 'volunteer_apply' && completedPrograms.length > 0) {
+                console.log(`[HTTPChatProvider] 🚫 Retroactively filtering volunteer_apply CTA because user completed: ${completedPrograms.join(', ')}`, cta);
+                return false;
+              }
+
+              // Extract program ID from CTA
+              let program = cta.program;
+
+              // If no explicit program, try to infer from formId or action
+              if (!program) {
+                if (cta.formId) {
+                  if (cta.formId === 'lovebox_application' || cta.formId === 'lb_apply') {
+                    program = 'lovebox';
+                  } else if (cta.formId === 'daretodream_application' || cta.formId === 'dd_apply') {
+                    program = 'daretodream';
+                  } else {
+                    program = cta.formId;
+                  }
+                }
+              }
+
+              const shouldKeep = !completedPrograms.includes(program);
+
+              if (!shouldKeep) {
+                console.log(`[HTTPChatProvider] 🚫 Retroactively filtering CTA for completed program: ${program}`, cta);
+              }
+
+              return shouldKeep;
+            });
+
+            if (filteredCTAs.length !== originalCTACount) {
+              console.log(`[HTTPChatProvider] ✂️ Updated message CTAs: ${originalCTACount} → ${filteredCTAs.length}`);
+              return { ...msg, ctaButtons: filteredCTAs };
+            }
+          }
+          return msg;
+        });
+
+        // CRITICAL: Save filtered messages back to sessionStorage
+        saveToSession('picasso_messages', updatedMessages);
+        return updatedMessages;
+      });
+    }
+  }, [sessionContext]);
   
   // Initialize session
   useEffect(() => {
@@ -56,17 +135,112 @@ export default function HTTPChatProvider({ children }) {
         // Check for existing session
         const existingSession = getFromSession('picasso_session_id');
         if (existingSession) {
-          sessionIdRef.current = existingSession;
           const savedMessages = getFromSession('picasso_messages') || [];
-          setMessages(savedMessages);
-          logger.info('HTTP Provider: Restored existing session', { 
+
+          // Check if the last message is an error - if so, clear the stale session
+          const lastMessage = savedMessages[savedMessages.length - 1];
+          const hasErrorMessage = lastMessage && lastMessage.role === 'error';
+
+          // Check session age - clear if older than 1 hour
+          const sessionTimestamp = getFromSession('picasso_session_timestamp');
+          const sessionAge = sessionTimestamp ? Date.now() - sessionTimestamp : Infinity;
+          const isStale = sessionAge > 3600000; // 1 hour
+
+          if (hasErrorMessage || isStale) {
+            console.log('[HTTPChatProvider] 🧹 Clearing stale session:', {
+              hasError: hasErrorMessage,
+              isStale,
+              sessionAge: Math.round(sessionAge / 1000) + 's'
+            });
+
+            // Clear stale session
+            sessionStorage.removeItem('picasso_session_id');
+            sessionStorage.removeItem('picasso_messages');
+            sessionStorage.removeItem('picasso_session_context');
+            sessionStorage.removeItem('picasso_session_timestamp');
+
+            // Start fresh
+            sessionIdRef.current = generateSessionId();
+            saveToSession('picasso_session_id', sessionIdRef.current);
+            saveToSession('picasso_session_timestamp', Date.now());
+            setMessages([createWelcomeMessage()]);
+
+            logger.info('HTTP Provider: Started fresh session after clearing stale data', {
+              sessionId: sessionIdRef.current.substring(0, 20) + '...'
+            });
+
+            return;
+          }
+
+          sessionIdRef.current = existingSession;
+
+          // PHASE 1B: Filter CTAs from old messages based on completed_forms
+          const sessionCtx = getFromSession('picasso_session_context') || { completed_forms: [] };
+          const completedPrograms = sessionCtx.completed_forms || [];
+
+          console.log('[HTTPChatProvider] 🔄 Filtering old messages. Completed programs:', completedPrograms);
+
+          const filteredMessages = savedMessages.map(msg => {
+            if (msg.role === 'assistant' && msg.ctaButtons && msg.ctaButtons.length > 0) {
+              const originalCTACount = msg.ctaButtons.length;
+
+              const filteredCTAs = msg.ctaButtons.filter(cta => {
+                // SPECIAL CASE: volunteer_apply is a multi-program form
+                // If user has completed ANY program, hide the generic volunteer_apply CTA
+                if (cta.formId === 'volunteer_apply' && completedPrograms.length > 0) {
+                  console.log(`[HTTPChatProvider] 🚫 Filtering volunteer_apply CTA because user completed: ${completedPrograms.join(', ')}`, cta);
+                  return false;
+                }
+
+                // Extract program ID from CTA
+                let program = cta.program;
+
+                // If no explicit program, try to infer from formId or action
+                if (!program) {
+                  if (cta.formId) {
+                    if (cta.formId === 'lovebox_application' || cta.formId === 'lb_apply') {
+                      program = 'lovebox';
+                    } else if (cta.formId === 'daretodream_application' || cta.formId === 'dd_apply') {
+                      program = 'daretodream';
+                    } else {
+                      // Default: use formId as program
+                      program = cta.formId;
+                    }
+                  }
+                }
+
+                const shouldKeep = !completedPrograms.includes(program);
+
+                if (!shouldKeep) {
+                  console.log(`[HTTPChatProvider] 🚫 Filtering CTA for completed program: ${program}`, cta);
+                }
+
+                return shouldKeep;
+              });
+
+              if (filteredCTAs.length !== originalCTACount) {
+                console.log(`[HTTPChatProvider] ✂️ Filtered message CTAs: ${originalCTACount} → ${filteredCTAs.length}`);
+                return { ...msg, ctaButtons: filteredCTAs };
+              }
+            }
+            return msg;
+          });
+
+          setMessages(filteredMessages);
+
+          // CRITICAL: Save the filtered messages back to sessionStorage
+          saveToSession('picasso_messages', filteredMessages);
+
+          logger.info('HTTP Provider: Restored existing session', {
             sessionId: existingSession,
-            messageCount: savedMessages.length 
+            messageCount: filteredMessages.length,
+            completedPrograms: completedPrograms.length
           });
         } else {
           // Generate new session
           sessionIdRef.current = `session_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
           saveToSession('picasso_session_id', sessionIdRef.current);
+          saveToSession('picasso_session_timestamp', Date.now());
           
           // Add welcome message if configured
           if (tenantConfig?.welcome_message) {
@@ -147,25 +321,32 @@ export default function HTTPChatProvider({ children }) {
       }
       
       let data = await response.json();
-      
+      console.log('🔵🔵🔵 RAW data from Lambda:', data);
+      console.log('🔵 data.body type:', typeof data.body);
+      console.log('🔵 data.body preview:', typeof data.body === 'string' ? data.body.substring(0, 200) : data.body);
+
       // Handle double-wrapped Lambda response (outer wrapper)
       if (data.body && typeof data.body === 'string') {
         try {
           data = JSON.parse(data.body);
+          console.log('🟡 After first unwrap:', Object.keys(data));
         } catch (e) {
           logger.warn('Failed to parse outer nested body', e);
         }
       }
-      
+
       // Handle triple-wrapped Lambda response (inner wrapper)
       if (data.body && typeof data.body === 'string') {
         try {
           data = JSON.parse(data.body);
+          console.log('🟢 After second unwrap:', Object.keys(data));
         } catch (e) {
           logger.warn('Failed to parse inner nested body', e);
         }
       }
-      
+
+      console.log('🟣 Final data keys:', Object.keys(data));
+      console.log('🟣 Final data.ctaButtons:', data.ctaButtons);
       return data;
       
     } catch (err) {
@@ -227,7 +408,42 @@ export default function HTTPChatProvider({ children }) {
         stateToken: stateToken ? 'Present' : 'Missing',
         turn: conversationManagerRef.current?.turn || 0
       });
-      
+
+      // PHASE 1B: Check for suspended forms before sending request
+      const suspendedForms = [];
+      let suspendedProgramInterest = null; // Track program_interest from volunteer form
+
+      for (let i = 0; i < sessionStorage.length; i++) {
+        const key = sessionStorage.key(i);
+        if (key && key.startsWith('picasso_form_')) {
+          try {
+            const formState = JSON.parse(sessionStorage.getItem(key));
+            if (formState && formState.formId) {
+              suspendedForms.push(formState.formId);
+
+              // If this is the volunteer form and user has selected a program_interest, capture it
+              if (formState.formData && formState.formData.program_interest) {
+                suspendedProgramInterest = formState.formData.program_interest;
+              }
+            }
+          } catch (e) {
+            // Ignore parse errors
+          }
+        }
+      }
+
+      // Build enhanced session context with suspended forms
+      const enhancedSessionContext = {
+        ...sessionContextRef.current,
+        suspended_forms: suspendedForms,
+        program_interest: suspendedProgramInterest // Send the program they selected
+      };
+
+      logger.info('[HTTPProvider] Session context with suspended forms', {
+        completed_forms: enhancedSessionContext.completed_forms || [],
+        suspended_forms: enhancedSessionContext.suspended_forms || []
+      });
+
       // Prepare request body - matching original ChatProvider structure
       const requestBody = {
         tenant_hash: tenantHashRef.current,
@@ -238,7 +454,9 @@ export default function HTTPChatProvider({ children }) {
         turn: conversationManagerRef.current?.turn,
         // Include these for compatibility
         conversation_history: conversationContext?.recentMessages || [],
-        original_user_input: userInput
+        original_user_input: userInput,
+        // PHASE 1B: Include session context for form tracking (with suspended forms)
+        session_context: enhancedSessionContext
       };
       
       // Include state token if available (matching original)
@@ -265,32 +483,176 @@ export default function HTTPChatProvider({ children }) {
       const responseTime = Date.now() - startTime;
       
       logger.info(`HTTP Response received in ${responseTime}ms`);
-      console.log('🟣 Raw response from Lambda:', response);
-      
+      console.log('🟣🟣🟣 Raw response from Lambda:', response);
+      console.log('🟣 Response keys:', Object.keys(response));
+      console.log('🟣 response.ctaButtons:', response.ctaButtons);
+      console.log('🟣 response.cta_buttons:', response.cta_buttons);
+      console.log('🟣 response.cards:', response.cards);
+
       // Extract response content
-      let assistantContent = response.content || response.message || response.response || 
+      let assistantContent = response.content || response.message || response.response ||
         'I apologize, but I couldn\'t process your request.';
       console.log('🟣 Extracted content:', assistantContent);
-      
+
       // Handle structured response
       if (typeof assistantContent === 'object') {
         assistantContent = assistantContent.text || JSON.stringify(assistantContent);
       }
-      
+
+      // PHASE 1B FIX: If content is already wrapped in HTML (from backend), extract the raw markdown
+      // The frontend's processMessageContent() expects raw markdown, not HTML with markdown inside
+      if (typeof assistantContent === 'string' && assistantContent.includes('<div class="streaming-formatted">')) {
+        // Remove the HTML wrapper to get raw markdown
+        assistantContent = assistantContent
+          .replace(/<div class="streaming-formatted">/g, '')
+          .replace(/<\/div>/g, '')
+          .replace(/<p>/g, '\n')
+          .replace(/<\/p>/g, '\n')
+          .trim();
+        console.log('🟣 Unwrapped HTML to get raw markdown');
+      }
+
+      // PHASE 1B: Extract CTAs/cards from response (prioritize ctaButtons for parity with streaming)
+      const ctaButtons = response.ctaButtons || response.cta_buttons || response.cards || [];
+      console.log('🟣🟣🟣 Extracted CTAs/cards:', ctaButtons);
+      console.log('🟣 CTA count:', ctaButtons.length);
+      console.log('🟣 User asked:', userInput);
+
       // Create assistant message
       const assistantMessage = createAssistantMessage(assistantContent, {
         sessionId: response.session_id,
         responseTime,
-        sources: response.sources
+        sources: response.sources,
+        ctaButtons: ctaButtons  // PHASE 1B: Include CTAs
       });
       
       // Add assistant message
       setMessages(prev => {
         const updated = [...prev, assistantMessage];
         saveToSession('picasso_messages', updated);
+        saveToSession('picasso_session_timestamp', Date.now()); // Update session timestamp on successful message
         return updated;
       });
-      
+
+      // PHASE 1B: Check for suspended forms and add resume prompt (with intelligent program switching)
+      setTimeout(() => {
+        // Check if backend detected a program switch opportunity
+        const metadata = response.metadata || {};
+        const programSwitchDetected = metadata.program_switch_detected;
+
+        // Check sessionStorage for suspended forms
+        const suspendedFormKeys = [];
+        for (let i = 0; i < sessionStorage.length; i++) {
+          const key = sessionStorage.key(i);
+          if (key && key.startsWith('picasso_form_')) {
+            suspendedFormKeys.push(key);
+          }
+        }
+
+        logger.info('[HTTPProvider] Checking for suspended forms after response', {
+          suspendedFormKeys,
+          count: suspendedFormKeys.length,
+          programSwitchDetected
+        });
+
+        if (suspendedFormKeys.length > 0) {
+          // Get the first suspended form
+          const formStateStr = sessionStorage.getItem(suspendedFormKeys[0]);
+          if (formStateStr) {
+            try {
+              const formState = JSON.parse(formStateStr);
+              const formId = formState.formId;
+
+              logger.info('[HTTPProvider] Found suspended form, adding resume prompt', {
+                formId,
+                formState,
+                programSwitchDetected
+              });
+
+              const currentFieldLabel = formState.formConfig?.fields?.[formState.currentFieldIndex]?.label || 'information';
+              const formTitle = formState.formTitle || 'your application';
+
+              // PHASE 1B: Smart form switching - offer to switch programs if detected
+              if (programSwitchDetected && metadata.new_form_of_interest) {
+                const newFormInfo = metadata.new_form_of_interest;
+                const suspendedFormInfo = metadata.suspended_form;
+
+                logger.info('[HTTPProvider] 🔀 Program switch detected, showing enhanced options', {
+                  newProgram: newFormInfo.program_name,
+                  suspendedProgram: suspendedFormInfo.program_name
+                });
+
+                // Create enhanced resume prompt with switch option
+                const resumeMessage = createAssistantMessage(
+                  `I've answered your question about ${newFormInfo.program_name}. Would you like to apply to ${newFormInfo.program_name} instead, or continue with your ${suspendedFormInfo.program_name} application?`,
+                  {
+                    id: `resume_prompt_${Date.now()}`,
+                    ctaButtons: [
+                      {
+                        label: newFormInfo.cta_text,
+                        action: 'switch_form',
+                        formId: newFormInfo.form_id,
+                        fields: newFormInfo.fields,
+                        cancelPreviousForm: formId,  // Will cancel suspended form
+                        style: 'primary'
+                      },
+                      {
+                        label: `Continue ${suspendedFormInfo.program_name}`,
+                        action: 'resume_form',
+                        formId: formId,
+                        style: 'secondary'
+                      },
+                      {
+                        label: 'Cancel Application',
+                        action: 'cancel_form',
+                        formId: formId,
+                        style: 'secondary'
+                      }
+                    ]
+                  }
+                );
+
+                setMessages(prev => {
+                  const updated = [...prev, resumeMessage];
+                  saveToSession('picasso_messages', updated);
+                  return updated;
+                });
+              } else {
+                // No program switch - show standard resume prompt
+                const resumeMessage = createAssistantMessage(
+                  `I've answered your question. Would you like to resume ${formTitle}? We were collecting ${currentFieldLabel}.`,
+                  {
+                    id: `resume_prompt_${Date.now()}`,
+                    ctaButtons: [
+                      {
+                        label: `Resume ${formTitle}`,
+                        action: 'resume_form',
+                        formId: formId,
+                        style: 'primary'
+                      },
+                      {
+                        label: 'Cancel Application',
+                        action: 'cancel_form',
+                        formId: formId,
+                        style: 'secondary'
+                      }
+                    ]
+                  }
+                );
+
+                setMessages(prev => {
+                  const updated = [...prev, resumeMessage];
+                  saveToSession('picasso_messages', updated);
+                  return updated;
+                });
+              }
+            } catch (parseErr) {
+              logger.error('[HTTPProvider] Failed to parse suspended form state', parseErr);
+            }
+          }
+        }
+      }, 500);
+
       // Update conversation manager
       try {
         if (conversationManagerRef.current) {
@@ -404,20 +766,92 @@ export default function HTTPChatProvider({ children }) {
       console.log('🔴 Not a user message or no content:', message);
     }
   }, [sendMessage]);
-  
+
+  /**
+   * PHASE 1B: Record form completion in session context
+   * Extracts program from formData (e.g., "lovebox", "daretodream") for backend filtering
+   */
+  const recordFormCompletion = useCallback((formId, formData) => {
+    console.log('[HTTPChatProvider] 🎯 recordFormCompletion called:', { formId, formData });
+    console.log('[HTTPChatProvider] 🔍 formData.program_interest:', formData.program_interest);
+    logger.info('Recording form completion', { formId, formData });
+
+    // Extract program identifier from form data
+    // Priority: program_interest field > formId mapping
+    let programId = formId; // Default to formId
+
+    if (formData.program_interest) {
+      programId = formData.program_interest.toLowerCase().replace(/\s+/g, '');
+      console.log('[HTTPChatProvider] ✅ Using program_interest from form:', programId);
+    } else if (formId === 'lovebox_application' || formId === 'lb_apply') {
+      programId = 'lovebox';
+      console.log('[HTTPChatProvider] ✅ Mapped lb_apply to lovebox');
+    } else if (formId === 'daretodream_application' || formId === 'dd_apply') {
+      programId = 'daretodream';
+      console.log('[HTTPChatProvider] ✅ Mapped dd_apply to daretodream');
+    } else {
+      console.log('[HTTPChatProvider] ⚠️ No mapping found, using formId as program:', programId);
+    }
+
+    console.log('[HTTPChatProvider] 📝 Final extracted program ID:', programId);
+
+    setSessionContext(prev => {
+      console.log('[HTTPChatProvider] 📊 Previous session context:', prev);
+
+      // Check if this program is already in completed_forms to avoid duplicates
+      const existingForms = prev.completed_forms || [];
+      const isAlreadyCompleted = existingForms.includes(programId);
+
+      if (isAlreadyCompleted) {
+        console.log('[HTTPChatProvider] ⚠️ Program already marked as completed, skipping duplicate:', programId);
+        return prev; // Don't update if already completed
+      }
+
+      const updated = {
+        ...prev,
+        completed_forms: [...existingForms, programId], // Store program, not formId
+        form_submissions: {
+          ...(prev.form_submissions || {}),
+          [formId]: {
+            data: formData,
+            program: programId, // Track the program for reference
+            timestamp: Date.now()
+          }
+        }
+      };
+      console.log('[HTTPChatProvider] ✅ Updated session context with program:', {
+        formId,
+        programId,
+        completed_forms: updated.completed_forms,
+        total_submissions: Object.keys(updated.form_submissions).length
+      });
+
+      // CRITICAL: Persist to sessionStorage so it survives re-renders
+      saveToSession('picasso_session_context', updated);
+      console.log('[HTTPChatProvider] 💾 Persisted session context to sessionStorage:', updated);
+
+      // Verify it was saved
+      const verified = getFromSession('picasso_session_context');
+      console.log('[HTTPChatProvider] ✅ Verified sessionStorage contains:', verified);
+
+      return updated;
+    });
+  }, [setSessionContext]);
+
   // Build context value
   const contextValue = {
     // Core state
     messages,
     isTyping,
     sessionId: sessionIdRef.current,
-    
+
     // Core actions
     sendMessage,
     addMessage,
     clearMessages,
     retryMessage,
     updateMessage,
+    recordFormCompletion, // PHASE 1B: Form completion tracking
     
     // Metadata
     conversationMetadata: {

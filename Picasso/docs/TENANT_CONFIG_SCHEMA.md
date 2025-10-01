@@ -399,10 +399,11 @@ This document defines the complete schema for tenant configuration files.
     "cta_id": {
       "text": "string",                     // Button text (legacy)
       "label": "string",                    // Button text (preferred)
-      "action": "string",                   // "start_form" | "external_link" | "show_info"
+      "action": "string",                   // "start_form" | "external_link" | "send_query" | "show_info"
       "formId": "string",                   // Form ID (required if action is "start_form")
       "url": "string",                      // URL (required if action is "external_link")
-      "type": "string",                     // "form_trigger" | "external_link" | "info_request"
+      "query": "string",                    // Query text (required if action is "send_query")
+      "type": "string",                     // "form_trigger" | "external_link" | "bedrock_query" | "info_request"
       "style": "string"                     // "primary" | "secondary" | "info"
     }
   }
@@ -419,7 +420,12 @@ This document defines the complete schema for tenant configuration files.
    - **Required**: `url` (full URL with protocol)
    - **Effect**: Opens link, no form mode
 
-3. **`show_info`**: Sends a message requesting information
+3. **`send_query`**: Sends a predefined query to Bedrock (UX shortcut)
+   - **Required**: `query` (the text to send to Bedrock)
+   - **Effect**: Sends the specified query as if the user typed it
+   - **Use Case**: Provide one-click access to common questions without typing
+
+4. **`show_info`**: Sends a message requesting information (deprecated - use `send_query`)
    - **Effect**: Sends the button label as a user message to Bedrock
 
 ### Style Guidelines:
@@ -448,9 +454,48 @@ This document defines the complete schema for tenant configuration files.
       "url": "https://example.org/schedule",
       "type": "external_link",
       "style": "secondary"
+    },
+    "lovebox_info": {
+      "text": "Learn About Love Box",
+      "label": "Learn About Love Box",
+      "action": "send_query",
+      "query": "Tell me about Love Box",
+      "type": "bedrock_query",
+      "style": "info"
+    },
+    "view_requirements": {
+      "text": "View Requirements",
+      "label": "View Requirements",
+      "action": "send_query",
+      "query": "What are the volunteer requirements?",
+      "type": "bedrock_query",
+      "style": "secondary"
     }
   }
 }
+```
+
+### Send Query vs Show Info:
+
+- **`send_query`** (recommended): Explicitly defines the query text, giving you control over exactly what gets sent to Bedrock
+- **`show_info`** (legacy): Sends the button label as the query, which may not always be ideal for Bedrock processing
+
+**Example difference**:
+```json
+// send_query - explicit control
+{
+  "label": "Learn More",
+  "action": "send_query",
+  "query": "Tell me about your volunteer programs and requirements"
+}
+// Result: Sends "Tell me about your volunteer programs and requirements"
+
+// show_info - implicit from label
+{
+  "label": "Learn More",
+  "action": "show_info"
+}
+// Result: Sends "Learn More" (less specific for Bedrock)
 ```
 
 ---

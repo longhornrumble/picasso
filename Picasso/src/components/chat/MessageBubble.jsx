@@ -111,12 +111,14 @@ export default function MessageBubble({
 }) {
   const { config } = useConfig();
   const { isFormMode } = useFormMode();
-  const { addMessage, isTyping, retryMessage, recordFormCompletion } = useChat();
+  const { addMessage, sendMessage, isTyping, retryMessage, recordFormCompletion } = useChat();
   const formMode = useContext(FormModeContext);
   const [avatarError, setAvatarError] = useState(false);
 
   // Track which CTA buttons have been clicked (by button ID) for this message
   const [clickedButtonIds, setClickedButtonIds] = useState(new Set());
+  // Track if ANY button in this message has been clicked (disables all buttons)
+  const [anyButtonClicked, setAnyButtonClicked] = useState(false);
 
   const isUser = role === "user";
   const avatarSrc = getAvatarUrl(config);
@@ -509,9 +511,10 @@ export default function MessageBubble({
   const handleCtaClick = (cta) => {
     if (isTyping) return;
 
-    // Mark this button as clicked immediately to disable it
+    // Mark this button as clicked AND disable all buttons in this message
     const buttonId = cta.id || cta.formId || cta.form_id || cta.label;
     setClickedButtonIds(prev => new Set([...prev, buttonId]));
+    setAnyButtonClicked(true); // Disable all buttons in this message
 
     console.log('[MessageBubble] CTA clicked - full data:', JSON.stringify(cta, null, 2));
     console.log('[MessageBubble] CTA properties:', {
@@ -526,10 +529,7 @@ export default function MessageBubble({
       hasStartFormWithConfig: !!(formMode && formMode.startFormWithConfig)
     });
 
-    // Check if this is a form-related CTA by looking at the label
-    const isLoveBoxForm = cta.label && cta.label.toLowerCase().includes('love box');
-    const isDareToDreamForm = cta.label && cta.label.toLowerCase().includes('dare to dream');
-    const isAngelAllianceForm = cta.label && cta.label.toLowerCase().includes('angel alliance');
+    // No label-based form detection - all CTAs must have explicit action in config
 
     // Handle different CTA action types
     if (cta.action === 'resume_form') {
@@ -546,18 +546,34 @@ export default function MessageBubble({
         formMode.cancelForm();
       }
       return;
+    } else if (cta.action === 'switch_form') {
+      // Switch from suspended form to new form
+      console.log('[MessageBubble] Switch form clicked:', {
+        newFormId: cta.formId,
+        cancelPreviousForm: cta.cancelPreviousForm
+      });
+
+      // Cancel the previous form if specified
+      if (cta.cancelPreviousForm && formMode && formMode.cancelForm) {
+        formMode.cancelForm();
+      }
+
+      // Now start the new form (fall through to form trigger logic)
+      cta.action = 'start_form';
+    }
+
+    if (cta.action === 'send_query' && cta.query) {
+      // Send a query to Bedrock (UX shortcut button)
+      console.log('[MessageBubble] Send query clicked:', cta.query);
+      if (sendMessage) {
+        sendMessage(cta.query);
+      }
+      return;
     } else if (cta.action === 'external_link' && cta.url) {
       window.open(cta.url, '_blank', 'noopener,noreferrer');
-    } else if (cta.action === 'start_form' || cta.action === 'form_trigger' || cta.type === 'form_trigger' || isLoveBoxForm || isDareToDreamForm || isAngelAllianceForm) {
-      // Determine form ID based on CTA label if not provided
+    } else if (cta.action === 'start_form' || cta.action === 'form_trigger' || cta.type === 'form_trigger') {
+      // Get form ID from CTA
       let formId = cta.formId || cta.form_id || cta.id;
-      if (!formId && isLoveBoxForm) {
-        formId = 'lovebox_application';
-      } else if (!formId && isDareToDreamForm) {
-        formId = 'dare_to_dream_application';
-      } else if (!formId && isAngelAllianceForm) {
-        formId = 'angel_alliance_application';
-      }
 
       // Trigger form mode using FormModeContext
       console.log('[MessageBubble] Form trigger detected:', {
@@ -565,10 +581,7 @@ export default function MessageBubble({
         action: cta.action,
         type: cta.type,
         hasFields: !!cta.fields,
-        fieldsCount: cta.fields?.length,
-        isLoveBoxForm,
-        isDareToDreamForm,
-        isAngelAllianceForm
+        fieldsCount: cta.fields?.length
       });
 
       if (!formId) {
@@ -577,14 +590,14 @@ export default function MessageBubble({
       }
 
       if (formMode && formMode.startFormWithConfig) {
-        // Map form_id to config key if needed
+        // Build dynamic form_id → config key mapping from tenant config
         let configKey = formId;
-        if (formId === 'lb_apply') {
-          configKey = 'lovebox_application';
-        } else if (formId === 'dd_apply') {
-          configKey = 'daretodream_application';
-        } else if (formId === 'volunteer_apply') {
-          configKey = 'volunteer_general';
+        if (config?.conversational_forms) {
+          Object.entries(config.conversational_forms).forEach(([key, formConfig]) => {
+            if (formConfig.form_id === formId) {
+              configKey = key;
+            }
+          });
         }
 
         // ALWAYS prefer config fields over CTA fields (config has eligibility gates)
@@ -600,38 +613,21 @@ export default function MessageBubble({
           console.log('[MessageBubble] ⚠️ Config not found, using CTA fields. configKey:', configKey);
         }
 
-        // Fallback fields for Love Box application if still no fields
-        if ((!fields || fields.length === 0) && formId === 'lovebox_application') {
-          fields = [
-            { id: 'first_name', type: 'text', label: 'First Name', prompt: "Let's get started! What's your first name?", required: true },
-            { id: 'last_name', type: 'text', label: 'Last Name', prompt: "Thanks! And what's your last name?", required: true },
-            { id: 'email', type: 'email', label: 'Email', prompt: "What email address should we use to contact you?", required: true },
-            { id: 'phone', type: 'phone', label: 'Phone', prompt: "What's the best phone number to reach you at?", required: true },
-            { id: 'age_confirm', type: 'select', label: 'Age Confirmation', prompt: "Are you at least 22 years old?", required: true,
-              options: [
-                { value: 'yes', label: 'Yes, I am 22 or older' },
-                { value: 'no', label: 'No, I am under 22' }
-              ],
-              eligibility_gate: true,
-              failure_message: 'You must be 22 or older to apply for the Love Box program.'
-            },
-            { id: 'commitment_confirm', type: 'select', label: 'Commitment', prompt: "Can you commit to one year with your Love Box family?", required: true,
-              options: [
-                { value: 'yes', label: 'Yes, I can commit to one year' },
-                { value: 'no', label: 'No, I cannot commit to one year' }
-              ]
-            },
-            { id: 'comments', type: 'textarea', label: 'Additional Comments', prompt: "Is there anything else you'd like to share? (optional)", required: false }
-          ];
-          console.log('[MessageBubble] Using fallback Love Box fields');
+        // Error if no fields found - don't use hardcoded fallbacks
+        if (!fields || fields.length === 0) {
+          console.error('[MessageBubble] No fields found for form:', formId, 'configKey:', configKey);
+          console.error('[MessageBubble] Config must include field definitions for all forms');
+          return;
         }
 
         // Use the form config from the CTA button or build it
         const formConfig = {
           form_id: formId,
-          title: cta.label || cta.title || config?.conversational_forms?.[formId]?.title || 'Application Form',
+          title: cta.label || cta.title || config?.conversational_forms?.[configKey]?.title || 'Application Form',
+          form_title: config?.conversational_forms?.[configKey]?.form_title,
+          form_subtitle: config?.conversational_forms?.[configKey]?.form_subtitle,
           fields: fields,
-          welcome_message: cta.welcome_message || config?.conversational_forms?.[formId]?.welcome_message || `Great! Let's get started with your application.`
+          welcome_message: cta.welcome_message || config?.conversational_forms?.[configKey]?.welcome_message || `Great! Let's get started with your application.`
         };
 
         console.log('[MessageBubble] Starting form with config:', formConfig);
@@ -761,7 +757,7 @@ export default function MessageBubble({
           <CTAButtonGroup
             ctas={ctaButtons}
             onCtaClick={handleCtaClick}
-            disabled={isTyping}
+            disabled={isTyping || anyButtonClicked}
             clickedButtonIds={clickedButtonIds}
           />
         )}

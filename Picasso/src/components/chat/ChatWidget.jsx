@@ -28,21 +28,29 @@ function ChatWidget() {
   // Apply CSS variables for theming
   useCSSVariables(config);
   
+  // PHASE 1B: Record form completion automatically when form completes
+  useEffect(() => {
+    if (isFormComplete && completedFormData && currentFormId && recordFormCompletion) {
+      console.log('[ChatWidget] Form completed - recording completion:', currentFormId);
+      recordFormCompletion(currentFormId, completedFormData);
+    }
+  }, [isFormComplete, completedFormData, currentFormId, recordFormCompletion]);
+
   // Listen for host commands via custom events (iframe communication bridge)
   useEffect(() => {
     const handleOpenChat = () => {
       console.log('📡 ChatWidget received picasso-open-chat event');
       setIsOpen(true);
     };
-    
+
     const handleCloseChat = () => {
       console.log('📡 ChatWidget received picasso-close-chat event');
       setIsOpen(false);
     };
-    
+
     window.addEventListener('picasso-open-chat', handleOpenChat);
     window.addEventListener('picasso-close-chat', handleCloseChat);
-    
+
     return () => {
       window.removeEventListener('picasso-open-chat', handleOpenChat);
       window.removeEventListener('picasso-close-chat', handleCloseChat);
@@ -362,7 +370,12 @@ function ChatWidget() {
     }
   }, [isOpen, scrollToLatestMessage]);
 
-
+  // Auto-scroll when form state changes
+  useEffect(() => {
+    if (isFormMode || isSuspended || isFormComplete) {
+      setTimeout(scrollToLatestMessage, 100);
+    }
+  }, [isFormMode, isSuspended, isFormComplete, scrollToLatestMessage]);
 
   // 🔧 FIXED: Manual callout close handler - memoized to prevent recreating
   const handleCalloutClose = useCallback(() => {

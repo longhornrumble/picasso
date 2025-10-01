@@ -208,6 +208,74 @@ export const FormModeProvider = ({ children }) => {
     // Update last active time
     setFormMetadata(prev => ({ ...prev, lastActiveAt: Date.now() }));
 
+    // SPECIAL CASE: Volunteer form program_interest field - pivot to specific form
+    if (currentField.id === 'program_interest' && currentFormId === 'volunteer_apply') {
+      console.log('[FormModeContext] Program interest selected:', value);
+
+      const normalizedValue = value.toLowerCase();
+
+      // Handle "Tell me more about both" - build query dynamically from available programs
+      if (normalizedValue === 'both') {
+        console.log('[FormModeContext] User wants to learn about both programs');
+
+        // Build list of program names from field options
+        const programOptions = currentField.options?.filter(opt =>
+          opt.value !== 'both' && opt.value !== 'unsure'
+        ) || [];
+
+        const programNames = programOptions.map(opt => opt.label).join(' and ');
+        const query = programNames ? `Tell me about ${programNames}` : 'Tell me about your programs';
+
+        return {
+          valid: true,
+          exitForm: true,
+          sendToBedrockQuery: query
+        };
+      }
+
+      // Handle "I'm not sure yet"
+      if (normalizedValue === 'unsure') {
+        console.log('[FormModeContext] User is unsure, prompting for clarification');
+        return {
+          valid: true,
+          exitForm: true,
+          promptUser: 'How can I help you?',
+          waitForResponse: true
+        };
+      }
+
+      // Build program → form mapping dynamically from config
+      // This maps program_interest values to their corresponding form IDs
+      const formMap = {};
+      if (configData?.conversational_forms) {
+        Object.entries(configData.conversational_forms).forEach(([formKey, formConfig]) => {
+          // Map form_id to config key (e.g., 'lb_apply' → 'lovebox_application')
+          const formId = formConfig.form_id || formKey;
+          formMap[formId] = formKey;
+          formMap[formKey.toLowerCase()] = formKey;
+
+          // Also try to extract from form title/name
+          const title = formConfig.title?.toLowerCase() || '';
+          if (title) {
+            // Extract first word as potential match (e.g., "Love Box Application" → "lovebox")
+            const firstWord = title.split(' ')[0];
+            formMap[firstWord] = formKey;
+          }
+        });
+      }
+
+      const targetFormId = formMap[normalizedValue];
+
+      if (targetFormId) {
+        // Signal to pivot to specific form
+        return {
+          valid: true,
+          pivotToForm: targetFormId,
+          programInterest: value
+        };
+      }
+    }
+
     // Move to next field or complete form
     if (currentFieldIndex < formConfig.fields.length - 1) {
       setCurrentFieldIndex(prev => prev + 1);

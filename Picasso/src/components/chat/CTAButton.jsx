@@ -1,11 +1,11 @@
 // CTAButton.jsx - Context-aware call-to-action buttons
 import React from 'react';
-import './CTAButton.css';
 
 /**
  * CTAButton Component
  * Renders context-aware CTA buttons injected by the backend response_enhancer
  * Supports different action types: form_trigger, external_link, info_request
+ * Styles are defined in theme.css
  */
 export default function CTAButton({ cta, onClick, disabled = false }) {
   if (!cta) return null;
@@ -22,6 +22,8 @@ export default function CTAButton({ cta, onClick, disabled = false }) {
                     cta.style === 'secondary' ? 'cta-secondary' :
                     'cta-info';
 
+  const buttonLabel = cta.label || cta.text;
+
   return (
     <button
       className={`cta-button ${styleClass}`}
@@ -29,8 +31,9 @@ export default function CTAButton({ cta, onClick, disabled = false }) {
       disabled={disabled}
       data-action={cta.action}
       data-type={cta.type}
+      title={buttonLabel}
     >
-      {cta.label || cta.text}
+      {buttonLabel}
     </button>
   );
 }

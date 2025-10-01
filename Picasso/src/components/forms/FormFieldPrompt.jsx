@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useFormMode } from '../../context/FormModeContext';
 import { useChat } from '../../hooks/useChat';
+import { useConfig } from '../../hooks/useConfig';
 
 /**
  * FormFieldPrompt Component
@@ -14,10 +15,12 @@ export default function FormFieldPrompt({ onCancel }) {
     validationErrors,
     cancelForm,
     submitField,
+    startFormWithConfig,
     isSuspended // NEW: Get suspended state
   } = useFormMode();
 
-  const { addMessage } = useChat();
+  const { addMessage, sendMessage } = useChat();
+  const { config } = useConfig();
 
   const [inputValue, setInputValue] = useState('');
   const [eligibilityMessage, setEligibilityMessage] = useState(null);
@@ -80,6 +83,69 @@ export default function FormFieldPrompt({ onCancel }) {
 
     const result = submitField(currentField.id, value);
     console.log('[FormFieldPrompt] submitField result:', result);
+
+    // Handle "Tell me more about both" - send query to Bedrock
+    if (result?.sendToBedrockQuery) {
+      console.log('[FormFieldPrompt] Sending query to Bedrock:', result.sendToBedrockQuery);
+
+      // Cancel the form
+      cancelForm();
+
+      // Send the query to Bedrock
+      sendMessage(result.sendToBedrockQuery);
+
+      return; // Exit early
+    }
+
+    // Handle "I'm not sure yet" - prompt user for clarification
+    if (result?.promptUser) {
+      console.log('[FormFieldPrompt] Prompting user:', result.promptUser);
+
+      // Cancel the form
+      cancelForm();
+
+      // Add assistant message asking how to help
+      addMessage({
+        role: 'assistant',
+        content: result.promptUser,
+        metadata: {
+          isPrompt: true,
+          waitingForResponse: true
+        }
+      });
+
+      return; // Exit early, wait for user's next message which will go to Bedrock
+    }
+
+    // Handle form pivot (volunteer form to specific program form)
+    if (result?.pivotToForm) {
+      console.log('[FormFieldPrompt] Pivoting to form:', result.pivotToForm);
+
+      // Get the target form config
+      const targetFormConfig = config?.conversational_forms?.[result.pivotToForm];
+
+      if (targetFormConfig) {
+        // Cancel current volunteer form
+        cancelForm();
+
+        // Start the new specific form with its config
+        const formId = targetFormConfig.form_id || result.pivotToForm;
+        startFormWithConfig(formId, targetFormConfig);
+
+        // Add a transition message to the chat
+        addMessage({
+          role: 'assistant',
+          content: `Great! Let's continue with your ${result.programInterest} application.`,
+          metadata: {
+            isFormTransition: true
+          }
+        });
+      } else {
+        console.error('[FormFieldPrompt] Target form config not found:', result.pivotToForm);
+      }
+
+      return; // Exit early, don't process further
+    }
 
     // Handle eligibility failure
     if (result?.eligibilityFailed) {
@@ -150,6 +216,20 @@ export default function FormFieldPrompt({ onCancel }) {
           }}>
             ⏸️ Form paused - answer your question above
           </div>
+        </div>
+      )}
+
+      {/* Form Header with Title and Subtitle */}
+      {(formConfig?.form_title || formConfig?.title) && (
+        <div className="form-header">
+          <div className="form-header-title">
+            {formConfig.form_title || formConfig.title}
+          </div>
+          {formConfig.form_subtitle && (
+            <div className="form-header-subtitle">
+              {formConfig.form_subtitle}
+            </div>
+          )}
         </div>
       )}
 
