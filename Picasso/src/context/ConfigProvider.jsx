@@ -65,6 +65,32 @@ const ConfigProvider = ({ children }) => {
   // FIXED: Pure hash + action config fetch
   const fetchConfigWithCacheCheck = async (tenantHash, force = false) => {
     try {
+      console.log('🔍 fetchConfigWithCacheCheck called', {
+        hasPicassoConfigPath: !!(typeof window !== 'undefined' && window.PICASSO_CONFIG_PATH),
+        picassoConfigPath: window.PICASSO_CONFIG_PATH,
+        tenantHash
+      });
+
+      // Check if there's a local config path override (for local testing)
+      if (typeof window !== 'undefined' && window.PICASSO_CONFIG_PATH) {
+        console.log('🔧 Using local config path override:', window.PICASSO_CONFIG_PATH);
+        const response = await fetch(window.PICASSO_CONFIG_PATH);
+        console.log('📡 Local config fetch response:', response.status, response.ok);
+        if (response.ok) {
+          const config = await response.json();
+          console.log('✅ Loaded local config:', {
+            forms: Object.keys(config.conversational_forms || {}),
+            chatTitle: config.chat_title,
+            volunteerGeneralFieldCount: config.conversational_forms?.volunteer_general?.fields?.length
+          });
+          return { config, changed: true };
+        } else {
+          console.warn('⚠️ Failed to load local config, falling back to Lambda');
+        }
+      } else {
+        console.log('❌ No PICASSO_CONFIG_PATH found, using Lambda endpoint');
+      }
+
       // Use the Master_Function endpoint for config
       const configUrl = environmentConfig.getConfigUrl(tenantHash);
       
@@ -159,6 +185,13 @@ const ConfigProvider = ({ children }) => {
         brandingKeys: newConfig.branding ? Object.keys(newConfig.branding) : [],
         hasFeatures: !!newConfig.features,
         chatTitle: newConfig.chat_title
+      });
+
+      console.log('🔍 CONVERSATIONAL FORMS CHECK:', {
+        hasConversationalForms: !!newConfig.conversational_forms,
+        conversationalFormsKeys: newConfig.conversational_forms ? Object.keys(newConfig.conversational_forms) : [],
+        loveboxFieldCount: newConfig.conversational_forms?.lovebox_application?.fields?.length,
+        loveboxSampleField: newConfig.conversational_forms?.lovebox_application?.fields?.[4]
       });
       
       // Get version info from Lambda response headers

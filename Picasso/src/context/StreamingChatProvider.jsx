@@ -285,6 +285,9 @@ export default function StreamingChatProvider({ children }) {
   const [error, setError] = useState(null);
   const [isInitializing, setIsInitializing] = useState(true);
 
+  // Form mode context
+  const { suspendedForms, getSuspendedForm, resumeForm, cancelForm } = useFormMode();
+
   // Session context tracking for forms - load from sessionStorage if available
   const [sessionContext, setSessionContext] = useState(() => {
     console.log('🔍🔍🔍 [StreamingChatProvider] INITIALIZING SESSION CONTEXT 🔍🔍🔍');
@@ -711,6 +714,74 @@ export default function StreamingChatProvider({ children }) {
 
           // NOW clear pendingCtasRef after all usage is complete
           pendingCtasRef.current = null;
+
+          // CHECK FOR SUSPENDED FORM - Add resume prompt if needed
+          // Use getSuspendedForm instead of suspendedForms Map directly
+          setTimeout(() => {
+            // Check sessionStorage for suspended forms
+            const suspendedFormKeys = [];
+            for (let i = 0; i < sessionStorage.length; i++) {
+              const key = sessionStorage.key(i);
+              if (key && key.startsWith('picasso_form_')) {
+                suspendedFormKeys.push(key);
+              }
+            }
+
+            console.log('[StreamingChatProvider] Checking for suspended forms after response:', {
+              suspendedFormKeys,
+              count: suspendedFormKeys.length
+            });
+
+            if (suspendedFormKeys.length > 0) {
+              // Get the first suspended form
+              const formStateStr = sessionStorage.getItem(suspendedFormKeys[0]);
+              if (formStateStr) {
+                const formState = JSON.parse(formStateStr);
+                const formId = formState.formId;
+
+                console.log('[StreamingChatProvider] Found suspended form, adding resume prompt:', {
+                  formId,
+                  formState
+                });
+
+                const currentFieldLabel = formState.formConfig?.fields?.[formState.currentFieldIndex]?.label || 'information';
+
+                const resumePromptMessage = {
+                  id: generateMessageId('system'),
+                  role: 'assistant',
+                  content: `Would you like to continue with your application? We were collecting your **${currentFieldLabel}**.`,
+                  timestamp: Date.now(),
+                  isSystemMessage: true,
+                  ctaButtons: [
+                    {
+                      id: 'resume_form',
+                      label: 'Continue Application',
+                      action: 'resume_form',
+                      formId: formId,
+                      style: 'primary'
+                    },
+                    {
+                      id: 'cancel_form',
+                      label: 'Cancel',
+                      action: 'cancel_form',
+                      formId: formId,
+                      style: 'secondary'
+                    }
+                  ],
+                  metadata: {
+                    isResumePrompt: true,
+                    formId: formId
+                  }
+                };
+
+                setMessages(prev => {
+                  const updated = [...prev, resumePromptMessage];
+                  saveToSession('picasso_messages', updated);
+                  return updated;
+                });
+              }
+            }
+          }, 500); // Small delay to ensure response is fully rendered
         },
         onError: async (err) => {
           logger.error('Streaming failed, trying HTTP fallback', err);
@@ -860,11 +931,36 @@ export default function StreamingChatProvider({ children }) {
    * Add a message (for action chips and user input)
    */
   const addMessage = useCallback(async (message) => {
+    console.log('[StreamingChatProvider] addMessage called with:', message);
+
+    // If it's an assistant message, add it locally without sending to server
+    if (message.role === 'assistant' && message.content) {
+      console.log('[StreamingChatProvider] Adding assistant message locally');
+      const newMessage = {
+        id: `bot_${Date.now()}_${Math.random()}`,
+        role: 'assistant',
+        content: message.content,
+        timestamp: new Date().toISOString(),
+        metadata: message.metadata || {}
+      };
+
+      console.log('[StreamingChatProvider] New message object:', newMessage);
+      setMessages(prev => {
+        const updated = [...prev, newMessage];
+        console.log('[StreamingChatProvider] Updated messages array:', updated.length);
+        return updated;
+      });
+      saveToSession([...messages, newMessage]);
+      console.log('[StreamingChatProvider] Assistant message added successfully');
+      return;
+    }
+
     // If it's a user message with just content, send it
     if (message.role === 'user' && message.content) {
+      console.log('[StreamingChatProvider] Sending user message to server');
       await sendMessage(message.content);
     }
-  }, [sendMessage]);
+  }, [sendMessage, messages]);
 
   /**
    * Record form completion in session context

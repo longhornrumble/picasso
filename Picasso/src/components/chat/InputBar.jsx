@@ -9,7 +9,7 @@ import AttachmentMenu from "./AttachmentMenu";
 export default function InputBar({ input, setInput }) {
   const { addMessage, isTyping } = useChat();
   const { config } = useConfig();
-  const { isFormMode, submitField, getCurrentField } = useFormMode();
+  const { isFormMode, suspendForm } = useFormMode();
   const features = config?.features || {};
   const [showAttachments, setShowAttachments] = useState(false);
   const [_uploadingFiles, setUploadingFiles] = useState(new Set());
@@ -70,23 +70,14 @@ export default function InputBar({ input, setInput }) {
 
     // Check if we're in form mode
     if (isFormMode) {
-      console.log('[InputBar] Form mode active, submitting field value:', trimmed);
-      const result = submitField(trimmed);
-
-      if (result.valid) {
-        // Clear input after successful field submission
-        actualSetInput("");
-
-        // If form is complete, no need to send message - FormModeContext handles it
-        if (result.formComplete) {
-          console.log('[InputBar] Form complete - completion handled by FormModeContext');
-          // Form completion card will be displayed by MessageBubble
-        }
-      } else {
-        // Field validation failed - keep the input but show error
-        console.log('[InputBar] Field validation failed:', result.error);
-        // The error is shown by FormFieldPrompt component
-      }
+      // Simple approach: Using the bottom input bar during a form is ALWAYS an interruption
+      // The user has the form fields above if they want to answer the form question
+      // This input is for asking questions or changing their mind
+      console.log('[InputBar] Form active - treating input as interruption (question/request):', trimmed);
+      suspendForm('user_question');
+      addMessage({ role: "user", content: trimmed });
+      actualSetInput("");
+      setShowAttachments(false);
     } else {
       // Normal chat mode
       addMessage({ role: "user", content: trimmed });
@@ -230,7 +221,7 @@ export default function InputBar({ input, setInput }) {
                 value={actualInput}
                 onChange={handleInputChange}
                 onKeyDown={handleKeyDown}
-                placeholder={isFormMode && getCurrentField() ? "Enter your response..." : "How can I help you today?"}
+                placeholder={isFormMode ? "Ask me a question (form will pause)..." : "How can I help you today?"}
                 autoComplete="off"
                 className="input-textarea inline-textarea auto-resize-textarea"
               />

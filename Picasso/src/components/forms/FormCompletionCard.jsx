@@ -20,16 +20,18 @@ export default function FormCompletionCard({
       "Someone from our team will reach out to you",
       "Check your email for updates"
     ],
-    actions: {
-      continue_chat: {
+    actions: [
+      {
+        id: "continue",
         label: "Continue Chat",
         action: "continue"
       },
-      end_session: {
+      {
+        id: "end_session",
         label: "End Session",
-        action: "end"
+        action: "end_session"
       }
-    }
+    ]
   };
 
   const activeConfig = config || defaultConfig;
@@ -124,12 +126,19 @@ export default function FormCompletionCard({
           {actions.map((action, index) => (
             <button
               key={index}
-              className={`form-completion-action-button ${action.style || ''}`}
+              className={`form-completion-action-button ${action.id === 'end_session' ? 'secondary' : 'primary'}`}
               onClick={() => {
-                if (action.action === 'end_session' && onEndSession) {
-                  onEndSession();
-                } else if (action.action === 'continue' && onContinue) {
-                  onContinue();
+                // Handle end session
+                if (action.action === 'end_session' || action.action === 'end_conversation' || action.id === 'end_session') {
+                  if (onEndSession) {
+                    onEndSession();
+                  }
+                }
+                // Handle continue chat
+                else if (action.action === 'continue' || action.action === 'continue_conversation' || action.id === 'continue') {
+                  if (onContinue) {
+                    onContinue();
+                  }
                 }
               }}
             >

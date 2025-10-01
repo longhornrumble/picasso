@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CTA Form Test - Atlanta Angels</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        h1 {
+            color: #333;
+        }
+        .info {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .test-section {
+            background: #fff3cd;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .test-section h3 {
+            margin-top: 0;
+            color: #856404;
+        }
+        .status {
+            background: #d4edda;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            color: #155724;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        code {
+            background: #f1f1f1;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 14px;
+        }
+        pre {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        .button-test {
+            margin: 10px 0;
+        }
+        .button-test button {
+            margin-right: 10px;
+            padding: 10px 20px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .button-test button:hover {
+            background: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <h1>CTA Form Trigger Test</h1>
+
+    <div class="info">
+        <h2>Test Configuration</h2>
+        <p>Tenant: <strong>Atlanta Angels</strong> (MYR384719)</p>
+        <p>Hash: <strong>my87674d777bf9</strong></p>
+        <p>This page tests CTA button triggering of conversational forms</p>
+    </div>
+
+    <div class="test-section">
+        <h3>🧪 Test Instructions</h3>
+        <ol>
+            <li>Open browser console (F12) to see debug logs</li>
+            <li>Ask the chatbot: "How can I help?" or "I want to volunteer"</li>
+            <li>Look for the CTA button "Would you like to apply"</li>
+            <li>Click the CTA button</li>
+            <li>Check console for detailed CTA data structure</li>
+            <li>Form mode should activate if fields are present</li>
+        </ol>
+    </div>
+
+    <div class="button-test">
+        <h3>Manual Form Trigger Tests</h3>
+        <button onclick="testFormTrigger()">Test Form Mode Directly</button>
+        <button onclick="checkFormContext()">Check Form Context</button>
+        <button onclick="simulateCTA()">Simulate CTA Click</button>
+    </div>
+
+    <div class="status" id="status">
+        <h3>Status</h3>
+        <p id="status-text">Initializing widget...</p>
+    </div>
+
+    <div class="info">
+        <h2>Debug Console Commands</h2>
+        <pre>
+// Check if FormModeContext is available
+window.PicassoDebug = window.PicassoWidget?.getDebugContext?.();
+console.log(PicassoDebug);
+
+// Check form mode state
+const iframe = document.querySelector('#picasso-widget-iframe');
+const iframeWindow = iframe?.contentWindow;
+console.log('FormMode available:', iframeWindow?.formMode);
+
+// Manually trigger a form
+if (iframeWindow?.formMode?.startFormWithConfig) {
+    iframeWindow.formMode.startFormWithConfig('test_form', {
+        form_id: 'test_form',
+        title: 'Test Application',
+        fields: [
+            { id: 'name', label: 'Name', type: 'text', required: true, prompt: 'What is your name?' },
+            { id: 'email', label: 'Email', type: 'email', required: true, prompt: 'What is your email address?' }
+        ],
+        welcome_message: 'Let\'s start the test form!'
+    });
+}
+
+// Check current messages with CTAs
+const messages = iframeWindow?.chatMessages || [];
+const ctaMessages = messages.filter(m => m.ctaButtons?.length > 0);
+console.log('Messages with CTAs:', ctaMessages);
+        </pre>
+    </div>
+
+    <!-- Picasso Widget -->
+    <script>
+        // Force development mode
+        window.PICASSO_ENV = 'development';
+        window.PICASSO_TENANT_HASH = 'my87674d777bf9';
+        window.PICASSO_CONFIG_PATH = '/Sandbox/MYR384719-config.json';
+        window.PICASSO_DEBUG = true;
+
+        console.log('🎯 CTA Form Test Page Loaded');
+        console.log('📋 Monitoring for CTA button clicks and form triggers');
+
+        // Auto-initialize widget when it loads
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                if (window.PicassoWidget && typeof window.PicassoWidget.init === 'function') {
+                    console.log('Auto-initializing PicassoWidget with tenant hash: my87674d777bf9');
+                    window.PicassoWidget.init('my87674d777bf9', {
+                        position: 'bottom-right'
+                    });
+                }
+            }, 1000);
+        });
+
+        // Test functions
+        function testFormTrigger() {
+            console.log('Testing form trigger...');
+            const iframe = document.querySelector('#picasso-widget-iframe');
+            const iframeWindow = iframe?.contentWindow;
+
+            if (iframeWindow?.formMode?.startFormWithConfig) {
+                const success = iframeWindow.formMode.startFormWithConfig('test_form', {
+                    form_id: 'test_form',
+                    title: 'Test Application Form',
+                    fields: [
+                        { id: 'name', label: 'Name', type: 'text', required: true, prompt: 'What is your full name?' },
+                        { id: 'email', label: 'Email', type: 'email', required: true, prompt: 'What is your email address?' },
+                        { id: 'phone', label: 'Phone', type: 'phone', required: false, prompt: 'What is your phone number? (optional)' }
+                    ],
+                    welcome_message: 'Great! Let\'s collect your information.'
+                });
+
+                console.log('Form trigger result:', success);
+                document.getElementById('status-text').textContent = success ?
+                    'Form mode activated successfully!' :
+                    'Failed to activate form mode';
+            } else {
+                console.error('FormModeContext not available in iframe');
+                document.getElementById('status-text').textContent = 'FormModeContext not available';
+            }
+        }
+
+        function checkFormContext() {
+            console.log('Checking form context...');
+            const iframe = document.querySelector('#picasso-widget-iframe');
+            const iframeWindow = iframe?.contentWindow;
+
+            const contextInfo = {
+                hasIframe: !!iframe,
+                hasIframeWindow: !!iframeWindow,
+                hasFormMode: !!iframeWindow?.formMode,
+                formModeKeys: iframeWindow?.formMode ? Object.keys(iframeWindow.formMode) : [],
+                isFormMode: iframeWindow?.formMode?.isFormMode,
+                currentFormId: iframeWindow?.formMode?.currentFormId
+            };
+
+            console.log('Form Context Info:', contextInfo);
+            document.getElementById('status-text').textContent =
+                `FormMode: ${contextInfo.hasFormMode ? 'Available' : 'Not Found'} | Active: ${contextInfo.isFormMode || false}`;
+        }
+
+        function simulateCTA() {
+            console.log('Simulating CTA click...');
+            const ctaData = {
+                type: 'form_trigger',
+                action: 'form_trigger',
+                form_id: 'lovebox_application',
+                label: 'Apply to be a Love Box Leader',
+                fields: [
+                    {
+                        id: 'first_name',
+                        label: 'First Name',
+                        type: 'text',
+                        required: true,
+                        prompt: 'What is your first name?'
+                    },
+                    {
+                        id: 'last_name',
+                        label: 'Last Name',
+                        type: 'text',
+                        required: true,
+                        prompt: 'What is your last name?'
+                    },
+                    {
+                        id: 'email',
+                        label: 'Email',
+                        type: 'email',
+                        required: true,
+                        prompt: 'What is your email address?'
+                    },
+                    {
+                        id: 'phone',
+                        label: 'Phone',
+                        type: 'phone',
+                        required: true,
+                        prompt: 'What is your phone number?'
+                    },
+                    {
+                        id: 'age_confirm',
+                        label: 'Age Confirmation',
+                        type: 'select',
+                        required: true,
+                        prompt: 'Are you 22 years or older?',
+                        options: [
+                            { label: 'Yes', value: 'yes' },
+                            { label: 'No', value: 'no' }
+                        ],
+                        eligibility_gate: true,
+                        failure_message: 'You must be 22 or older to apply for this program.'
+                    },
+                    {
+                        id: 'commitment_confirm',
+                        label: 'Commitment Confirmation',
+                        type: 'select',
+                        required: true,
+                        prompt: 'Can you commit to one year of participation?',
+                        options: [
+                            { label: 'Yes', value: 'yes' },
+                            { label: 'No', value: 'no' }
+                        ]
+                    },
+                    {
+                        id: 'comments',
+                        label: 'Additional Comments',
+                        type: 'textarea',
+                        required: false,
+                        prompt: 'Is there anything else you would like to share? (optional)'
+                    }
+                ]
+            };
+
+            console.log('Simulated CTA data:', ctaData);
+
+            // Try to trigger the CTA click handler
+            const iframe = document.querySelector('#picasso-widget-iframe');
+            const iframeDoc = iframe?.contentDocument || iframe?.contentWindow?.document;
+
+            // Dispatch a custom event that the widget can listen to
+            if (iframeDoc) {
+                const event = new CustomEvent('cta-click', { detail: ctaData });
+                iframeDoc.dispatchEvent(event);
+                console.log('Dispatched CTA click event');
+            }
+
+            // Also try direct form trigger
+            const iframeWindow = iframe?.contentWindow;
+            if (iframeWindow?.formMode?.startFormWithConfig) {
+                const success = iframeWindow.formMode.startFormWithConfig(ctaData.form_id, ctaData);
+                console.log('Direct form trigger result:', success);
+            }
+        }
+
+        // Wait for widget to load
+        setTimeout(() => {
+            const status = document.getElementById('status');
+            const statusText = document.getElementById('status-text');
+
+            if (window.PicassoWidget) {
+                statusText.textContent = 'Widget loaded! Ask "How can I help?" to trigger CTAs';
+                checkFormContext();
+            } else {
+                status.className = 'status error';
+                statusText.textContent = 'Widget not loaded. Check console for errors';
+            }
+        }, 3000);
+
+        // Monitor for CTA clicks in console
+        const originalLog = console.log;
+        console.log = function(...args) {
+            originalLog.apply(console, args);
+
+            // Check if this is a CTA click log
+            if (args[0] && typeof args[0] === 'string' && args[0].includes('[MessageBubble] CTA')) {
+                const statusText = document.getElementById('status-text');
+                statusText.textContent = `CTA Event Detected: ${args[0]}`;
+
+                // Log the full CTA data if present
+                if (args[1]) {
+                    console.warn('CTA Data Structure:', args[1]);
+                }
+            }
+        };
+    </script>
+
+    <script type="module" src="http://localhost:8000/widget.js"></script>
+</body>
+</html>

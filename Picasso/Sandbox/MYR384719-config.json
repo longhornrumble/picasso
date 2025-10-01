@@ -1,0 +1,464 @@
+{
+  "tenant_id": "MYR384719",
+  "tenant_hash": "my87674d777bf9",
+  "subscription_tier": "Standard",
+  "chat_title": "Atlanta Angels",
+  "tone_prompt": "You are a warm, friendly, and knowledgeable team member of Atlanta Angels, a foster care support organization serving the Atlanta, Georgia area. Respond with genuine care and enthusiasm for helping children, youth, and families in foster care. Keep your answers brief, clear, and actionable - provide the essential information users need without overwhelming them. Always include relevant inline links, application forms, contact information, or calls to action when available to help users take their next step, whether that's volunteering with our Love Box program, mentoring through Dare to Dream, joining our Angel Alliance, or getting involved in any other way. Your goal is to make it easy for people to connect with our mission and find meaningful ways to make a difference in the foster care community.",
+  "welcome_message": "Welcome to Atlanta Angels! I can help guide you and answer your questions. How can I help?",
+  "callout_text": "Hi! 👋 Ask me about Atlanta Angels.",
+  "version": "1.1",
+  "generated_at": 1750067246,
+  "branding": {
+    "logo_background_color": "#000000",
+    "primary_color": "#a1905f",
+    "avatar_background_color": "#000000",
+    "header_text_color": "#FFFFFF",
+    "widget_icon_color": "#FFFFFF",
+    "font_family": "Inter",
+    "logo_url": "https://chat.myrecruiter.ai",
+    "avatar_url": "https://chat.myrecruiter.ai"
+  },
+  "features": {
+    "uploads": false,
+    "photo_uploads": false,
+    "voice_input": false,
+    "callout": {
+      "enabled": true,
+      "text": "Hi! 👋 Ask me about Atlanta Angels.",
+      "auto_dismiss": false
+    },
+    "streaming": false,
+    "conversational_forms": true,
+    "smart_cards": true
+  },
+  "quick_help": {
+    "enabled": true,
+    "title": "Common Questions",
+    "toggle_text": "Help Menu ⬆️",
+    "close_after_selection": true,
+    "prompts": [
+      "👥 Who do you help?",
+      "📚 What training do you provide?",
+      "⏰ How long is the commitment?",
+      "🔍 Do you require background checks?",
+      "📍 What areas do you serve?",
+      "☎️ How can I contact you?"
+    ]
+  },
+  "action_chips": {
+    "enabled": true,
+    "max_display": 4,
+    "show_on_welcome": true,
+    "default_chips": [
+      {
+        "label": "🤝 How can I volunteer?",
+        "value": "How can I volunteer?"
+      },
+      {
+        "label": "🎯 Our programs.",
+        "value": "What programs do you offer?"
+      },
+      {
+        "label": "💝 Donate",
+        "value": "How can I donate or support?"
+      },
+      {
+        "label": "❓Contact us.",
+        "value": "How do I contact Atlanta Angels?"
+      }
+    ]
+  },
+  "widget_behavior": {
+    "start_open": false,
+    "remember_state": true
+  },
+  "aws": {
+    "knowledge_base_id": "KNSWHQCGVG",
+    "aws_region": "us-east-1"
+  },
+  "metadata": {
+    "transformation_version": "1.1",
+    "original_field_count": 42,
+    "deployment_timestamp": 1750067246,
+    "s3_bucket": "myrecruiter-picasso",
+    "cloudfront_domain": "chat.myrecruiter.ai"
+  },
+  "model_id": "us.anthropic.claude-3-5-haiku-20241022-v1:0",
+
+  "card_inventory": {
+    "strategy": "qualification_first",
+    "primary_cta": {
+      "type": "volunteer_signup",
+      "title": "Schedule Discovery Session",
+      "url": "https://www.atlantaangels.org/volunteer.html",
+      "trigger_phrases": ["volunteer", "help", "get involved", "discovery session"]
+    },
+    "requirements": [
+      {
+        "type": "age",
+        "value": "22+",
+        "critical": true,
+        "display_text": "Must be at least 22 years old"
+      },
+      {
+        "type": "commitment",
+        "value": "1 year minimum",
+        "critical": true,
+        "emphasis": "high",
+        "display_text": "MINIMUM ONE YEAR commitment required"
+      },
+      {
+        "type": "background_check",
+        "value": "Required",
+        "critical": true,
+        "display_text": "Background check required"
+      }
+    ],
+    "program_cards": [
+      {
+        "name": "Love Box",
+        "description": "Provide wraparound support to foster families",
+        "commitment": "2-3 hours/month",
+        "url": "https://www.atlantaangels.org/programs.html#lovebox"
+      },
+      {
+        "name": "Dare to Dream",
+        "description": "One-on-one mentoring for youth aging out of care",
+        "commitment": "2 hours biweekly",
+        "url": "https://www.atlantaangels.org/programs.html#d2d"
+      }
+    ],
+    "readiness_thresholds": {
+      "show_requirements": 0.0,
+      "show_programs": 0.3,
+      "show_cta": 0.7,
+      "show_forms": 0.8
+    }
+  },
+
+  "conversation_branches": {
+    "lovebox_discussion": {
+      "detection_keywords": ["Love Box", "LoveBox", "family support", "supporting families", "wraparound support"],
+      "available_ctas": {
+        "primary": "lovebox_apply",
+        "secondary": ["view_requirements", "schedule_discovery"]
+      }
+    },
+    "daretodream_discussion": {
+      "detection_keywords": ["Dare to Dream", "mentor", "mentoring", "youth", "aging out", "mentorship"],
+      "available_ctas": {
+        "primary": "daretodream_apply",
+        "secondary": ["learn_more", "view_requirements"]
+      }
+    },
+    "program_exploration": {
+      "detection_keywords": ["programs", "volunteer opportunities", "how can I help", "get involved"],
+      "available_ctas": {
+        "primary": "schedule_discovery",
+        "secondary": ["lovebox_info", "daretodream_info"]
+      }
+    },
+    "requirements_discussion": {
+      "detection_keywords": ["requirements", "qualify", "qualified", "eligible", "age", "commitment", "background check"],
+      "available_ctas": {
+        "primary": "check_eligibility",
+        "secondary": ["schedule_discovery", "contact_us"]
+      }
+    },
+    "volunteer_interest": {
+      "detection_keywords": ["volunteer", "help", "involved", "participate", "join"],
+      "available_ctas": {
+        "primary": "volunteer_apply",
+        "secondary": ["view_programs", "schedule_discovery"]
+      }
+    }
+  },
+
+  "cta_definitions": {
+    "lovebox_apply": {
+      "text": "Apply for Love Box",
+      "label": "Apply for Love Box",
+      "action": "start_form",
+      "formId": "lb_apply",
+      "type": "form_trigger",
+      "style": "primary"
+    },
+    "daretodream_apply": {
+      "text": "Apply for Dare to Dream",
+      "label": "Become a Mentor",
+      "action": "start_form",
+      "formId": "dd_apply",
+      "type": "form_trigger",
+      "style": "primary"
+    },
+    "volunteer_apply": {
+      "text": "Start Volunteer Application",
+      "label": "Start Application",
+      "action": "start_form",
+      "formId": "volunteer_general",
+      "type": "form_trigger",
+      "style": "primary"
+    },
+    "schedule_discovery": {
+      "text": "Schedule Discovery Session",
+      "label": "Schedule Discovery Session",
+      "action": "external_link",
+      "url": "https://www.atlantaangels.org/volunteer.html",
+      "type": "external_link",
+      "style": "secondary"
+    },
+    "view_requirements": {
+      "text": "View Requirements",
+      "label": "View Requirements",
+      "action": "show_info",
+      "infoType": "requirements",
+      "type": "info_request",
+      "style": "secondary"
+    },
+    "lovebox_info": {
+      "text": "Learn About Love Box",
+      "label": "Learn About Love Box",
+      "action": "show_info",
+      "infoType": "lovebox",
+      "type": "info_request",
+      "style": "info"
+    },
+    "daretodream_info": {
+      "text": "Learn About Dare to Dream",
+      "label": "Learn About Dare to Dream",
+      "action": "show_info",
+      "infoType": "daretodream",
+      "type": "info_request",
+      "style": "info"
+    },
+    "view_programs": {
+      "text": "View Our Programs",
+      "label": "View Programs",
+      "action": "show_info",
+      "infoType": "programs",
+      "type": "info_request",
+      "style": "info"
+    },
+    "check_eligibility": {
+      "text": "Check Your Eligibility",
+      "label": "Check Eligibility",
+      "action": "start_form",
+      "formId": "eligibility_check",
+      "type": "form_trigger",
+      "style": "primary"
+    },
+    "contact_us": {
+      "text": "Contact Us",
+      "label": "Contact Us",
+      "action": "external_link",
+      "url": "https://www.atlantaangels.org/contact.html",
+      "type": "external_link",
+      "style": "secondary"
+    }
+  },
+
+  "conversational_forms": {
+    "lovebox_application": {
+      "enabled": true,
+      "form_id": "lb_apply",
+      "title": "Love Box Application",
+      "description": "Apply to become a Love Box leader and support a family",
+      "cta_text": "Would you like to apply to be a Love Box Leader?",
+      "trigger_phrases": ["love box", "lovebox", "family support", "support a family", "love box leader"],
+      "fields": [
+        {
+          "id": "first_name",
+          "type": "text",
+          "label": "First Name",
+          "prompt": "Let's get started! What's your first name?",
+          "required": true
+        },
+        {
+          "id": "last_name",
+          "type": "text",
+          "label": "Last Name",
+          "prompt": "Thanks! And what's your last name?",
+          "required": true
+        },
+        {
+          "id": "email",
+          "type": "email",
+          "label": "Email",
+          "prompt": "What email address should we use to contact you?",
+          "required": true
+        },
+        {
+          "id": "phone",
+          "type": "phone",
+          "label": "Phone",
+          "prompt": "What's the best phone number to reach you at?",
+          "required": true
+        },
+        {
+          "id": "age_confirm",
+          "type": "select",
+          "label": "Age Confirmation",
+          "prompt": "Are you at least 22 years old?",
+          "required": true,
+          "options": [
+            { "value": "yes", "label": "Yes, I am 22 or older" },
+            { "value": "no", "label": "No, I am under 22" }
+          ],
+          "eligibility_gate": true,
+          "failure_message": "Love Box requires volunteers to be at least 22 years old. We appreciate your interest!"
+        },
+        {
+          "id": "commitment_confirm",
+          "type": "select",
+          "label": "Commitment",
+          "prompt": "Can you commit to at least one full year of volunteering?",
+          "required": true,
+          "options": [
+            { "value": "yes", "label": "Yes, I can commit to one year" },
+            { "value": "no", "label": "No, I cannot commit to a full year" }
+          ],
+          "eligibility_gate": true,
+          "failure_message": "Love Box requires a one-year commitment to build meaningful relationships with families. We appreciate your interest!"
+        },
+        {
+          "id": "comments",
+          "type": "textarea",
+          "label": "Additional Comments",
+          "prompt": "Is there anything else you'd like us to know about your interest in Love Box? (Optional)",
+          "required": false,
+          "placeholder": "Share any questions or additional information..."
+        }
+      ]
+    },
+    "daretodream_application": {
+      "enabled": true,
+      "form_id": "dd_apply",
+      "title": "Dare to Dream Mentor Application",
+      "description": "Apply to become a mentor for youth in foster care",
+      "cta_text": "Would you like to apply to become a Dare to Dream mentor?",
+      "trigger_phrases": ["dare to dream", "mentor", "mentoring", "youth mentor", "become a mentor"],
+      "fields": [
+        {
+          "id": "first_name",
+          "type": "text",
+          "label": "First Name",
+          "prompt": "Great! Let's start with your first name.",
+          "required": true
+        },
+        {
+          "id": "last_name",
+          "type": "text",
+          "label": "Last Name",
+          "prompt": "And your last name?",
+          "required": true
+        },
+        {
+          "id": "email",
+          "type": "email",
+          "label": "Email",
+          "prompt": "What's your email address?",
+          "required": true
+        },
+        {
+          "id": "phone",
+          "type": "phone",
+          "label": "Phone",
+          "prompt": "What's your phone number?",
+          "required": true
+        },
+        {
+          "id": "experience",
+          "type": "textarea",
+          "label": "Experience",
+          "prompt": "Tell us briefly about any relevant experience with youth or mentoring (optional).",
+          "required": false
+        }
+      ]
+    },
+    "volunteer_general": {
+      "enabled": true,
+      "form_id": "volunteer_apply",
+      "title": "Volunteer Application",
+      "description": "Apply to volunteer with Atlanta Angels",
+      "cta_text": "Ready to start your volunteer application?",
+      "trigger_phrases": ["volunteer", "apply", "application", "sign up", "get involved"],
+      "fields": [
+        {
+          "id": "program_interest",
+          "type": "select",
+          "label": "Program Interest",
+          "prompt": "Which program interests you most?",
+          "required": true,
+          "options": [
+            { "value": "lovebox", "label": "Love Box (Family Support)" },
+            { "value": "daretodream", "label": "Dare to Dream (Youth Mentoring)" },
+            { "value": "both", "label": "Tell me more about both" },
+            { "value": "unsure", "label": "I'm not sure yet" }
+          ]
+        },
+        {
+          "id": "first_name",
+          "type": "text",
+          "label": "First Name",
+          "prompt": "What's your first name?",
+          "required": true
+        },
+        {
+          "id": "last_name",
+          "type": "text",
+          "label": "Last Name",
+          "prompt": "And your last name?",
+          "required": true
+        },
+        {
+          "id": "email",
+          "type": "email",
+          "label": "Email",
+          "prompt": "What's your email address?",
+          "required": true
+        },
+        {
+          "id": "phone",
+          "type": "phone",
+          "label": "Phone",
+          "prompt": "What's the best phone number to reach you?",
+          "required": true
+        },
+        {
+          "id": "age_confirm",
+          "type": "select",
+          "label": "Age Confirmation",
+          "prompt": "Are you at least 22 years old?",
+          "required": true,
+          "options": [
+            { "value": "yes", "label": "Yes, I am 22 or older" },
+            { "value": "no", "label": "No, I am under 22" }
+          ],
+          "eligibility_gate": true,
+          "failure_message": "Love Box requires volunteers to be at least 22 years old. We appreciate your interest!"
+        },
+        {
+          "id": "commitment_confirm",
+          "type": "select",
+          "label": "Commitment Confirmation",
+          "prompt": "Can you commit to one year with your volunteer family?",
+          "required": true,
+          "options": [
+            { "value": "yes", "label": "Yes, I can commit to one year" },
+            { "value": "no", "label": "No, I cannot commit to one year" }
+          ],
+          "eligibility_gate": true,
+          "failure_message": "Atlanta Angels requires a one-year commitment to build meaningful relationships. We appreciate your interest!"
+        },
+        {
+          "id": "comments",
+          "type": "textarea",
+          "label": "Additional Comments",
+          "prompt": "Is there anything else you'd like us to know? (Optional)",
+          "required": false,
+          "placeholder": "Share any questions or additional information..."
+        }
+      ]
+    }
+  }
+}

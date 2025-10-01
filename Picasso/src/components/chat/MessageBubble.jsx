@@ -532,7 +532,21 @@ export default function MessageBubble({
     const isAngelAllianceForm = cta.label && cta.label.toLowerCase().includes('angel alliance');
 
     // Handle different CTA action types
-    if (cta.action === 'external_link' && cta.url) {
+    if (cta.action === 'resume_form') {
+      // Resume a suspended form
+      console.log('[MessageBubble] Resume form clicked:', cta.formId);
+      if (formMode && formMode.resumeForm) {
+        formMode.resumeForm(cta.formId);
+      }
+      return;
+    } else if (cta.action === 'cancel_form') {
+      // Cancel a suspended form
+      console.log('[MessageBubble] Cancel form clicked:', cta.formId);
+      if (formMode && formMode.cancelForm) {
+        formMode.cancelForm();
+      }
+      return;
+    } else if (cta.action === 'external_link' && cta.url) {
       window.open(cta.url, '_blank', 'noopener,noreferrer');
     } else if (cta.action === 'start_form' || cta.action === 'form_trigger' || cta.type === 'form_trigger' || isLoveBoxForm || isDareToDreamForm || isAngelAllianceForm) {
       // Determine form ID based on CTA label if not provided
@@ -563,13 +577,27 @@ export default function MessageBubble({
       }
 
       if (formMode && formMode.startFormWithConfig) {
-        // Get form fields from config if not provided in CTA
-        let fields = cta.fields || [];
+        // Map form_id to config key if needed
+        let configKey = formId;
+        if (formId === 'lb_apply') {
+          configKey = 'lovebox_application';
+        } else if (formId === 'dd_apply') {
+          configKey = 'daretodream_application';
+        } else if (formId === 'volunteer_apply') {
+          configKey = 'volunteer_general';
+        }
 
-        // If no fields provided, try to get from config
-        if ((!fields || fields.length === 0) && config?.conversational_forms?.[formId]) {
-          fields = config.conversational_forms[formId].fields || [];
-          console.log('[MessageBubble] Loading fields from config for form:', formId, 'Fields count:', fields.length);
+        // ALWAYS prefer config fields over CTA fields (config has eligibility gates)
+        let fields = [];
+        if (config?.conversational_forms?.[configKey]) {
+          fields = config.conversational_forms[configKey].fields || [];
+          console.log('[MessageBubble] ✅ Loading fields from CONFIG for form:', formId, '(mapped to', configKey, ')');
+          console.log('[MessageBubble] Field count:', fields.length);
+          console.log('[MessageBubble] Fields with eligibility gates:', fields.filter(f => f.eligibility_gate).map(f => f.id));
+        } else {
+          // Fallback to CTA fields only if config not available
+          fields = cta.fields || [];
+          console.log('[MessageBubble] ⚠️ Config not found, using CTA fields. configKey:', configKey);
         }
 
         // Fallback fields for Love Box application if still no fields

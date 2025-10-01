@@ -15,6 +15,7 @@ export const FormModeProvider = ({ children }) => {
   const { config: configData } = useConfig();
   // Core form state
   const [isFormMode, setIsFormMode] = useState(false);
+  const [isSuspended, setIsSuspended] = useState(false); // NEW: Track if form is suspended
   const [currentFormId, setCurrentFormId] = useState(null);
   const [currentFieldIndex, setCurrentFieldIndex] = useState(0);
   const [formData, setFormData] = useState({});
@@ -94,6 +95,10 @@ export const FormModeProvider = ({ children }) => {
   // Start a new form with provided config (for dynamic forms from CTAs)
   const startFormWithConfig = useCallback((formId, formConfig) => {
     console.log('[FormModeContext] Starting form with config:', formId, formConfig);
+    console.log('[FormModeContext] Field count:', formConfig?.fields?.length);
+    console.log('[FormModeContext] Fields with eligibility gates:',
+      formConfig?.fields?.filter(f => f.eligibility_gate).map(f => ({ id: f.id, gate: f.eligibility_gate, msg: f.failure_message }))
+    );
 
     if (!formConfig || !formConfig.fields) {
       console.error('[FormModeContext] Invalid form config provided:', formConfig);
@@ -129,8 +134,25 @@ export const FormModeProvider = ({ children }) => {
     }
 
     // Type-specific validation
-    // Email validation handled by browser's native type="email" validation
-    // Phone validation: accept any non-empty value (validation can be added later if needed)
+    if (currentField.type === 'email') {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(value)) {
+        const error = 'Please enter a valid email address (e.g., name@example.com)';
+        setValidationErrors(prev => ({ ...prev, [currentField.id]: error }));
+        return { valid: false, error };
+      }
+    }
+
+    if (currentField.type === 'phone') {
+      // Accept formats: +15551234567, (555) 123-4567, 555-123-4567, 5551234567
+      const phoneRegex = /^[\d\s\-\(\)\+]+$/;
+      const digitsOnly = value.replace(/\D/g, '');
+      if (!phoneRegex.test(value) || digitsOnly.length < 10) {
+        const error = 'Please enter a valid phone number (at least 10 digits)';
+        setValidationErrors(prev => ({ ...prev, [currentField.id]: error }));
+        return { valid: false, error };
+      }
+    }
 
     // Check eligibility gate
     if (currentField.eligibility_gate && currentField.options) {
@@ -140,14 +162,36 @@ export const FormModeProvider = ({ children }) => {
       );
 
       if (selectedOption && selectedOption.value === 'no') {
-        // User doesn't qualify - exit form gracefully
+        // User doesn't qualify - show failure message and exit form gracefully
         const failureMessage = currentField.failure_message ||
           'Unfortunately, you don\'t meet the requirements for this program.';
 
-        cancelForm();
+        console.log('[FormModeContext] Eligibility gate failed:', {
+          field: currentField.id,
+          value: selectedOption.value,
+          message: failureMessage
+        });
+
+        // Delay form exit to allow overlay to display
+        setTimeout(() => {
+          console.log('[FormModeContext] Closing form after eligibility failure delay');
+          setIsFormMode(false);
+          setIsSuspended(false);
+          setCurrentFormId(null);
+          setCurrentFieldIndex(0);
+          setFormData({});
+          setFormConfig(null);
+          setValidationErrors({});
+          setFormMetadata({
+            startedAt: null,
+            lastActiveAt: null
+          });
+        }, 2500);
+
         return {
-          valid: false,
-          error: failureMessage,
+          valid: true, // Allow the submission to process
+          eligibilityFailed: true,
+          failureMessage: failureMessage,
           exitForm: true
         };
       }
@@ -203,11 +247,11 @@ export const FormModeProvider = ({ children }) => {
     // Update suspended forms map
     setSuspendedForms(prev => new Map(prev).set(currentFormId, suspendedData));
 
-    // Clear current form state
-    setIsFormMode(false);
-    setCurrentFormId(null);
-    setCurrentFieldIndex(0);
-    setFormConfig(null);
+    // Mark as suspended but DON'T clear the form state yet
+    // This keeps the form visible but in a "paused" state
+    setIsSuspended(true);
+
+    console.log('[FormModeContext] Form suspended, state preserved for resume');
   }, [isFormMode, currentFormId, formData, currentFieldIndex, formConfig]);
 
   // Resume a suspended form
@@ -221,6 +265,7 @@ export const FormModeProvider = ({ children }) => {
     console.log('[FormModeContext] Resuming form:', formId);
 
     setIsFormMode(true);
+    setIsSuspended(false); // Clear suspended state
     setCurrentFormId(formId);
     setCurrentFieldIndex(suspendedData.currentFieldIndex);
     setFormData(suspendedData.formData);
@@ -257,6 +302,7 @@ export const FormModeProvider = ({ children }) => {
 
     // Reset all form state
     setIsFormMode(false);
+    setIsSuspended(false); // Clear suspended state
     setCurrentFormId(null);
     setCurrentFieldIndex(0);
     setFormData({});
@@ -283,6 +329,17 @@ export const FormModeProvider = ({ children }) => {
     if (normalized.includes('?') ||
         /^(what|why|how|when|where|who)\b/.test(normalized) ||
         /\b(tell me|explain|help me understand)\b/.test(normalized)) {
+      return { type: 'QUESTION', confidence: 0.85 };
+    }
+
+    // Change of mind / switching programs patterns
+    if (/\b(actually|instead|rather|prefer|change|different|other)\b/.test(normalized) &&
+        /\b(apply|interested|want|like|program|volunteer)\b/.test(normalized)) {
+      return { type: 'QUESTION', confidence: 0.90 };
+    }
+
+    // General conversation / off-topic patterns
+    if (/^(i want|i'd like|i would like|can i|could i|i'm interested|tell me about)\b/.test(normalized)) {
       return { type: 'QUESTION', confidence: 0.85 };
     }
 
@@ -326,6 +383,7 @@ export const FormModeProvider = ({ children }) => {
   const value = {
     // State
     isFormMode,
+    isSuspended, // NEW: Export suspended state
     currentFormId,
     currentFieldIndex,
     formData,

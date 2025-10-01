@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phase 1A Forms Testing - Picasso</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .header {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            margin: 0 0 10px 0;
+            color: #333;
+        }
+        .subtitle {
+            color: #666;
+            margin: 0;
+        }
+        .test-instructions {
+            background: #e3f2fd;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 4px solid #2196f3;
+        }
+        .test-instructions h2 {
+            margin-top: 0;
+            color: #1976d2;
+        }
+        .test-instructions ol {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+        .test-instructions li {
+            margin: 8px 0;
+            line-height: 1.6;
+        }
+        .checklist {
+            background: #f1f8e9;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 4px solid #689f38;
+        }
+        .checklist h2 {
+            margin-top: 0;
+            color: #558b2f;
+        }
+        .checklist label {
+            display: block;
+            margin: 8px 0;
+            cursor: pointer;
+        }
+        .checklist input[type="checkbox"] {
+            margin-right: 10px;
+        }
+        .widget-container {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            z-index: 999999;
+        }
+        .info-box {
+            background: #fff3cd;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 4px solid #ffc107;
+        }
+        .info-box strong {
+            color: #856404;
+        }
+        code {
+            background: #f5f5f5;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🎯 Phase 1A Forms Testing</h1>
+        <p class="subtitle">Testing Iteration 2 improvements with streaming forms</p>
+    </div>
+
+    <div class="info-box">
+        <strong>⚠️ Note:</strong> This test page requires Austin Angels tenant config with forms configured.
+        Use tenant hash: <code>MYR384719</code>
+    </div>
+
+    <div class="test-instructions">
+        <h2>📋 Test Sequence</h2>
+        <ol>
+            <li><strong>Start a conversation</strong> - Open the chat widget</li>
+            <li><strong>Trigger a form</strong> - Click a CTA that starts a form (e.g., "Apply to Volunteer")</li>
+            <li><strong>Test input fields</strong> - Verify all field types render properly:
+                <ul>
+                    <li>Text input (should be visible with placeholder)</li>
+                    <li>Email input (should validate format)</li>
+                    <li>Phone input (should validate format)</li>
+                    <li>Select options (should show as buttons)</li>
+                </ul>
+            </li>
+            <li><strong>Complete the form</strong> - Fill in all required fields and submit</li>
+            <li><strong>Check completion card</strong> - Should show:
+                <ul>
+                    <li>✅ Success icon and title</li>
+                    <li>Confirmation message with placeholders replaced</li>
+                    <li>Summary of submitted data</li>
+                    <li>Next steps list</li>
+                    <li>Action buttons (Continue/End Session)</li>
+                </ul>
+            </li>
+            <li><strong>Test duplicate prevention</strong> - Click "Continue" and verify:
+                <ul>
+                    <li>Form CTA no longer appears</li>
+                    <li>Can continue chatting normally</li>
+                    <li>If same form is triggered again, CTA should be filtered out</li>
+                </ul>
+            </li>
+            <li><strong>Verify no JSON display</strong> - Ensure no raw JSON appears anywhere</li>
+        </ol>
+    </div>
+
+    <div class="checklist">
+        <h2>✅ Verification Checklist</h2>
+        <label><input type="checkbox"> Input fields are visible and styled correctly</label>
+        <label><input type="checkbox"> Text inputs have placeholders</label>
+        <label><input type="checkbox"> Email validation works</label>
+        <label><input type="checkbox"> Phone validation works</label>
+        <label><input type="checkbox"> Select options render as buttons</label>
+        <label><input type="checkbox"> Progress bar shows current step</label>
+        <label><input type="checkbox"> Form submits on last field</label>
+        <label><input type="checkbox"> No raw JSON displayed</label>
+        <label><input type="checkbox"> FormCompletionCard displays properly</label>
+        <label><input type="checkbox"> Confirmation message shows with data replaced</label>
+        <label><input type="checkbox"> Summary shows all submitted fields</label>
+        <label><input type="checkbox"> Next steps list displays</label>
+        <label><input type="checkbox"> Action buttons work (Continue/End Session)</label>
+        <label><input type="checkbox"> After completion, form CTA doesn't reappear</label>
+        <label><input type="checkbox"> Can continue chatting after form completion</label>
+        <label><input type="checkbox"> Duplicate CTAs are filtered from subsequent responses</label>
+    </div>
+
+    <!-- Picasso Widget -->
+    <script>
+        window.PicassoConfig = {
+            tenantHash: 'MYR384719', // Austin Angels
+            environment: 'development',
+            debugMode: true
+        };
+    </script>
+    <script src="http://localhost:8000/widget-standalone.js"></script>
+
+    <script>
+        // Monitor console for form events
+        console.log('%c🧪 Phase 1A Forms Test Page Loaded', 'background: #4caf50; color: white; padding: 8px; font-weight: bold;');
+        console.log('Tenant Hash:', window.PicassoConfig.tenantHash);
+        console.log('Environment:', window.PicassoConfig.environment);
+
+        // Helper to check session context
+        window.checkSessionContext = function() {
+            const ctx = window.picassoDebug?.sessionContext;
+            console.log('%cSession Context:', 'font-weight: bold; color: #2196f3;', ctx);
+            console.log('Completed Forms:', ctx?.completed_forms || []);
+            console.log('Form Submissions:', ctx?.form_submissions || {});
+        };
+
+        console.log('\n%cHelper Commands:', 'font-weight: bold; color: #ff9800;');
+        console.log('checkSessionContext() - View current session context');
+    </script>
+</body>
+</html>

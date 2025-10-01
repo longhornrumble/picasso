@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useFormMode } from '../../context/FormModeContext';
+import { useChat } from '../../hooks/useChat';
 
 /**
  * FormFieldPrompt Component
@@ -12,10 +13,15 @@ export default function FormFieldPrompt({ onCancel }) {
     getFormProgress,
     validationErrors,
     cancelForm,
-    submitField
+    submitField,
+    isSuspended // NEW: Get suspended state
   } = useFormMode();
 
+  const { addMessage } = useChat();
+
   const [inputValue, setInputValue] = useState('');
+  const [eligibilityMessage, setEligibilityMessage] = useState(null);
+  const [isFadingOut, setIsFadingOut] = useState(false);
   const inputRef = useRef(null);
 
   const currentField = getCurrentField();
@@ -43,19 +49,110 @@ export default function FormFieldPrompt({ onCancel }) {
   const handleSubmit = (e) => {
     e?.preventDefault();
     if (inputValue.trim()) {
-      submitField(currentField.id, inputValue.trim());
+      const result = submitField(currentField.id, inputValue.trim());
+
+      // Handle eligibility failure
+      if (result?.eligibilityFailed) {
+        addMessage({
+          role: 'assistant',
+          content: result.failureMessage,
+          metadata: {
+            isEligibilityFailure: true
+          }
+        });
+      }
+
+      // Clear input on success
+      if (result?.valid) {
+        setInputValue('');
+      }
     }
   };
 
   const handleSelectOption = (value) => {
-    submitField(currentField.id, value);
+    console.log('[FormFieldPrompt] Select option clicked:', {
+      fieldId: currentField.id,
+      value: value,
+      hasEligibilityGate: !!currentField.eligibility_gate,
+      eligibilityGate: currentField.eligibility_gate,
+      failureMessage: currentField.failure_message
+    });
+
+    const result = submitField(currentField.id, value);
+    console.log('[FormFieldPrompt] submitField result:', result);
+
+    // Handle eligibility failure
+    if (result?.eligibilityFailed) {
+      console.log('[FormFieldPrompt] Eligibility failed! Showing message:', result.failureMessage);
+
+      // Show the message in the form UI first
+      setEligibilityMessage(result.failureMessage);
+      setIsFadingOut(false);
+
+      // Start fade out after 2 seconds
+      setTimeout(() => {
+        setIsFadingOut(true);
+      }, 2000);
+
+      // Then add to chat after fade completes
+      setTimeout(() => {
+        addMessage({
+          role: 'assistant',
+          content: result.failureMessage,
+          metadata: {
+            isEligibilityFailure: true
+          }
+        });
+      }, 2500); // Give user time to read the message in the form
+    }
   };
 
   // Get validation error for current field
   const error = validationErrors[currentField.id];
 
   return (
-    <div className="form-field-prompt">
+    <div className={`form-field-prompt ${isSuspended ? 'form-suspended' : ''}`}>
+      {/* Eligibility failure overlay */}
+      {eligibilityMessage && (
+        <div className={`eligibility-overlay ${isFadingOut ? 'fade-out' : ''}`}>
+          <div className="eligibility-card">
+            <div className="eligibility-icon">🚫</div>
+            <div className="eligibility-title">Eligibility Requirement Not Met</div>
+            <div className="eligibility-message">{eligibilityMessage}</div>
+          </div>
+        </div>
+      )}
+
+      {/* Suspended overlay */}
+      {isSuspended && !eligibilityMessage && (
+        <div style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.7)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 10,
+          borderRadius: '12px'
+        }}>
+          <div style={{
+            background: '#fff',
+            padding: '16px 24px',
+            borderRadius: '8px',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+            textAlign: 'center',
+            fontSize: '15px',
+            fontWeight: 500,
+            color: '#333'
+          }}>
+            ⏸️ Form paused - answer your question above
+          </div>
+        </div>
+      )}
+
       {/* Progress indicator */}
       <div className="form-progress">
         <div className="form-progress-bar">

@@ -20,13 +20,8 @@ import { useFormMode } from "../../context/FormModeContext";
 function ChatWidget() {
   const { messages, isTyping, renderMode, recordFormCompletion } = useChat();
   const { config } = useConfig();
-  const { isFormMode, cancelForm, isFormComplete, completedFormData, completedFormConfig, currentFormId, clearCompletionState } = useFormMode();
+  const { isFormMode, isSuspended, cancelForm, isFormComplete, completedFormData, completedFormConfig, currentFormId, clearCompletionState } = useFormMode();
 
-  // Debug: Log messages to see what's being received
-  console.log('[ChatWidget] Rendering with messages:', messages.length, messages);
-  console.log('[ChatWidget] Form mode active:', isFormMode);
-  console.log('[ChatWidget] Form complete?', isFormComplete, 'Has data?', !!completedFormData);
-  
   // In iframe mode, we don't need breakpoints - the iframe container handles responsive sizing
   // The widget should always fill its container
   
@@ -552,8 +547,8 @@ function ChatWidget() {
                 </div>
               );
             })}
-            {/* Render form field prompt when in form mode */}
-            {isFormMode && (
+            {/* Render form field prompt when in form mode OR suspended */}
+            {(isFormMode || isSuspended) && (
               <div ref={lastMessageRef}>
                 <FormFieldPrompt onCancel={cancelForm} />
               </div>
@@ -567,13 +562,21 @@ function ChatWidget() {
                   formFields={completedFormConfig?.fields}
                   config={completedFormConfig?.post_submission}
                   onEndSession={() => {
-                    clearCompletionState();
-                  }}
-                  onContinue={() => {
-                    clearCompletionState();
+                    // Record the form completion before closing
                     if (recordFormCompletion) {
                       recordFormCompletion(currentFormId, completedFormData);
                     }
+                    clearCompletionState();
+                    // Close the widget
+                    setIsOpen(false);
+                  }}
+                  onContinue={() => {
+                    // Record the form completion
+                    if (recordFormCompletion) {
+                      recordFormCompletion(currentFormId, completedFormData);
+                    }
+                    clearCompletionState();
+                    // Widget stays open for continued conversation
                   }}
                 />
               </div>
