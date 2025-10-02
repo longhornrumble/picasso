@@ -229,7 +229,36 @@ export function useCSSVariables(config) {
       '--action-chip-font-weight': branding.action_chip_font_weight || '500',
       '--action-chip-shadow': branding.action_chip_shadow || '0 1px 3px rgba(0, 0, 0, 0.1)',
       '--action-chip-hover-shadow': generateActionChipShadow(branding.primary_color),
-      
+
+      /* === UNIFIED BUTTON SYSTEM === */
+      '--button-bg-primary': branding.button_bg_primary || branding.primary_color || '#3b82f6',
+      '--button-text-primary': branding.button_text_primary || determineContrastColor(branding.button_bg_primary || branding.primary_color || '#3b82f6'),
+      '--button-bg-primary-hover': branding.button_bg_primary_hover || darkenColor(branding.button_bg_primary || branding.primary_color || '#3b82f6', 10),
+      '--button-shadow-primary': branding.button_shadow_primary || generatePrimaryShadow(branding.primary_color),
+      '--button-shadow-primary-hover': branding.button_shadow_primary_hover || generatePrimaryShadowHover(branding.primary_color),
+
+      '--button-bg-secondary': branding.button_bg_secondary || 'transparent',
+      '--button-text-secondary': branding.button_text_secondary || branding.primary_color || '#3b82f6',
+      '--button-border-secondary': branding.button_border_secondary || branding.primary_color || '#3b82f6',
+      '--button-bg-secondary-hover': branding.button_bg_secondary_hover || branding.primary_color || '#3b82f6',
+      '--button-text-secondary-hover': branding.button_text_secondary_hover || '#ffffff',
+
+      '--button-bg-option': branding.button_bg_option || '#f8f8f8',
+      '--button-text-option': branding.button_text_option || '#333',
+      '--button-border-option': branding.button_border_option || '#e0e0e0',
+      '--button-bg-option-hover': branding.button_bg_option_hover || '#fafaf5',
+      '--button-border-option-hover': branding.button_border_option_hover || branding.primary_color || '#3b82f6',
+
+      '--button-radius-mobile': ensurePixelUnit(branding.button_radius_mobile || '12px'),
+      '--button-radius-desktop': ensurePixelUnit(branding.button_radius_desktop || '20px'),
+      '--button-padding-mobile': branding.button_padding_mobile || '12px 16px',
+      '--button-padding-desktop': branding.button_padding_desktop || '10px 16px',
+      '--button-min-height-mobile': ensurePixelUnit(branding.button_min_height_mobile || '44px'),
+      '--button-min-height-desktop': ensurePixelUnit(branding.button_min_height_desktop || '40px'),
+      '--button-gap': branding.button_gap || '8px',
+      '--button-font-size': ensurePixelUnit(branding.button_font_size || branding.action_chip_font_size || '14px'),
+      '--button-font-weight': branding.button_font_weight || branding.action_chip_font_weight || '500',
+
       /* === CALLOUT SYSTEM === */
       '--callout-background': branding.callout_background || branding.background_color || '#ffffff',
       '--callout-border-color': branding.callout_border_color || branding.border_color || 'rgba(59, 130, 246, 0.1)',
@@ -349,12 +378,7 @@ export function useCSSVariables(config) {
       '--form-input-shadow': branding.form_input_shadow || '0 1px 3px rgba(0, 0, 0, 0.1)',
       '--form-input-shadow-focus': branding.form_input_shadow_focus || generateInputFocusShadow(branding.primary_color),
 
-      '--form-select-option-bg': branding.form_select_option_bg || 'rgba(59, 130, 246, 0.08)',
-      '--form-select-option-bg-hover': branding.form_select_option_bg_hover || branding.primary_color || '#3b82f6',
-      '--form-select-option-text': branding.form_select_option_text || branding.primary_color || '#3b82f6',
-      '--form-select-option-text-hover': branding.form_select_option_text_hover || '#ffffff',
-      '--form-select-option-border': branding.form_select_option_border || '2px solid rgba(59, 130, 246, 0.2)',
-      '--form-select-option-border-hover': branding.form_select_option_border_hover || branding.primary_color || '#3b82f6',
+      /* Form select options now use unified button variables: button-bg-option, button-text-option, button-border-option */
 
       '--form-submit-button-bg': branding.form_submit_button_bg || branding.primary_color || '#3b82f6',
       '--form-submit-button-text': branding.form_submit_button_text || '#ffffff',

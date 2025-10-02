@@ -18,8 +18,15 @@ export default function CTAButton({ cta, onClick, disabled = false }) {
   };
 
   // Determine button style class
+  // If no explicit style, default based on action type:
+  // - form_trigger actions = primary (brand color)
+  // - external_link = secondary (outlined)
+  // - info_request = info (light background)
   const styleClass = cta.style === 'primary' ? 'cta-primary' :
                     cta.style === 'secondary' ? 'cta-secondary' :
+                    cta.style === 'info' ? 'cta-info' :
+                    cta.action === 'form_trigger' ? 'cta-primary' :
+                    cta.action === 'external_link' ? 'cta-secondary' :
                     'cta-info';
 
   const buttonLabel = cta.label || cta.text;

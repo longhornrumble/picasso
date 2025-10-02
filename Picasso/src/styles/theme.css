@@ -722,11 +722,7 @@ body[data-iframe="true"].callout-visible:not(.chat-open) {
       font-size: 15px !important;
     }
     
-    body[data-iframe="true"] .action-chip {
-      padding: 6px 10px !important;
-      font-size: 12px !important;
-      min-height: 36px !important;
-    }
+    /* action-chip styling now handled by unified button system */
   }
 
   @container (min-width: 401px) and (max-width: 500px) {
@@ -734,16 +730,12 @@ body[data-iframe="true"].callout-visible:not(.chat-open) {
       padding: 10px 16px !important;
       min-height: 70px !important;
     }
-    
+
     body[data-iframe="true"] .chat-title {
       font-size: 17px !important;
     }
-    
-    body[data-iframe="true"] .action-chip {
-      padding: 8px 14px !important;
-      font-size: 13px !important;
-      min-height: 40px !important;
-    }
+
+    /* action-chip styling now handled by unified button system */
   }
 
   /* Callout state styling - when callout is visible, iframe should not be circular */
@@ -1997,79 +1989,156 @@ p {
   box-sizing: border-box;
 }
 
-/* === ACTION CHIPS - Multi-Tenant Ready === */
-.action-chips {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 8px;
+/* === UNIFIED BUTTON SYSTEM - Responsive & Tenant-Driven === */
+/* Applies to: action-chips, cta-buttons, form options */
+
+/* Button group containers */
+.action-chips,
+.cta-button-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--button-gap, 8px);
   margin-top: 10px;
   padding: 0;
   box-sizing: border-box;
 }
 
-/* Action chips with long text - switch to full width layout */
-.action-chips.long-text {
-  grid-template-columns: 1fr;
-  gap: 6px;
-}
-
+/* Long text layout - allow wrapping */
 .action-chips.long-text .action-chip {
   white-space: normal;
-  text-align: left;
-  padding: 14px 16px;
-  min-height: 48px;
+  text-align: center;
+  padding: 12px 16px;
+  min-height: 44px;
 }
 
-.action-chip {
-  background: var(--action-chip-bg, rgba(59, 130, 246, 0.08));
-  border: var(--action-chip-border, 2px solid rgba(59, 130, 246, 0.2));
-  border-radius: var(--action-chip-radius, 8px);
-  padding: 12px 16px;
-  font-size: 13px;
-  font-weight: var(--action-chip-font-weight, 500);
-  color: var(--action-chip-color, #3b82f6);
-  cursor: pointer;
-  transition: all var(--transition-slow, 0.2s) cubic-bezier(0.4, 0, 0.2, 1);
-  white-space: nowrap;
-  line-height: 1.2;
-  font-family: var(--font-family);
-  text-align: center;
-  min-height: 44px;
+/* === BASE BUTTON STYLES === */
+/* Shared by all button types: action-chip, cta-button, form options */
+.action-chip,
+.cta-button {
+  /* Layout */
   display: flex;
   align-items: center;
   justify-content: center;
-  backdrop-filter: blur(8px);
+  text-align: center;
   position: relative;
   overflow: hidden;
-  box-shadow: var(--action-chip-shadow, 0 1px 3px rgba(0, 0, 0, 0.1));
+
+  /* Sizing - Desktop default */
+  padding: var(--button-padding-desktop, 10px 16px);
+  min-height: var(--button-min-height-desktop, 40px);
+  border-radius: var(--button-radius-desktop, 20px);
+
+  /* Typography */
+  font-family: var(--font-family);
+  font-size: var(--button-font-size, 14px);
+  font-weight: var(--button-font-weight, 500);
+  line-height: 1.4;
+  white-space: nowrap;
+
+  /* Border */
+  border: 1.5px solid var(--button-bg-primary);
+
+  /* Interaction */
+  cursor: pointer;
+  transition: all var(--transition-normal, 0.2s ease);
+
+  /* Visual effects */
+  backdrop-filter: blur(8px);
+  box-sizing: border-box;
 }
 
-.action-chip:hover {
-  background: var(--action-chip-hover-bg, #3b82f6);
-  color: var(--action-chip-hover-color, #ffffff);
-  border-color: var(--action-chip-hover-border, #3b82f6);
-  transform: translateY(-2px) scale(1.02);
-  box-shadow: var(--action-chip-hover-shadow, 0 6px 16px rgba(59, 130, 246, 0.3));
+/* === PRIMARY VARIANT === */
+/* Default for action-chip and cta-primary */
+.action-chip,
+.cta-button.cta-primary,
+.cta-button:not(.cta-secondary):not(.cta-info):not(.cta-tertiary) {
+  background: var(--button-bg-primary);
+  color: var(--button-text-primary);
+  border-color: var(--button-bg-primary);
+  box-shadow: var(--button-shadow-primary);
 }
 
-.action-chip:active {
-  transform: translateY(-1px) scale(0.98);
-  transition-duration: 0.1s;
+.action-chip:hover:not(:disabled),
+.cta-button.cta-primary:hover:not(:disabled),
+.cta-button:not(.cta-secondary):not(.cta-info):not(.cta-tertiary):hover:not(:disabled) {
+  background: var(--button-bg-primary-hover);
+  transform: translateY(-1px);
+  box-shadow: var(--button-shadow-primary-hover);
 }
 
-.action-chip:disabled {
+/* === SECONDARY VARIANT === */
+/* Outlined style for alternative actions */
+.cta-button.cta-secondary {
+  background: var(--button-bg-secondary);
+  color: var(--button-text-secondary);
+  border-color: var(--button-border-secondary);
+  box-shadow: none;
+}
+
+.cta-button.cta-secondary:hover:not(:disabled) {
+  background: var(--button-bg-secondary-hover);
+  color: var(--button-text-secondary-hover);
+  border-color: var(--button-bg-secondary-hover);
+}
+
+/* === INFO/TERTIARY VARIANT === */
+.cta-button.cta-info,
+.cta-button.cta-tertiary {
+  background: var(--button-bg-option);
+  color: var(--button-text-option);
+  border-color: var(--button-border-option);
+}
+
+.cta-button.cta-info:hover:not(:disabled),
+.cta-button.cta-tertiary:hover:not(:disabled) {
+  background: var(--button-bg-option-hover);
+  border-color: var(--button-border-option-hover);
+}
+
+/* === DISABLED STATE === */
+.action-chip:disabled,
+.cta-button:disabled {
   background-color: var(--action-chip-disabled-bg, #f9fafb);
   color: var(--action-chip-disabled-color, #9ca3af);
   border-color: var(--action-chip-disabled-border, #e5e7eb);
   cursor: not-allowed;
-  opacity: 0.6;
+  opacity: 0.5;
   transform: none;
   box-shadow: none;
 }
 
-.action-chip:focus-visible {
+/* === ACTIVE/PRESSED STATE === */
+.action-chip:active:not(:disabled),
+.cta-button:active:not(:disabled) {
+  transform: translateY(0) scale(0.98);
+  transition-duration: 0.1s;
+}
+
+/* === FOCUS STATE === */
+.action-chip:focus-visible,
+.cta-button:focus-visible {
   outline: 2px solid var(--primary-color);
   outline-offset: 2px;
+}
+
+/* === MOBILE RESPONSIVE (< 480px) === */
+@media (max-width: 480px) {
+  .action-chips,
+  .cta-button-group {
+    flex-direction: column;
+  }
+
+  .action-chips {
+    display: flex; /* Override grid on mobile */
+  }
+
+  .action-chip,
+  .cta-button {
+    width: 100%;
+    border-radius: var(--button-radius-mobile, 12px);
+    padding: var(--button-padding-mobile, 12px 16px);
+    min-height: var(--button-min-height-mobile, 44px);
+  }
 }
 
 
@@ -2229,10 +2298,7 @@ body[data-iframe="true"] {
     font-size: 16px !important;
   }
   
-  body[data-iframe="true"] .action-chip {
-    padding: 8px 12px !important;
-    font-size: 12px !important;
-  }
+  /* action-chip styling now handled by unified button system */
 }
 
 /* Large iframe - tablet/desktop (480px+ width) */
@@ -2241,15 +2307,12 @@ body[data-iframe="true"] {
     padding: 12px 18px !important;
     min-height: 80px !important;
   }
-  
+
   body[data-iframe="true"] .chat-title {
     font-size: 18px !important;
   }
-  
-  body[data-iframe="true"] .action-chip {
-    padding: 10px 16px !important;
-    font-size: 14px !important;
-  }
+
+  /* action-chip styling now handled by unified button system */
   
   body[data-iframe="true"] .message-content {
     padding: 12px 16px !important;
@@ -2268,11 +2331,7 @@ body[data-iframe="true"].iframe-mobile .chat-title {
   font-size: 16px !important;
 }
 
-body[data-iframe="true"].iframe-mobile .action-chip {
-  padding: 6px 10px !important;
-  font-size: 12px !important;
-  min-height: 36px !important;
-}
+/* action-chip styling now handled by unified button system */
 
 body[data-iframe="true"].iframe-mobile .message-content {
   padding: 8px 12px !important;
@@ -2289,11 +2348,7 @@ body[data-iframe="true"].iframe-tablet .chat-title {
   font-size: 17px !important;
 }
 
-body[data-iframe="true"].iframe-tablet .action-chip {
-  padding: 8px 14px !important;
-  font-size: 13px !important;
-  min-height: 40px !important;
-}
+/* action-chip styling now handled by unified button system */
 
 /* Desktop iframe styling */
 body[data-iframe="true"].iframe-desktop .chat-header {
@@ -2305,11 +2360,7 @@ body[data-iframe="true"].iframe-desktop .chat-title {
   font-size: 18px !important;
 }
 
-body[data-iframe="true"].iframe-desktop .action-chip {
-  padding: 10px 16px !important;
-  font-size: 14px !important;
-  min-height: 44px !important;
-}
+/* action-chip styling now handled by unified button system */
   
   /* Ensure html and body allow proper sizing in iframe without forcing full size */
 body[data-iframe="true"],
@@ -2362,16 +2413,8 @@ body[data-iframe="true"]:not(.chat-open) #root {
   position: relative !important;
 }
 
-/* Responsive typography and spacing using clamp() for smooth scaling */
-body[data-iframe="true"] .action-chips {
-  gap: clamp(4px, 1vw, 8px);
-}
-
-body[data-iframe="true"] .action-chip {
-  padding: clamp(8px, 2vw, 12px) clamp(12px, 3vw, 16px);
-  font-size: clamp(11px, 2.5vw, 13px);
-  min-height: clamp(32px, 8vw, 44px);
-}
+/* Iframe responsive styling now uses unified button system via CSS variables */
+/* Removed legacy clamp() overrides - unified button system handles all sizing */
 
 body[data-iframe="true"] .message-content {
   padding: clamp(10px, 2.5vw, 16px) clamp(12px, 3vw, 18px);
@@ -2658,31 +2701,24 @@ body.offline-mode {
     min-width: 56px !important;
     min-height: 56px !important;
   }
-  
-  .send-button,
-  .upload-option {
-    min-width: 44px !important;
-    min-height: 44px !important;
-  }
-  
-  .action-chip {
-    min-height: 44px !important;
-    padding: 12px 16px !important;
-  }
-  
+
+  /* Send button sizing now handled by unified button system */
+
+  /* action-chip styling now handled by unified button system */
+
   /* Remove hover effects on touch devices */
   .chat-toggle-button:hover,
   .send-button:hover,
   .upload-option:hover {
     transform: none !important;
   }
-  
+
   /* Add active states for better feedback */
   .chat-toggle-button:active {
     transform: scale(0.95);
     transition: transform 0.1s ease;
   }
-  
+
   .send-button:active,
   .upload-option:active {
     background: var(--primary-dark);
@@ -3135,9 +3171,9 @@ body.offline-mode {
 /* === SEND BUTTON STYLES (CONSOLIDATED) === */
 .send-button {
   border: none;
-  border-radius: var(--border-radius-small);
-  width: 36px;
-  height: 36px;
+  border-radius: 16px;
+  width: 32px;
+  height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3149,16 +3185,14 @@ body.offline-mode {
   position: absolute;
   right: 6px;
   bottom: 6px;
-  width: 32px;
-  height: 32px;
   pointer-events: auto;
 }
 
 .send-button-active {
-  background: var(--primary-gradient, linear-gradient(135deg, #3b82f6 0%, #2563eb 100%));
+  background: var(--button-bg-primary);
   cursor: pointer;
   transform: scale(1.02);
-  box-shadow: var(--send-button-shadow, 0 4px 12px rgba(59, 130, 246, 0.3));
+  box-shadow: var(--button-shadow-primary);
 }
 
 .send-button-disabled {
@@ -3169,8 +3203,8 @@ body.offline-mode {
 
 .send-button-active:hover {
   transform: scale(1.08);
-  background: var(--button-hover-color, var(--primary-color));
-  box-shadow: 0 6px 16px rgba(59, 130, 246, 0.4);
+  background: var(--button-bg-primary-hover);
+  box-shadow: var(--button-shadow-primary-hover);
 }
 
 
@@ -4167,39 +4201,66 @@ body[data-iframe="true"].minimized {
   line-height: 1.5;
 }
 
-/* Select options */
+/* Select options - using unified button system */
 .form-select-options {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--button-gap, 8px);
 }
 
 .form-select-option {
+  /* Use unified button styling for form options */
   width: 100%;
-  padding: 12px 16px;
-  background: var(--form-select-option-bg);
-  border: var(--form-select-option-border);
-  border-radius: var(--form-input-radius);
-  font-size: var(--form-input-font-size);
-  color: var(--form-select-option-text);
-  font-family: var(--font-family);
-  font-weight: var(--font-weight-medium);
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
   text-align: left;
+
+  /* Unified button sizing */
+  padding: var(--button-padding-mobile, 12px 16px);
+  min-height: var(--button-min-height-mobile, 44px);
+  border-radius: var(--button-radius-mobile, 12px);
+
+  /* Unified button option colors */
+  background: var(--button-bg-option, #f8f8f8);
+  color: var(--button-text-option, #333);
+  border: 1.5px solid var(--button-border-option, #e0e0e0);
+
+  /* Typography */
+  font-size: var(--button-font-size, 14px);
+  font-family: var(--font-family);
+  font-weight: var(--button-font-weight, 500);
+  line-height: 1.4;
+
   cursor: pointer;
   transition: all 0.2s ease;
-  box-shadow: var(--form-input-shadow);
+  box-sizing: border-box;
 }
 
 .form-select-option:hover {
-  background: var(--form-select-option-bg-hover);
-  color: var(--form-select-option-text-hover);
-  border-color: var(--form-select-option-border-hover);
+  background: var(--button-bg-option-hover, #fafaf5);
+  border-color: var(--button-border-option-hover);
   transform: translateY(-1px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .form-select-option:active {
-  transform: translateY(0);
+  transform: translateY(0) scale(0.98);
+}
+
+/* Desktop grid layout for form options */
+@media (min-width: 481px) {
+  .form-select-options {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--button-gap, 8px);
+  }
+
+  .form-select-option {
+    border-radius: var(--button-radius-desktop, 20px);
+    padding: var(--button-padding-desktop, 10px 16px);
+    min-height: var(--button-min-height-desktop, 40px);
+  }
 }
 
 /* Submit button */
@@ -4401,82 +4462,4 @@ body[data-iframe="true"].minimized {
   transform: translateY(-1px);
 }
 
-/* === CTA BUTTON STYLES === */
-/* Context-aware CTA buttons for forms and smart response cards */
-
-.cta-button-group {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--message-gap, 8px);
-  margin-top: var(--message-gap, 12px);
-  padding: 0 var(--message-padding-horizontal, 8px);
-}
-
-.cta-button {
-  padding: 10px 16px;
-  border-radius: var(--action-chip-border-radius, 20px);
-  border: none;
-  font-size: var(--action-chip-font-size, 14px);
-  font-weight: var(--action-chip-font-weight, 500);
-  font-family: var(--font-family);
-  cursor: pointer;
-  transition: all 0.2s ease;
-  white-space: nowrap;
-  width: fit-content;
-  min-width: max-content;
-  line-height: var(--action-chip-line-height, 1.2);
-}
-
-/* Primary CTA - Form triggers, main actions */
-.cta-button.cta-primary {
-  background: var(--primary-color);
-  color: var(--primary-text-color, white);
-  box-shadow: var(--action-chip-shadow, 0 2px 4px rgba(0, 0, 0, 0.1));
-}
-
-.cta-button.cta-primary:hover:not(:disabled) {
-  background: var(--primary-hover-color, var(--primary-color));
-  transform: translateY(-1px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
-}
-
-/* Secondary CTA - External links, alternate actions */
-.cta-button.cta-secondary {
-  background: var(--action-chip-secondary-bg, transparent);
-  color: var(--primary-color);
-  border: 1px solid var(--primary-color);
-}
-
-.cta-button.cta-secondary:hover:not(:disabled) {
-  background: var(--primary-color);
-  color: var(--primary-text-color, white);
-}
-
-/* Info CTA - Information requests */
-.cta-button.cta-info {
-  background: var(--action-chip-info-bg, var(--message-bg-user, #f0f0f0));
-  color: var(--action-chip-info-color, var(--text-primary));
-}
-
-.cta-button.cta-info:hover:not(:disabled) {
-  background: var(--action-chip-info-hover-bg, #e0e0e0);
-}
-
-/* Disabled state */
-.cta-button:disabled {
-  opacity: var(--disabled-opacity, 0.5);
-  cursor: not-allowed;
-}
-
-/* Responsive - uses same breakpoint as action chips */
-@media (max-width: 480px) {
-  .cta-button-group {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .cta-button {
-    max-width: 100%;
-    justify-content: center;
-  }
-}
+/* CTA button styles now handled by unified button system (lines 2000-2161) */
