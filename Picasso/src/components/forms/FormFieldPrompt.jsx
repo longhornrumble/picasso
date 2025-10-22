@@ -151,7 +151,16 @@ export default function FormFieldPrompt({ onCancel }) {
     if (result?.eligibilityFailed) {
       console.log('[FormFieldPrompt] Eligibility failed! Showing message:', result.failureMessage);
 
-      // Show the message in the form UI first
+      // Add message to chat immediately so user can respond after form closes
+      addMessage({
+        role: 'assistant',
+        content: result.failureMessage,
+        metadata: {
+          isEligibilityFailure: true
+        }
+      });
+
+      // Also show visual overlay for immediate feedback
       setEligibilityMessage(result.failureMessage);
       setIsFadingOut(false);
 
@@ -160,16 +169,8 @@ export default function FormFieldPrompt({ onCancel }) {
         setIsFadingOut(true);
       }, 2000);
 
-      // Then add to chat after fade completes
-      setTimeout(() => {
-        addMessage({
-          role: 'assistant',
-          content: result.failureMessage,
-          metadata: {
-            isEligibilityFailure: true
-          }
-        });
-      }, 2500); // Give user time to read the message in the form
+      // Note: Form will exit automatically after 2.5 seconds (handled in FormModeContext)
+      // The message is already in chat history, so user can respond naturally
     }
   };
 
@@ -265,6 +266,12 @@ export default function FormFieldPrompt({ onCancel }) {
           </div>
         )}
 
+        {currentField.type === 'date' && (
+          <div className="form-field-hint">
+            Select a date using the calendar picker
+          </div>
+        )}
+
         {/* Input fields based on type */}
         <div className="form-field-input-container">
           {/* Text input */}
@@ -312,6 +319,35 @@ export default function FormFieldPrompt({ onCancel }) {
             </form>
           )}
 
+          {/* Number input */}
+          {currentField.type === 'number' && (
+            <form onSubmit={handleSubmit}>
+              <input
+                ref={inputRef}
+                type="number"
+                className="form-field-input"
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                placeholder={currentField.placeholder || 'Enter a number...'}
+                required={currentField.required}
+              />
+            </form>
+          )}
+
+          {/* Date input */}
+          {currentField.type === 'date' && (
+            <form onSubmit={handleSubmit}>
+              <input
+                ref={inputRef}
+                type="date"
+                className="form-field-input"
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                required={currentField.required}
+              />
+            </form>
+          )}
+
           {/* Textarea for long text */}
           {currentField.type === 'textarea' && (
             <form onSubmit={handleSubmit}>
@@ -344,7 +380,7 @@ export default function FormFieldPrompt({ onCancel }) {
           )}
 
           {/* Submit button for text inputs */}
-          {['text', 'email', 'phone', 'textarea'].includes(currentField.type) && (
+          {['text', 'email', 'phone', 'number', 'date', 'textarea'].includes(currentField.type) && (
             <button
               type="button"
               className="form-submit-button"

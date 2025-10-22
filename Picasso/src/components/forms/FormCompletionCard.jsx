@@ -10,7 +10,8 @@ export default function FormCompletionCard({
   formFields,
   config,
   onEndSession,
-  onContinue
+  onContinue,
+  onStartForm
 }) {
   // Use default config if none provided
   const defaultConfig = {
@@ -126,19 +127,34 @@ export default function FormCompletionCard({
           {actions.map((action, index) => (
             <button
               key={index}
-              className={`form-completion-action-button ${action.id === 'end_session' ? 'secondary' : 'primary'}`}
+              className={`form-completion-action-button ${action.action === 'end_conversation' || action.id === 'end_session' ? 'secondary' : 'primary'}`}
               onClick={() => {
-                // Handle end session
+                // Handle end conversation
                 if (action.action === 'end_session' || action.action === 'end_conversation' || action.id === 'end_session') {
                   if (onEndSession) {
                     onEndSession();
                   }
                 }
-                // Handle continue chat
+                // Handle continue conversation with optional prompt
                 else if (action.action === 'continue' || action.action === 'continue_conversation' || action.id === 'continue') {
                   if (onContinue) {
-                    onContinue();
+                    // Use configured prompt or default
+                    const prompt = action.prompt || 'How can I help you?';
+                    onContinue(prompt);
                   }
+                }
+                // Handle start another form
+                else if (action.action === 'start_form' && action.formId) {
+                  if (onStartForm) {
+                    onStartForm(action.formId);
+                  } else {
+                    console.error('[FormCompletionCard] onStartForm callback not provided');
+                  }
+                }
+                // Handle external link
+                else if (action.action === 'external_link' && action.url) {
+                  // Open URL in new tab
+                  window.open(action.url, '_blank', 'noopener,noreferrer');
                 }
               }}
             >
