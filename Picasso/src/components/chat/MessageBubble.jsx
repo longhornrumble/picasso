@@ -566,7 +566,12 @@ export default function MessageBubble({
       // Send a query to Bedrock (UX shortcut button)
       console.log('[MessageBubble] Send query clicked:', cta.query);
       if (sendMessage) {
-        sendMessage(cta.query);
+        // Pass CTA metadata for explicit routing
+        sendMessage(cta.query, {
+          cta_triggered: true,
+          cta_id: cta.id || cta.cta_id,
+          cta_action: cta.action
+        });
       }
       return;
     } else if (cta.action === 'external_link' && cta.url) {
@@ -671,8 +676,15 @@ export default function MessageBubble({
         }
       }
     } else if (cta.action === 'show_info' && addMessage) {
-      // Send as a user prompt to get info
-      addMessage({ role: "user", content: cta.text || cta.label });
+      // Send as a user prompt to get info with CTA metadata
+      const query = cta.text || cta.label;
+      if (sendMessage) {
+        sendMessage(query, {
+          cta_triggered: true,
+          cta_id: cta.id || cta.cta_id,
+          cta_action: cta.action
+        });
+      }
     }
   };
 

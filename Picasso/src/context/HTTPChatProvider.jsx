@@ -13,6 +13,7 @@
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useConfig } from '../hooks/useConfig';
+import { useFormMode } from './FormModeContext';
 import { ChatContext } from './shared/ChatContext';
 import {
   generateMessageId,
@@ -40,6 +41,9 @@ export default function HTTPChatProvider({ children }) {
   const [isTyping, setIsTyping] = useState(false);
   const [error, setError] = useState(null);
   const [isInitializing, setIsInitializing] = useState(true);
+
+  // Form mode context for clearing forms on session timeout
+  const { cancelForm } = useFormMode();
 
   // PHASE 1B: Session context for form completion tracking
   const [sessionContext, setSessionContext] = useState(() => {
@@ -378,8 +382,10 @@ export default function HTTPChatProvider({ children }) {
   
   /**
    * Send a message - HTTP implementation
+   * @param {string} userInput - The user's message text
+   * @param {object} metadata - Optional metadata (e.g., CTA tracking)
    */
-  const sendMessage = useCallback(async (userInput) => {
+  const sendMessage = useCallback(async (userInput, metadata = {}) => {
     console.log('🔵 HTTPChatProvider.sendMessage called with:', userInput);
     if (!userInput?.trim() || isTyping) {
       console.log('🔴 Blocked: empty input or already typing');
@@ -456,7 +462,9 @@ export default function HTTPChatProvider({ children }) {
         conversation_history: conversationContext?.recentMessages || [],
         original_user_input: userInput,
         // PHASE 1B: Include session context for form tracking (with suspended forms)
-        session_context: enhancedSessionContext
+        session_context: enhancedSessionContext,
+        // Include CTA metadata for explicit routing
+        ...metadata
       };
       
       // Include state token if available (matching original)
@@ -464,7 +472,16 @@ export default function HTTPChatProvider({ children }) {
         requestBody.state_token = stateToken;
         logger.info('Including state token in HTTP request');
       }
-      
+
+      // Debug: Log CTA metadata if present
+      if (metadata.cta_triggered) {
+        console.log('[HTTPChatProvider] 🎯 CTA metadata included:', {
+          cta_triggered: metadata.cta_triggered,
+          cta_id: metadata.cta_id,
+          cta_action: metadata.cta_action
+        });
+      }
+
       console.log('🔴 Sending request body:', JSON.stringify(requestBody, null, 2));
       
       // Make HTTP request - ensure tenant hash is in URL
@@ -691,11 +708,16 @@ export default function HTTPChatProvider({ children }) {
   const clearMessages = useCallback(() => {
     // Clear session
     clearSession();
-    
+
+    // Cancel any active forms
+    if (cancelForm) {
+      cancelForm();
+    }
+
     // Reset session
     sessionIdRef.current = `session_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
     saveToSession('picasso_session_id', sessionIdRef.current);
-    
+
     // Restore welcome message and action cards
     const newMessages = [];
     if (tenantConfig?.welcome_message) {
@@ -706,7 +728,7 @@ export default function HTTPChatProvider({ children }) {
         const maxDisplay = tenantConfig.action_chips.max_display || 3;
         welcomeActions.push(...chips.slice(0, maxDisplay));
       }
-      
+
       const welcomeMessage = createAssistantMessage(tenantConfig.welcome_message, {
         id: 'welcome',
         isWelcome: true,
@@ -714,17 +736,17 @@ export default function HTTPChatProvider({ children }) {
       });
       newMessages.push(welcomeMessage);
     }
-    
+
     setMessages(newMessages);
     saveToSession('picasso_messages', newMessages);
-    
+
     // Reset conversation manager
     if (conversationManagerRef.current) {
       conversationManagerRef.current.reset();
     }
-    
+
     logger.info('HTTP Provider: Messages cleared and reset to welcome state');
-  }, [tenantConfig]);
+  }, [tenantConfig, cancelForm]);
   
   /**
    * Retry a failed message

@@ -12,6 +12,7 @@
 
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useConfig } from '../hooks/useConfig';
+import { useFormMode } from './FormModeContext';
 import { ChatContext } from './shared/ChatContext';
 import {
   generateMessageId,
@@ -28,7 +29,6 @@ import { logger } from '../utils/logger';
 import { config as envConfig } from '../config/environment';
 import { streamingRegistry } from '../utils/streamingRegistry';
 import { createConversationManager } from '../utils/conversationManager';
-import { useFormMode } from './FormModeContext';
 
 // Streaming timeout constants
 const STREAMING_TIMEOUT = 25000; // 25 seconds (Lambda has 30s limit)
@@ -285,8 +285,15 @@ export default function StreamingChatProvider({ children }) {
   const [error, setError] = useState(null);
   const [isInitializing, setIsInitializing] = useState(true);
 
-  // Form mode context
-  const { suspendedForms, getSuspendedForm, resumeForm, cancelForm } = useFormMode();
+  // Form mode context - get full context for interruption handling
+  const formMode = useFormMode();
+  const { suspendedForms, getSuspendedForm, resumeForm, cancelForm, isFormMode, isSuspended, currentFormId, formConfig } = formMode;
+
+  // Use ref to always have latest form state
+  const formModeRef = useRef(formMode);
+  useEffect(() => {
+    formModeRef.current = formMode;
+  }, [formMode]);
 
   // Session context tracking for forms - load from sessionStorage if available
   const [sessionContext, setSessionContext] = useState(() => {
@@ -478,8 +485,10 @@ export default function StreamingChatProvider({ children }) {
   
   /**
    * Send a message - Streaming implementation
+   * @param {string} userInput - The user's message text
+   * @param {object} metadata - Optional metadata (e.g., CTA tracking)
    */
-  const sendMessage = useCallback(async (userInput) => {
+  const sendMessage = useCallback(async (userInput, metadata = {}) => {
     if (!userInput?.trim() || isTyping) return;
 
     // Add user message immediately
@@ -546,16 +555,27 @@ export default function StreamingChatProvider({ children }) {
         conversation_history: conversationContext?.recentMessages || [],
         original_user_input: userInput,
         // Include session context for form tracking - read from sessionStorage to get latest value
-        session_context: getFromSession('picasso_session_context') || sessionContext
+        session_context: getFromSession('picasso_session_context') || sessionContext,
+        // Include CTA metadata for explicit routing
+        ...metadata
       };
 
-      // Debug: Log session context being sent
+      // Debug: Log session context and CTA metadata being sent
       const actualSessionContext = getFromSession('picasso_session_context') || sessionContext;
       console.log('[StreamingChatProvider] 📤 Sending request with session_context:', {
         completed_forms: actualSessionContext.completed_forms,
         form_count: actualSessionContext.completed_forms?.length || 0,
         full_context: actualSessionContext
       });
+
+      // Debug: Log CTA metadata if present
+      if (metadata.cta_triggered) {
+        console.log('[StreamingChatProvider] 🎯 CTA metadata included:', {
+          cta_triggered: metadata.cta_triggered,
+          cta_id: metadata.cta_id,
+          cta_action: metadata.cta_action
+        });
+      }
       
       // Include state token if available (matching original)
       if (stateToken && stateToken !== 'undefined' && stateToken !== 'null') {
@@ -637,27 +657,48 @@ export default function StreamingChatProvider({ children }) {
           // Process final content
           const finalContent = processMessageContent(fullText);
 
+          // FORM INTERRUPTION: Filter CTAs and create CTA buttons if form is suspended
+          const rawCtaButtons = pendingCtasRef.current?.ctaButtons || [];
+          const { isFormMode: formActive, isSuspended: formSuspended, currentFormId: activeFormId, formConfig: activeFormConfig } = formModeRef.current || {};
+
+          console.log('[StreamingChatProvider] 🔍 Form state at CTA finalization:', { formActive, formSuspended, activeFormId, ctaCount: rawCtaButtons.length });
+
+          let finalCtaButtons = rawCtaButtons;
+
+          if (formActive && formSuspended) {
+            // Form is suspended - remove CTAs from Bedrock message
+            // The separate resume prompt (lines 841-873) will show interruption buttons
+            console.log('[StreamingChatProvider] ⏸️ Form is suspended - removing CTAs from Bedrock message');
+            finalCtaButtons = [];
+          } else if (formActive && !formSuspended) {
+            // Form is active but not suspended - filter out all CTAs
+            console.log('[StreamingChatProvider] 📝 Form is active - filtering out all CTAs');
+            finalCtaButtons = [];
+          }
+
           // SIMPLIFIED: Direct state update with explicit CTA preservation
           setMessages(prev => {
             const updated = prev.map(msg => {
               if (msg.id !== streamingMessageId) return msg;
 
               // Simple, direct update preserving all fields
-              return {
+              const updatedMsg = {
                 ...msg,
                 content: finalContent,
                 isStreaming: false,
-                ctaButtons: pendingCtasRef.current?.ctaButtons || [], // Direct reference from ref
+                ctaButtons: finalCtaButtons, // Use filtered CTAs (including interruption buttons)
                 metadata: {
                   ...msg.metadata,
                   ...pendingCtasRef.current?.metadata,
                   isStreaming: false,
                   streamCompleted: true,
                   responseTime,
-                  hasCtas: (pendingCtasRef.current?.ctaButtons || []).length > 0,
-                  ctaCount: (pendingCtasRef.current?.ctaButtons || []).length
+                  hasCtas: finalCtaButtons.length > 0,
+                  ctaCount: finalCtaButtons.length
                 }
               };
+
+              return updatedMsg;
             });
 
 
@@ -692,12 +733,12 @@ export default function StreamingChatProvider({ children }) {
                 ctaButtons: pendingCtasRef.current?.ctaButtons
               });
 
-              // Then add the assistant message with CTAs (pendingCtasRef should still be available)
+              // Then add the assistant message with CTAs (use finalCtaButtons with form interruption logic applied)
               await conversationManagerRef.current.addMessage({
                 ...placeholder,
                 content: finalContent,
                 isStreaming: false,
-                ctaButtons: pendingCtasRef.current?.ctaButtons || [],
+                ctaButtons: finalCtaButtons, // Use filtered CTAs (same as main state update)
                 metadata: {
                   ...placeholder.metadata,
                   ...pendingCtasRef.current?.metadata
@@ -705,7 +746,7 @@ export default function StreamingChatProvider({ children }) {
               });
 
               logger.info('Added both messages to conversation manager with CTAs:', {
-                ctaCount: pendingCtasRef.current?.ctaButtons?.length || 0
+                ctaCount: finalCtaButtons.length
               });
             }
           } catch (cmErr) {
@@ -716,7 +757,9 @@ export default function StreamingChatProvider({ children }) {
           pendingCtasRef.current = null;
 
           // CHECK FOR SUSPENDED FORM - Add resume prompt if needed
-          // Use getSuspendedForm instead of suspendedForms Map directly
+          // Capture rawCtaButtons before they're cleared (for program switch detection)
+          const capturedRawCtas = [...rawCtaButtons];
+
           setTimeout(() => {
             // Check sessionStorage for suspended forms
             const suspendedFormKeys = [];
@@ -729,7 +772,8 @@ export default function StreamingChatProvider({ children }) {
 
             console.log('[StreamingChatProvider] Checking for suspended forms after response:', {
               suspendedFormKeys,
-              count: suspendedFormKeys.length
+              count: suspendedFormKeys.length,
+              rawCtasAvailable: capturedRawCtas.length
             });
 
             if (suspendedFormKeys.length > 0) {
@@ -738,44 +782,142 @@ export default function StreamingChatProvider({ children }) {
               if (formStateStr) {
                 const formState = JSON.parse(formStateStr);
                 const formId = formState.formId;
+                const formTitle = formState.formTitle || 'your application';
 
-                console.log('[StreamingChatProvider] Found suspended form, adding resume prompt:', {
+                console.log('[StreamingChatProvider] Found suspended form, checking for program switch:', {
                   formId,
-                  formState
+                  formState,
+                  capturedCtas: capturedRawCtas
                 });
 
                 const currentFieldLabel = formState.formConfig?.fields?.[formState.currentFieldIndex]?.label || 'information';
 
-                const resumePromptMessage = {
-                  id: generateMessageId('system'),
-                  role: 'assistant',
-                  content: `Would you like to continue with your application? We were collecting your **${currentFieldLabel}**.`,
-                  timestamp: Date.now(),
-                  isSystemMessage: true,
-                  ctaButtons: [
-                    {
-                      id: 'resume_form',
-                      label: 'Continue Application',
-                      action: 'resume_form',
-                      formId: formId,
-                      style: 'primary'
-                    },
-                    {
-                      id: 'cancel_form',
-                      label: 'Cancel',
-                      action: 'cancel_form',
-                      formId: formId,
-                      style: 'secondary'
+                // Check if there's a CTA for a different program (program switch detection)
+                const ctaWithDifferentProgram = capturedRawCtas.find(cta =>
+                  cta.formId && cta.formId !== formId && cta.formId !== 'volunteer_apply'
+                );
+
+                let resumePromptMessage;
+
+                if (ctaWithDifferentProgram) {
+                  // Program switch detected - offer 3 buttons like HTTP
+                  // Extract program name from CTA - try multiple patterns
+                  let newProgramName = 'this program';
+
+                  if (ctaWithDifferentProgram.text) {
+                    // Try "Apply for X" pattern
+                    if (ctaWithDifferentProgram.text.startsWith('Apply for ')) {
+                      newProgramName = ctaWithDifferentProgram.text.replace('Apply for ', '');
                     }
-                  ],
-                  metadata: {
-                    isResumePrompt: true,
-                    formId: formId
+                    // Try "Would you like to apply to become a X" pattern
+                    else if (ctaWithDifferentProgram.text.includes('become a ')) {
+                      const match = ctaWithDifferentProgram.text.match(/become a (.+?)\?/);
+                      if (match) newProgramName = match[1];
+                    }
+                    // Fallback to full text
+                    else {
+                      newProgramName = ctaWithDifferentProgram.text;
+                    }
+                  } else if (ctaWithDifferentProgram.label) {
+                    newProgramName = ctaWithDifferentProgram.label;
                   }
-                };
+
+                  // If we got a long sentence, try to get just the program name from formId
+                  if (newProgramName.length > 50 || newProgramName.includes('?')) {
+                    // Map formId to program name
+                    const formIdToName = {
+                      'dd_apply': 'Dare to Dream',
+                      'lb_apply': 'Love Box',
+                      'daretodream_application': 'Dare to Dream',
+                      'lovebox_application': 'Love Box'
+                    };
+                    newProgramName = formIdToName[ctaWithDifferentProgram.formId] || newProgramName;
+                  }
+
+                  console.log('[StreamingChatProvider] 🔀 Program switch detected:', {
+                    currentForm: formId,
+                    newProgram: ctaWithDifferentProgram.formId,
+                    newProgramName
+                  });
+
+                  resumePromptMessage = {
+                    id: generateMessageId('system'),
+                    role: 'assistant',
+                    content: `I've answered your question about ${newProgramName}. Would you like to apply to ${newProgramName} instead, or continue with your ${formTitle}?`,
+                    timestamp: Date.now(),
+                    isSystemMessage: true,
+                    ctaButtons: [
+                      {
+                        id: 'switch_form',
+                        label: `Apply to ${newProgramName}`,
+                        action: 'switch_form',
+                        formId: ctaWithDifferentProgram.formId,
+                        cancelPreviousForm: formId,
+                        style: 'primary'
+                      },
+                      {
+                        id: 'resume_form',
+                        label: `Continue ${formTitle}`,
+                        action: 'resume_form',
+                        formId: formId,
+                        style: 'secondary'
+                      },
+                      {
+                        id: 'cancel_form',
+                        label: 'Cancel Application',
+                        action: 'cancel_form',
+                        formId: formId,
+                        style: 'secondary'
+                      }
+                    ],
+                    metadata: {
+                      isResumePrompt: true,
+                      isProgramSwitch: true,
+                      formId: formId,
+                      newFormId: ctaWithDifferentProgram.formId
+                    }
+                  };
+                } else {
+                  // No program switch - standard 2-button resume prompt
+                  resumePromptMessage = {
+                    id: generateMessageId('system'),
+                    role: 'assistant',
+                    content: `I've answered your question. Would you like to resume ${formTitle}? We were collecting ${currentFieldLabel}.`,
+                    timestamp: Date.now(),
+                    isSystemMessage: true,
+                    ctaButtons: [
+                      {
+                        id: 'resume_form',
+                        label: `Resume ${formTitle}`,
+                        action: 'resume_form',
+                        formId: formId,
+                        style: 'primary'
+                      },
+                      {
+                        id: 'cancel_form',
+                        label: 'Cancel Application',
+                        action: 'cancel_form',
+                        formId: formId,
+                        style: 'secondary'
+                      }
+                    ],
+                    metadata: {
+                      isResumePrompt: true,
+                      formId: formId
+                    }
+                  };
+                }
 
                 setMessages(prev => {
-                  const updated = [...prev, resumePromptMessage];
+                  // Remove any existing resume prompts before adding new one
+                  const withoutOldPrompts = prev.filter(msg => !msg.metadata?.isResumePrompt);
+
+                  const hasResumePrompt = prev.some(msg => msg.metadata?.isResumePrompt);
+                  if (hasResumePrompt) {
+                    console.log('[StreamingChatProvider] Removing old resume prompt before adding new one');
+                  }
+
+                  const updated = [...withoutOldPrompts, resumePromptMessage];
                   saveToSession('picasso_messages', updated);
                   return updated;
                 });
@@ -856,20 +998,25 @@ export default function StreamingChatProvider({ children }) {
   const clearMessages = useCallback(() => {
     // Stop all active streams first
     streamingRegistry.endAll();
-    
+
     // Abort all ongoing requests
     abortControllersRef.current.forEach(controller => {
       controller.abort();
     });
     abortControllersRef.current.clear();
-    
+
     // Clear session
     clearSession();
-    
+
+    // Cancel any active forms
+    if (cancelForm) {
+      cancelForm();
+    }
+
     // Reset session
     sessionIdRef.current = `session_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
     saveToSession('picasso_session_id', sessionIdRef.current);
-    
+
     // Restore welcome message and action cards
     const newMessages = [];
     if (tenantConfig?.welcome_message) {
@@ -880,7 +1027,7 @@ export default function StreamingChatProvider({ children }) {
         const maxDisplay = tenantConfig.action_chips.max_display || 3;
         welcomeActions.push(...chips.slice(0, maxDisplay));
       }
-      
+
       const welcomeMessage = createAssistantMessage(tenantConfig.welcome_message, {
         id: 'welcome',
         isWelcome: true,
@@ -888,17 +1035,17 @@ export default function StreamingChatProvider({ children }) {
       });
       newMessages.push(welcomeMessage);
     }
-    
+
     setMessages(newMessages);
     saveToSession('picasso_messages', newMessages);
-    
+
     // Reset conversation manager
     if (conversationManagerRef.current) {
       conversationManagerRef.current.reset();
     }
-    
+
     logger.info('Streaming Provider: Messages cleared and reset to welcome state');
-  }, [tenantConfig]);
+  }, [tenantConfig, cancelForm]);
   
   /**
    * Retry a failed message
