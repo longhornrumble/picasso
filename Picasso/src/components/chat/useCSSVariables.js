@@ -203,7 +203,7 @@ export function useCSSVariables(config) {
       
       /* === MESSAGE HEADER STYLING === */
       '--message-avatar-size': branding.message_avatar_size || '24px',
-      '--message-sender-font-size': branding.message_sender_font_size || '13px',
+      '--message-sender-font-size': branding.message_sender_font_size || '16px',
       '--message-sender-font-weight': branding.message_sender_font_weight || '600',
       '--message-sender-color': branding.message_sender_color || branding.font_color || '#374151',
       
@@ -218,7 +218,7 @@ export function useCSSVariables(config) {
       '--action-chip-border': branding.action_chip_border || '2px solid rgba(59, 130, 246, 0.2)',
       '--action-chip-color': branding.action_chip_color || branding.primary_color || '#3b82f6',
       '--action-chip-hover-bg': branding.action_chip_hover_bg || branding.primary_color || '#3b82f6',
-      '--action-chip-hover-color': branding.action_chip_hover_color || '#ffffff',
+      '--action-chip-hover-color': branding.action_chip_hover_color || determineContrastColor(branding.action_chip_hover_bg || branding.primary_color || '#3b82f6'),
       '--action-chip-hover-border': branding.action_chip_hover_border || branding.primary_color || '#3b82f6',
       '--action-chip-disabled-bg': branding.action_chip_disabled_bg || '#f9fafb',
       '--action-chip-disabled-color': branding.action_chip_disabled_color || '#9ca3af',
@@ -398,6 +398,42 @@ export function useCSSVariables(config) {
       '--form-completion-border': branding.form_completion_border || '#bbf7d0',
       '--form-completion-icon-color': branding.form_completion_icon_color || '#16a34a',
       '--form-completion-text-color': branding.form_completion_text_color || branding.font_color || '#374151',
+
+      /* === SHOWCASE CARD SYSTEM === */
+      '--showcase-card-bg': branding.showcase_card_bg || branding.background_color || '#ffffff',
+      '--showcase-card-border': branding.showcase_card_border || branding.border_color || 'rgba(0, 0, 0, 0.1)',
+      '--showcase-card-border-radius': ensurePixelUnit(branding.showcase_card_border_radius || branding.border_radius || '12px'),
+      '--showcase-card-padding': branding.showcase_card_padding || '16px',
+      '--showcase-card-shadow': branding.showcase_card_shadow || '0 2px 8px rgba(0, 0, 0, 0.08)',
+      '--showcase-card-shadow-hover': branding.showcase_card_shadow_hover || '0 4px 12px rgba(0, 0, 0, 0.12)',
+      '--showcase-card-margin': branding.showcase_card_margin || '12px 0',
+
+      '--showcase-card-title-color': branding.showcase_card_title_color || branding.font_color || '#1a1a1a',
+      '--showcase-card-title-size': ensurePixelUnit(branding.showcase_card_title_size || '18px'),
+      '--showcase-card-title-weight': branding.showcase_card_title_weight || '600',
+      '--showcase-card-title-line-height': branding.showcase_card_title_line_height || '1.3',
+
+      '--showcase-card-tagline-color': branding.showcase_card_tagline_color || branding.secondary_color || '#6b7280',
+      '--showcase-card-tagline-size': ensurePixelUnit(branding.showcase_card_tagline_size || '14px'),
+      '--showcase-card-tagline-weight': branding.showcase_card_tagline_weight || '500',
+
+      '--showcase-card-text-color': branding.showcase_card_text_color || branding.font_color || '#4a4a4a',
+      '--showcase-card-text-size': ensurePixelUnit(branding.showcase_card_text_size || '14px'),
+      '--showcase-card-text-line-height': branding.showcase_card_text_line_height || '1.5',
+
+      '--showcase-card-stats-color': branding.showcase_card_stats_color || branding.secondary_color || '#6b7280',
+      '--showcase-card-stats-size': ensurePixelUnit(branding.showcase_card_stats_size || '13px'),
+
+      '--showcase-card-keyword-bg': branding.showcase_card_keyword_bg || 'rgba(59, 130, 246, 0.08)',
+      '--showcase-card-keyword-color': branding.showcase_card_keyword_color || branding.primary_color || '#3b82f6',
+      '--showcase-card-keyword-border': branding.showcase_card_keyword_border || 'rgba(59, 130, 246, 0.2)',
+      '--showcase-card-keyword-radius': ensurePixelUnit(branding.showcase_card_keyword_radius || '4px'),
+      '--showcase-card-keyword-padding': branding.showcase_card_keyword_padding || '4px 8px',
+
+      '--showcase-card-image-border-radius': ensurePixelUnit(branding.showcase_card_image_border_radius || '8px'),
+      '--showcase-card-image-margin': branding.showcase_card_image_margin || '0 0 12px 0',
+
+      /* Action buttons in showcase cards inherit from unified button system */
     };
 
     // Check iframe context and filter variables BEFORE applying
@@ -664,8 +700,58 @@ function _generateSubtitleColor(branding) {
   return 'rgba(31, 41, 55, 0.7)';
 }
 
+// WCAG 2.0 contrast ratio calculation for accessible text colors
+function getRelativeLuminance(color) {
+  if (!color || typeof color !== 'string') return 1;
+
+  const hex = color.replace('#', '');
+  const r = parseInt(hex.slice(0, 2), 16) / 255;
+  const g = parseInt(hex.slice(2, 4), 16) / 255;
+  const b = parseInt(hex.slice(4, 6), 16) / 255;
+
+  // Convert to linear RGB (gamma correction)
+  const toLinear = (val) => {
+    return val <= 0.03928 ? val / 12.92 : Math.pow((val + 0.055) / 1.055, 2.4);
+  };
+
+  const rLinear = toLinear(r);
+  const gLinear = toLinear(g);
+  const bLinear = toLinear(b);
+
+  // Calculate relative luminance per WCAG 2.0 spec
+  return 0.2126 * rLinear + 0.7152 * gLinear + 0.0722 * bLinear;
+}
+
+function getContrastRatio(color1, color2) {
+  const lum1 = getRelativeLuminance(color1);
+  const lum2 = getRelativeLuminance(color2);
+
+  const lighter = Math.max(lum1, lum2);
+  const darker = Math.min(lum1, lum2);
+
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
 function determineContrastColor(backgroundColor) {
-   return isLightColor(backgroundColor) ? '#1f2937' : '#ffffff';
+  // WCAG 2.0 contrast ratio calculation
+  // Requires 4.5:1 ratio for AA compliance with normal text
+
+  const darkText = '#1f2937';
+  const whiteText = '#ffffff';
+
+  const contrastWithDark = getContrastRatio(backgroundColor, darkText);
+  const contrastWithWhite = getContrastRatio(backgroundColor, whiteText);
+
+  // Choose the text color with better contrast
+  // Prefer white text if both meet the threshold for better readability
+  if (contrastWithWhite >= 4.5) {
+    return whiteText;
+  } else if (contrastWithDark >= 4.5) {
+    return darkText;
+  } else {
+    // If neither meets threshold, choose whichever has better contrast
+    return contrastWithWhite > contrastWithDark ? whiteText : darkText;
+  }
 }
 
 function generateFocusRing(color) {
@@ -1038,14 +1124,16 @@ if (typeof window !== 'undefined') {
 `);
 
   // Prevent tree-shaking of utility functions
-  window.picassoUtilities = { 
-    isLightColor, 
-    determineContrastColor, 
+  window.picassoUtilities = {
+    isLightColor,
+    determineContrastColor,
     determineHeaderTextColor,
     generateAvatarUrl,
     hexToRgb,
     darkenColor,
-    lightenColor
+    lightenColor,
+    getRelativeLuminance,
+    getContrastRatio
   };
 }
 

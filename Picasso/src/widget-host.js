@@ -45,7 +45,7 @@ import { config as environmentConfig } from './config/environment.js';
     createContainer() {
       this.container = document.createElement('div');
       this.container.id = 'picasso-widget-container';
-      
+
       // Apply positioning styles - NO theme styles, just functional positioning
       Object.assign(this.container.style, {
         position: 'fixed',
@@ -57,26 +57,46 @@ import { config as environmentConfig } from './config/environment.js';
         transition: 'all 0.3s ease',
         pointerEvents: 'auto'
       });
-      
+
       document.body.appendChild(this.container);
     },
     
     // Create the iframe with your React app
     createIframe() {
       this.iframe = document.createElement('iframe');
-      
+
       // Determine the correct domain based on explicit development mode
       // Check for development mode via data attribute or URL parameter
       const urlParams = new URLSearchParams(window.location.search);
-      const explicitDevMode = urlParams.get('picasso-dev') === 'true' ||
-                             document.currentScript?.getAttribute('data-dev') === 'true' ||
-                             document.querySelector('script[src*="widget.js"][data-dev="true"]');
-      
+      const urlParamDev = urlParams.get('picasso-dev') === 'true';
+
+      // For module scripts, document.currentScript is null, so we need to find the script differently
+      const allScripts = Array.from(document.querySelectorAll('script[data-tenant]'));
+      const widgetScript = allScripts.find(s =>
+        s.src.includes('widget.js') ||
+        s.getAttribute('type') === 'module'
+      );
+      const scriptDataDev = widgetScript?.getAttribute('data-dev') === 'true';
+
+      const explicitDevMode = urlParamDev || scriptDataDev;
+
+      // Debug logging
+      console.log('🔍 Dev mode detection:', {
+        urlParamDev,
+        scriptDataDev,
+        scriptFound: !!widgetScript,
+        scriptSrc: widgetScript?.src,
+        explicitDevMode,
+        hostname: window.location.hostname
+      });
+
       // Respect build-time dev mode override for staging/production builds
       const autoDevModeDisabled = typeof __DISABLE_AUTO_DEV_MODE__ !== 'undefined' && __DISABLE_AUTO_DEV_MODE__;
       const devMode = explicitDevMode || (!autoDevModeDisabled && ['localhost', '127.0.0.1'].includes(window.location.hostname));
-      
+
       const isLocal = devMode;
+
+      console.log('🔧 Final devMode:', devMode, '| isLocal:', isLocal);
       
       // Use build-time widget domain override for staging builds
       let widgetDomain;
@@ -310,20 +330,23 @@ import { config as environmentConfig } from './config/environment.js';
     // Minimize widget to button
     minimize() {
       if (!this.isOpen) return;
-      
+
       this.isOpen = false;
-      
+
       Object.assign(this.container.style, {
+        position: 'fixed',
         width: this.config.minimizedSize,
         height: this.config.minimizedSize,
         bottom: '20px',
-        right: '20px'
+        right: '20px',
+        top: 'auto',
+        left: 'auto'
       });
-      
+
       Object.assign(this.iframe.style, {
         borderRadius: '50%'
       });
-      
+
       console.log('📉 Widget minimized');
     },
     
@@ -472,4 +495,4 @@ import { config as environmentConfig } from './config/environment.js';
   // Auto-initialize if this script was loaded with data-tenant
   autoInit();
   
-})(); 
+})(); // Force rebuild Thu Oct 30 10:20:49 CDT 2025

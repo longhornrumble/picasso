@@ -488,7 +488,7 @@ function ChatWidget() {
             }}
             className="chat-toggle-button"
           >
-            <MessagesSquare size={24} />
+            {isOpen ? <X size={24} /> : <MessagesSquare size={24} />}
           </button>
           
           {/* Notification badge */}
