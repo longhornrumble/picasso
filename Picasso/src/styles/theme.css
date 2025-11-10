@@ -2030,15 +2030,12 @@ p {
   margin-top: 10px;
   padding: 0;
   box-sizing: border-box;
+  /* Desktop: Allow buttons to size to content and flow into multiple columns */
+  justify-content: flex-start;
 }
 
-/* Long text layout - allow wrapping */
-.action-chips.long-text .action-chip {
-  white-space: normal;
-  text-align: center;
-  padding: 12px 16px;
-  min-height: 44px;
-}
+/* Long text layout - removed to keep buttons single-line */
+/* Buttons should always be single-line for better UX */
 
 /* === BASE BUTTON STYLES === */
 /* Shared by all button types: action-chip, cta-button, form options */
@@ -2052,17 +2049,19 @@ p {
   position: relative;
   overflow: hidden;
 
-  /* Sizing - Desktop default */
+  /* Sizing - Desktop default: fit content width */
   padding: var(--button-padding-desktop, 10px 16px);
   min-height: var(--button-min-height-desktop, 40px);
   border-radius: var(--button-radius-desktop, 20px);
+  width: auto; /* Desktop: fit content width */
+  flex: 0 0 auto; /* Don't grow or shrink - maintain padding */
 
   /* Typography */
   font-family: var(--font-family);
   font-size: var(--button-font-size, 14px);
   font-weight: var(--button-font-weight, 500);
   line-height: 1.4;
-  white-space: nowrap;
+  white-space: nowrap !important; /* Force single line */
 
   /* Border */
   border: 1.5px solid var(--button-bg-primary);
@@ -2152,11 +2151,12 @@ p {
   outline-offset: 2px;
 }
 
-/* === MOBILE RESPONSIVE (< 480px) === */
-@media (max-width: 480px) {
+/* === MOBILE RESPONSIVE (< 320px) === */
+/* Only apply mobile full-width styles on very narrow screens */
+@media (max-width: 320px) {
   .action-chips,
   .cta-button-group {
-    flex-direction: column;
+    flex-direction: column; /* Stack vertically on mobile */
   }
 
   .action-chips {
@@ -2165,10 +2165,59 @@ p {
 
   .action-chip,
   .cta-button {
-    width: 100%;
+    width: 100%; /* Full width on mobile */
+    flex: 1 1 100%; /* Force full width */
     border-radius: var(--button-radius-mobile, 12px);
     padding: var(--button-padding-mobile, 12px 16px);
     min-height: var(--button-min-height-mobile, 44px);
+  }
+}
+
+/* === TABLET & DESKTOP RESPONSIVE (> 320px) === */
+/* Allow buttons to fit content and arrange in multiple columns when space permits */
+@media (min-width: 321px) {
+  .action-chips,
+  .cta-button-group {
+    flex-direction: row; /* Allow horizontal layout */
+    flex-wrap: wrap; /* Wrap to next line when needed */
+  }
+
+  .action-chip,
+  .cta-button {
+    /* Fit content width, allow multiple per row */
+    width: auto;
+    flex: 0 0 auto; /* Don't grow or shrink - maintain padding */
+    max-width: none; /* Let buttons size naturally to their content */
+  }
+
+  /* If only one or two buttons, they can be narrower than 50% */
+  .action-chips:has(.action-chip:nth-child(1):last-child) .action-chip,
+  .cta-button-group:has(.cta-button:nth-child(1):last-child) .cta-button {
+    max-width: none; /* Single button can be any width */
+  }
+
+  .action-chips:has(.action-chip:nth-child(2):last-child) .action-chip,
+  .cta-button-group:has(.cta-button:nth-child(2):last-child) .cta-button {
+    max-width: none; /* Two buttons can fit naturally */
+  }
+}
+
+/* === WIDE DESKTOP (> 768px) === */
+/* More generous space for buttons, can fit more per row */
+@media (min-width: 769px) {
+  .action-chip,
+  .cta-button {
+    max-width: calc(33.333% - 6px); /* Allow up to 3 columns on wider screens */
+  }
+
+  /* But if buttons fit naturally without needing 3 columns, let them */
+  .action-chips:has(.action-chip:nth-child(1):last-child) .action-chip,
+  .action-chips:has(.action-chip:nth-child(2):last-child) .action-chip,
+  .action-chips:has(.action-chip:nth-child(3):last-child) .action-chip,
+  .cta-button-group:has(.cta-button:nth-child(1):last-child) .cta-button,
+  .cta-button-group:has(.cta-button:nth-child(2):last-child) .cta-button,
+  .cta-button-group:has(.cta-button:nth-child(3):last-child) .cta-button {
+    max-width: none;
   }
 }
 
