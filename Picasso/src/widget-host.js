@@ -201,7 +201,12 @@ import { config as environmentConfig } from './config/environment.js';
             if (event.data.isOpen) {
               this.expand();
             } else {
-              this.minimize();
+              // Use dimensions from the message if provided, otherwise fall back to minimize()
+              if (event.data.dimensions) {
+                this.applyDimensions(event.data.dimensions);
+              } else {
+                this.minimize();
+              }
             }
             break;
 
@@ -367,6 +372,31 @@ import { config as environmentConfig } from './config/environment.js';
           height: dimensions.height + 'px'
         });
       }
+    },
+
+    // Apply specific dimensions (used for closed state with dynamic sizing)
+    applyDimensions(dimensions) {
+      console.log('📐 Applying custom dimensions:', dimensions);
+
+      // Container always stays at bottom-right corner (20px from edges)
+      // The iframe content (ChatWidget) handles internal positioning of toggle and callout
+      Object.assign(this.container.style, {
+        position: 'fixed',
+        width: dimensions.width + 'px',
+        height: dimensions.height + 'px',
+        bottom: '20px',
+        right: '20px',
+        top: 'auto',
+        left: 'auto'
+      });
+
+      // Keep circular border radius only if dimensions are square
+      const isSquare = Math.abs(dimensions.width - dimensions.height) < 10;
+      Object.assign(this.iframe.style, {
+        borderRadius: isSquare ? '50%' : '12px'
+      });
+
+      console.log(`📏 Applied dimensions: ${dimensions.width}x${dimensions.height}px at bottom-right corner`);
     },
     
     // Setup resize observer for responsive behavior

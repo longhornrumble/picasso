@@ -132,13 +132,44 @@ function ChatWidget() {
     }
   }, []);
 
+  // Measure the actual dimensions needed for the closed state (toggle + badge + callout)
+  const measureClosedDimensions = useCallback(() => {
+    // When closed, we need to account for:
+    // 1. Toggle button (56px x 56px)
+    // 2. Notification badge (extends 8px beyond button on top-right)
+    // 3. Callout bubble (positioned 70px to the left, ~300px wide max)
+
+    const toggleSize = 56; // Base toggle button size
+    const badgeOverflow = 8; // Badge extends 8px beyond button
+    const calloutSpacing = 70; // Callout is 70px to the left of toggle
+    const calloutMaxWidth = 300; // Typical callout width
+    const calloutHeight = 60; // Approximate callout height
+
+    // Calculate required dimensions
+    let width = toggleSize + (badgeOverflow * 2); // Account for badge on both sides for safety
+    let height = toggleSize + (badgeOverflow * 2); // Account for badge overflow
+
+    // If callout is visible, add its width + spacing
+    if (showCallout) {
+      width = calloutMaxWidth + calloutSpacing + toggleSize + (badgeOverflow * 2);
+      height = Math.max(height, calloutHeight); // Use whichever is taller
+    }
+
+    // Add some padding for safety
+    width += 20;
+    height += 20;
+
+    console.log('📏 measureClosedDimensions called:', { showCallout, width, height });
+    return { width, height };
+  }, [showCallout]);
+
   // Persist chat open/close on toggle - memoized to prevent recreating on every render
   const handleToggle = useCallback(() => {
     const newOpen = !isOpen;
-    
+
     // Update state immediately
     setIsOpen(newOpen);
-    
+
     // Manually update body class immediately for iframe communication
     // This ensures the widget-frame.html SIZE_CHANGE message is sent at the right time
     if (newOpen) {
@@ -146,24 +177,30 @@ function ChatWidget() {
     } else {
       document.body.classList.remove("chat-open");
     }
-    
+
     // Notify parent of state change (PRD requirement)
     notifyParentEvent(newOpen ? 'CHAT_OPENED' : 'CHAT_CLOSED');
-    
+
+    // Calculate dimensions based on state
+    const dimensions = newOpen
+      ? { width: 360, height: 640 }
+      : measureClosedDimensions();
+
     // Notify parent of size change for iframe container adjustment
     notifyParentEvent('SIZE_CHANGE', {
       isOpen: newOpen,
-      size: newOpen ? { width: 360, height: 640 } : { width: 90, height: 90 }
+      size: dimensions
     });
 
     // Also send the PICASSO_SIZE_CHANGE message that widget-host.js expects
     if (window.parent && window.parent !== window) {
       window.parent.postMessage({
         type: 'PICASSO_SIZE_CHANGE',
-        isOpen: newOpen
+        isOpen: newOpen,
+        dimensions: dimensions
       }, '*');
     }
-    
+
     if (config?.widget_behavior?.remember_state) {
       try {
         sessionStorage.setItem('picasso_chat_state', JSON.stringify(newOpen));
@@ -176,7 +213,7 @@ function ChatWidget() {
         console.warn('Failed to save chat state on toggle:', e);
       }
     }
-  }, [isOpen, lastReadMessageIndex, config?.widget_behavior?.remember_state, notifyParentEvent]);
+  }, [isOpen, lastReadMessageIndex, config?.widget_behavior?.remember_state, notifyParentEvent, measureClosedDimensions]);
 
   // Auto-open delay functionality with remember_state support - optimized dependencies
   useEffect(() => {
@@ -392,17 +429,23 @@ function ChatWidget() {
     }
   }, [isOpen, hasOpenedChat]);
 
-  // Initial size notification when widget loads
+  // Initial size notification when widget loads - runs after callout state is set
   useEffect(() => {
-    // Send initial size when component mounts
-    if (window.parent && window.parent !== window) {
+    // Only send initial size after config is loaded (to ensure callout state is determined)
+    if (window.parent && window.parent !== window && config) {
+      const initialDimensions = isOpen
+        ? { width: 360, height: 640 }
+        : measureClosedDimensions();
+
       notifyParentEvent('SIZE_CHANGE', {
         isOpen: isOpen,
-        size: isOpen ? { width: 360, height: 640 } : { width: 90, height: 90 },
+        size: initialDimensions,
         initial: true
       });
+
+      console.log('📐 Sent initial dimensions:', initialDimensions, 'showCallout:', showCallout);
     }
-  }, []); // Run once on mount
+  }, [config, isOpen, measureClosedDimensions, showCallout, notifyParentEvent]); // Run when these are available
 
   // 🔧 FIXED: Callout configuration - simple values without conditional logic
   const calloutConfig = config?.features?.callout || {};
@@ -454,19 +497,23 @@ function ChatWidget() {
         text: calloutText,
         enabled: calloutEnabled
       };
-      
+
       notifyParentEvent('CALLOUT_STATE_CHANGE', {
         calloutConfig: calloutData
       });
 
-      // Also send simplified callout change message for iframe resizing
-      window.parent.postMessage({
-        type: 'PICASSO_CALLOUT_CHANGE',
-        isVisible: showCallout,
-        width: showCallout ? 360 : 90
-      }, '*');
+      // When callout visibility changes and chat is closed, recalculate and send new dimensions
+      if (!isOpen) {
+        const closedDimensions = measureClosedDimensions();
+        window.parent.postMessage({
+          type: 'PICASSO_SIZE_CHANGE',
+          isOpen: false,
+          dimensions: closedDimensions
+        }, '*');
+        console.log(`📐 Callout visibility changed, updated closed dimensions:`, closedDimensions);
+      }
     }
-  }, [config, showCallout, calloutText, calloutEnabled, notifyParentEvent]);
+  }, [config, showCallout, calloutText, calloutEnabled, notifyParentEvent, isOpen, measureClosedDimensions]);
 
   // Don't render anything if config is still loading to prevent null reference errors
   if (!config) {

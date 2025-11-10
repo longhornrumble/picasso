@@ -647,16 +647,14 @@ body[data-iframe="true"].callout-visible:not(.chat-open) {
     overflow: hidden !important;
   }
 
-  /* In iframe context when closed, center toggle in the iframe */
+  /* In iframe context when closed, position toggle at bottom-right with callout to its left */
   body[data-iframe="true"]:not(.chat-open) .chat-toggle-wrapper {
     position: fixed !important;
-    top: 0 !important;
-    left: 0 !important;
-    right: 0 !important;
-    bottom: 0 !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
+    bottom: 20px !important;
+    right: 20px !important;
+    top: auto !important;
+    left: auto !important;
+    display: block !important;
     margin: 0 !important;
     padding: 0 !important;
     z-index: 99999 !important;

@@ -441,10 +441,16 @@ function initializeWidget() {
     if (window.parent && window.parent !== window) {
       const targetOrigin = document.referrer ? new URL(document.referrer).origin : '*';
       const initialIsOpen = document.body.classList.contains('chat-open');
+
+      // Calculate initial closed dimensions (will be updated by ChatWidget once it mounts)
+      const initialDimensions = initialIsOpen
+        ? { width: 380, height: 660 }
+        : { width: 100, height: 100 }; // Placeholder - ChatWidget will send real dimensions
+
       window.parent.postMessage({
         type: 'PICASSO_SIZE_CHANGE',
         isOpen: initialIsOpen,
-        size: initialIsOpen ? { width: 380, height: 660 } : { width: 320, height: 90 },
+        dimensions: initialDimensions,
         initial: true
       }, targetOrigin);
       console.log(`📐 Sent initial SIZE_CHANGE to parent: ${initialIsOpen ? 'OPEN' : 'CLOSED'}`);
@@ -454,22 +460,13 @@ function initializeWidget() {
     setupCommandListener();
 
     // Watch for body class changes to notify parent about size changes
+    // NOTE: ChatWidget.jsx now handles sending SIZE_CHANGE messages with accurate dimensions
+    // This observer is kept for potential future use but no longer sends messages
     const bodyObserver = new MutationObserver((mutations) => {
       mutations.forEach((mutation) => {
         if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
           const isOpen = document.body.classList.contains('chat-open');
-
-          // Send size change message to parent
-          if (window.parent && window.parent !== window) {
-            const targetOrigin = document.referrer ? new URL(document.referrer).origin : '*';
-            window.parent.postMessage({
-              type: 'PICASSO_SIZE_CHANGE',
-              isOpen: isOpen,
-              size: isOpen ? { width: 380, height: 660 } : { width: 320, height: 90 }
-            }, targetOrigin);
-
-            console.log(`📐 Sent SIZE_CHANGE to parent: ${isOpen ? 'OPEN' : 'CLOSED'}`);
-          }
+          console.log(`📐 Body class changed: ${isOpen ? 'OPEN' : 'CLOSED'} (ChatWidget handles resize)`);
         }
       });
     });
