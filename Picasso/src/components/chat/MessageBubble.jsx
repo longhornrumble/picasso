@@ -505,7 +505,26 @@ export default function MessageBubble({
   const handleActionClick = (action) => {
     if (isTyping) return;
     const messageText = action.value || action.label;
-    addMessage({ role: "user", content: messageText });
+
+    // Include routing metadata if target_branch is specified
+    const messagePayload = {
+      role: "user",
+      content: messageText
+    };
+
+    if (action.target_branch) {
+      messagePayload.metadata = {
+        cta_triggered: true,
+        target_branch: action.target_branch,  // Lambda expects 'target_branch' field
+        cta_action: 'navigate_branch'
+      };
+      console.log('[MessageBubble] Action chip clicked with routing metadata:', {
+        target_branch: action.target_branch,
+        metadata: messagePayload.metadata
+      });
+    }
+
+    addMessage(messagePayload);
   };
 
   const handleCtaClick = (cta) => {

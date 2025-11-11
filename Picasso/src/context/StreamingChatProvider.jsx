@@ -556,8 +556,8 @@ export default function StreamingChatProvider({ children }) {
         original_user_input: userInput,
         // Include session context for form tracking - read from sessionStorage to get latest value
         session_context: getFromSession('picasso_session_context') || sessionContext,
-        // Include CTA metadata for explicit routing
-        ...metadata
+        // Include CTA metadata for explicit routing - must be wrapped in routing_metadata object
+        routing_metadata: metadata || {}
       };
 
       // Debug: Log session context and CTA metadata being sent
@@ -1105,7 +1105,7 @@ export default function StreamingChatProvider({ children }) {
     // If it's a user message with just content, send it
     if (message.role === 'user' && message.content) {
       console.log('[StreamingChatProvider] Sending user message to server');
-      await sendMessage(message.content);
+      await sendMessage(message.content, message.metadata || {});
     }
   }, [sendMessage, messages]);
 
