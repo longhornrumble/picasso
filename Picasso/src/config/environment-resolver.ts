@@ -17,12 +17,10 @@
  * @author Build-Time Environment Resolution System (BERS)
  */
 
-import type { 
-  Environment, 
-  ValidTenantHash, 
-  SecureURL, 
-  SecurityError, 
-  EnvironmentSecurityConfig 
+import type {
+  Environment,
+  ValidTenantHash,
+  SecurityError
 } from '../types/security';
 import type { 
   EnvironmentConfig, 
@@ -306,7 +304,8 @@ export class EnvironmentResolverImpl implements EnvironmentResolver {
       const customValidationResults = await this.runCustomValidationRules(env);
       for (const result of customValidationResults) {
         if (!result.isValid) {
-          if (result.severity === 'error') {
+          const resultWithSeverity = result as ValidationResult & { severity?: string };
+          if (resultWithSeverity.severity === 'error') {
             errors.push(result.message);
           } else {
             warnings.push(result.message);
@@ -569,7 +568,7 @@ export class EnvironmentResolverImpl implements EnvironmentResolver {
     return null;
   }
 
-  private detectFromBuildContext(buildContext: Record<string, unknown>): { environment: ValidatedEnvironment; source: EnvironmentDetectionSource; confidence: EnvironmentConfidence } | null {
+  private detectFromBuildContext(_buildContext: Record<string, unknown>): { environment: ValidatedEnvironment; source: EnvironmentDetectionSource; confidence: EnvironmentConfidence } | null {
     // Check Vite build context
     if (typeof import.meta !== 'undefined' && import.meta.env) {
       if (import.meta.env.DEV) {
@@ -707,26 +706,36 @@ export class EnvironmentResolverImpl implements EnvironmentResolver {
     return { ...base, ...overrides };
   }
 
-  private async loadConfigFromS3(tenantHash: ValidTenantHash, environment: ValidatedEnvironment): Promise<RuntimeConfig> {
+  private async loadConfigFromS3(tenantHash: ValidTenantHash, _environment: ValidatedEnvironment): Promise<RuntimeConfig> {
     // Mock S3 integration for testing/demo purposes
     // In production, this would use AWS SDK or fetch API
-    
+
     const configUrl = `https://${this.s3Options.bucketName}.s3.${this.s3Options.region}.amazonaws.com${this.s3Options.tenantConfigPath.replace('{tenant_id}', tenantHash).replace('{tenant_id}', tenantHash)}`;
-    
-    const response = await fetch(configUrl, {
-      method: 'GET',
-      headers: { 'Accept': 'application/json' },
-      timeout: this.s3Options.timeout
-    });
-    
-    if (!response.ok) {
-      throw new Error(`S3 fetch failed: ${response.status} ${response.statusText}`);
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.s3Options.timeout);
+
+    try {
+      const response = await fetch(configUrl, {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' },
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`S3 fetch failed: ${response.status} ${response.statusText}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      clearTimeout(timeoutId);
+      throw error;
     }
-    
-    return await response.json();
   }
 
-  private async getFallbackConfiguration(tenantHash: ValidTenantHash, environment: ValidatedEnvironment): Promise<RuntimeConfig> {
+  private async getFallbackConfiguration(tenantHash: ValidTenantHash, _environment: ValidatedEnvironment): Promise<RuntimeConfig> {
     // Return default/fallback configuration
     const { DEFAULT_WIDGET_CONFIG } = await import('../types/config');
     return {
@@ -752,7 +761,7 @@ export class EnvironmentResolverImpl implements EnvironmentResolver {
     };
   }
 
-  private async validateRuntimeConfig(config: RuntimeConfig): Promise<ConfigValidationResult> {
+  private async validateRuntimeConfig(_config: RuntimeConfig): Promise<ConfigValidationResult> {
     // Validate the runtime configuration
     return {
       isValid: true,

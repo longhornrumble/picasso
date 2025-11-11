@@ -7,7 +7,7 @@
  * @version 2.0.0
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import {
   MigrationManagerImpl,
   createMigrationManager,
@@ -28,9 +28,9 @@ import type { ValidTenantHash } from '../../types/security';
 
 // Mock console methods
 const consoleSpy = {
-  log: vi.spyOn(console, 'log').mockImplementation(() => {}),
-  warn: vi.spyOn(console, 'warn').mockImplementation(() => {}),
-  error: vi.spyOn(console, 'error').mockImplementation(() => {})
+  log: jest.spyOn(console, 'log').mockImplementation(() => {}),
+  warn: jest.spyOn(console, 'warn').mockImplementation(() => {}),
+  error: jest.spyOn(console, 'error').mockImplementation(() => {})
 };
 
 // Test data - Legacy environment.js format
@@ -93,7 +93,7 @@ describe('Migration Utilities', () => {
 
   beforeEach(() => {
     // Reset mocks
-    vi.clearAllMocks();
+    jest.clearAllMocks();
     
     // Setup fresh manager instance
     manager = new MigrationManagerImpl();

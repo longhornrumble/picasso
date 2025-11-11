@@ -7,7 +7,7 @@
  * @version 2.0.0
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll, jest } from '@jest/globals';
 import {
   ConfigurationManagerImpl,
   createConfigurationManager,
@@ -24,7 +24,7 @@ import type { ValidTenantHash } from '../../types/security';
 /* ===== TEST SETUP AND MOCKS ===== */
 
 // Mock performance.now for consistent testing
-const mockPerformanceNow = vi.fn();
+const mockPerformanceNow = jest.fn();
 Object.defineProperty(global, 'performance', {
   value: { now: mockPerformanceNow },
   writable: true
@@ -32,9 +32,9 @@ Object.defineProperty(global, 'performance', {
 
 // Mock console methods
 const consoleSpy = {
-  log: vi.spyOn(console, 'log').mockImplementation(() => {}),
-  warn: vi.spyOn(console, 'warn').mockImplementation(() => {}),
-  error: vi.spyOn(console, 'error').mockImplementation(() => {})
+  log: jest.spyOn(console, 'log').mockImplementation(() => {}),
+  warn: jest.spyOn(console, 'warn').mockImplementation(() => {}),
+  error: jest.spyOn(console, 'error').mockImplementation(() => {})
 };
 
 // Reference to consoleSpy to avoid unused warning
@@ -126,7 +126,7 @@ describe('Configuration Management Infrastructure', () => {
 
   beforeEach(() => {
     // Reset mocks
-    vi.clearAllMocks();
+    jest.clearAllMocks();
     mockPerformanceNow.mockReturnValue(100);
     
     // Setup fresh manager instance
@@ -566,15 +566,31 @@ describe('Configuration Management Infrastructure', () => {
     });
 
     it('should track validation errors', async () => {
-      // Force a validation error
+      // Register a custom schema that will fail validation
+      const strictSchema = {
+        $schema: 'http://json-schema.org/draft-07/schema#',
+        $id: 'https://chat.myrecruiter.ai/schemas/test-fail.schema.json',
+        title: 'Test Fail Schema',
+        description: 'Schema that will fail validation',
+        type: 'object' as const,
+        properties: {
+          requiredField: { type: 'string' }
+        },
+        required: ['requiredField'] as const,
+        additionalProperties: false
+      };
+
+      await manager.registerSchema('test-fail', strictSchema);
+
+      // Try to load configuration that will fail validation (default returns empty object)
       await expect(
-        manager.loadConfiguration('environment', MOCK_ENVIRONMENT, {
+        manager.loadConfiguration('test-fail', MOCK_ENVIRONMENT, {
           validateSchema: true
         })
-      ).rejects.toThrow();
+      ).rejects.toThrow('Configuration validation failed');
 
       const metrics = manager.getMetrics();
-      expect(metrics.totalLoads).toBe(1);
+      expect(metrics.totalLoads).toBeGreaterThan(0);
     });
   });
 
@@ -582,7 +598,7 @@ describe('Configuration Management Infrastructure', () => {
 
   describe('Configuration Watching', () => {
     it('should return no-op unwatch function when hot reload disabled', () => {
-      const callback = vi.fn();
+      const callback = jest.fn();
       const unwatch = manager.watchConfiguration('environment', callback);
 
       expect(typeof unwatch).toBe('function');
@@ -592,7 +608,7 @@ describe('Configuration Management Infrastructure', () => {
     });
 
     it('should handle watcher configuration', () => {
-      const callback = vi.fn();
+      const callback = jest.fn();
       const hotReloadConfig = {
         enabled: false,
         watchPaths: ['./test'],

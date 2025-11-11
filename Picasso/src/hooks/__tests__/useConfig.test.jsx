@@ -1,5 +1,5 @@
 import { renderHook } from '@testing-library/react';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@jest/globals';
 import { useConfig } from '../useConfig';
 import { ConfigProvider } from '../../context/ConfigProvider';
 

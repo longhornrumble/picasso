@@ -1,5 +1,5 @@
 import { renderHook } from '@testing-library/react';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, jest } from '@jest/globals';
 import { useChat } from '../useChat';
 import { ChatProvider } from '../../context/ChatProvider';
 import { ConfigProvider } from '../../context/ConfigProvider';
@@ -7,12 +7,25 @@ import { ConfigProvider } from '../../context/ConfigProvider';
 describe('useChat', () => {
   it('should throw error when used outside ChatProvider', () => {
     // Suppress console.error for this test since we expect an error
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    
-    expect(() => {
-      renderHook(() => useChat());
-    }).toThrow('useChat must be used within a ChatProvider');
-    
+    const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    // renderHook with an error will store it in result.error
+    let renderResult;
+    try {
+      renderResult = renderHook(() => useChat());
+    } catch (error) {
+      // If error thrown synchronously during setup, that's also valid
+      expect(error.message).toBe('useChat must be used within a ChatProvider');
+      consoleSpy.mockRestore();
+      return;
+    }
+
+    // If we get here, check for error in result
+    if (renderResult) {
+      expect(renderResult.result.error).toBeDefined();
+      expect(renderResult.result.error.message).toBe('useChat must be used within a ChatProvider');
+    }
+
     consoleSpy.mockRestore();
   });
 

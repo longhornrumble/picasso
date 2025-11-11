@@ -145,18 +145,18 @@ export const createErrorMessage = (error, canRetry = true) => ({
  * Extract tenant hash from various sources
  */
 export const getTenantHash = () => {
-  // Priority 1: URL parameter
+  // Priority 1: URL parameter (check both 't' and 'tenant')
   const urlParams = new URLSearchParams(window.location.search);
-  const urlTenant = urlParams.get('tenant');
+  const urlTenant = urlParams.get('t') || urlParams.get('tenant');
   if (urlTenant) return urlTenant;
-  
+
   // Priority 2: Script tag data attribute
   const scriptTag = document.querySelector('script[data-tenant]');
   if (scriptTag) return scriptTag.getAttribute('data-tenant');
-  
+
   // Priority 3: Window config
   if (window.PicassoConfig?.tenantHash) return window.PicassoConfig.tenantHash;
-  
+
   // Priority 4: Environment default
   return process.env.REACT_APP_DEFAULT_TENANT_HASH || 'my87674d777bf9';
 };

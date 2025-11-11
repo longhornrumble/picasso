@@ -437,13 +437,21 @@ function ChatWidget() {
         ? { width: 360, height: 640 }
         : measureClosedDimensions();
 
+      // Send SIZE_CHANGE event (PRD-compliant)
       notifyParentEvent('SIZE_CHANGE', {
         isOpen: isOpen,
         size: initialDimensions,
         initial: true
       });
 
-      console.log('📐 Sent initial dimensions:', initialDimensions, 'showCallout:', showCallout);
+      // Also send PICASSO_SIZE_CHANGE for widget-host.js compatibility
+      window.parent.postMessage({
+        type: 'PICASSO_SIZE_CHANGE',
+        isOpen: isOpen,
+        dimensions: initialDimensions
+      }, '*');
+
+      console.log('📐 Sent initial dimensions:', initialDimensions, 'isOpen:', isOpen, 'showCallout:', showCallout);
     }
   }, [config, isOpen, measureClosedDimensions, showCallout, notifyParentEvent]); // Run when these are available
 

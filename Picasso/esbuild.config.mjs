@@ -91,6 +91,18 @@ const codeSplittingPlugin = {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+// Load dev config for tenant hash
+let devConfig = { DEFAULT_TENANT_HASH: 'my87674d777bf9' }; // Fallback
+try {
+  const devConfigPath = path.join(__dirname, 'dev.config.json');
+  if (fs.existsSync(devConfigPath)) {
+    devConfig = JSON.parse(fs.readFileSync(devConfigPath, 'utf8'));
+    console.log(`✅ Loaded dev config: ${devConfig.TENANT_NAME || 'Unknown'} (${devConfig.DEFAULT_TENANT_HASH})`);
+  }
+} catch (error) {
+  console.warn('⚠️ Could not load dev.config.json, using fallback tenant hash');
+}
+
 // Determine build environment
 const environment = process.env.BUILD_ENV || process.env.NODE_ENV || 'production';
 const isServe = process.argv.includes('--serve');
@@ -188,6 +200,7 @@ const defineVars = {
   __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
   __VERSION__: JSON.stringify(process.env.npm_package_version || '2.0.0'),
   __IS_STAGING__: JSON.stringify(environment === 'staging'),
+  __DEFAULT_TENANT_HASH__: JSON.stringify(isDevelopment ? devConfig.DEFAULT_TENANT_HASH : 'my87674d777bf9'),
   __DISABLE_AUTO_DEV_MODE__: JSON.stringify(environment !== 'development'),
   
   // Vite compatibility - import.meta.env support
@@ -203,21 +216,22 @@ const defineVars = {
 
 console.log('🌐 Environment variables:', defineVars);
 
-const buildOptions = {
+// Widget build options (IIFE format - no code splitting, no imports)
+const widgetBuildOptions = {
   entryPoints: {
-    'widget': './src/widget-host.js',  // Build widget.js from widget-host.js (iframe host)
-    'iframe-main': './src/iframe-main.jsx'  // React app for inside the iframe
+    'widget': './src/widget-host.js'  // Build widget.js from widget-host.js (iframe host)
   },
   bundle: true,
   outdir: distDir,
-  format: 'esm',
+  format: 'iife', // IIFE format so it can be loaded as <script> tag
+  globalName: 'PicassoWidget', // Required for IIFE format
   sourcemap: isDevelopment,
   minify: !isDevelopment,
-  metafile: shouldAnalyze || isDevelopment, // Generate metafile for analysis
-  splitting: true, // Enable code splitting
-  chunkNames: 'chunks/[name]-[hash]', // Organized chunk naming
-  assetNames: 'assets/[name]-[hash]', // Organized asset naming
-  
+  metafile: shouldAnalyze || isDevelopment,
+  splitting: false, // No code splitting for widget - must be standalone
+  outExtension: { '.js': '.js' }, // Ensure .js extension
+  chunkNames: undefined, // Disable chunking completely
+
   loader: {
     '.js': 'jsx',
     '.jsx': 'jsx',
@@ -234,19 +248,16 @@ const buildOptions = {
     '.ttf': 'file',
     '.eot': 'file'
   },
-  
+
   define: defineVars,
-  jsx: 'automatic',
-  jsxImportSource: 'react',
   logLevel: 'info',
-  
+
   // Add plugins for enhanced functionality
   plugins: [
     pathAliasPlugin,
     bundleAnalyzerPlugin
-    // Note: Code splitting plugin disabled due to circular dependency issues
   ],
-  
+
   // Production optimizations (only for actual production builds)
   ...(environment === 'production' && !isDevelopment ? {
     drop: ['console', 'debugger'], // Drop console logs in production only
@@ -261,55 +272,142 @@ const buildOptions = {
     // Development optimizations
     keepNames: true
   }),
-  
+
+  // Target modern browsers with broader compatibility
+  target: ['es2018', 'chrome64', 'firefox62', 'safari12'],
+
+  // Platform and format settings
+  platform: 'browser'
+};
+
+// Iframe build options (ESM format with code splitting)
+const iframeBuildOptions = {
+  entryPoints: {
+    'iframe-main': './src/iframe-main.jsx'  // React app for inside the iframe
+  },
+  bundle: true,
+  outdir: distDir,
+  format: 'esm', // ESM format allows code splitting
+  sourcemap: isDevelopment,
+  minify: !isDevelopment,
+  metafile: shouldAnalyze || isDevelopment,
+  splitting: true, // Enable code splitting for better caching
+  chunkNames: 'chunks/[name]-[hash]',
+  assetNames: 'assets/[name]-[hash]',
+
+  loader: {
+    '.js': 'jsx',
+    '.jsx': 'jsx',
+    '.ts': 'ts',
+    '.tsx': 'tsx',
+    '.png': 'dataurl',
+    '.jpg': 'dataurl',
+    '.jpeg': 'dataurl',
+    '.gif': 'dataurl',
+    '.svg': 'text',
+    '.css': 'css',
+    '.woff': 'file',
+    '.woff2': 'file',
+    '.ttf': 'file',
+    '.eot': 'file'
+  },
+
+  define: defineVars,
+  jsx: 'automatic',
+  jsxImportSource: 'react',
+  logLevel: 'info',
+
+  // Add plugins for enhanced functionality
+  plugins: [
+    pathAliasPlugin,
+    bundleAnalyzerPlugin
+  ],
+
+  // Production optimizations (only for actual production builds)
+  ...(environment === 'production' && !isDevelopment ? {
+    drop: ['console', 'debugger'], // Drop console logs in production only
+    dropLabels: ['DEV'],
+    legalComments: 'none',
+    treeShaking: true,
+    // Aggressive minification for production
+    minifyWhitespace: true,
+    minifyIdentifiers: true,
+    minifySyntax: true
+  } : {
+    // Development optimizations
+    keepNames: true
+  }),
+
   // External dependencies for better caching (production only)
   ...(environment === 'production' ? {
     external: []
   } : {}),
-  
+
   // Target modern browsers with broader compatibility
   target: ['es2018', 'chrome64', 'firefox62', 'safari12'],
-  
+
   // Platform and format settings
   platform: 'browser',
   conditions: ['import', 'module', 'browser']
 };
 
 if (isServe) {
-  // Development server mode
-  const ctx = await esbuild.context(buildOptions);
+  // Development server mode - build both widget and iframe
+  console.log('🔧 Building widget (IIFE)...');
+  await esbuild.build(widgetBuildOptions);
+
+  console.log('🔧 Building iframe (ESM)...');
+  const ctx = await esbuild.context(iframeBuildOptions);
   await ctx.watch();
-  
+
   const { host, port } = await ctx.serve({
     servedir: distDir,
     port: 8000,
     host: '0.0.0.0',
     fallback: path.join(distDir, 'iframe.html') // SPA fallback
   });
-  
+
   console.log(`
 🚀 esbuild dev server running at:
    Local:   http://localhost:${port}
    Network: http://${host}:${port}
    Environment: ${environment.toUpperCase()}
    Output directory: ${distDir}
-   
+
    Path aliases configured:
    📁 @ → src/
    📁 @components → src/components/
    📁 @utils → src/utils/
    📁 @styles → src/styles/
    📁 @config → src/config/
-   
+
    💡 Use ANALYZE=true to enable bundle analysis
   `);
 } else {
-  // Production build
+  // Production build - build both widget and iframe separately
   console.log(`🔨 Building for ${environment.toUpperCase()} environment...`);
-  
+
   const startTime = Date.now();
-  const result = await esbuild.build(buildOptions);
+
+  // Build widget first (IIFE format, no imports)
+  console.log('📦 Building widget.js (IIFE format)...');
+  const widgetResult = await esbuild.build(widgetBuildOptions);
+
+  // Build iframe app (ESM format with code splitting)
+  console.log('📦 Building iframe-main.js (ESM format with code splitting)...');
+  const iframeResult = await esbuild.build(iframeBuildOptions);
+
   const buildTime = Date.now() - startTime;
+
+  // Combine results for reporting
+  const result = {
+    metafile: {
+      outputs: {
+        ...(widgetResult.metafile?.outputs || {}),
+        ...(iframeResult.metafile?.outputs || {})
+      }
+    }
+  };
   
   console.log(`✅ Build complete! Output: ${distDir}`);
   console.log(`⏱️  Build time: ${buildTime}ms`);

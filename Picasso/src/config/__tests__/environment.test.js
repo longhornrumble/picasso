@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 
 describe('Environment Configuration', () => {
   let config;
@@ -9,13 +9,19 @@ describe('Environment Configuration', () => {
     // Store original values
     originalLocation = global.window?.location;
     originalProcess = global.process;
-    
+
     // Clear the module cache to reload the config
-    vi.resetModules();
-    
-    // Mock the environment
-    vi.stubEnv('NODE_ENV', 'production');
-    
+    jest.resetModules();
+
+    // Mock the environment using process.env
+    global.process = {
+      ...originalProcess,
+      env: {
+        ...originalProcess?.env,
+        NODE_ENV: 'production'
+      }
+    };
+
     // Mock window.location for browser environment tests
     delete global.window?.location;
     global.window = {
@@ -34,7 +40,6 @@ describe('Environment Configuration', () => {
     if (originalProcess) {
       global.process = originalProcess;
     }
-    vi.unstubAllEnvs();
   });
 
   it('should have correct production configuration', async () => {
@@ -167,16 +172,21 @@ describe('Environment Configuration', () => {
   });
 
   it('should detect development environment from hostname', async () => {
-    // Reset environment to not be production
-    vi.unstubAllEnvs();
-    vi.stubEnv('NODE_ENV', 'development');
-    
+    // Reset environment to development
+    global.process = {
+      ...originalProcess,
+      env: {
+        ...originalProcess?.env,
+        NODE_ENV: 'development'
+      }
+    };
+
     global.window.location.hostname = 'localhost';
-    vi.resetModules();
-    
+    jest.resetModules();
+
     const { config: freshConfig } = await import('../environment');
     config = freshConfig;
-    
+
     expect(config.ENVIRONMENT).toBe('development');
     expect(config.DEBUG).toBe(true);
     expect(config.LOG_LEVEL).toBe('debug');
@@ -185,7 +195,7 @@ describe('Environment Configuration', () => {
 
   it('should detect staging environment from hostname', async () => {
     global.window.location.hostname = 'staging-chat.myrecruiter.ai';
-    vi.resetModules();
+    jest.resetModules();
     
     const { config: freshConfig } = await import('../environment');
     config = freshConfig;
@@ -197,7 +207,7 @@ describe('Environment Configuration', () => {
 
   it('should handle environment override via URL parameter', async () => {
     global.window.location.search = '?picasso-env=staging';
-    vi.resetModules();
+    jest.resetModules();
     
     const { config: freshConfig } = await import('../environment');
     config = freshConfig;
@@ -209,8 +219,8 @@ describe('Environment Configuration', () => {
     const { config: freshConfig } = await import('../environment');
     config = freshConfig;
     
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    const infoSpy = jest.spyOn(console, 'info').mockImplementation(() => {});
     
     // In production, only error level should log
     config.log('info', 'This should not log');

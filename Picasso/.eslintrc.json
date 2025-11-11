@@ -1,0 +1,60 @@
+{
+  "env": {
+    "browser": true,
+    "es2021": true,
+    "node": true,
+    "jest": true
+  },
+  "extends": [
+    "eslint:recommended"
+  ],
+  "parserOptions": {
+    "ecmaVersion": "latest",
+    "sourceType": "module",
+    "ecmaFeatures": {
+      "jsx": true
+    }
+  },
+  "globals": {
+    "__ENVIRONMENT__": "readonly",
+    "__WIDGET_DOMAIN__": "readonly",
+    "__IS_STAGING__": "readonly",
+    "__IS_PRODUCTION__": "readonly",
+    "__IS_DEVELOPMENT__": "readonly",
+    "__DISABLE_AUTO_DEV_MODE__": "readonly",
+    "__DEFAULT_TENANT_HASH__": "readonly",
+    "__API_BASE_URL__": "readonly",
+    "__CONFIG_DOMAIN__": "readonly",
+    "__CONFIG_ENDPOINT__": "readonly",
+    "__CHAT_ENDPOINT__": "readonly",
+    "__CONVERSATION_ENDPOINT__": "readonly",
+    "__ERROR_REPORTING_ENDPOINT__": "readonly",
+    "__STREAMING_ENDPOINT__": "readonly",
+    "__DEFAULT_TENANT__": "readonly",
+    "__PICASSO_VERSION__": "readonly",
+    "generateSessionId": "readonly",
+    "createWelcomeMessage": "readonly"
+  },
+  "rules": {
+    "no-unused-vars": "off",
+    "no-console": "off",
+    "no-undef": "off",
+    "no-empty": "off",
+    "no-constant-condition": "off",
+    "no-useless-escape": "off",
+    "no-cond-assign": "off",
+    "no-prototype-builtins": "off",
+    "no-case-declarations": "off"
+  },
+  "ignorePatterns": [
+    "node_modules/",
+    "dist/",
+    "backups/",
+    "deployments/",
+    "coverage/",
+    "*.min.js",
+    "*.map",
+    "**/*.ts",
+    "**/*.tsx"
+  ]
+}

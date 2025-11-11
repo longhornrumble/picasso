@@ -7,7 +7,7 @@
  * @version 2.0.0
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll, jest } from '@jest/globals';
 import { 
   EnvironmentResolverImpl,
   createEnvironmentResolver,
@@ -25,14 +25,14 @@ import type { RuntimeConfig } from '../../types/config';
 /* ===== TEST SETUP AND MOCKS ===== */
 
 // Mock performance.now for consistent testing
-const mockPerformanceNow = vi.fn();
+const mockPerformanceNow = jest.fn();
 Object.defineProperty(global, 'performance', {
   value: { now: mockPerformanceNow },
   writable: true
 });
 
 // Mock fetch for S3 API calls
-const mockFetch = vi.fn();
+const mockFetch = jest.fn();
 global.fetch = mockFetch;
 
 // Mock import.meta for Vite environment detection
@@ -343,7 +343,7 @@ describe('Environment Detection Core System', () => {
 
   beforeEach(() => {
     // Reset mocks
-    vi.clearAllMocks();
+    jest.clearAllMocks();
     mockPerformanceNow.mockReturnValue(100);
     
     // Setup fresh resolver instance

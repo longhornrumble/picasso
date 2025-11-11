@@ -21,8 +21,7 @@ import type {
   ConfigurationSchemaType,
   ConfigurationChangeCallback,
   ConfigurationChangeEvent,
-  ValidatedConfiguration,
-  HotReloadConfig
+  ValidatedConfiguration
 } from './configuration-manager';
 import type { ValidatedEnvironment } from './environment-resolver';
 import { configurationManager } from './configuration-manager';
@@ -172,7 +171,15 @@ export class HotReloadManagerImpl implements HotReloadManager {
   private debounceTimers: Map<string, NodeJS.Timeout> = new Map();
   private throttleTimers: Map<string, NodeJS.Timeout> = new Map();
   private status: HotReloadStatus = 'inactive';
-  private metrics: HotReloadMetrics = {
+  private metrics: {
+    totalReloads: number;
+    successfulReloads: number;
+    failedReloads: number;
+    averageReloadTime: number;
+    lastReloadTime: number;
+    throttledEvents: number;
+    activeWatchers: number;
+  } = {
     totalReloads: 0,
     successfulReloads: 0,
     failedReloads: 0,
@@ -221,9 +228,13 @@ export class HotReloadManagerImpl implements HotReloadManager {
       this.metrics.activeWatchers++;
 
       console.log(`Started hot reload watcher for ${schemaType} (ID: ${watcherId})`);
-      
-      // Notify callback that watching started
-      callback('hot-reload', {} as ValidatedConfiguration);
+
+      // Notify callback that watching started (handle callback errors gracefully)
+      try {
+        callback('hot-reload', {} as ValidatedConfiguration);
+      } catch (callbackError) {
+        console.warn('Hot reload callback threw an error, but watcher will continue:', callbackError);
+      }
 
       return watcherId;
     } catch (error) {
@@ -657,11 +668,9 @@ export class HotReloadManagerImpl implements HotReloadManager {
 class MockFileSystemWatcher {
   private listeners: Map<string, Set<Function>> = new Map();
   private paths: string[];
-  private options: any;
 
-  constructor(paths: readonly string[], options: any = {}) {
+  constructor(paths: readonly string[], _options: any = {}) {
     this.paths = [...paths];
-    this.options = options;
   }
 
   on(event: string, listener: Function): void {
@@ -818,7 +827,7 @@ export async function enableDevelopmentHotReload(): Promise<string[]> {
   const watcherIds: string[] = [];
 
   // Default callback that logs changes
-  const defaultCallback: ConfigurationChangeCallback = (event, config, error) => {
+  const defaultCallback: ConfigurationChangeCallback = (event, _config, error) => {
     if (error) {
       console.error(`Hot reload error (${event}):`, error);
     } else {

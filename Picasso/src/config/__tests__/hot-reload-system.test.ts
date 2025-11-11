@@ -7,7 +7,7 @@
  * @version 2.0.0
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll, jest } from '@jest/globals';
 import {
   HotReloadManagerImpl,
   createHotReloadManager,
@@ -30,7 +30,7 @@ import type {
 /* ===== TEST SETUP AND MOCKS ===== */
 
 // Mock performance.now for consistent testing
-const mockPerformanceNow = vi.fn();
+const mockPerformanceNow = jest.fn();
 Object.defineProperty(global, 'performance', {
   value: { now: mockPerformanceNow },
   writable: true
@@ -38,14 +38,14 @@ Object.defineProperty(global, 'performance', {
 
 // Mock console methods
 const consoleSpy = {
-  log: vi.spyOn(console, 'log').mockImplementation(() => {}),
-  warn: vi.spyOn(console, 'warn').mockImplementation(() => {}),
-  error: vi.spyOn(console, 'error').mockImplementation(() => {})
+  log: jest.spyOn(console, 'log').mockImplementation(() => {}),
+  warn: jest.spyOn(console, 'warn').mockImplementation(() => {}),
+  error: jest.spyOn(console, 'error').mockImplementation(() => {})
 };
 
 // Mock window for browser environment tests
 const mockWindow = {
-  postMessage: vi.fn()
+  postMessage: jest.fn()
 };
 
 // Mock process environment
@@ -86,7 +86,7 @@ describe('Hot Reload System', () => {
 
   beforeEach(() => {
     // Reset mocks
-    vi.clearAllMocks();
+    jest.clearAllMocks();
     mockPerformanceNow.mockReturnValue(100);
     
     // Setup fresh manager instance
@@ -144,7 +144,7 @@ describe('Hot Reload System', () => {
 
   describe('Watcher Management', () => {
     it('should start watcher successfully', async () => {
-      const callback = vi.fn();
+      const callback = jest.fn();
       const config: HotReloadConfiguration = {
         ...DEFAULT_HOT_RELOAD_CONFIG,
         enabled: true
@@ -159,7 +159,7 @@ describe('Hot Reload System', () => {
     });
 
     it('should reject watcher when hot reload disabled', async () => {
-      const callback = vi.fn();
+      const callback = jest.fn();
       const config: HotReloadConfiguration = {
         ...DEFAULT_HOT_RELOAD_CONFIG,
         enabled: false
@@ -176,7 +176,7 @@ describe('Hot Reload System', () => {
         env: { NODE_ENV: 'production' }
       } as any;
 
-      const callback = vi.fn();
+      const callback = jest.fn();
       const config: HotReloadConfiguration = {
         ...DEFAULT_HOT_RELOAD_CONFIG,
         enabled: true
@@ -188,7 +188,7 @@ describe('Hot Reload System', () => {
     });
 
     it('should stop specific watcher', async () => {
-      const callback = vi.fn();
+      const callback = jest.fn();
       const config: HotReloadConfiguration = {
         ...DEFAULT_HOT_RELOAD_CONFIG,
         enabled: true
@@ -202,7 +202,7 @@ describe('Hot Reload System', () => {
     });
 
     it('should stop all watchers', async () => {
-      const callback = vi.fn();
+      const callback = jest.fn();
       const config: HotReloadConfiguration = {
         ...DEFAULT_HOT_RELOAD_CONFIG,
         enabled: true
@@ -224,7 +224,7 @@ describe('Hot Reload System', () => {
     });
 
     it('should notify callback when watcher starts', async () => {
-      const callback = vi.fn();
+      const callback = jest.fn();
       const config: HotReloadConfiguration = {
         ...DEFAULT_HOT_RELOAD_CONFIG,
         enabled: true
@@ -243,14 +243,16 @@ describe('Hot Reload System', () => {
 
   describe('Configuration Reload', () => {
     it('should reload configuration manually', async () => {
-      mockPerformanceNow.mockReturnValueOnce(0).mockReturnValueOnce(50);
+      // Reset mock to return consistent sequence
+      mockPerformanceNow.mockReset();
+      mockPerformanceNow.mockReturnValueOnce(0).mockReturnValueOnce(50).mockReturnValue(50);
 
       const config = await manager.reloadConfiguration('environment');
 
       expect(config).toBeDefined();
       expect(config.__brand).toBe('ValidatedConfiguration');
       expect(manager.getStatus()).toBe('watching');
-      
+
       const metrics = manager.getMetrics();
       expect(metrics.totalReloads).toBe(1);
       expect(metrics.successfulReloads).toBe(1);
@@ -302,7 +304,9 @@ describe('Hot Reload System', () => {
     });
 
     it('should update metrics on reload', async () => {
-      mockPerformanceNow.mockReturnValueOnce(0).mockReturnValueOnce(75);
+      // Reset mock to return consistent sequence
+      mockPerformanceNow.mockReset();
+      mockPerformanceNow.mockReturnValueOnce(0).mockReturnValueOnce(75).mockReturnValue(75);
 
       await manager.reloadConfiguration('environment');
 
@@ -319,7 +323,7 @@ describe('Hot Reload System', () => {
 
   describe('File Watching', () => {
     it('should add watch path successfully', async () => {
-      const callback = vi.fn();
+      const callback = jest.fn();
       const config: HotReloadConfiguration = {
         ...DEFAULT_HOT_RELOAD_CONFIG,
         enabled: true
@@ -332,7 +336,7 @@ describe('Hot Reload System', () => {
     });
 
     it('should remove watch path successfully', async () => {
-      const callback = vi.fn();
+      const callback = jest.fn();
       const config: HotReloadConfiguration = {
         ...DEFAULT_HOT_RELOAD_CONFIG,
         enabled: true
@@ -363,7 +367,7 @@ describe('Hot Reload System', () => {
     });
 
     it('should update status when starting watcher', async () => {
-      const callback = vi.fn();
+      const callback = jest.fn();
       const config: HotReloadConfiguration = {
         ...DEFAULT_HOT_RELOAD_CONFIG,
         enabled: true
@@ -393,7 +397,7 @@ describe('Hot Reload System', () => {
     });
 
     it('should update metrics after operations', async () => {
-      const callback = vi.fn();
+      const callback = jest.fn();
       const config: HotReloadConfiguration = {
         ...DEFAULT_HOT_RELOAD_CONFIG,
         enabled: true
@@ -421,7 +425,7 @@ describe('Hot Reload System', () => {
     });
 
     it('should handle custom configuration', async () => {
-      const callback = vi.fn();
+      const callback = jest.fn();
       const customConfig: HotReloadConfiguration = {
         enabled: true,
         watchPaths: ['/custom/path'],
@@ -488,7 +492,7 @@ describe('Convenience Functions', () => {
   });
 
   it('should start environment hot reload', async () => {
-    const callback = vi.fn();
+    const callback = jest.fn();
     
     const watcherId = await startEnvironmentHotReload(callback);
     
@@ -501,7 +505,7 @@ describe('Convenience Functions', () => {
       env: { NODE_ENV: 'production' }
     } as any;
 
-    const callback = vi.fn();
+    const callback = jest.fn();
     const watcherId = await startEnvironmentHotReload(callback);
     
     expect(watcherId).toBe('');
@@ -511,7 +515,7 @@ describe('Convenience Functions', () => {
   });
 
   it('should start theme hot reload', async () => {
-    const callback = vi.fn();
+    const callback = jest.fn();
     
     const watcherId = await startThemeHotReload(callback);
     
@@ -524,12 +528,12 @@ describe('Convenience Functions', () => {
       env: { NODE_ENV: 'production' }
     } as any;
 
-    const callback = vi.fn();
+    const callback = jest.fn();
     const watcherId = await startThemeHotReload(callback);
-    
+
     expect(watcherId).toBe('');
     expect(consoleSpy.warn).toHaveBeenCalledWith(
-      'Hot reload not supported - skipping'
+      'Hot reload not supported in current environment'
     );
   });
 
@@ -571,12 +575,15 @@ describe('Convenience Functions', () => {
 /* ===== ERROR HANDLING TESTS ===== */
 
 describe('Error Handling', () => {
+  let manager: HotReloadManagerImpl;
+
   beforeEach(() => {
     global.process = mockProcess as any;
+    manager = new HotReloadManagerImpl();
   });
 
   it('should handle watcher creation errors', async () => {
-    const callback = vi.fn();
+    const callback = jest.fn();
     const config: HotReloadConfiguration = {
       ...DEFAULT_HOT_RELOAD_CONFIG,
       enabled: true,
@@ -621,13 +628,16 @@ describe('Error Handling', () => {
 /* ===== BROWSER INTEGRATION TESTS ===== */
 
 describe('Browser Integration', () => {
+  let manager: HotReloadManagerImpl;
+
   beforeEach(() => {
     global.process = mockProcess as any;
     global.window = mockWindow as any;
+    manager = new HotReloadManagerImpl();
   });
 
   it('should post messages to window when available', async () => {
-    const callback = vi.fn();
+    const callback = jest.fn();
     const config: HotReloadConfiguration = {
       ...DEFAULT_HOT_RELOAD_CONFIG,
       enabled: true,
@@ -635,7 +645,7 @@ describe('Browser Integration', () => {
     };
 
     await manager.startWatching('environment', config, callback);
-    
+
     // Simulate reload notification
     // This would normally be triggered by file changes
     // For testing, we verify the window is available
@@ -646,7 +656,7 @@ describe('Browser Integration', () => {
   it('should handle missing window gracefully', async () => {
     delete (global as any).window;
 
-    const callback = vi.fn();
+    const callback = jest.fn();
     const config: HotReloadConfiguration = {
       ...DEFAULT_HOT_RELOAD_CONFIG,
       enabled: true,
@@ -662,12 +672,16 @@ describe('Browser Integration', () => {
 /* ===== PERFORMANCE TESTS ===== */
 
 describe('Performance', () => {
+  let manager: HotReloadManagerImpl;
+
   beforeEach(() => {
     global.process = mockProcess as any;
+    manager = new HotReloadManagerImpl();
   });
 
   it('should complete reload within performance target', async () => {
-    mockPerformanceNow.mockReturnValueOnce(0).mockReturnValueOnce(150);
+    mockPerformanceNow.mockReset();
+    mockPerformanceNow.mockReturnValueOnce(0).mockReturnValueOnce(150).mockReturnValue(150);
 
     const config = await manager.reloadConfiguration('environment');
     
@@ -676,7 +690,7 @@ describe('Performance', () => {
   });
 
   it('should handle multiple watchers efficiently', async () => {
-    const callback = vi.fn();
+    const callback = jest.fn();
     const config: HotReloadConfiguration = {
       ...DEFAULT_HOT_RELOAD_CONFIG,
       enabled: true
@@ -699,7 +713,7 @@ describe('Performance', () => {
   });
 
   it('should efficiently stop multiple watchers', async () => {
-    const callback = vi.fn();
+    const callback = jest.fn();
     const config: HotReloadConfiguration = {
       ...DEFAULT_HOT_RELOAD_CONFIG,
       enabled: true

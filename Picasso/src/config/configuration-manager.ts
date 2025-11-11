@@ -17,23 +17,17 @@
  * @author Build-Time Environment Resolution System (BERS)
  */
 
-import type { 
+import type {
   Environment,
-  ValidTenantHash,
-  SecurityError 
+  ValidTenantHash
 } from '../types/security';
 import type {
-  EnvironmentConfig,
   RuntimeConfig,
-  ConfigValidationResult,
-  ThemeConfig,
-  LocalizationConfig,
-  IntegrationConfig
+  ConfigValidationResult
 } from '../types/config';
-import { 
+import {
   environmentResolver,
-  type ValidatedEnvironment,
-  type EnvironmentDetectionResult
+  type ValidatedEnvironment
 } from './environment-resolver';
 
 /* ===== BRANDED TYPES FOR CONFIGURATION MANAGEMENT ===== */
@@ -267,8 +261,14 @@ export class ConfigurationManagerImpl implements ConfigurationManager {
   private configCache: Map<string, { config: ValidatedConfiguration; timestamp: number }> = new Map();
   private inheritanceRules: ConfigurationInheritanceRule[] = [];
   private watchers: Map<string, { callback: ConfigurationChangeCallback; options: HotReloadConfig }[]> = new Map();
-  private fileWatchers: Map<string, any> = new Map(); // File system watchers
-  private metrics: ConfigurationManagerMetrics = {
+  private metrics: {
+    totalLoads: number;
+    cacheHits: number;
+    validationErrors: number;
+    averageLoadTime: number;
+    hotReloads: number;
+    schemasRegistered: number;
+  } = {
     totalLoads: 0,
     cacheHits: 0,
     validationErrors: 0,
@@ -395,7 +395,7 @@ export class ConfigurationManagerImpl implements ConfigurationManager {
 
       // Validate against schema properties (simplified validation)
       const configObj = config as Record<string, any>;
-      for (const [key, value] of Object.entries(configObj)) {
+      for (const [key] of Object.entries(configObj)) {
         if (!schema.properties[key] && !schema.additionalProperties) {
           if (context.strictMode) {
             errors.push(`Unknown property: ${key}`);
@@ -546,7 +546,7 @@ export class ConfigurationManagerImpl implements ConfigurationManager {
     if (tenantHash) {
       const tenantOverrides = await this.loadTenantOverrides<T>(schemaType, tenantHash, environment);
       if (tenantOverrides) {
-        const mergedConfig = this.mergeConfigurations(baseConfig, tenantOverrides);
+        const mergedConfig = this.mergeConfigurations(baseConfig as any, tenantOverrides as any) as T;
         return this.createValidatedConfiguration<T>(
           mergedConfig,
           environment,
@@ -641,12 +641,12 @@ export class ConfigurationManagerImpl implements ConfigurationManager {
 
   private async loadSchemaDefinition(schemaType: ConfigurationSchemaType): Promise<ConfigurationSchema> {
     // Return schema structure with properties that match the default configuration
-    const baseSchema = {
+    const baseSchema: Omit<ConfigurationSchema, 'properties' | 'required'> = {
       $schema: 'http://json-schema.org/draft-07/schema#',
       $id: `https://chat.myrecruiter.ai/schemas/${schemaType}.schema.json`,
       title: `${schemaType.charAt(0).toUpperCase() + schemaType.slice(1)} Configuration Schema`,
       description: `Schema for ${schemaType} configuration`,
-      type: 'object',
+      type: 'object' as const,
       additionalProperties: true // Allow additional properties for flexibility
     };
 
@@ -666,7 +666,8 @@ export class ConfigurationManagerImpl implements ConfigurationManager {
             performance: { type: 'object', additionalProperties: true },
             features: { type: 'object', additionalProperties: true }
           },
-          required: ['environment', 'version']
+          required: ['environment', 'version', 'api'],
+          additionalProperties: false // Strict validation for environment configs
         };
       case 'providers':
         return {
@@ -703,9 +704,6 @@ export class ConfigurationManagerImpl implements ConfigurationManager {
     schemaType: ConfigurationSchemaType,
     environment: ValidatedEnvironment
   ): Promise<T> {
-    // Load configuration file for the environment
-    const configPath = `./src/config/configurations/${environment}/${schemaType}.json`;
-    
     // In production, this would use file system or HTTP to load configuration
     // For now, return default configuration based on schema type
     return this.getDefaultConfiguration<T>(schemaType, environment);
@@ -766,6 +764,19 @@ export class ConfigurationManagerImpl implements ConfigurationManager {
             errorReportingEnabled: true,
             performanceMonitoring: true,
             experimentalFeatures: environment.toString() === 'development'
+          }
+        } as T;
+
+      case 'runtime':
+        return {
+          environment: `${environment}`,
+          api: {
+            baseUrl: 'https://chat.myrecruiter.ai',
+            timeout: 30000
+          },
+          cdn: {
+            assetsUrl: 'https://chat.myrecruiter.ai/assets',
+            version: '2.0.0'
           }
         } as T;
 
@@ -895,13 +906,19 @@ export class ConfigurationManagerImpl implements ConfigurationManager {
   private createValidatedConfiguration<T>(
     config: T,
     environment: ValidatedEnvironment,
-    schemaType: ConfigurationSchemaType
+    _schemaType: ConfigurationSchemaType
   ): ValidatedConfiguration<T> {
     const validated = config as any;
     validated.__brand = 'ValidatedConfiguration';
     validated.validatedAt = Date.now();
     validated.schemaVersion = '2.0.0';
-    validated.environment = environment;
+    // Store the validated environment metadata separately to avoid overwriting
+    // the environment string property if it exists in the config
+    validated.__validatedEnvironment = environment;
+    // Only set environment if it doesn't already exist (preserve original string value)
+    if (!validated.environment) {
+      validated.environment = environment;
+    }
     return validated as ValidatedConfiguration<T>;
   }
 
@@ -964,10 +981,10 @@ export class ConfigurationManagerImpl implements ConfigurationManager {
         return null;
       
       case 'theme':
-        return runtimeConfig.theme as Partial<T>;
-      
+        return runtimeConfig.theme as unknown as Partial<T>;
+
       case 'localization':
-        return runtimeConfig.localization as Partial<T>;
+        return runtimeConfig.localization as unknown as Partial<T>;
       
       default:
         return null;
@@ -1005,27 +1022,28 @@ export class ConfigurationManagerImpl implements ConfigurationManager {
   }
 
   private wouldCreateCircularInheritance(rule: ConfigurationInheritanceRule): boolean {
-    // Simple cycle detection
+    // Cycle detection: check if there's already a path from target back to source
+    // If adding source->target when target->...->source already exists, it creates a cycle
     const visited = new Set<string>();
     const stack = [rule.targetEnvironment];
 
     while (stack.length > 0) {
       const current = stack.pop()!;
-      
+
       if (visited.has(current)) {
         continue;
       }
-      
+
       visited.add(current);
-      
+
       if (current === rule.sourceEnvironment) {
-        return true; // Found cycle
+        return true; // Found cycle: target can reach source, so source->target creates a cycle
       }
 
-      // Add parent environments to stack
-      const parentRules = this.inheritanceRules.filter(r => r.targetEnvironment === current);
-      for (const parentRule of parentRules) {
-        stack.push(parentRule.sourceEnvironment);
+      // Follow existing inheritance rules: find where current inherits from (current is target)
+      const existingRules = this.inheritanceRules.filter(r => r.sourceEnvironment === current);
+      for (const existingRule of existingRules) {
+        stack.push(existingRule.targetEnvironment);
       }
     }
 
@@ -1060,13 +1078,13 @@ export class ConfigurationManagerImpl implements ConfigurationManager {
   }
 
   private async backupConfiguration(
-    config: any,
+    _config: any,
     schemaType: ConfigurationSchemaType
   ): Promise<void> {
     // Configuration backup would be implemented here
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const backupKey = `${schemaType}-backup-${timestamp}`;
-    
+
     console.log(`Backing up configuration as: ${backupKey}`);
     // Would save to file system or cloud storage
   }

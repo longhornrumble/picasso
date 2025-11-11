@@ -22,7 +22,6 @@ import type {
   ConfigurationSchemaType
 } from './configuration-manager';
 import type { EnvironmentConfig, RuntimeConfig } from '../types/config';
-import type { ValidatedEnvironment } from './environment-resolver';
 
 /* ===== MIGRATION TYPES ===== */
 
@@ -234,7 +233,6 @@ export class MigrationManagerImpl implements MigrationManager {
     targetSchema: ConfigurationSchemaType,
     strategy: MigrationStrategy
   ): Promise<MigrationResult<T>> {
-    const migrationLog: MigrationLogEntry[] = [];
     const warnings: string[] = [];
     const errors: string[] = [];
 
@@ -335,7 +333,7 @@ export class MigrationManagerImpl implements MigrationManager {
    */
   async validateCompatibility(
     legacyConfig: any,
-    targetSchema: ConfigurationSchemaType
+    _targetSchema: ConfigurationSchemaType
   ): Promise<CompatibilityInfo> {
     return this.detectLegacyFormat(legacyConfig);
   }
@@ -388,14 +386,14 @@ export class MigrationManagerImpl implements MigrationManager {
    */
   async rollbackMigration(
     backupPath: string,
-    targetSchema: ConfigurationSchemaType
+    _targetSchema: ConfigurationSchemaType
   ): Promise<boolean> {
     try {
       this.logMigration('info', `Rolling back migration from backup: ${backupPath}`);
-      
+
       // In production, this would restore from backup file/storage
       // For now, simulate successful rollback
-      
+
       this.logMigration('info', 'Migration rollback completed successfully');
       return true;
     } catch (error) {
@@ -886,26 +884,26 @@ export class MigrationManagerImpl implements MigrationManager {
 
   private createValidatedConfiguration<T>(
     config: T,
-    schemaType: ConfigurationSchemaType
+    _schemaType: ConfigurationSchemaType
   ): ValidatedConfiguration<T> {
     const validated = config as any;
     validated.__brand = 'ValidatedConfiguration';
     validated.validatedAt = Date.now();
     validated.schemaVersion = '2.0.0';
-    
+
     // Create a mock validated environment
     const environment = new String('production') as any;
     environment.__brand = 'ValidatedEnvironment';
     environment.detectionSource = 'config-file';
     environment.detectionTimestamp = Date.now();
     environment.confidence = 'high';
-    
+
     validated.environment = environment;
     return validated as ValidatedConfiguration<T>;
   }
 
   private async createBackup(
-    config: any,
+    _config: any,
     targetSchema: ConfigurationSchemaType
   ): Promise<string> {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
