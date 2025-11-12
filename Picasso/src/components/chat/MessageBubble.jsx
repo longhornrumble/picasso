@@ -514,9 +514,9 @@ export default function MessageBubble({
 
     if (action.target_branch) {
       messagePayload.metadata = {
-        cta_triggered: true,
-        target_branch: action.target_branch,  // Lambda expects 'target_branch' field
-        cta_action: 'navigate_branch'
+        action_chip_triggered: true,  // Tier 1: Action chip routing
+        target_branch: action.target_branch,
+        action_chip_id: action.id || action.label
       };
       console.log('[MessageBubble] Action chip clicked with routing metadata:', {
         target_branch: action.target_branch,
