@@ -650,33 +650,19 @@ export default function MessageBubble({
           title: cta.label || cta.title || config?.conversational_forms?.[configKey]?.title || 'Application Form',
           form_title: config?.conversational_forms?.[configKey]?.form_title,
           form_subtitle: config?.conversational_forms?.[configKey]?.form_subtitle,
+          introduction: config?.conversational_forms?.[configKey]?.introduction,
           fields: fields,
-          welcome_message: cta.welcome_message || config?.conversational_forms?.[configKey]?.welcome_message || `Great! Let's get started with your application.`
+          welcome_message: cta.welcome_message || config?.conversational_forms?.[configKey]?.welcome_message || `Great! Let's get started with your application.`,
+          post_submission: config?.conversational_forms?.[configKey]?.post_submission
         };
 
         console.log('[MessageBubble] Starting form with config:', formConfig);
         const success = formMode.startFormWithConfig(formId, formConfig);
         console.log('[MessageBubble] Form start result:', success);
-        if (success && addMessage) {
-          // Send welcome message for the form
-          addMessage({
-            role: "assistant",
-            content: formConfig.welcome_message
-          });
-          // Show the first field prompt
-          if (formConfig.fields && formConfig.fields.length > 0) {
-            const firstField = formConfig.fields[0];
-            setTimeout(() => {
-              addMessage({
-                role: "assistant",
-                content: firstField.prompt || `Please provide your ${firstField.label}`,
-                metadata: { isFormPrompt: true, fieldId: firstField.id }
-              });
-            }, 500);
-          }
-        } else if (!success) {
+        if (!success) {
           console.error('[MessageBubble] Failed to start form:', formId);
         }
+        // Note: Introduction and field prompts are shown in FormFieldPrompt component, not as messages
       } else if (formMode && formMode.startForm) {
         // Try legacy method
         const success = formMode.startForm(formId);
@@ -696,7 +682,7 @@ export default function MessageBubble({
       }
     } else if (cta.action === 'show_info' && addMessage) {
       // Send as a user prompt to get info with CTA metadata
-      const query = cta.text || cta.label;
+      const query = cta.prompt || cta.text || cta.label;
       if (sendMessage) {
         sendMessage(query, {
           cta_triggered: true,
