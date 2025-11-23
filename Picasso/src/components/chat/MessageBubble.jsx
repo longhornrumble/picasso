@@ -46,17 +46,17 @@ const processStreamingMarkdown = (text) => {
       ALLOW_DATA_ATTR: false
     });
     
-    // Remove target="_blank" to make links open in same tab
+    // Use target="_top" to make links break out of iframe and open in parent page
     return safeHtml.replace(
       /<a\s+([^>]*href=["'](?:https?:|mailto:|tel:)[^"']+["'][^>]*)>/gi,
       (match, attrs) => {
-        // Remove target="_blank" if present
+        // Remove existing target and add target="_top" for iframe breakout
         const cleanedAttrs = attrs.replace(/\s*target=["'][^"']*["']\s*/gi, '');
-        // Add rel for security
+        // Add target="_top" and rel for security
         if (!/rel=/i.test(cleanedAttrs)) {
-          return `<a ${cleanedAttrs} rel="noopener noreferrer">`;
+          return `<a ${cleanedAttrs} target="_top" rel="noopener noreferrer">`;
         }
-        return `<a ${cleanedAttrs}>`;
+        return `<a ${cleanedAttrs} target="_top">`;
       }
     );
   } catch (err) {
@@ -333,11 +333,11 @@ export default function MessageBubble({
         
         // Process markdown links BEFORE auto-linking to prevent double processing
         // This must happen before auto-link to avoid matching URLs inside markdown links
-        html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" rel="noopener noreferrer">$1</a>');
+        html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_top" rel="noopener noreferrer">$1</a>');
 
         // Now auto-link plain URLs (but not those already in HTML tags)
         // Negative lookbehind to avoid URLs already in href="..." or already linked
-        html = html.replace(/(?<!href=")(?<!>)(https?:\/\/[^\s<"]+)(?![^<]*<\/a>)/g, '<a href="$1" rel="noopener noreferrer">$1</a>');
+        html = html.replace(/(?<!href=")(?<!>)(https?:\/\/[^\s<"]+)(?![^<]*<\/a>)/g, '<a href="$1" target="_top" rel="noopener noreferrer">$1</a>');
         
         // Process lists - preserve as single block without extra line breaks
         const lines = html.split('\n');

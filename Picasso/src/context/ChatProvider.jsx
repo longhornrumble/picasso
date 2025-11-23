@@ -382,8 +382,8 @@ marked.use({
       return false;
     },
     renderer(token) {
-      // Open all links in same tab
-      return `<a href="${token.href}" rel="noopener noreferrer">${token.text}</a>`;
+      // Use target="_top" to break out of iframe and open in parent page
+      return `<a href="${token.href}" target="_top" rel="noopener noreferrer">${token.text}</a>`;
     }
   }]
 });
@@ -424,7 +424,7 @@ async function sanitizeMessage(content) {
 
     // 3) Use the HTML as-is from marked (no tightening needed)
 
-    // 4) One-time DOMPurify hook to enforce safe anchors (open in same tab)
+    // 4) One-time DOMPurify hook to enforce safe anchors (break out of iframe)
     if (!__sanitizeHookInstalled && typeof DOMPurify?.addHook === 'function') {
       DOMPurify.addHook('afterSanitizeAttributes', (node) => {
         if (node.tagName && node.tagName.toLowerCase() === 'a') {
@@ -433,8 +433,8 @@ async function sanitizeMessage(content) {
           if (!/^https?:/i.test(href) && !/^mailto:/i.test(href) && !/^tel:/i.test(href)) {
             node.removeAttribute('href');
           }
-          // Remove target attribute if present (open in same tab)
-          node.removeAttribute('target');
+          // Set target="_top" to break out of iframe and open in parent page
+          node.setAttribute('target', '_top');
           node.setAttribute('rel', 'noopener noreferrer');
         }
       });

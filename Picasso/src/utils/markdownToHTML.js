@@ -67,8 +67,8 @@ marked.use({
       return false;
     },
     renderer(token) {
-      // Open all links in same tab
-      return `<a href="${token.href}" rel="noopener noreferrer">${token.text}</a>`;
+      // Use target="_top" to break out of iframe and open in parent page
+      return `<a href="${token.href}" target="_top" rel="noopener noreferrer">${token.text}</a>`;
     }
   }]
 });
@@ -95,12 +95,12 @@ export function markdownToHTML(markdown) {
     // Sanitize the HTML to prevent XSS attacks using enhanced security
     const sanitizedHtml = sanitizeHTML(html);
     
-    // Process links to ensure rel attribute for security (all links open in same tab)
+    // Process links to ensure target="_top" for iframe breakout and rel for security
     const finalHtml = sanitizedHtml.replace(
       /<a\s+href="([^"]+)"/gi,
       (match, url) => {
-        // Remove any target="_blank" and ensure rel attribute
-        return `<a href="${url}" rel="noopener noreferrer"`;
+        // Add target="_top" to break out of iframe and ensure rel attribute
+        return `<a href="${url}" target="_top" rel="noopener noreferrer"`;
       }
     );
     

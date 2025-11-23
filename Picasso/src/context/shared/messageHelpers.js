@@ -52,17 +52,17 @@ export const processMessageContent = (rawContent) => {
       ALLOW_DATA_ATTR: false
     });
     
-    // Remove target="_blank" to make links open in same tab
+    // Use target="_top" to break out of iframe and open in parent page
     const finalHtml = safeHtml.replace(
       /<a\s+([^>]*href=["'](?:https?:|mailto:|tel:)[^"']+["'][^>]*)>/gi,
       (match, attrs) => {
-        // Remove target="_blank" if present
+        // Remove existing target and add target="_top" for iframe breakout
         const cleanedAttrs = attrs.replace(/\s*target=["'][^"']*["']\s*/gi, '');
-        // Add rel for security
+        // Add target="_top" and rel for security
         if (!/rel=/i.test(cleanedAttrs)) {
-          return `<a ${cleanedAttrs} rel="noopener noreferrer">`;
+          return `<a ${cleanedAttrs} target="_top" rel="noopener noreferrer">`;
         }
-        return `<a ${cleanedAttrs}>`;
+        return `<a ${cleanedAttrs} target="_top">`;
       }
     );
     

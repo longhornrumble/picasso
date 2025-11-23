@@ -77,18 +77,18 @@ export function renderMarkdownToSafeHtml(rawText) {
     KEEP_CONTENT: true
   });
   
-  // 4) Post-process to ensure all links open in same tab
+  // 4) Post-process to ensure all links open in parent page (target="_top")
   // This is a simple regex approach since DOMPurify already made it safe
   const finalHtml = safeHtml.replace(
     /<a\s+([^>]*href=["'](?:https?:|mailto:|tel:)[^"']+["'][^>]*)>/gi,
     (match, attrs) => {
-      // Remove target="_blank" if present and add rel for security
+      // Remove existing target attribute and add target="_top" for iframe breakout
       const cleanedAttrs = attrs.replace(/\s*target=["'][^"']*["']\s*/gi, '');
-      // Add rel for security (keeps noopener noreferrer for security even without new tab)
+      // Add target="_top" and rel for security
       if (!/rel=/i.test(cleanedAttrs)) {
-        return `<a ${cleanedAttrs} rel="noopener noreferrer">`;
+        return `<a ${cleanedAttrs} target="_top" rel="noopener noreferrer">`;
       }
-      return `<a ${cleanedAttrs}>`;
+      return `<a ${cleanedAttrs} target="_top">`;
     }
   );
   
