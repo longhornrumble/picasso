@@ -615,8 +615,8 @@ function ChatWidget() {
                 </div>
               );
             })}
-            {/* Render form field prompt when in form mode OR suspended */}
-            {(isFormMode || isSuspended) && (
+            {/* Render form field prompt when in form mode OR suspended BUT NOT when complete */}
+            {(isFormMode || isSuspended) && !isFormComplete && (
               <div ref={lastMessageRef}>
                 <FormFieldPrompt onCancel={cancelForm} />
               </div>
@@ -624,6 +624,13 @@ function ChatWidget() {
             {/* Render form completion card when form is complete */}
             {isFormComplete && completedFormData && (
               <div ref={lastMessageRef}>
+                {console.log('[ChatWidget] Rendering FormCompletionCard:', {
+                  isFormComplete,
+                  completedFormData,
+                  completedFormConfig,
+                  hasPostSubmission: !!completedFormConfig?.post_submission,
+                  postSubmissionConfig: completedFormConfig?.post_submission
+                })}
                 <FormCompletionCard
                   formId={currentFormId}
                   formData={completedFormData}

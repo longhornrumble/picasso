@@ -287,7 +287,7 @@ export default function StreamingChatProvider({ children }) {
 
   // Form mode context - get full context for interruption handling
   const formMode = useFormMode();
-  const { suspendedForms, getSuspendedForm, resumeForm, cancelForm, isFormMode, isSuspended, currentFormId, formConfig } = formMode;
+  const { suspendedForms, getSuspendedForm, resumeForm, cancelForm, clearCompletionState, isFormMode, isSuspended, currentFormId, formConfig } = formMode;
 
   // Use ref to always have latest form state
   const formModeRef = useRef(formMode);
@@ -1008,9 +1008,12 @@ export default function StreamingChatProvider({ children }) {
     // Clear session
     clearSession();
 
-    // Cancel any active forms
+    // Cancel any active forms and clear form completion state
     if (cancelForm) {
       cancelForm();
+    }
+    if (clearCompletionState) {
+      clearCompletionState();
     }
 
     // Reset session
@@ -1040,12 +1043,12 @@ export default function StreamingChatProvider({ children }) {
     saveToSession('picasso_messages', newMessages);
 
     // Reset conversation manager
-    if (conversationManagerRef.current) {
-      conversationManagerRef.current.reset();
+    if (conversationManagerRef.current && typeof conversationManagerRef.current.resetLocalState === 'function') {
+      conversationManagerRef.current.resetLocalState();
     }
 
     logger.info('Streaming Provider: Messages cleared and reset to welcome state');
-  }, [tenantConfig, cancelForm]);
+  }, [tenantConfig, cancelForm, clearCompletionState]);
   
   /**
    * Retry a failed message

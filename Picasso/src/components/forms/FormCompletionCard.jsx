@@ -88,9 +88,38 @@ export default function FormCompletionCard({
             const fieldDef = formFields?.find(f => f.id === fieldId);
             const label = fieldDef?.label || fieldId.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
 
-            // For select fields, try to get the option label instead of value
+            // Handle composite fields (name, address, phone_and_email) - render as nested object
             let displayValue = value;
-            if (fieldDef?.type === 'select' && fieldDef?.options) {
+
+            if (fieldDef?.type === 'name' && typeof value === 'object') {
+              // Render name as "First Middle Last"
+              const parts = [
+                value[`${fieldId}.first_name`],
+                value[`${fieldId}.middle_name`],
+                value[`${fieldId}.last_name`]
+              ].filter(Boolean);
+              displayValue = parts.join(' ');
+            } else if (fieldDef?.type === 'address' && typeof value === 'object') {
+              // Render address as multi-line
+              const street = value[`${fieldId}.street`];
+              const aptUnit = value[`${fieldId}.apt_unit`];
+              const city = value[`${fieldId}.city`];
+              const state = value[`${fieldId}.state`];
+              const zipCode = value[`${fieldId}.zip_code`];
+
+              const lines = [
+                aptUnit ? `${street}, ${aptUnit}` : street,
+                `${city}, ${state} ${zipCode}`
+              ].filter(Boolean);
+
+              displayValue = lines.join('\n');
+            } else if (fieldDef?.type === 'phone_and_email' && typeof value === 'object') {
+              // Render phone and email on separate lines
+              const phone = value[`${fieldId}.phone`];
+              const email = value[`${fieldId}.email`];
+              displayValue = [phone, email].filter(Boolean).join('\n');
+            } else if (fieldDef?.type === 'select' && fieldDef?.options) {
+              // For select fields, try to get the option label instead of value
               const option = fieldDef.options.find(opt => opt.value === value);
               displayValue = option?.label || value;
             }
@@ -100,7 +129,9 @@ export default function FormCompletionCard({
                 <span className="form-completion-field-label">
                   {label}:
                 </span>
-                <span className="form-completion-field-value">{displayValue}</span>
+                <span className="form-completion-field-value" style={{ whiteSpace: 'pre-line' }}>
+                  {displayValue}
+                </span>
               </div>
             );
           })}

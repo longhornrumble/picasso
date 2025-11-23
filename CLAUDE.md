@@ -2,6 +2,33 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+---
+
+## 🚨 MANDATORY: Development Process
+
+**All development work MUST follow the Standard Operating Procedure.**
+
+📚 **Required Reading for All Agents:**
+- **[SOP: Development Workflow](picasso-config-builder/docs/SOP_DEVELOPMENT_WORKFLOW.md)** - Complete workflow from requirements to production with phase-based agent orchestration
+- **[Agent Responsibility Matrix](picasso-config-builder/docs/AGENT_RESPONSIBILITY_MATRIX.md)** - Agent selection guide, capabilities, and collaboration patterns
+
+**For Orchestrator Agents:**
+- Follow phase-based workflow (Phase 0-5) defined in SOP
+- Use agent invocation templates for consistency
+- Track phase gates and validation checkpoints
+- Manage handoffs between agents with explicit input/output artifacts
+- See "Standard Task Workflow" section in SOP for detailed agent workflows
+
+**For Individual Specialized Agents:**
+- Refer to your specific responsibilities in the Agent Responsibility Matrix
+- Follow invocation templates when deployed
+- Deliver artifacts specified in phase workflows
+- Validate deliverables against success criteria
+
+**Quick Command:** Type `/follow-sop` to load SOP context
+
+---
+
 ## Project Structure
 
 This repository follows a multi-project structure:
@@ -10,6 +37,7 @@ This repository follows a multi-project structure:
 - **Infra/** - Infrastructure as code
 - **Sandbox/** - Scratch files (ignored by Git)
 - **picasso-webscraping/** - Firecrawl Node.js SDK for web scraping and RAG data preparation
+- **picasso-config-builder/** - Internal operations tool for managing Picasso configurations
 
 ## Commands
 

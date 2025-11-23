@@ -155,45 +155,106 @@ export const FormModeProvider = ({ children }) => {
     }
 
     // Check eligibility gate
-    if (currentField.eligibility_gate && currentField.options) {
-      const selectedOption = currentField.options.find(opt =>
-        opt.value.toLowerCase() === value.toLowerCase() ||
-        opt.label.toLowerCase() === value.toLowerCase()
-      );
+    if (currentField.eligibility_gate) {
+      // Handle date fields with minimum_age requirement
+      if (currentField.type === 'date' && currentField.minimum_age) {
+        const birthDate = new Date(value);
+        const today = new Date();
 
-      if (selectedOption && selectedOption.value === 'no') {
-        // User doesn't qualify - show failure message and exit form gracefully
-        const failureMessage = currentField.failure_message ||
-          'Unfortunately, you don\'t meet the requirements for this program.';
+        // Calculate age
+        let age = today.getFullYear() - birthDate.getFullYear();
+        const monthDiff = today.getMonth() - birthDate.getMonth();
+        const dayDiff = today.getDate() - birthDate.getDate();
 
-        console.log('[FormModeContext] Eligibility gate failed:', {
+        // Adjust age if birthday hasn't occurred this year yet
+        if (monthDiff < 0 || (monthDiff === 0 && dayDiff < 0)) {
+          age--;
+        }
+
+        console.log('[FormModeContext] Age calculated:', {
           field: currentField.id,
-          value: selectedOption.value,
-          message: failureMessage
+          birthDate: value,
+          calculatedAge: age,
+          minimumAge: currentField.minimum_age
         });
 
-        // Delay form exit to allow overlay to display
-        setTimeout(() => {
-          console.log('[FormModeContext] Closing form after eligibility failure delay');
-          setIsFormMode(false);
-          setIsSuspended(false);
-          setCurrentFormId(null);
-          setCurrentFieldIndex(0);
-          setFormData({});
-          setFormConfig(null);
-          setValidationErrors({});
-          setFormMetadata({
-            startedAt: null,
-            lastActiveAt: null
-          });
-        }, 2500);
+        // Check if user meets minimum age requirement
+        if (age < currentField.minimum_age) {
+          const failureMessage = currentField.failure_message ||
+            `You must be at least ${currentField.minimum_age} years old to qualify for this program.`;
 
-        return {
-          valid: true, // Allow the submission to process
-          eligibilityFailed: true,
-          failureMessage: failureMessage,
-          exitForm: true
-        };
+          console.log('[FormModeContext] Age eligibility gate failed:', {
+            field: currentField.id,
+            age: age,
+            minimumAge: currentField.minimum_age,
+            message: failureMessage
+          });
+
+          // Delay form exit to allow overlay to display
+          setTimeout(() => {
+            console.log('[FormModeContext] Closing form after age eligibility failure delay');
+            setIsFormMode(false);
+            setIsSuspended(false);
+            setCurrentFormId(null);
+            setCurrentFieldIndex(0);
+            setFormData({});
+            setFormConfig(null);
+            setValidationErrors({});
+            setFormMetadata({
+              startedAt: null,
+              lastActiveAt: null
+            });
+          }, 2500);
+
+          return {
+            valid: true, // Allow the submission to process
+            eligibilityFailed: true,
+            failureMessage: failureMessage,
+            exitForm: true
+          };
+        }
+      }
+      // Handle select/dropdown fields with options
+      else if (currentField.options) {
+        const selectedOption = currentField.options.find(opt =>
+          opt.value.toLowerCase() === value.toLowerCase() ||
+          opt.label.toLowerCase() === value.toLowerCase()
+        );
+
+        if (selectedOption && selectedOption.value === 'no') {
+          // User doesn't qualify - show failure message and exit form gracefully
+          const failureMessage = currentField.failure_message ||
+            'Unfortunately, you don\'t meet the requirements for this program.';
+
+          console.log('[FormModeContext] Eligibility gate failed:', {
+            field: currentField.id,
+            value: selectedOption.value,
+            message: failureMessage
+          });
+
+          // Delay form exit to allow overlay to display
+          setTimeout(() => {
+            console.log('[FormModeContext] Closing form after eligibility failure delay');
+            setIsFormMode(false);
+            setIsSuspended(false);
+            setCurrentFormId(null);
+            setCurrentFieldIndex(0);
+            setFormData({});
+            setFormConfig(null);
+            setValidationErrors({});
+            setFormMetadata({
+              startedAt: null,
+              lastActiveAt: null
+            });
+          }, 2500);
+
+          return {
+            valid: true, // Allow the submission to process
+            eligibilityFailed: true,
+            failureMessage: failureMessage,
+            exitForm: true
+          };
+        }
       }
     }
 
@@ -283,6 +344,13 @@ export const FormModeProvider = ({ children }) => {
     } else {
       // Form complete - store completion data
       const finalFormData = { ...formData, [currentField.id]: value };
+      console.log('[FormModeContext] Form complete! Setting completion state:', {
+        isFormComplete: true,
+        completedFormData: finalFormData,
+        completedFormConfig: formConfig,
+        hasPostSubmission: !!formConfig.post_submission,
+        postSubmissionContent: formConfig.post_submission
+      });
       setIsFormComplete(true);
       setCompletedFormData(finalFormData);
       setCompletedFormConfig(formConfig);

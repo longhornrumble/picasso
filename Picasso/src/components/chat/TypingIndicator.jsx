@@ -52,12 +52,13 @@ export default function TypingIndicator() {
         style={{ '--dynamic-avatar-url': avatarUrl }}
       >
         {/* Hidden img for error detection */}
-        <img 
+        <img
           src={avatarSrc}
           onError={handleAvatarError}
           onLoad={handleAvatarLoad}
           className="hidden-img"
           alt="Avatar"
+          crossOrigin="anonymous"
         />
       </div>
       

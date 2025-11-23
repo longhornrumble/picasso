@@ -504,6 +504,26 @@ export default function MessageBubble({
 
   const handleActionClick = (action) => {
     if (isTyping) return;
+
+    // Handle show_info action - display static message without Bedrock
+    if (action.action === 'show_info') {
+      console.log('[MessageBubble] Action chip show_info triggered - displaying static message');
+      const staticMessage = action.value || action.label;
+      addMessage({
+        role: 'assistant',
+        content: staticMessage,
+        metadata: {
+          action_chip_triggered: true,
+          action_chip_id: action.id || action.label,
+          action_chip_action: action.action,
+          static_info: true,
+          target_branch: action.target_branch // Still include for CTA routing
+        }
+      });
+      return; // Don't send to Bedrock
+    }
+
+    // Handle send_query action (default) - send message to Bedrock
     const messageText = action.value || action.label;
 
     // Include routing metadata if target_branch is specified
@@ -690,7 +710,8 @@ export default function MessageBubble({
           cta_triggered: true,
           cta_id: cta.id || cta.cta_id,
           cta_action: cta.action,
-          static_info: true
+          static_info: true,
+          target_branch: cta.target_branch // Include for CTA routing
         }
       });
     }

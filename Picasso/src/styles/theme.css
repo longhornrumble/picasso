@@ -4178,6 +4178,20 @@ body[data-iframe="true"].minimized {
   line-height: var(--line-height-base);
 }
 
+/* Form Introduction */
+.form-introduction {
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-normal);
+  color: var(--font-color);
+  font-family: var(--font-family);
+  line-height: var(--line-height-base);
+  padding: 12px;
+  margin-bottom: 16px;
+  background-color: var(--surface-color, #f8f9fa);
+  border-left: 3px solid var(--primary-color);
+  border-radius: 4px;
+}
+
 /* Progress bar */
 .form-progress {
   display: flex;

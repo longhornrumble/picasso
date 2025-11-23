@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useFormMode } from '../../context/FormModeContext';
 import { useChat } from '../../hooks/useChat';
 import { useConfig } from '../../hooks/useConfig';
+import CompositeFieldGroup from './CompositeFieldGroup';
 
 /**
  * FormFieldPrompt Component
@@ -69,6 +70,22 @@ export default function FormFieldPrompt({ onCancel }) {
       if (result?.valid) {
         setInputValue('');
       }
+    }
+  };
+
+  const handleCompositeSubmit = (values) => {
+    // Submit composite field with all subfield values
+    const result = submitField(currentField.id, values);
+
+    // Handle eligibility failure
+    if (result?.eligibilityFailed) {
+      addMessage({
+        role: 'assistant',
+        content: result.failureMessage,
+        metadata: {
+          isEligibilityFailure: true
+        }
+      });
     }
   };
 
@@ -234,6 +251,13 @@ export default function FormFieldPrompt({ onCancel }) {
         </div>
       )}
 
+      {/* Form Introduction - show only on first field */}
+      {formConfig?.introduction && progress?.currentStep === 1 && (
+        <div className="form-introduction">
+          {formConfig.introduction}
+        </div>
+      )}
+
       {/* Progress indicator */}
       <div className="form-progress">
         <div className="form-progress-bar">
@@ -377,6 +401,15 @@ export default function FormFieldPrompt({ onCancel }) {
                 </button>
               ))}
             </div>
+          )}
+
+          {/* Composite fields (name, address) */}
+          {(currentField.type === 'name' || currentField.type === 'address') && currentField.subfields && (
+            <CompositeFieldGroup
+              field={currentField}
+              onSubmit={handleCompositeSubmit}
+              inputRef={inputRef}
+            />
           )}
 
           {/* Submit button for text inputs */}

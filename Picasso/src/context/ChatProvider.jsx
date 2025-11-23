@@ -2,6 +2,7 @@ import React, { useState, useCallback, useEffect, useRef, useMemo } from "react"
 import { useConfig } from "../hooks/useConfig";
 import { config as environmentConfig } from '../config/environment';
 import { ChatContext } from './shared/ChatContext';
+import { useFormMode } from './FormModeContext';
 import PropTypes from "prop-types";
 import { 
   errorLogger, 
@@ -511,7 +512,8 @@ export const getChatContext = () => ChatContext;
 
 const ChatProvider = ({ children }) => {
   const { config: tenantConfig } = useConfig();
-  
+  const { clearCompletionState, cancelForm } = useFormMode();
+
   // Session persistence constants
   const STORAGE_KEYS = {
     MESSAGES: 'picasso_messages',
@@ -2375,7 +2377,27 @@ const ChatProvider = ({ children }) => {
       clearTimeout(timeoutId);
     });
     retryTimeoutsRef.current.clear();
-  }, []);
+
+    // Clear form state to remove FormCompletionCard and any active forms
+    try {
+      // Clear form completion state (removes FormCompletionCard)
+      if (clearCompletionState && typeof clearCompletionState === 'function') {
+        clearCompletionState();
+        logger.debug('🧹 Cleared form completion state');
+      }
+
+      // Cancel any active form (clears all form-related state and session storage)
+      if (cancelForm && typeof cancelForm === 'function') {
+        cancelForm();
+        logger.debug('🧹 Cancelled active form state');
+      }
+    } catch (error) {
+      errorLogger.logError(error, {
+        context: 'clear_form_state',
+        action: 'clearMessages'
+      });
+    }
+  }, [clearCompletionState, cancelForm]);
 
   const loadConversationHistory = useCallback(async () => {
     if (!conversationManagerRef.current || !conversationMetadata.canLoadHistory) {
