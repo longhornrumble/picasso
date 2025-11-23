@@ -382,22 +382,8 @@ marked.use({
       return false;
     },
     renderer(token) {
-      // Check if URL is external
-      const isExternal = (() => {
-        if (!token.href) return false;
-        if (token.href.startsWith('mailto:')) return true;
-        
-        try {
-          const linkUrl = new URL(token.href, window.location.href);
-          const currentUrl = new URL(window.location.href);
-          return linkUrl.origin !== currentUrl.origin;
-        } catch (e) {
-          return true; // Treat as external if parsing fails
-        }
-      })();
-      
-      const targetAttr = isExternal ? ' target="_blank" rel="noopener noreferrer"' : '';
-      return `<a href="${token.href}"${targetAttr}>${token.text}</a>`;
+      // Open all links in same tab
+      return `<a href="${token.href}" rel="noopener noreferrer">${token.text}</a>`;
     }
   }]
 });
@@ -438,7 +424,7 @@ async function sanitizeMessage(content) {
 
     // 3) Use the HTML as-is from marked (no tightening needed)
 
-    // 4) One-time DOMPurify hook to enforce safe anchors + new-tab behavior
+    // 4) One-time DOMPurify hook to enforce safe anchors (open in same tab)
     if (!__sanitizeHookInstalled && typeof DOMPurify?.addHook === 'function') {
       DOMPurify.addHook('afterSanitizeAttributes', (node) => {
         if (node.tagName && node.tagName.toLowerCase() === 'a') {
@@ -447,7 +433,8 @@ async function sanitizeMessage(content) {
           if (!/^https?:/i.test(href) && !/^mailto:/i.test(href) && !/^tel:/i.test(href)) {
             node.removeAttribute('href');
           }
-          node.setAttribute('target', '_blank');
+          // Remove target attribute if present (open in same tab)
+          node.removeAttribute('target');
           node.setAttribute('rel', 'noopener noreferrer');
         }
       });

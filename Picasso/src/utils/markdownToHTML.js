@@ -67,9 +67,8 @@ marked.use({
       return false;
     },
     renderer(token) {
-      const isExternal = isExternalUrl(token.href);
-      const targetAttr = isExternal ? ' target="_blank" rel="noopener noreferrer"' : '';
-      return `<a href="${token.href}"${targetAttr}>${token.text}</a>`;
+      // Open all links in same tab
+      return `<a href="${token.href}" rel="noopener noreferrer">${token.text}</a>`;
     }
   }]
 });
@@ -96,15 +95,12 @@ export function markdownToHTML(markdown) {
     // Sanitize the HTML to prevent XSS attacks using enhanced security
     const sanitizedHtml = sanitizeHTML(html);
     
-    // Process links to add target="_blank" only for external URLs
+    // Process links to ensure rel attribute for security (all links open in same tab)
     const finalHtml = sanitizedHtml.replace(
       /<a\s+href="([^"]+)"/gi,
       (match, url) => {
-        const isExternal = isExternalUrl(url);
-        if (isExternal) {
-          return `<a target="_blank" rel="noopener noreferrer" href="${url}"`;
-        }
-        return `<a href="${url}"`;
+        // Remove any target="_blank" and ensure rel attribute
+        return `<a href="${url}" rel="noopener noreferrer"`;
       }
     );
     

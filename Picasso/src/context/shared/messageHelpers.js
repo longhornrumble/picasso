@@ -52,14 +52,17 @@ export const processMessageContent = (rawContent) => {
       ALLOW_DATA_ATTR: false
     });
     
-    // Add target="_blank" to links
+    // Remove target="_blank" to make links open in same tab
     const finalHtml = safeHtml.replace(
       /<a\s+([^>]*href=["'](?:https?:|mailto:|tel:)[^"']+["'][^>]*)>/gi,
       (match, attrs) => {
-        if (!/target=/i.test(attrs)) {
-          return `<a ${attrs} target="_blank" rel="noopener noreferrer">`;
+        // Remove target="_blank" if present
+        const cleanedAttrs = attrs.replace(/\s*target=["'][^"']*["']\s*/gi, '');
+        // Add rel for security
+        if (!/rel=/i.test(cleanedAttrs)) {
+          return `<a ${cleanedAttrs} rel="noopener noreferrer">`;
         }
-        return match;
+        return `<a ${cleanedAttrs}>`;
       }
     );
     

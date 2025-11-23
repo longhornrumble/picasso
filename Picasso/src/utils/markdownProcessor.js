@@ -77,16 +77,18 @@ export function renderMarkdownToSafeHtml(rawText) {
     KEEP_CONTENT: true
   });
   
-  // 4) Post-process to ensure all external links have target="_blank"
+  // 4) Post-process to ensure all links open in same tab
   // This is a simple regex approach since DOMPurify already made it safe
   const finalHtml = safeHtml.replace(
     /<a\s+([^>]*href=["'](?:https?:|mailto:|tel:)[^"']+["'][^>]*)>/gi,
     (match, attrs) => {
-      // Check if target already exists
-      if (!/target=/i.test(attrs)) {
-        return `<a ${attrs} target="_blank" rel="noopener noreferrer">`;
+      // Remove target="_blank" if present and add rel for security
+      const cleanedAttrs = attrs.replace(/\s*target=["'][^"']*["']\s*/gi, '');
+      // Add rel for security (keeps noopener noreferrer for security even without new tab)
+      if (!/rel=/i.test(cleanedAttrs)) {
+        return `<a ${cleanedAttrs} rel="noopener noreferrer">`;
       }
-      return match;
+      return `<a ${cleanedAttrs}>`;
     }
   );
   
