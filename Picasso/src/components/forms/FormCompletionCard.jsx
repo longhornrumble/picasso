@@ -13,6 +13,22 @@ export default function FormCompletionCard({
   onContinue,
   onStartForm
 }) {
+  // DEBUG: Log everything we receive
+  console.log('[FormCompletionCard] Rendering with props:', {
+    formId,
+    config,
+    configType: typeof config,
+    configIsNull: config === null,
+    configIsUndefined: config === undefined,
+    configKeys: config ? Object.keys(config) : 'N/A',
+    hasConfirmationMessage: !!config?.confirmation_message,
+    hasNextSteps: !!config?.next_steps,
+    nextStepsLength: config?.next_steps?.length,
+    nextStepsValue: config?.next_steps,
+    hasActions: !!config?.actions,
+    fullConfig: JSON.stringify(config, null, 2)
+  });
+
   // Use default config if none provided
   const defaultConfig = {
     confirmation_message: "Thank you for submitting your information! We've received your response and will be in touch soon.",
@@ -35,7 +51,32 @@ export default function FormCompletionCard({
     ]
   };
 
-  const activeConfig = config || defaultConfig;
+  // Merge provided config with defaults - use defaults for missing properties
+  // Support both formats: config.post_submission.next_steps (new) and config.next_steps (legacy)
+  const activeConfig = {
+    confirmation_message: config?.post_submission?.confirmation_message || config?.confirmation_message || defaultConfig.confirmation_message,
+    next_steps: config?.post_submission?.next_steps || config?.next_steps || defaultConfig.next_steps,
+    actions: config?.post_submission?.actions || config?.actions || defaultConfig.actions
+  };
+
+  console.log('[FormCompletionCard] 🔍 FALLBACK ANALYSIS:', {
+    hasConfigProp: !!config,
+    configNextStepsExists: config?.next_steps !== undefined,
+    configNextStepsValue: config?.next_steps,
+    configNextStepsIsArray: Array.isArray(config?.next_steps),
+    configNextStepsLength: config?.next_steps?.length,
+    willUseDefaults: !config?.next_steps,
+    defaultNextStepsLength: defaultConfig.next_steps.length
+  });
+
+  console.log('[FormCompletionCard] Active config after merge:', {
+    confirmationMessage: activeConfig.confirmation_message,
+    nextStepsCount: activeConfig.next_steps?.length,
+    nextSteps: activeConfig.next_steps,
+    actionsCount: activeConfig.actions?.length,
+    usingDefaultNextSteps: activeConfig.next_steps === defaultConfig.next_steps
+  });
+
   const { confirmation_message, next_steps, actions } = activeConfig;
 
   // Replace placeholders in confirmation message
