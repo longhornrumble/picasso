@@ -188,6 +188,14 @@ export const getFromSession = (key) => {
 
     const data = JSON.parse(item);
 
+    // Validate that we have the expected structure
+    if (typeof data !== 'object' || !data.hasOwnProperty('timestamp') || !data.hasOwnProperty('value')) {
+      // Invalid structure - clean up and return null
+      console.warn(`[getFromSession] Invalid data structure for key "${key}" - cleaning up`);
+      sessionStorage.removeItem(key);
+      return null;
+    }
+
     // Debug logging for messages specifically
     if (key === 'picasso_messages' && data.value) {
       console.log('[getFromSession] Retrieved messages:', {
@@ -207,7 +215,13 @@ export const getFromSession = (key) => {
 
     return data.value;
   } catch (error) {
-    console.warn('Failed to read from session storage:', error);
+    // JSON parse error or other issue - clean up the corrupted data
+    console.warn(`[getFromSession] Failed to read from session storage for key "${key}":`, error.message);
+    try {
+      sessionStorage.removeItem(key);
+    } catch (removeError) {
+      // Silently fail if we can't remove
+    }
     return null;
   }
 };
