@@ -273,9 +273,12 @@ export default function FormFieldPrompt({ onCancel }) {
 
       {/* Field prompt */}
       <div className="form-field-content">
-        <div className="form-field-label">
+        <label
+          htmlFor={`field-${currentField.id}`}
+          className="form-field-label"
+        >
           {currentField.prompt || currentField.label}
-        </div>
+        </label>
 
         {/* Field-specific hints */}
         {currentField.type === 'email' && (
@@ -303,12 +306,15 @@ export default function FormFieldPrompt({ onCancel }) {
             <form onSubmit={handleSubmit}>
               <input
                 ref={inputRef}
+                id={`field-${currentField.id}`}
+                name={currentField.id}
                 type="text"
                 className="form-field-input"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 placeholder={currentField.placeholder || 'Type your answer...'}
                 required={currentField.required}
+                aria-describedby={error ? `error-${currentField.id}` : undefined}
               />
             </form>
           )}
@@ -318,12 +324,15 @@ export default function FormFieldPrompt({ onCancel }) {
             <form onSubmit={handleSubmit}>
               <input
                 ref={inputRef}
+                id={`field-${currentField.id}`}
+                name={currentField.id}
                 type="email"
                 className="form-field-input"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 placeholder={currentField.placeholder || 'your.email@example.com'}
                 required={currentField.required}
+                aria-describedby={error ? `error-${currentField.id}` : undefined}
               />
             </form>
           )}
@@ -333,12 +342,15 @@ export default function FormFieldPrompt({ onCancel }) {
             <form onSubmit={handleSubmit}>
               <input
                 ref={inputRef}
+                id={`field-${currentField.id}`}
+                name={currentField.id}
                 type="tel"
                 className="form-field-input"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 placeholder={currentField.placeholder || '(555) 123-4567'}
                 required={currentField.required}
+                aria-describedby={error ? `error-${currentField.id}` : undefined}
               />
             </form>
           )}
@@ -348,12 +360,15 @@ export default function FormFieldPrompt({ onCancel }) {
             <form onSubmit={handleSubmit}>
               <input
                 ref={inputRef}
+                id={`field-${currentField.id}`}
+                name={currentField.id}
                 type="number"
                 className="form-field-input"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 placeholder={currentField.placeholder || 'Enter a number...'}
                 required={currentField.required}
+                aria-describedby={error ? `error-${currentField.id}` : undefined}
               />
             </form>
           )}
@@ -363,11 +378,14 @@ export default function FormFieldPrompt({ onCancel }) {
             <form onSubmit={handleSubmit}>
               <input
                 ref={inputRef}
+                id={`field-${currentField.id}`}
+                name={currentField.id}
                 type="date"
                 className="form-field-input"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 required={currentField.required}
+                aria-describedby={error ? `error-${currentField.id}` : undefined}
               />
             </form>
           )}
@@ -377,12 +395,15 @@ export default function FormFieldPrompt({ onCancel }) {
             <form onSubmit={handleSubmit}>
               <textarea
                 ref={inputRef}
+                id={`field-${currentField.id}`}
+                name={currentField.id}
                 className="form-field-textarea"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 placeholder={currentField.placeholder || 'Type your answer...'}
                 rows={4}
                 required={currentField.required}
+                aria-describedby={error ? `error-${currentField.id}` : undefined}
               />
             </form>
           )}
@@ -427,7 +448,12 @@ export default function FormFieldPrompt({ onCancel }) {
 
         {/* Validation error */}
         {error && (
-          <div className="form-field-error">
+          <div
+            id={`error-${currentField.id}`}
+            className="form-field-error"
+            role="alert"
+            aria-live="polite"
+          >
             {error}
           </div>
         )}
