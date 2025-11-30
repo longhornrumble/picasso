@@ -4,7 +4,7 @@ import React, { useState } from 'react';
  * CompositeFieldGroup Component
  * Renders a group of related fields (name or address) together in one step
  */
-export default function CompositeFieldGroup({ field, onSubmit, inputRef }) {
+export default function CompositeFieldGroup({ field, onSubmit, inputRef, labelId }) {
   // State for all subfields
   const [values, setValues] = useState(() => {
     const initialValues = {};
@@ -80,7 +80,7 @@ export default function CompositeFieldGroup({ field, onSubmit, inputRef }) {
   });
 
   return (
-    <form onSubmit={handleSubmit} className="composite-field-group">
+    <form onSubmit={handleSubmit} className="composite-field-group" aria-labelledby={labelId}>
       <div className="composite-field-container">
         {field.subfields.map((subfield, index) => (
           <div key={subfield.id} className="composite-field-item">

@@ -274,7 +274,8 @@ export default function FormFieldPrompt({ onCancel }) {
       {/* Field prompt */}
       <div className="form-field-content">
         <label
-          htmlFor={`field-${currentField.id}`}
+          id={`label-${currentField.id}`}
+          htmlFor={!['select', 'name', 'address'].includes(currentField.type) ? `field-${currentField.id}` : undefined}
           className="form-field-label"
         >
           {currentField.prompt || currentField.label}
@@ -410,7 +411,11 @@ export default function FormFieldPrompt({ onCancel }) {
 
           {/* Select/radio options */}
           {currentField.type === 'select' && currentField.options && (
-            <div className="form-select-options">
+            <div
+              className="form-select-options"
+              role="group"
+              aria-labelledby={`label-${currentField.id}`}
+            >
               {currentField.options.map((option) => (
                 <button
                   key={option.value}
@@ -430,6 +435,7 @@ export default function FormFieldPrompt({ onCancel }) {
               field={currentField}
               onSubmit={handleCompositeSubmit}
               inputRef={inputRef}
+              labelId={`label-${currentField.id}`}
             />
           )}
 

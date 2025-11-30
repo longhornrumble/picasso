@@ -348,8 +348,7 @@ export const FormModeProvider = ({ children }) => {
         isFormComplete: true,
         completedFormData: finalFormData,
         completedFormConfig: formConfig,
-        hasPostSubmission: !!formConfig.post_submission,
-        postSubmissionContent: formConfig.post_submission
+        hasPostSubmission: !!formConfig.post_submission
       });
       setIsFormComplete(true);
       setCompletedFormData(finalFormData);
