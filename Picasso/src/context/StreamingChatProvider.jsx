@@ -188,6 +188,7 @@ async function streamChat({
             type: obj.type,
             hasCtaButtons: !!obj.ctaButtons,
             hasCards: !!obj.cards,
+            hasShowcaseCard: !!obj.showcaseCard,
             hasContent: !!(obj.content || obj.text || obj.delta)
           });
 
@@ -195,6 +196,18 @@ async function streamChat({
           if (obj.type === 'cards' && obj.cards) {
             // Handle cards separately
             onCards?.(obj.cards, obj.metadata);
+            continue;
+          }
+
+          // Check if this is a showcase card event
+          if (obj.type === 'showcase_card' && obj.showcaseCard) {
+            // Handle showcase card separately
+            logger.info('Received showcase card', { showcaseCard: obj.showcaseCard, metadata: obj.metadata });
+
+            // Store showcase card in ref for onDone to include in final state update
+            pendingShowcaseCardRef.current = { showcaseCard: obj.showcaseCard, metadata: obj.metadata };
+
+            console.log('[StreamingChatProvider] pendingShowcaseCardRef.current after assignment:', pendingShowcaseCardRef.current);
             continue;
           }
 
@@ -321,6 +334,7 @@ export default function StreamingChatProvider({ children }) {
   const conversationManagerRef = useRef(null);
   const abortControllersRef = useRef(new Map());
   const pendingCtasRef = useRef(null); // Fix: Use ref instead of closure variable
+  const pendingShowcaseCardRef = useRef(null); // Ref for staging showcase card
 
   // Get config
   const { config: tenantConfig } = useConfig();
@@ -401,7 +415,9 @@ export default function StreamingChatProvider({ children }) {
             // Generate welcome action chips if configured
             const welcomeActions = [];
             if (tenantConfig?.action_chips?.enabled && tenantConfig?.action_chips?.show_on_welcome) {
-              const chips = tenantConfig.action_chips.default_chips || [];
+              // Handle both array (legacy) and dictionary (v1.4.1) formats
+              const rawChips = tenantConfig.action_chips.default_chips || {};
+              const chips = Array.isArray(rawChips) ? rawChips : Object.values(rawChips);
               const maxDisplay = tenantConfig.action_chips.max_display || 3;
               welcomeActions.push(...chips.slice(0, maxDisplay));
             }
@@ -512,13 +528,14 @@ export default function StreamingChatProvider({ children }) {
       isStreaming: true,
       ctaButtons: [], // Initialize empty array for CTAs
       cards: [], // Initialize empty array for cards
+      showcaseCard: null, // Initialize null for showcase card
       metadata: {
         streamId: streamingMessageId,
         isStreaming: true
       }
     };
 
-    // CTAs will be staged in pendingCtasRef
+    // CTAs and showcase card will be staged in pendingCtasRef
 
     setMessages(prev => {
       const updated = [...prev, placeholder];
@@ -644,10 +661,12 @@ export default function StreamingChatProvider({ children }) {
           const responseTime = Date.now() - startTime;
           logger.info(`Streaming completed in ${responseTime}ms`);
 
-          // Debug: Check if pendingCtasRef survived until onDone
-          console.log('[StreamingChatProvider] onDone called, pendingCtasRef state:', {
+          // Debug: Check if pendingCtasRef and pendingShowcaseCardRef survived until onDone
+          console.log('[StreamingChatProvider] onDone called, pending refs state:', {
             hasPendingCtas: !!pendingCtasRef.current,
             pendingCtas: pendingCtasRef.current,
+            hasPendingShowcaseCard: !!pendingShowcaseCardRef.current,
+            pendingShowcaseCard: pendingShowcaseCardRef.current,
             streamingMessageId: streamingMessageId
           });
 
@@ -659,9 +678,10 @@ export default function StreamingChatProvider({ children }) {
 
           // FORM INTERRUPTION: Filter CTAs and create CTA buttons if form is suspended
           const rawCtaButtons = pendingCtasRef.current?.ctaButtons || [];
+          const rawShowcaseCard = pendingShowcaseCardRef.current?.showcaseCard || null;
           const { isFormMode: formActive, isSuspended: formSuspended, currentFormId: activeFormId, formConfig: activeFormConfig } = formModeRef.current || {};
 
-          console.log('[StreamingChatProvider] 🔍 Form state at CTA finalization:', { formActive, formSuspended, activeFormId, ctaCount: rawCtaButtons.length });
+          console.log('[StreamingChatProvider] 🔍 Form state at CTA finalization:', { formActive, formSuspended, activeFormId, ctaCount: rawCtaButtons.length, hasShowcaseCard: !!rawShowcaseCard });
 
           let finalCtaButtons = rawCtaButtons;
 
@@ -676,7 +696,7 @@ export default function StreamingChatProvider({ children }) {
             finalCtaButtons = [];
           }
 
-          // SIMPLIFIED: Direct state update with explicit CTA preservation
+          // SIMPLIFIED: Direct state update with explicit CTA and showcase card preservation
           setMessages(prev => {
             const updated = prev.map(msg => {
               if (msg.id !== streamingMessageId) return msg;
@@ -687,14 +707,17 @@ export default function StreamingChatProvider({ children }) {
                 content: finalContent,
                 isStreaming: false,
                 ctaButtons: finalCtaButtons, // Use filtered CTAs (including interruption buttons)
+                showcaseCard: rawShowcaseCard, // Include showcase card if present
                 metadata: {
                   ...msg.metadata,
                   ...pendingCtasRef.current?.metadata,
+                  ...pendingShowcaseCardRef.current?.metadata,
                   isStreaming: false,
                   streamCompleted: true,
                   responseTime,
                   hasCtas: finalCtaButtons.length > 0,
-                  ctaCount: finalCtaButtons.length
+                  ctaCount: finalCtaButtons.length,
+                  hasShowcaseCard: !!rawShowcaseCard
                 }
               };
 
@@ -711,7 +734,9 @@ export default function StreamingChatProvider({ children }) {
               savedLength: savedMessages?.length,
               lastSaved: savedMessages?.[savedMessages.length - 1],
               lastSavedCtas: savedMessages?.[savedMessages.length - 1]?.ctaButtons,
-              ctasPreserved: savedMessages?.[savedMessages.length - 1]?.ctaButtons?.length > 0
+              ctasPreserved: savedMessages?.[savedMessages.length - 1]?.ctaButtons?.length > 0,
+              lastSavedShowcaseCard: savedMessages?.[savedMessages.length - 1]?.showcaseCard,
+              showcaseCardPreserved: !!savedMessages?.[savedMessages.length - 1]?.showcaseCard
             });
 
             return updated;
@@ -733,28 +758,32 @@ export default function StreamingChatProvider({ children }) {
                 ctaButtons: pendingCtasRef.current?.ctaButtons
               });
 
-              // Then add the assistant message with CTAs (use finalCtaButtons with form interruption logic applied)
+              // Then add the assistant message with CTAs and showcase card (use finalCtaButtons with form interruption logic applied)
               await conversationManagerRef.current.addMessage({
                 ...placeholder,
                 content: finalContent,
                 isStreaming: false,
                 ctaButtons: finalCtaButtons, // Use filtered CTAs (same as main state update)
+                showcaseCard: rawShowcaseCard, // Include showcase card
                 metadata: {
                   ...placeholder.metadata,
-                  ...pendingCtasRef.current?.metadata
+                  ...pendingCtasRef.current?.metadata,
+                  ...pendingShowcaseCardRef.current?.metadata
                 }
               });
 
-              logger.info('Added both messages to conversation manager with CTAs:', {
-                ctaCount: finalCtaButtons.length
+              logger.info('Added both messages to conversation manager with CTAs and showcase card:', {
+                ctaCount: finalCtaButtons.length,
+                hasShowcaseCard: !!rawShowcaseCard
               });
             }
           } catch (cmErr) {
             logger.warn('Failed to update conversation manager (non-critical)', cmErr);
           }
 
-          // NOW clear pendingCtasRef after all usage is complete
+          // NOW clear pendingCtasRef and pendingShowcaseCardRef after all usage is complete
           pendingCtasRef.current = null;
+          pendingShowcaseCardRef.current = null;
 
           // CHECK FOR SUSPENDED FORM - Add resume prompt if needed
           // Capture rawCtaButtons before they're cleared (for program switch detection)
@@ -1026,7 +1055,9 @@ export default function StreamingChatProvider({ children }) {
       // Generate welcome action chips if configured
       const welcomeActions = [];
       if (tenantConfig?.action_chips?.enabled && tenantConfig?.action_chips?.show_on_welcome) {
-        const chips = tenantConfig.action_chips.default_chips || [];
+        // Handle both array (legacy) and dictionary (v1.4.1) formats
+        const rawChips = tenantConfig.action_chips.default_chips || {};
+        const chips = Array.isArray(rawChips) ? rawChips : Object.values(rawChips);
         const maxDisplay = tenantConfig.action_chips.max_display || 3;
         welcomeActions.push(...chips.slice(0, maxDisplay));
       }
@@ -1091,7 +1122,12 @@ export default function StreamingChatProvider({ children }) {
         role: 'assistant',
         content: message.content,
         timestamp: new Date().toISOString(),
-        metadata: message.metadata || {}
+        metadata: message.metadata || {},
+        // Preserve optional properties for cards and CTA buttons
+        ...(message.showcaseCard && { showcaseCard: message.showcaseCard }),
+        ...(message.cards && { cards: message.cards }),
+        ...(message.ctaButtons && { ctaButtons: message.ctaButtons }),
+        ...(message.actions && { actions: message.actions })
       };
 
       console.log('[StreamingChatProvider] New message object:', newMessage);

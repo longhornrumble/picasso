@@ -251,7 +251,9 @@ export default function HTTPChatProvider({ children }) {
             // Generate welcome action chips if configured
             const welcomeActions = [];
             if (tenantConfig?.action_chips?.enabled && tenantConfig?.action_chips?.show_on_welcome) {
-              const chips = tenantConfig.action_chips.default_chips || [];
+              // Handle both array (legacy) and dictionary (v1.4.1) formats
+              const rawChips = tenantConfig.action_chips.default_chips || {};
+              const chips = Array.isArray(rawChips) ? rawChips : Object.values(rawChips);
               const maxDisplay = tenantConfig.action_chips.max_display || 3;
               welcomeActions.push(...chips.slice(0, maxDisplay));
             }
@@ -724,7 +726,9 @@ export default function HTTPChatProvider({ children }) {
       // Generate welcome action chips if configured
       const welcomeActions = [];
       if (tenantConfig?.action_chips?.enabled && tenantConfig?.action_chips?.show_on_welcome) {
-        const chips = tenantConfig.action_chips.default_chips || [];
+        // Handle both array (legacy) and dictionary (v1.4.1) formats
+        const rawChips = tenantConfig.action_chips.default_chips || {};
+        const chips = Array.isArray(rawChips) ? rawChips : Object.values(rawChips);
         const maxDisplay = tenantConfig.action_chips.max_display || 3;
         welcomeActions.push(...chips.slice(0, maxDisplay));
       }

@@ -433,6 +433,13 @@ export function useCSSVariables(config) {
       '--showcase-card-image-border-radius': ensurePixelUnit(branding.showcase_card_image_border_radius || '8px'),
       '--showcase-card-image-margin': branding.showcase_card_image_margin || '0 0 12px 0',
 
+      /* Type badge - uses primary color for brand cohesion */
+      '--showcase-card-type-bg': branding.showcase_card_type_bg || branding.primary_color || '#1a1a1a',
+      '--showcase-card-type-color': branding.showcase_card_type_color || '#ffffff',
+
+      /* Secondary action hover state */
+      '--showcase-card-secondary-hover-bg': branding.showcase_card_secondary_hover_bg || 'rgba(0, 0, 0, 0.04)',
+
       /* Action buttons in showcase cards inherit from unified button system */
     };
 

@@ -98,6 +98,11 @@ export default function MessageList({
               isStreaming={isStreamingProp}
               metadata={msg.metadata}
               renderMode={renderMode}
+
+              // Card and CTA props
+              showcaseCard={msg.showcaseCard}
+              ctaButtons={msg.ctaButtons}
+              cards={msg.cards}
             />
           </div>
         );

@@ -10,6 +10,7 @@ import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import CTAButton, { CTAButtonGroup } from './CTAButton';
 import FormCompletionCard from '../forms/FormCompletionCard';
+import ShowcaseCard from './ShowcaseCard';
 
 // Configure marked for streaming markdown
 marked.setOptions({
@@ -99,6 +100,7 @@ export default function MessageBubble({
   actions = [],
   ctaButtons = [],  // CTA buttons from backend
   cards = [],       // Response cards from backend
+  showcaseCard,     // Showcase card from backend (single card)
   uploadState,
   onCancel,
   metadata = {},
@@ -526,6 +528,90 @@ export default function MessageBubble({
       return; // Don't send to Bedrock
     }
 
+    // Handle show_showcase action - display showcase card without Bedrock
+    if (action.action === 'show_showcase') {
+      console.log('[MessageBubble] Action chip show_showcase triggered', {
+        target_showcase_id: action.target_showcase_id,
+        program_id: action.program_id
+      });
+
+      const showcaseId = action.target_showcase_id || action.program_id;
+
+      // Look up showcase item from config - support both dictionary (showcase_items) and array (content_showcase) formats
+      let showcaseItem = null;
+
+      // Try dictionary format first (showcase_items)
+      if (config?.showcase_items?.[showcaseId]) {
+        showcaseItem = config.showcase_items[showcaseId];
+      }
+      // Fall back to array format (content_showcase)
+      else if (Array.isArray(config?.content_showcase)) {
+        showcaseItem = config.content_showcase.find(item => item.id === showcaseId);
+      }
+
+      if (showcaseItem) {
+        // Resolve CTA references from cta_definitions
+        const ctaDefinitions = config?.cta_definitions || {};
+        const availableCtas = showcaseItem.available_ctas || {};
+
+        // Build ctaButtons structure for ShowcaseCard component
+        const ctaButtons = {};
+
+        // Resolve primary CTA
+        if (availableCtas.primary && ctaDefinitions[availableCtas.primary]) {
+          ctaButtons.primary = {
+            id: availableCtas.primary,
+            ...ctaDefinitions[availableCtas.primary]
+          };
+        }
+
+        // Resolve secondary CTAs
+        if (Array.isArray(availableCtas.secondary) && availableCtas.secondary.length > 0) {
+          ctaButtons.secondary = availableCtas.secondary
+            .filter(ctaId => ctaDefinitions[ctaId])
+            .map(ctaId => ({
+              id: ctaId,
+              ...ctaDefinitions[ctaId]
+            }));
+        }
+
+        // Build showcase card object for ShowcaseCard component
+        const showcaseCard = {
+          id: showcaseId,
+          type: showcaseItem.type || 'program',
+          name: showcaseItem.name,
+          tagline: showcaseItem.tagline,
+          description: showcaseItem.description,
+          image_url: showcaseItem.image_url,
+          stats: showcaseItem.stats,
+          testimonial: showcaseItem.testimonial,
+          highlights: showcaseItem.highlights,
+          ctaButtons: Object.keys(ctaButtons).length > 0 ? ctaButtons : undefined
+        };
+
+        // Add assistant message with showcase card
+        addMessage({
+          role: 'assistant',
+          content: showcaseItem.tagline || showcaseItem.description || '',
+          showcaseCard,
+          metadata: {
+            action_chip_triggered: true,
+            action_chip_id: action.id || action.label,
+            action_chip_action: action.action,
+            showcase_card: true,
+            target_showcase_id: showcaseId
+          }
+        });
+        console.log('[MessageBubble] Showcase card displayed:', showcaseId, showcaseCard);
+      } else {
+        console.warn('[MessageBubble] Showcase item not found in config:', showcaseId);
+        // Optionally fall back to send_query behavior
+        const messageText = action.value || action.label || `Tell me about ${showcaseId}`;
+        addMessage({ role: 'user', content: messageText });
+      }
+      return; // Don't send to Bedrock
+    }
+
     // Handle send_query action (default) - send message to Bedrock
     const messageText = action.value || action.label;
 
@@ -803,6 +889,14 @@ export default function MessageBubble({
             onCtaClick={handleCtaClick}
             disabled={isTyping || anyButtonClicked}
             clickedButtonIds={clickedButtonIds}
+          />
+        )}
+
+        {/* Showcase Card (assistant/bot only) */}
+        {(role === "assistant" || role === "bot") && showcaseCard && (
+          <ShowcaseCard
+            showcaseCard={showcaseCard}
+            onCTAClick={handleCtaClick}
           />
         )}
 

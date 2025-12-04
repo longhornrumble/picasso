@@ -1267,9 +1267,11 @@ const ChatProvider = ({ children }) => {
         return [];
       }
       
-      const chips = actionChipsConfig.default_chips || [];
+      // Handle both array (legacy) and dictionary (v1.4.1) formats
+      const rawChips = actionChipsConfig.default_chips || {};
+      const chips = Array.isArray(rawChips) ? rawChips : Object.values(rawChips);
       const maxDisplay = actionChipsConfig.max_display || 3;
-      
+
       return chips.slice(0, maxDisplay);
     };
   }, []);

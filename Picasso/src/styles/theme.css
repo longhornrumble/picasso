@@ -906,7 +906,7 @@ body[data-iframe="true"].callout-visible:not(.chat-open) {
 p.chat-subtitle {
   margin: 0 !important;
   margin-top: 0 !important;
-  margin-bottom: 0 !important;
+  margin-bottom: 8px !important;
   padding: 0 !important;
   font-size: calc(var(--font-size-heading) * 0.85); /* 85% of title size */
   font-weight: 400; /* Regular weight */
@@ -1046,12 +1046,13 @@ p.chat-subtitle {
 
 /* === MARKDOWN TYPOGRAPHY (from production) === */
 /* Reset margins on markdown-generated content */
-.message-content .streaming-formatted p,
-.message-content p,
-.streaming-formatted p,
-.message-wrapper p,
-.message-text p,
-.streaming p {
+/* NOTE: Showcase card paragraphs excluded - they have custom spacing */
+.message-content .streaming-formatted p:not(.showcase-card-tagline):not(.showcase-card-description):not(.showcase-card-stats),
+.message-content p:not(.showcase-card-tagline):not(.showcase-card-description):not(.showcase-card-stats),
+.streaming-formatted p:not(.showcase-card-tagline):not(.showcase-card-description):not(.showcase-card-stats),
+.message-wrapper p:not(.showcase-card-tagline):not(.showcase-card-description):not(.showcase-card-stats),
+.message-text p:not(.showcase-card-tagline):not(.showcase-card-description):not(.showcase-card-stats),
+.streaming p:not(.showcase-card-tagline):not(.showcase-card-description):not(.showcase-card-stats) {
   display: block !important;
   margin: 16px 0 16px 0 !important; /* Top and bottom margin for paragraph spacing */
   padding: 0 !important;
@@ -1060,22 +1061,24 @@ p.chat-subtitle {
 }
 
 /* Even more specific for streaming containers */
-.message-text.streaming p,
-.streaming .streaming-formatted p,
-.message.bot .message-content p,
-.message.bot .message-text p,
-.message-text.message-content-rendered p,
-.message-content-rendered .streaming-formatted p,
-div.streaming-formatted p {
+/* NOTE: Showcase card paragraphs excluded - they have custom spacing */
+.message-text.streaming p:not(.showcase-card-tagline):not(.showcase-card-description):not(.showcase-card-stats),
+.streaming .streaming-formatted p:not(.showcase-card-tagline):not(.showcase-card-description):not(.showcase-card-stats),
+.message.bot .message-content p:not(.showcase-card-tagline):not(.showcase-card-description):not(.showcase-card-stats),
+.message.bot .message-text p:not(.showcase-card-tagline):not(.showcase-card-description):not(.showcase-card-stats),
+.message-text.message-content-rendered p:not(.showcase-card-tagline):not(.showcase-card-description):not(.showcase-card-stats),
+.message-content-rendered .streaming-formatted p:not(.showcase-card-tagline):not(.showcase-card-description):not(.showcase-card-stats),
+div.streaming-formatted p:not(.showcase-card-tagline):not(.showcase-card-description):not(.showcase-card-stats) {
   display: block !important;
   margin: 16px 0 !important;
   padding: 0 !important;
 }
 
 /* Force block display and margins with maximum specificity */
+/* NOTE: Showcase card paragraphs are excluded - they have their own spacing rules */
 .message.bot .message-content .message-text.message-content-rendered .streaming-formatted p,
-.picasso-widget p,
-.picasso-widget .message-content p,
+.picasso-widget p:not(.showcase-card-tagline):not(.showcase-card-description):not(.showcase-card-stats),
+.picasso-widget .message-content p:not(.showcase-card-tagline):not(.showcase-card-description):not(.showcase-card-stats),
 .picasso-widget .streaming-formatted p {
   display: block !important;
   margin-top: 16px !important;
@@ -1103,7 +1106,7 @@ p {
 }
 
 .streaming-formatted > p:last-of-type {
-  margin-bottom: 0 !important;
+  margin-bottom: 8px !important;
 }
 
 /* Ensure spacing between consecutive paragraphs */
@@ -1111,13 +1114,13 @@ p {
   margin-top: 16px !important;
 }
 
-.message-content .streaming-formatted p:first-child,
-.message-content p:first-child {
+.message-content .streaming-formatted p:first-child:not(.showcase-card-tagline):not(.showcase-card-description):not(.showcase-card-stats),
+.message-content p:first-child:not(.showcase-card-tagline):not(.showcase-card-description):not(.showcase-card-stats) {
   margin-top: 0 !important; /* Remove top margin from first paragraph */
 }
 
-.message-content .streaming-formatted p:last-child,
-.message-content p:last-child {
+.message-content .streaming-formatted p:last-child:not(.showcase-card-tagline):not(.showcase-card-description):not(.showcase-card-stats),
+.message-content p:last-child:not(.showcase-card-tagline):not(.showcase-card-description):not(.showcase-card-stats) {
   margin-bottom: 8px !important; /* Keep some bottom margin for last paragraph */
 }
 
@@ -4669,45 +4672,74 @@ body[data-iframe="true"].minimized {
   padding: var(--showcase-card-padding);
   margin: var(--showcase-card-margin);
   box-shadow: var(--showcase-card-shadow);
-  transition: var(--transition-normal);
+  transition: box-shadow 0.25s ease, transform 0.25s ease;
   font-family: var(--font-family);
+  overflow: hidden;
 }
 
 .showcase-card:hover {
   box-shadow: var(--showcase-card-shadow-hover);
-  transform: translateY(-1px);
+  transform: translateY(-2px);
+}
+
+/* Image Container - for potential overlay effects */
+.showcase-card-image-container {
+  position: relative;
+  margin: var(--showcase-card-image-margin);
+  border-radius: var(--showcase-card-image-border-radius);
+  overflow: hidden;
 }
 
 /* Image */
 .showcase-card-image {
   width: 100%;
   border-radius: var(--showcase-card-image-border-radius);
-  margin: var(--showcase-card-image-margin);
+  margin: 0;
   object-fit: cover;
+  display: block;
+  transition: transform 0.3s ease;
+}
+
+.showcase-card:hover .showcase-card-image {
+  transform: scale(1.02);
 }
 
 /* Title */
 .showcase-card-title {
-  margin: 0 0 3px 0;
+  margin: 0;
   font-size: var(--showcase-card-title-size);
   font-weight: var(--showcase-card-title-weight);
   line-height: var(--showcase-card-title-line-height);
   color: var(--showcase-card-title-color);
   font-family: var(--font-family);
+  letter-spacing: -0.01em;
 }
 
 /* Tagline */
-.showcase-card-tagline {
-  margin: 0 0 6px 0;
+p.showcase-card-tagline {
+  margin: 2px 0 0 0 !important;
+  margin-top: 2px !important;
+  margin-bottom: 8px !important;
+  margin-block-start: 2px !important;
+  margin-block-end: 8px !important;
+  -webkit-margin-before: 2px !important;
+  -webkit-margin-after: 0 !important;
   font-size: var(--showcase-card-tagline-size);
   font-weight: var(--showcase-card-tagline-weight);
   color: var(--showcase-card-tagline-color);
   font-family: var(--font-family);
+  line-height: 1.4;
 }
 
 /* Description */
-.showcase-card-description {
-  margin: 0 0 8px 0;
+p.showcase-card-description {
+  margin: 8px 0 8px 0 !important;
+  margin-top: 8px !important;
+  margin-bottom: 8px !important;
+  margin-block-start: 8px !important;
+  margin-block-end: 8px !important;
+  -webkit-margin-before: 8px !important;
+  -webkit-margin-after: 0 !important;
   font-size: var(--showcase-card-text-size);
   line-height: var(--showcase-card-text-line-height);
   color: var(--showcase-card-text-color);
@@ -4828,6 +4860,104 @@ body[data-iframe="true"].minimized {
   }
 }
 
+/* Content wrapper - flexbox column layout */
+.showcase-card-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* Reset any default margins on child elements - must override global p rule at line 1087 */
+.showcase-card .showcase-card-content > * {
+  margin: 0 !important;
+  margin-block-start: 0 !important;
+  margin-block-end: 8px !important;
+}
+
+/* Spacing for showcase card text elements - use padding-top for spacing */
+.showcase-card .showcase-card-type {
+  margin-top: 12px !important;
+}
+
+.showcase-card .showcase-card-title {
+  padding-top: 6px !important;
+}
+
+.showcase-card .showcase-card-tagline {
+  padding-top: 2px !important;
+  margin-block-start: 0 !important;
+  margin-block-end: 8px !important;
+}
+
+.showcase-card .showcase-card-description {
+  padding-top: 6px !important;
+  margin-block-start: 0 !important;
+  margin-block-end: 8px !important;
+}
+
+/* Override global p rule specifically for showcase card paragraphs */
+.showcase-card p.showcase-card-tagline,
+.showcase-card p.showcase-card-description {
+  margin-block-start: 0 !important;
+  margin-block-end: 8px !important;
+  margin: 0 !important;
+}
+
+/* Type badge - Uses tenant primary color for brand cohesion */
+.showcase-card-type {
+  display: inline-block;
+  padding: 4px 10px;
+  background-color: var(--showcase-card-type-bg);
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--showcase-card-type-color);
+  font-family: var(--font-family);
+  width: fit-content;
+}
+
+/* CTA Actions Container */
+.showcase-card-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 16px !important;
+  padding-top: 16px;
+  border-top: 1px solid var(--showcase-card-border);
+}
+
+/* Primary action button - full width, prominent */
+.showcase-card-actions > .showcase-card-action:first-child {
+  width: 100%;
+  justify-content: center;
+  padding: 12px 16px;
+  font-size: 14px;
+}
+
+.showcase-card-secondary-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Secondary action buttons - pill style, outline */
+.showcase-card-secondary-actions .showcase-card-action {
+  background: transparent;
+  border: 1px solid var(--showcase-card-border);
+  color: var(--showcase-card-text-color);
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.showcase-card-secondary-actions .showcase-card-action:hover {
+  background: var(--showcase-card-secondary-hover-bg);
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+
 /* === LEGACY RESPONSE CARD STYLES === */
 /* Backward compatibility for legacy card format */
 
@@ -4923,4 +5053,34 @@ body[data-iframe="true"].minimized {
   background-color: rgba(0, 123, 255, 0.08);
   transform: translateY(-1px);
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+/* ========================================= */
+/* SHOWCASE CARD PARAGRAPH FINAL OVERRIDES   */
+/* Must be at end of file to win specificity */
+/* ========================================= */
+.picasso-widget .message-content .showcase-card p.showcase-card-tagline,
+.picasso-widget .showcase-card p.showcase-card-tagline,
+.message-content .showcase-card p.showcase-card-tagline,
+.showcase-card p.showcase-card-tagline,
+p.showcase-card-tagline {
+  margin: 2px 0 0 0 !important;
+  margin-top: 2px !important;
+  margin-bottom: 8px !important;
+  margin-block-start: 2px !important;
+  margin-block-end: 8px !important;
+  padding: 0 !important;
+}
+
+.picasso-widget .message-content .showcase-card p.showcase-card-description,
+.picasso-widget .showcase-card p.showcase-card-description,
+.message-content .showcase-card p.showcase-card-description,
+.showcase-card p.showcase-card-description,
+p.showcase-card-description {
+  margin: 8px 0 8px 0 !important;
+  margin-top: 8px !important;
+  margin-bottom: 8px !important;
+  margin-block-start: 8px !important;
+  margin-block-end: 8px !important;
+  padding: 0 !important;
 }
