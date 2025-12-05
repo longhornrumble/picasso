@@ -1121,7 +1121,7 @@ p {
 
 .message-content .streaming-formatted p:last-child:not(.showcase-card-tagline):not(.showcase-card-description):not(.showcase-card-stats),
 .message-content p:last-child:not(.showcase-card-tagline):not(.showcase-card-description):not(.showcase-card-stats) {
-  margin-bottom: 8px !important; /* Keep some bottom margin for last paragraph */
+  margin-bottom: 0 !important; /* No bottom margin for vertical centering */
 }
 
 /* Ensure br tags create line breaks */
@@ -1332,21 +1332,19 @@ p {
   font-family: var(--font-family);
 }
 
-/* Heading font sizes */
+/* Heading font sizes - scaled for chat widget */
 .message-content h1,
-.message-text h1 { font-size: 1.95em !important; }
+.message-text h1 { font-size: 1.2em !important; }
 .message-content h2,
-.message-text h2 { font-size: 1.65em !important; }
+.message-text h2 { font-size: 1.15em !important; }
 .message-content h3,
-.message-text h3 { font-size: 1.45em !important; }
+.message-text h3 { font-size: 1.1em !important; }
 .message-content h4,
-.message-text h4 { font-size: 1.25em !important; }
+.message-text h4 { font-size: 1.05em !important; }
 .message-content h5,
-.message-text h5 { font-size: 1.15em !important; }
+.message-text h5 { font-size: 1.0em !important; }
 .message-content h6,
-.message-text h6 { font-size: 1.05em !important; }
-  color: inherit;
-}
+.message-text h6 { font-size: 1.0em !important; }
 
 /* USER BUBBLES */
 .message.user .message-content {
@@ -1495,6 +1493,17 @@ p {
 .message-text {
   position: relative;
   pointer-events: auto;
+}
+
+/* Bot message text alignment - ensure vertical centering within flex column */
+.message.bot .message-text,
+[data-role="assistant"] .message-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
 }
 
 /* Enhanced file attachment support */
@@ -4778,7 +4787,8 @@ p.showcase-card-description {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 4px 8px;
-  margin: 6px 0;
+  margin-top: 8px;
+  margin-bottom: 6px;
   list-style: none;
   padding: 0;
 }
