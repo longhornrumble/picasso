@@ -1,7 +1,28 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { useConfig } from '../hooks/useConfig';
+import {
+  FORM_VIEWED,
+  FORM_STARTED,
+  FORM_FIELD_SUBMITTED,
+  FORM_COMPLETED,
+  FORM_ABANDONED,
+  FORM_ABANDON_REASONS
+} from '../analytics/eventConstants.js';
 
 const FormModeContext = createContext(null);
+
+/**
+ * Emit form analytics event via global notifyParentEvent
+ * @param {string} eventType - Event type from eventConstants.js
+ * @param {Object} payload - Event payload
+ */
+function emitFormEvent(eventType, payload) {
+  if (typeof window !== 'undefined' && window.notifyParentEvent) {
+    window.notifyParentEvent(eventType, payload);
+  } else {
+    console.warn('[FormModeContext] notifyParentEvent not available for:', eventType);
+  }
+}
 
 export const useFormMode = () => {
   const context = useContext(FormModeContext);
@@ -26,6 +47,9 @@ export const FormModeProvider = ({ children }) => {
     startedAt: null,
     lastActiveAt: null
   });
+
+  // Analytics: Track if FORM_STARTED has been emitted for current form
+  const formStartedEmittedRef = useRef(false);
 
   // Form completion state
   const [isFormComplete, setIsFormComplete] = useState(false);
@@ -68,7 +92,7 @@ export const FormModeProvider = ({ children }) => {
   }, []);
 
   // Start a new form
-  const startForm = useCallback((formId) => {
+  const startForm = useCallback((formId, triggerSource = 'config_lookup') => {
     console.log('[FormModeContext] Starting form:', formId);
 
     // Get form config from configData
@@ -77,6 +101,9 @@ export const FormModeProvider = ({ children }) => {
       console.error('[FormModeContext] Form config not found:', formId);
       return false;
     }
+
+    // Reset form started tracking
+    formStartedEmittedRef.current = false;
 
     setIsFormMode(true);
     setCurrentFormId(formId);
@@ -89,31 +116,50 @@ export const FormModeProvider = ({ children }) => {
       lastActiveAt: Date.now()
     });
 
+    // Analytics: Emit FORM_VIEWED event
+    emitFormEvent(FORM_VIEWED, {
+      form_id: formId,
+      form_label: formDef.title || formId,
+      trigger_source: triggerSource,
+      field_count: formDef.fields?.length || 0
+    });
+
     return true;
   }, [configData]);
 
   // Start a new form with provided config (for dynamic forms from CTAs)
-  const startFormWithConfig = useCallback((formId, formConfig) => {
-    console.log('[FormModeContext] Starting form with config:', formId, formConfig);
-    console.log('[FormModeContext] Field count:', formConfig?.fields?.length);
+  const startFormWithConfig = useCallback((formId, formConfigParam, triggerSource = 'cta_trigger') => {
+    console.log('[FormModeContext] Starting form with config:', formId, formConfigParam);
+    console.log('[FormModeContext] Field count:', formConfigParam?.fields?.length);
     console.log('[FormModeContext] Fields with eligibility gates:',
-      formConfig?.fields?.filter(f => f.eligibility_gate).map(f => ({ id: f.id, gate: f.eligibility_gate, msg: f.failure_message }))
+      formConfigParam?.fields?.filter(f => f.eligibility_gate).map(f => ({ id: f.id, gate: f.eligibility_gate, msg: f.failure_message }))
     );
 
-    if (!formConfig || !formConfig.fields) {
-      console.error('[FormModeContext] Invalid form config provided:', formConfig);
+    if (!formConfigParam || !formConfigParam.fields) {
+      console.error('[FormModeContext] Invalid form config provided:', formConfigParam);
       return false;
     }
+
+    // Reset form started tracking
+    formStartedEmittedRef.current = false;
 
     setIsFormMode(true);
     setCurrentFormId(formId);
     setCurrentFieldIndex(0);
     setFormData({});
-    setFormConfig(formConfig);
+    setFormConfig(formConfigParam);
     setValidationErrors({});
     setFormMetadata({
       startedAt: Date.now(),
       lastActiveAt: Date.now()
+    });
+
+    // Analytics: Emit FORM_VIEWED event
+    emitFormEvent(FORM_VIEWED, {
+      form_id: formId,
+      form_label: formConfigParam.title || formId,
+      trigger_source: triggerSource,
+      field_count: formConfigParam.fields?.length || 0
     });
 
     return true;
@@ -269,6 +315,25 @@ export const FormModeProvider = ({ children }) => {
     // Update last active time
     setFormMetadata(prev => ({ ...prev, lastActiveAt: Date.now() }));
 
+    // Analytics: Emit FORM_STARTED on first successful field submission
+    if (!formStartedEmittedRef.current) {
+      formStartedEmittedRef.current = true;
+      emitFormEvent(FORM_STARTED, {
+        form_id: currentFormId,
+        field_count: formConfig.fields.length,
+        start_time: new Date().toISOString()
+      });
+    }
+
+    // Analytics: Emit FORM_FIELD_SUBMITTED for each successful field
+    emitFormEvent(FORM_FIELD_SUBMITTED, {
+      form_id: currentFormId,
+      field_id: currentField.id,
+      field_label: currentField.label || currentField.id,
+      field_index: currentFieldIndex,
+      field_type: currentField.type || 'text'
+    });
+
     // SPECIAL CASE: Volunteer form program_interest field - pivot to specific form
     if (currentField.id === 'program_interest' && currentFormId === 'volunteer_apply') {
       console.log('[FormModeContext] Program interest selected:', value);
@@ -350,6 +415,20 @@ export const FormModeProvider = ({ children }) => {
         completedFormConfig: formConfig,
         hasPostSubmission: !!formConfig.post_submission
       });
+
+      // Calculate duration in seconds
+      const durationSeconds = formMetadata.startedAt
+        ? Math.round((Date.now() - formMetadata.startedAt) / 1000)
+        : 0;
+
+      // Analytics: Emit FORM_COMPLETED event
+      emitFormEvent(FORM_COMPLETED, {
+        form_id: currentFormId,
+        form_label: formConfig.title || currentFormId,
+        duration_seconds: durationSeconds,
+        fields_completed: formConfig.fields.length
+      });
+
       setIsFormComplete(true);
       setCompletedFormData(finalFormData);
       setCompletedFormConfig(formConfig);
@@ -357,7 +436,7 @@ export const FormModeProvider = ({ children }) => {
 
       return { valid: true, formComplete: true, formData: finalFormData };
     }
-  }, [formConfig, currentFieldIndex, formData]);
+  }, [formConfig, currentFieldIndex, formData, currentFormId, formMetadata.startedAt]);
 
   // Suspend current form
   const suspendForm = useCallback((reason = 'user_request') => {
@@ -426,10 +505,31 @@ export const FormModeProvider = ({ children }) => {
   }, [suspendedForms]);
 
   // Cancel current form
-  const cancelForm = useCallback(() => {
+  const cancelForm = useCallback((reason = FORM_ABANDON_REASONS.CLOSED) => {
     if (!currentFormId) return;
 
-    console.log('[FormModeContext] Cancelling form:', currentFormId);
+    console.log('[FormModeContext] Cancelling form:', currentFormId, 'Reason:', reason);
+
+    // Analytics: Emit FORM_ABANDONED event before clearing state
+    const currentField = formConfig?.fields?.[currentFieldIndex];
+    const durationSeconds = formMetadata.startedAt
+      ? Math.round((Date.now() - formMetadata.startedAt) / 1000)
+      : 0;
+
+    // Only emit if form was actually started (has fields)
+    if (formConfig?.fields?.length > 0) {
+      emitFormEvent(FORM_ABANDONED, {
+        form_id: currentFormId,
+        form_label: formConfig.title || currentFormId,
+        last_field_id: currentField?.id || null,
+        last_field_label: currentField?.label || currentField?.id || null,
+        last_field_index: currentFieldIndex,
+        fields_completed: Object.keys(formData).length,
+        total_fields: formConfig.fields.length,
+        duration_seconds: durationSeconds,
+        reason: reason
+      });
+    }
 
     // Clear from session storage if suspended
     const storageKey = `${STORAGE_PREFIX}${currentFormId}_${SESSION_ID}`;
@@ -447,7 +547,7 @@ export const FormModeProvider = ({ children }) => {
       startedAt: null,
       lastActiveAt: null
     });
-  }, [currentFormId]);
+  }, [currentFormId, formConfig, currentFieldIndex, formData, formMetadata.startedAt]);
 
   // Detect interruption in user input
   const detectInterruption = useCallback((text) => {

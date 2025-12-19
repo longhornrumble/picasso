@@ -11,6 +11,18 @@ import DOMPurify from 'dompurify';
 import CTAButton, { CTAButtonGroup } from './CTAButton';
 import FormCompletionCard from '../forms/FormCompletionCard';
 import ShowcaseCard from './ShowcaseCard';
+import { ACTION_CHIP_CLICKED, LINK_CLICKED } from '../../analytics/eventConstants.js';
+
+/**
+ * Emit analytics event via global notifyParentEvent
+ * @param {string} eventType - Event type from eventConstants.js
+ * @param {Object} payload - Event payload
+ */
+function emitAnalyticsEvent(eventType, payload) {
+  if (typeof window !== 'undefined' && window.notifyParentEvent) {
+    window.notifyParentEvent(eventType, payload);
+  }
+}
 
 // Configure marked for streaming markdown
 marked.setOptions({
@@ -510,6 +522,14 @@ export default function MessageBubble({
   const handleActionClick = (action) => {
     if (isTyping) return;
 
+    // Analytics: Emit ACTION_CHIP_CLICKED event
+    emitAnalyticsEvent(ACTION_CHIP_CLICKED, {
+      chip_id: action.id || action.label,
+      chip_label: action.label,
+      target_branch: action.target_branch || null,
+      chip_action: action.action || 'send_query'
+    });
+
     // Handle show_info action - display static message without Bedrock
     if (action.action === 'show_info') {
       console.log('[MessageBubble] Action chip show_info triggered - displaying static message');
@@ -854,6 +874,30 @@ export default function MessageBubble({
               ? { __html: content }
               : undefined
           }
+          // Analytics: Track link clicks via event delegation
+          onClick={(e) => {
+            const anchor = e.target.closest('a');
+            if (anchor && anchor.href) {
+              try {
+                const url = new URL(anchor.href);
+                emitAnalyticsEvent(LINK_CLICKED, {
+                  url: anchor.href,
+                  link_text: anchor.textContent || anchor.innerText || '',
+                  link_domain: url.hostname,
+                  category: url.protocol === 'mailto:' ? 'email' :
+                           url.protocol === 'tel:' ? 'phone' : 'web'
+                });
+              } catch {
+                // Invalid URL, still track basic info
+                emitAnalyticsEvent(LINK_CLICKED, {
+                  url: anchor.href,
+                  link_text: anchor.textContent || '',
+                  link_domain: 'unknown',
+                  category: 'unknown'
+                });
+              }
+            }
+          }}
           style={{
             display: "block",
             visibility: "visible",

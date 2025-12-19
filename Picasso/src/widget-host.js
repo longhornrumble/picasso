@@ -22,19 +22,111 @@ import { config as environmentConfig } from './config/environment.js';
       expandedHeight: '640px',
       zIndex: 10000
     },
-    
+    attribution: null, // Captured on init for analytics
+
+    // ========================================================================
+    // ATTRIBUTION CAPTURE (for User Journey Analytics)
+    // See: /docs/User_Journey/USER_JOURNEY_ANALYTICS_PLAN.md
+    // ========================================================================
+
+    /**
+     * Capture GA4 client_id from the _ga cookie for session stitching.
+     * Enables connecting GA4 site visitors to Picasso sessions.
+     * @returns {string|null} GA4 client_id or null if not found
+     */
+    getGAClientId() {
+      try {
+        const gaCookie = document.cookie
+          .split('; ')
+          .find(row => row.startsWith('_ga='));
+
+        if (gaCookie) {
+          // _ga=GA1.2.123456789.1702900000 → extract "123456789.1702900000"
+          const parts = gaCookie.split('.');
+          if (parts.length >= 4) {
+            return parts.slice(2).join('.');
+          }
+        }
+      } catch (e) {
+        console.warn('[Picasso] Failed to read GA cookie:', e);
+      }
+      return null;
+    },
+
+    /**
+     * Get a URL parameter from the current page.
+     * @param {string} name - Parameter name
+     * @returns {string|null} Parameter value or null
+     */
+    getUrlParam(name) {
+      try {
+        const urlParams = new URLSearchParams(window.location.search);
+        return urlParams.get(name);
+      } catch (e) {
+        return null;
+      }
+    },
+
+    /**
+     * Capture all attribution data from the parent page.
+     * Called once during widget initialization.
+     * @returns {Object} Attribution data object
+     */
+    captureAttribution() {
+      const attribution = {
+        // GA4 session stitching key
+        ga_client_id: this.getGAClientId(),
+
+        // UTM parameters (works with any tracking system: Dub.co, Bitly, manual)
+        utm_source: this.getUrlParam('utm_source'),
+        utm_medium: this.getUrlParam('utm_medium'),
+        utm_campaign: this.getUrlParam('utm_campaign'),
+        utm_term: this.getUrlParam('utm_term'),
+        utm_content: this.getUrlParam('utm_content'),
+
+        // Ad platform click IDs
+        gclid: this.getUrlParam('gclid'),   // Google Ads
+        fbclid: this.getUrlParam('fbclid'), // Facebook Ads
+
+        // Referrer and landing page
+        referrer: document.referrer || null,
+        landing_page: window.location.pathname,
+
+        // Timestamp
+        captured_at: new Date().toISOString()
+      };
+
+      // Log attribution capture for debugging
+      const hasAttribution = attribution.ga_client_id ||
+                            attribution.utm_source ||
+                            attribution.referrer;
+      if (hasAttribution) {
+        console.log('📊 Attribution captured:', {
+          ga_client_id: attribution.ga_client_id ? '✓' : '✗',
+          utm_source: attribution.utm_source || '(none)',
+          utm_medium: attribution.utm_medium || '(none)',
+          referrer: attribution.referrer ? new URL(attribution.referrer).hostname : '(direct)'
+        });
+      }
+
+      return attribution;
+    },
+
     // Initialize the widget
     init(tenantHash, customConfig = {}) {
       if (!tenantHash) {
         console.error('Picasso Widget: Tenant hash is required');
         return;
       }
-      
+
       this.tenantHash = tenantHash;
       this.config = { ...this.config, ...customConfig };
-      
+
+      // Capture attribution data from parent page (GA4 client_id, UTM params, referrer)
+      this.attribution = this.captureAttribution();
+
       console.log('🚀 Initializing Picasso Widget:', tenantHash);
-      
+
       this.createContainer();
       this.createIframe();
       this.setupEventListeners();
@@ -280,7 +372,8 @@ import { config as environmentConfig } from './config/environment.js';
         this.iframe.contentWindow.postMessage({
           type: 'PICASSO_INIT',
           tenantHash: this.tenantHash,
-          config: this.config
+          config: this.config,
+          attribution: this.attribution // GA4 client_id, UTM params, referrer
         }, '*');
       }
     },
