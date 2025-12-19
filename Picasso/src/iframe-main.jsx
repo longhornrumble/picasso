@@ -243,7 +243,7 @@ function scheduleEventFlush() {
 
 /**
  * Send queued analytics events to backend.
- * Uses the error reporting endpoint for now (will be replaced with dedicated analytics endpoint).
+ * Uses the Bedrock Streaming Handler's analytics endpoint.
  */
 async function flushEventsToBackend() {
   if (!analyticsState.eventQueue || analyticsState.eventQueue.length === 0) return;
@@ -251,28 +251,39 @@ async function flushEventsToBackend() {
   const events = [...analyticsState.eventQueue];
   analyticsState.eventQueue = []; // Clear queue
 
-  // In development, just log the batch
+  // Get the streaming endpoint (Bedrock Streaming Handler)
+  const streamingEndpoint = environmentConfig.getStreamingEndpoint?.() ||
+                            environmentConfig.STREAMING_ENDPOINT ||
+                            'https://7pluzq3axftklmb4gbgchfdahu0lcnqd.lambda-url.us-east-1.on.aws';
+
+  // Build analytics endpoint URL
+  const analyticsEndpoint = `${streamingEndpoint}?action=analytics`;
+
+  // In development, log but still send to test the pipeline
   if (import.meta.env.DEV) {
-    console.log('📊 [Analytics] Would flush', events.length, 'events to backend:', events);
-    return;
+    console.log('📊 [Analytics] Flushing', events.length, 'events to:', analyticsEndpoint);
   }
 
-  // In production, send to analytics endpoint (to be implemented in Phase 1D)
   try {
-    const analyticsEndpoint = environmentConfig.getAnalyticsEndpoint?.() ||
-                              `${environmentConfig.getApiBaseUrl()}?action=analytics`;
-
-    await fetch(analyticsEndpoint, {
+    const response = await fetch(analyticsEndpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        action: 'analytics', // Include action in body for streaming handler routing
         batch: true,
-        events: events,
-        tenant_id: analyticsState.tenantHash,
-        session_id: analyticsState.sessionId
+        events: events
       }),
       keepalive: true // Ensure request completes even if page unloads
     });
+
+    if (!response.ok) {
+      throw new Error(`Analytics endpoint returned ${response.status}`);
+    }
+
+    const result = await response.json();
+    if (import.meta.env.DEV) {
+      console.log('📊 [Analytics] Flush successful:', result);
+    }
   } catch (error) {
     console.warn('[Analytics] Failed to flush events:', error);
     // Re-queue failed events for retry

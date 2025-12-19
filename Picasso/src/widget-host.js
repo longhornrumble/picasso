@@ -325,33 +325,97 @@ import { config as environmentConfig } from './config/environment.js';
     
     // Handle PRD-compliant PICASSO_EVENT messages
     handlePicassoEvent(data) {
-      const { event, payload } = data;
-      
+      const { event, payload, analytics } = data;
+
+      // Forward analytics events to backend (embedded mode)
+      if (analytics) {
+        this.queueAnalyticsEvent(analytics);
+      }
+
       switch (event) {
         case 'CHAT_OPENED':
           console.log('📈 Chat opened event received');
           this.expand();
           break;
-          
+
         case 'CHAT_CLOSED':
           console.log('📉 Chat closed event received');
           this.minimize();
           break;
-          
+
         case 'MESSAGE_SENT':
           console.log('💬 Message sent event received');
-          // Could trigger analytics or other host-side logic
           break;
-          
+
         case 'RESIZE_REQUEST':
           console.log('📏 Resize request received:', payload?.dimensions);
           if (payload?.dimensions) {
             this.handleResize(payload.dimensions);
           }
           break;
-          
+
         default:
-          console.log('❓ Unknown PICASSO_EVENT:', event);
+          // Don't log unknown events if they're analytics-only
+          if (!analytics) {
+            console.log('❓ Unknown PICASSO_EVENT:', event);
+          }
+      }
+    },
+
+    // Analytics event queue for embedded mode
+    analyticsQueue: [],
+    analyticsFlushTimeout: null,
+
+    // Queue an analytics event for batched sending
+    queueAnalyticsEvent(analyticsEvent) {
+      this.analyticsQueue.push(analyticsEvent);
+
+      // Schedule flush if not already scheduled
+      if (!this.analyticsFlushTimeout) {
+        this.analyticsFlushTimeout = setTimeout(() => {
+          this.flushAnalyticsQueue();
+        }, 1000); // Batch events over 1 second
+      }
+    },
+
+    // Flush queued analytics events to backend
+    async flushAnalyticsQueue() {
+      this.analyticsFlushTimeout = null;
+
+      if (this.analyticsQueue.length === 0) return;
+
+      const events = [...this.analyticsQueue];
+      this.analyticsQueue = [];
+
+      // Get streaming endpoint from config or use default
+      const streamingEndpoint = this.config?.streamingEndpoint ||
+                                'https://7pluzq3axftklmb4gbgchfdahu0lcnqd.lambda-url.us-east-1.on.aws';
+      const analyticsEndpoint = `${streamingEndpoint}?action=analytics`;
+
+      console.log('📊 [Analytics Host] Flushing', events.length, 'events');
+
+      try {
+        const response = await fetch(analyticsEndpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'analytics',
+            batch: true,
+            events: events
+          }),
+          keepalive: true
+        });
+
+        if (!response.ok) {
+          throw new Error(`Analytics endpoint returned ${response.status}`);
+        }
+
+        const result = await response.json();
+        console.log('📊 [Analytics Host] Flush successful:', result);
+      } catch (error) {
+        console.warn('[Analytics Host] Failed to flush events:', error);
+        // Re-queue failed events
+        this.analyticsQueue = [...events, ...this.analyticsQueue];
       }
     },
     
