@@ -606,6 +606,7 @@ function ChatWidget() {
                     actions={msg.actions}
                     cards={msg.cards}
                     ctaButtons={msg.ctaButtons}
+                    showcaseCard={msg.showcaseCard}
                     uploadState={msg.uploadState}
                     onCancel={msg.onCancel}
                     isStreaming={msg.isStreaming}

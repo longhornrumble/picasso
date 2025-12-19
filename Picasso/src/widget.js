@@ -78,12 +78,8 @@ class PicassoWidget {
       const modeFromScript = script?.getAttribute('data-mode');
       if (modeFromScript) return modeFromScript;
 
-      // Priority 3: Check if we're on a dedicated page (no other content)
-      const bodyContent = document.body.innerText.trim();
-      const hasMinimalContent = bodyContent.length < 100;
-      if (hasMinimalContent) return 'fullpage';
-
-      // Default: embedded widget
+      // Default: ALWAYS embedded widget mode
+      // Full-page mode must be explicitly requested via ?mode=fullpage or data-mode="fullpage"
       return 'widget';
 
     } catch (error) {
