@@ -794,10 +794,59 @@ export default function HTTPChatProvider({ children }) {
   }, [sendMessage]);
 
   /**
+   * Submit form data to Lambda for persistence and fulfillment
+   * Sends to the API endpoint with form_mode: true
+   */
+  const submitFormToLambda = useCallback(async (formId, formData) => {
+    const endpoint = envConfig.CHAT_ENDPOINT ||
+      `${envConfig.API_BASE_URL}?action=chat&t=${tenantHashRef.current}`;
+
+    const requestBody = {
+      tenant_hash: tenantHashRef.current,
+      form_mode: true,
+      action: 'submit_form',
+      form_id: formId,
+      form_data: formData,
+      session_id: sessionIdRef.current,
+      conversation_id: sessionIdRef.current // Same as session_id
+    };
+
+    logger.info('📤 Submitting form to Lambda', { formId, endpoint });
+    console.log('[HTTPChatProvider] 📤 Form submission payload:', requestBody);
+
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[HTTPChatProvider] ❌ Form submission failed:', response.status, errorText);
+        throw new Error(`Form submission failed: ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log('[HTTPChatProvider] ✅ Form submitted successfully:', result);
+      return result;
+
+    } catch (error) {
+      console.error('[HTTPChatProvider] ❌ Form submission error:', error);
+      // Don't throw - we still want to update local state even if Lambda fails
+      return { status: 'error', error: error.message };
+    }
+  }, []);
+
+  /**
    * PHASE 1B: Record form completion in session context
    * Extracts program from formData (e.g., "lovebox", "daretodream") for backend filtering
+   * Also submits form data to Lambda for persistence and fulfillment
    */
-  const recordFormCompletion = useCallback((formId, formData) => {
+  const recordFormCompletion = useCallback(async (formId, formData) => {
     console.log('[HTTPChatProvider] 🎯 recordFormCompletion called:', { formId, formData });
     console.log('[HTTPChatProvider] 🔍 formData.program_interest:', formData.program_interest);
     logger.info('Recording form completion', { formId, formData });
@@ -820,6 +869,14 @@ export default function HTTPChatProvider({ children }) {
     }
 
     console.log('[HTTPChatProvider] 📝 Final extracted program ID:', programId);
+
+    // Submit to Lambda for persistence (DynamoDB) and fulfillment (Bubble, email, etc.)
+    // This is fire-and-forget - we don't block the UI on Lambda response
+    submitFormToLambda(formId, formData).then(result => {
+      console.log('[HTTPChatProvider] 📬 Lambda form submission completed:', result);
+    }).catch(error => {
+      console.error('[HTTPChatProvider] ⚠️ Lambda form submission failed (non-blocking):', error);
+    });
 
     setSessionContext(prev => {
       console.log('[HTTPChatProvider] 📊 Previous session context:', prev);
@@ -862,7 +919,7 @@ export default function HTTPChatProvider({ children }) {
 
       return updated;
     });
-  }, [setSessionContext]);
+  }, [submitFormToLambda, setSessionContext]);
 
   // Build context value
   const contextValue = {
