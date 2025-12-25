@@ -429,6 +429,9 @@ export const FormModeProvider = ({ children }) => {
         fields_completed: formConfig.fields.length
       });
 
+      // Reset form started tracking to prevent FORM_ABANDONED from firing after completion
+      formStartedEmittedRef.current = false;
+
       setIsFormComplete(true);
       setCompletedFormData(finalFormData);
       setCompletedFormConfig(formConfig);
