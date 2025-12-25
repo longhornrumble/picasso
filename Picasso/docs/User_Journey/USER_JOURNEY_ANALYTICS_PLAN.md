@@ -640,7 +640,7 @@ Create `/Lambdas/lambda/Analytics_Function/inventory_extractor.py`:
 | Phase 2: Analytics API | ✅ **COMPLETE** | 2025-12-19 |
 | Phase 3: GA4 Integration | ⏸️ Deferred to v2.0 | - |
 | Phase 4: Attribution Dashboard | ⏸️ Deferred to v2.0 | - |
-| Phase 5: Forms Dashboard | 🔶 **IN PROGRESS** | - |
+| Phase 5: Forms Dashboard | ✅ **COMPLETE** | 2025-12-25 |
 | Phase 6: Polish & Launch | ⏳ Not Started | - |
 
 **Architecture Decision (2025-12-19):** Using Athena-only for MVP (3-8s latency acceptable). DynamoDB hot path deferred until scale demands it.
@@ -728,7 +728,7 @@ Create `/Lambdas/lambda/Analytics_Function/inventory_extractor.py`:
 - Loads in <2s
 - All data accurate vs. raw DynamoDB
 
-### Phase 5: Conversations & Forms Dashboards (Weeks 8-9) 🔶 IN PROGRESS
+### Phase 5: Conversations & Forms Dashboards (Weeks 8-9) ✅ COMPLETE
 
 **Completed:**
 - [x] Scaffold React app (Vite + React 18 + TypeScript + Tailwind)
@@ -737,21 +737,28 @@ Create `/Lambdas/lambda/Analytics_Function/inventory_extractor.py`:
 - [x] Login page with Bubble SSO placeholder
 - [x] Dashboard layout with mock components
 
-**In Progress:**
-- [ ] Forms Dashboard:
-  - [x] StatCard component (KPIs)
-  - [x] ConversionFunnel component
-  - [x] FieldBottlenecks component
-  - [x] TopPerformingForms component
-  - [x] RecentSubmissions component
-  - [ ] Wire to real Analytics API endpoints
-  - [ ] Add forms-specific API endpoints (bottlenecks, submissions)
-- [ ] Conversations Dashboard:
-  - [ ] KPI cards (Total Conversations, Messages, Response Time, After Hours %)
-  - [ ] Conversation Heat Map (Nivo)
-  - [ ] Top 5 Questions (ranked list)
-  - [ ] Recent Conversations (expandable Q&A)
-  - [ ] Conversations Trend (line chart)
+**Forms Dashboard - ✅ COMPLETE (2025-12-25):**
+- [x] StatCard component (KPIs)
+- [x] ConversionFunnel component (shared Funnel component)
+- [x] FieldBottlenecks component with empty state UI
+- [x] TopPerformingForms component (shared RankedCards component)
+- [x] RecentSubmissions component (shared DataTable component)
+- [x] Wire to real Analytics API endpoints
+- [x] Add forms-specific API endpoints:
+  - [x] `GET /forms/summary` - Form metrics (views, starts, completions, abandons)
+  - [x] `GET /forms/bottlenecks` - Field-level abandonment analysis
+  - [x] `GET /forms/submissions` - Paginated submission list
+  - [x] `GET /forms/top-performers` - Forms ranked by conversion rate
+- [x] Fix FORM_ABANDONED event tracking (only fires when FORM_STARTED emitted)
+- [x] Fix formStartedEmittedRef reset after FORM_COMPLETED
+- [x] Correct funnel math: Starts = Completions + Abandons
+
+**Pending - Conversations Dashboard:**
+- [ ] KPI cards (Total Conversations, Messages, Response Time, After Hours %)
+- [ ] Conversation Heat Map (Nivo)
+- [ ] Top 5 Questions (ranked list)
+- [ ] Recent Conversations (expandable Q&A)
+- [ ] Conversations Trend (line chart)
 - [ ] Add CSV export functionality
 - [ ] Implement dashboard navigation (tabs)
 
@@ -1195,7 +1202,7 @@ s3://myrecruiter-picasso/schemas/
 ---
 
 *Document created: December 18, 2025*
-*Last updated: December 18, 2025*
+*Last updated: December 25, 2025*
 *Source: Migrated from `.claude/plans/functional-whistling-dongarra.md`*
 
 **Revision History:**
@@ -1209,3 +1216,7 @@ s3://myrecruiter-picasso/schemas/
 | 2025-12-18 | Updated data retention: 7-day → 90-day hot path |
 | 2025-12-18 | Updated implementation timeline: 8 weeks → 10 weeks |
 | 2025-12-18 | Clarified: No Glue, No Firehose, No Redshift at current scale |
+| 2025-12-25 | **Phase 5 Forms Dashboard COMPLETE** - API integration, field bottlenecks, event tracking fixes |
+| 2025-12-25 | Fixed FORM_ABANDONED event tracking - only fires when FORM_STARTED was emitted |
+| 2025-12-25 | Fixed formStartedEmittedRef reset after FORM_COMPLETED to prevent duplicate abandons |
+| 2025-12-25 | Added forms-specific API endpoints (summary, bottlenecks, submissions, top-performers) |
