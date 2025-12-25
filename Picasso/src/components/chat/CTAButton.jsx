@@ -1,5 +1,17 @@
 // CTAButton.jsx - Context-aware call-to-action buttons
 import React from 'react';
+import { CTA_CLICKED } from '../../analytics/eventConstants.js';
+
+/**
+ * Emit analytics event via global notifyParentEvent
+ * @param {string} eventType - Event type from eventConstants.js
+ * @param {Object} payload - Event payload
+ */
+function emitAnalyticsEvent(eventType, payload) {
+  if (typeof window !== 'undefined' && window.notifyParentEvent) {
+    window.notifyParentEvent(eventType, payload);
+  }
+}
 
 /**
  * CTAButton Component
@@ -12,6 +24,14 @@ export default function CTAButton({ cta, onClick, disabled = false }) {
 
   const handleClick = () => {
     if (disabled || !onClick) return;
+
+    // Analytics: Emit CTA_CLICKED event
+    emitAnalyticsEvent(CTA_CLICKED, {
+      cta_id: cta.id || cta.formId || cta.form_id || cta.label,
+      cta_label: cta.label || cta.text,
+      cta_action: cta.action || 'unknown',
+      triggers_form: cta.action === 'form_trigger' || cta.action === 'start_form'
+    });
 
     // Pass the entire CTA object to the parent handler
     onClick(cta);

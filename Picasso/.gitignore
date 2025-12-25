@@ -169,3 +169,37 @@ $RECYCLE.BIN/
 *.mov
 *.avi
 !src/assets/**
+
+# Sandbox and scratch files
+Sandbox/
+backups/
+chunks/
+
+# Local development config (user-specific tenant selection)
+dev.config.json
+
+# Build artifacts in root (generated files - actual builds go to dist/)
+/iframe-main.js
+/iframe-main.js.map
+/iframe-main.css
+/iframe-main.css.map
+/widget.js
+/widget.js.map
+/iframe.html
+
+# Test HTML files (local testing only)
+test-*.html
+
+# Session/deployment summaries (one-time docs)
+*_DEPLOYMENT_*.md
+*_COMPLETE_*.md
+SESSION_RESUME_PROMPT.md
+
+# Infrastructure templates (if generated)
+infrastructure/
+
+# Config JSON files in Sandbox
+Sandbox/*.json
+
+# Deployment packages
+deployment-*.zip

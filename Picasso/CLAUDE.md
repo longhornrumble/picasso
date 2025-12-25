@@ -6,6 +6,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **READ `/DEPLOYMENT_FIXES.md` FIRST** - Contains hours of debugging condensed into critical fixes.
 If deploying to S3 or fixing widget loading issues, that document has the exact solutions.
 
+## ⚠️ CRITICAL: Picasso is an EMBEDDED Widget - NEVER Use Full-Page Mode
+**Picasso is 99% deployed as an embedded widget on client websites, NOT as a full-page application.**
+
+When testing or creating test pages:
+- **ALWAYS** use embedded widget mode (floating button in corner)
+- **NEVER** use full-page widget mode unless explicitly requested
+- Test pages must simulate a real client website with the widget embedded
+- The widget should appear as a floating chat button, not take over the entire page
+
+This is how Picasso is used in production - test accordingly.
+
 ## Project Overview
 
 This is a monorepo containing:
@@ -28,36 +39,45 @@ This is a monorepo containing:
 
 ```
 Picasso/
-├── src/                          # Source code (70+ files)
+├── src/                          # Source code (83 files)
 │   ├── widget.js                 # Embeddable widget entry point
 │   ├── widget-host.js            # Widget host/iframe creation
 │   ├── iframe-main.jsx           # React app entry point
-│   ├── components/               # React components (15+ files)
-│   │   ├── chat/                 # Chat UI components
+│   ├── components/               # React components (20 files)
+│   │   ├── chat/                 # Chat UI components (16 files + CSS)
 │   │   │   ├── ChatWidget.jsx
 │   │   │   ├── MessageBubble.jsx
 │   │   │   ├── CTAButton.jsx
-│   │   │   └── ResponseCard.jsx
-│   │   └── forms/                # Form components
+│   │   │   ├── ResponseCard.jsx
+│   │   │   └── ErrorBoundary.jsx
+│   │   └── forms/                # Form components (3 files)
 │   │       ├── FormFieldPrompt.jsx
-│   │       └── FormCompletionCard.jsx
-│   ├── context/                  # React Context providers (6 files)
+│   │       ├── FormCompletionCard.jsx
+│   │       └── CompositeFieldGroup.jsx
+│   ├── context/                  # React Context providers (9 files)
+│   │   ├── ChatProviderOrchestrator.jsx  # ONE-TIME provider selection
+│   │   ├── ConfigProvider.jsx
 │   │   ├── ChatProvider.jsx
 │   │   ├── StreamingChatProvider.jsx
 │   │   ├── HTTPChatProvider.jsx
 │   │   └── FormModeContext.jsx
-│   ├── hooks/                    # Custom hooks (5 files)
-│   │   ├── useChatHistory.js
-│   │   └── useFormValidation.js
-│   ├── config/                   # Configuration system (17 files)
+│   ├── hooks/                    # Custom hooks (7 files)
+│   │   ├── useChat.js
+│   │   ├── useConfig.js
+│   │   ├── useEventSourceStreaming.js
+│   │   ├── useFetchStreaming.js
+│   │   └── useStreamingBridge.js
+│   ├── config/                   # Configuration system (18 files)
 │   │   ├── environment.js        # Environment detection
 │   │   ├── streaming-config.js   # Streaming configuration
-│   │   └── schemas/              # Zod validation schemas
+│   │   ├── schemas/              # JSON validation schemas (4 files)
+│   │   └── configurations/       # Environment configs (2 JSON files)
 │   ├── utils/                    # Utilities (13 files)
-│   │   ├── errorHandler.js
+│   │   ├── errorHandling.js
 │   │   ├── security.js
-│   │   ├── performance.js
-│   │   └── logger.js
+│   │   ├── performanceTracking.js
+│   │   ├── logger.js
+│   │   └── conversationManager.js
 │   └── styles/
 │       └── theme.css             # Global theme (117 KB, CSS variables)
 ├── dist/                         # Build outputs
@@ -334,11 +354,12 @@ Picasso Widget (embedded on client website)
   - `src/widget-host.js` - Iframe creation and postMessage bridge
   - `src/iframe-main.jsx` - React app loaded in iframe (375.9 KB production)
 
-**Chat Providers**: Multiple implementations for HTTP/SSE streaming
-- `ChatProvider.jsx` - Main provider with auto-orchestration
-- `StreamingChatProvider.jsx` - SSE streaming support
-- `HTTPChatProvider.jsx` - Standard HTTP requests
-- Auto-switches based on availability
+**Chat Providers**: Multiple implementations with ONE-TIME orchestration
+- `ChatProviderOrchestrator.jsx` - ONE-TIME provider selection (eliminates 100+ runtime checks)
+- `StreamingChatProvider.jsx` - SSE streaming (primary path, ~80% traffic)
+- `HTTPChatProvider.jsx` - HTTP fallback (secondary path, ~20% traffic)
+- `ConfigProvider.jsx` - Tenant configuration management
+- Decision made once at initialization based on `isStreamingEnabled(tenantConfig)`
 
 **Environment Detection**: Hierarchical system (config > env vars > URL params)
 - Priority order:
@@ -348,6 +369,15 @@ Picasso Widget (embedded on client website)
   4. Hostname patterns
   5. Build context
   6. Default fallback (production)
+
+**Configuration System**: Multi-layer validation and caching
+- **JSON Schemas** (4 files): build.schema.json, environment.schema.json, monitoring.schema.json, providers.schema.json
+- **Environment Configs** (2 JSON files): development.json, production.json
+- **Hot Reload System**: Development-only hot reload (hot-reload-system.ts)
+- **Migration Utilities**: Config version migration tools (migration-utilities.ts)
+- **Performance Monitoring**: Benchmarking and load testing utilities
+- **Caching**: SessionStorage with 5-minute TTL for tenant configs
+- **Type Safety**: Limited TypeScript (3 type definition files), primarily JavaScript with Zod validation
 
 **XSS Protection**: DOMPurify sanitization layer
 - All user-generated content sanitized
@@ -1146,7 +1176,9 @@ aws s3 sync dist/production/ s3://picassocode/ \
 - Streaming requires Lambda runtime configuration (response streaming enabled)
 - Cache TTL is 5 minutes for Bedrock handler
 - Environment detection supports multiple sources (config, env vars, URL params, hostname)
-- TypeScript files present and tsconfig.json configured
+- TypeScript coverage is limited: Only 3 type definition files (config.ts, security.ts, import-meta.d.ts); codebase is primarily JavaScript with Zod validation schemas for type safety
+- Services directory (`src/services/`) exists but is empty - service functionality is implemented in `src/utils/` instead
+- ChatProviderOrchestrator implements ONE-TIME provider selection, eliminating 100+ runtime checks for performance
 - Firecrawl SDK requires Node.js 22.0.0+ for ES modules support
 - RAG scraper examples in `picasso-webscraping/rag-scraper/` for various use cases
 

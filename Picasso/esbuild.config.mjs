@@ -185,6 +185,24 @@ testFiles.forEach(file => {
   }
 });
 
+// Copy root-level test HTML files to dist for dev server access
+const rootTestFiles = [
+  'test-local-dev.html',
+  'test-austin-angels.html',
+  'test-atlanta-angels.html',
+  'test-foster-village.html',
+  'test-composite-fields.html',
+  'test-form-completion.html',
+  'test-dynamic.html'
+];
+rootTestFiles.forEach(file => {
+  const sourcePath = path.join(__dirname, file);
+  if (fs.existsSync(sourcePath)) {
+    fs.copyFileSync(sourcePath, path.join(distDir, file));
+    console.log(`📋 Copied ${file} to dist (embedded widget test)`);
+  }
+});
+
 // Define environment variables for React app
 const defineVars = {
   // Existing environment variables

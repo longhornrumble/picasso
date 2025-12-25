@@ -22,19 +22,111 @@ import { config as environmentConfig } from './config/environment.js';
       expandedHeight: '640px',
       zIndex: 10000
     },
-    
+    attribution: null, // Captured on init for analytics
+
+    // ========================================================================
+    // ATTRIBUTION CAPTURE (for User Journey Analytics)
+    // See: /docs/User_Journey/USER_JOURNEY_ANALYTICS_PLAN.md
+    // ========================================================================
+
+    /**
+     * Capture GA4 client_id from the _ga cookie for session stitching.
+     * Enables connecting GA4 site visitors to Picasso sessions.
+     * @returns {string|null} GA4 client_id or null if not found
+     */
+    getGAClientId() {
+      try {
+        const gaCookie = document.cookie
+          .split('; ')
+          .find(row => row.startsWith('_ga='));
+
+        if (gaCookie) {
+          // _ga=GA1.2.123456789.1702900000 → extract "123456789.1702900000"
+          const parts = gaCookie.split('.');
+          if (parts.length >= 4) {
+            return parts.slice(2).join('.');
+          }
+        }
+      } catch (e) {
+        console.warn('[Picasso] Failed to read GA cookie:', e);
+      }
+      return null;
+    },
+
+    /**
+     * Get a URL parameter from the current page.
+     * @param {string} name - Parameter name
+     * @returns {string|null} Parameter value or null
+     */
+    getUrlParam(name) {
+      try {
+        const urlParams = new URLSearchParams(window.location.search);
+        return urlParams.get(name);
+      } catch (e) {
+        return null;
+      }
+    },
+
+    /**
+     * Capture all attribution data from the parent page.
+     * Called once during widget initialization.
+     * @returns {Object} Attribution data object
+     */
+    captureAttribution() {
+      const attribution = {
+        // GA4 session stitching key
+        ga_client_id: this.getGAClientId(),
+
+        // UTM parameters (works with any tracking system: Dub.co, Bitly, manual)
+        utm_source: this.getUrlParam('utm_source'),
+        utm_medium: this.getUrlParam('utm_medium'),
+        utm_campaign: this.getUrlParam('utm_campaign'),
+        utm_term: this.getUrlParam('utm_term'),
+        utm_content: this.getUrlParam('utm_content'),
+
+        // Ad platform click IDs
+        gclid: this.getUrlParam('gclid'),   // Google Ads
+        fbclid: this.getUrlParam('fbclid'), // Facebook Ads
+
+        // Referrer and landing page
+        referrer: document.referrer || null,
+        landing_page: window.location.pathname,
+
+        // Timestamp
+        captured_at: new Date().toISOString()
+      };
+
+      // Log attribution capture for debugging
+      const hasAttribution = attribution.ga_client_id ||
+                            attribution.utm_source ||
+                            attribution.referrer;
+      if (hasAttribution) {
+        console.log('📊 Attribution captured:', {
+          ga_client_id: attribution.ga_client_id ? '✓' : '✗',
+          utm_source: attribution.utm_source || '(none)',
+          utm_medium: attribution.utm_medium || '(none)',
+          referrer: attribution.referrer ? new URL(attribution.referrer).hostname : '(direct)'
+        });
+      }
+
+      return attribution;
+    },
+
     // Initialize the widget
     init(tenantHash, customConfig = {}) {
       if (!tenantHash) {
         console.error('Picasso Widget: Tenant hash is required');
         return;
       }
-      
+
       this.tenantHash = tenantHash;
       this.config = { ...this.config, ...customConfig };
-      
+
+      // Capture attribution data from parent page (GA4 client_id, UTM params, referrer)
+      this.attribution = this.captureAttribution();
+
       console.log('🚀 Initializing Picasso Widget:', tenantHash);
-      
+
       this.createContainer();
       this.createIframe();
       this.setupEventListeners();
@@ -233,33 +325,97 @@ import { config as environmentConfig } from './config/environment.js';
     
     // Handle PRD-compliant PICASSO_EVENT messages
     handlePicassoEvent(data) {
-      const { event, payload } = data;
-      
+      const { event, payload, analytics } = data;
+
+      // Forward analytics events to backend (embedded mode)
+      if (analytics) {
+        this.queueAnalyticsEvent(analytics);
+      }
+
       switch (event) {
         case 'CHAT_OPENED':
           console.log('📈 Chat opened event received');
           this.expand();
           break;
-          
+
         case 'CHAT_CLOSED':
           console.log('📉 Chat closed event received');
           this.minimize();
           break;
-          
+
         case 'MESSAGE_SENT':
           console.log('💬 Message sent event received');
-          // Could trigger analytics or other host-side logic
           break;
-          
+
         case 'RESIZE_REQUEST':
           console.log('📏 Resize request received:', payload?.dimensions);
           if (payload?.dimensions) {
             this.handleResize(payload.dimensions);
           }
           break;
-          
+
         default:
-          console.log('❓ Unknown PICASSO_EVENT:', event);
+          // Don't log unknown events if they're analytics-only
+          if (!analytics) {
+            console.log('❓ Unknown PICASSO_EVENT:', event);
+          }
+      }
+    },
+
+    // Analytics event queue for embedded mode
+    analyticsQueue: [],
+    analyticsFlushTimeout: null,
+
+    // Queue an analytics event for batched sending
+    queueAnalyticsEvent(analyticsEvent) {
+      this.analyticsQueue.push(analyticsEvent);
+
+      // Schedule flush if not already scheduled
+      if (!this.analyticsFlushTimeout) {
+        this.analyticsFlushTimeout = setTimeout(() => {
+          this.flushAnalyticsQueue();
+        }, 1000); // Batch events over 1 second
+      }
+    },
+
+    // Flush queued analytics events to backend
+    async flushAnalyticsQueue() {
+      this.analyticsFlushTimeout = null;
+
+      if (this.analyticsQueue.length === 0) return;
+
+      const events = [...this.analyticsQueue];
+      this.analyticsQueue = [];
+
+      // Get streaming endpoint from config or use default
+      const streamingEndpoint = this.config?.streamingEndpoint ||
+                                'https://7pluzq3axftklmb4gbgchfdahu0lcnqd.lambda-url.us-east-1.on.aws';
+      const analyticsEndpoint = `${streamingEndpoint}?action=analytics`;
+
+      console.log('📊 [Analytics Host] Flushing', events.length, 'events');
+
+      try {
+        const response = await fetch(analyticsEndpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'analytics',
+            batch: true,
+            events: events
+          }),
+          keepalive: true
+        });
+
+        if (!response.ok) {
+          throw new Error(`Analytics endpoint returned ${response.status}`);
+        }
+
+        const result = await response.json();
+        console.log('📊 [Analytics Host] Flush successful:', result);
+      } catch (error) {
+        console.warn('[Analytics Host] Failed to flush events:', error);
+        // Re-queue failed events
+        this.analyticsQueue = [...events, ...this.analyticsQueue];
       }
     },
     
@@ -280,7 +436,8 @@ import { config as environmentConfig } from './config/environment.js';
         this.iframe.contentWindow.postMessage({
           type: 'PICASSO_INIT',
           tenantHash: this.tenantHash,
-          config: this.config
+          config: this.config,
+          attribution: this.attribution // GA4 client_id, UTM params, referrer
         }, '*');
       }
     },

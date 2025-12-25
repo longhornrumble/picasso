@@ -1149,10 +1149,94 @@ export default function StreamingChatProvider({ children }) {
   }, [sendMessage, messages]);
 
   /**
+   * Submit form data to Lambda for persistence and fulfillment
+   * Sends to the streaming endpoint with form_mode: true
+   */
+  const submitFormToLambda = useCallback(async (formId, formData) => {
+    const endpoint = envConfig.STREAMING_ENDPOINT ||
+      `${envConfig.API_BASE_URL}?action=stream&t=${tenantHashRef.current}`;
+
+    const requestBody = {
+      tenant_hash: tenantHashRef.current,
+      form_mode: true,
+      action: 'submit_form',
+      form_id: formId,
+      form_data: formData,
+      session_id: sessionIdRef.current,
+      conversation_id: sessionIdRef.current // Same as session_id
+    };
+
+    logger.info('📤 Submitting form to Lambda', { formId, endpoint });
+    console.log('[StreamingChatProvider] 📤 Form submission payload:', requestBody);
+
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[StreamingChatProvider] ❌ Form submission failed:', response.status, errorText);
+        throw new Error(`Form submission failed: ${response.status}`);
+      }
+
+      // Parse response - handle both streaming and JSON responses
+      const contentType = response.headers.get('content-type');
+      let result;
+
+      if (contentType?.includes('text/event-stream') || contentType?.includes('application/x-ndjson')) {
+        // Handle SSE/streaming response - read until we get the form_complete event
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+
+          // Look for form_complete in the SSE data
+          const lines = buffer.split('\n');
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(line.slice(6));
+                if (data.type === 'form_complete' || data.type === 'form_response') {
+                  result = data;
+                  console.log('[StreamingChatProvider] ✅ Form submission result:', result);
+                }
+              } catch (e) {
+                // Not JSON, continue
+              }
+            }
+          }
+        }
+      } else {
+        // Standard JSON response
+        result = await response.json();
+      }
+
+      console.log('[StreamingChatProvider] ✅ Form submitted successfully:', result);
+      return result;
+
+    } catch (error) {
+      console.error('[StreamingChatProvider] ❌ Form submission error:', error);
+      // Don't throw - we still want to update local state even if Lambda fails
+      return { status: 'error', error: error.message };
+    }
+  }, [envConfig]);
+
+  /**
    * Record form completion in session context
    * Extracts program from formData (e.g., "lovebox", "daretodream") for backend filtering
+   * Also submits form data to Lambda for persistence and fulfillment
    */
-  const recordFormCompletion = useCallback((formId, formData) => {
+  const recordFormCompletion = useCallback(async (formId, formData) => {
     logger.info('Recording form completion', { formId, formData });
 
     // Extract program identifier from form data
@@ -1170,6 +1254,14 @@ export default function StreamingChatProvider({ children }) {
       // Dare to Dream specific form
       programId = 'daretodream';
     }
+
+    // Submit to Lambda for persistence (DynamoDB) and fulfillment (Bubble, email, etc.)
+    // This is fire-and-forget - we don't block the UI on Lambda response
+    submitFormToLambda(formId, formData).then(result => {
+      console.log('[StreamingChatProvider] 📬 Lambda form submission completed:', result);
+    }).catch(error => {
+      console.error('[StreamingChatProvider] ⚠️ Lambda form submission failed (non-blocking):', error);
+    });
 
     setSessionContext(prev => {
       const updated = {
@@ -1197,7 +1289,7 @@ export default function StreamingChatProvider({ children }) {
 
       return updated;
     });
-  }, []);
+  }, [submitFormToLambda]);
   
   // Cleanup on unmount
   useEffect(() => {

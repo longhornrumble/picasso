@@ -11,8 +11,41 @@ import { CSSVariablesProvider } from './components/chat/useCSSVariables.js';
 import { config as environmentConfig } from './config/environment.js';
 import { setupGlobalErrorHandling, performanceMonitor } from './utils/errorHandling.js';
 import { performanceTracker } from './utils/performanceTracking.js';
+import { SCHEMA_VERSION, ALL_EVENT_TYPES } from './analytics/eventConstants.js';
 import "./styles/widget-entry.css";
 import "./styles/theme.css";
+
+// ============================================================================
+// ANALYTICS STATE (for User Journey Analytics)
+// See: /docs/User_Journey/USER_JOURNEY_ANALYTICS_PLAN.md
+// ============================================================================
+
+/**
+ * Analytics state for event tracking.
+ * - stepCounter: Increments with each event for ordering
+ * - attribution: Captured from parent page (GA4 client_id, UTM params, etc.)
+ * - sessionId: Generated on widget init for session grouping
+ */
+const analyticsState = {
+  stepCounter: 0,
+  attribution: null,
+  sessionId: null,
+  tenantHash: null
+};
+
+/**
+ * Generate a unique session ID for analytics.
+ * Format: sess_<timestamp>_<random>
+ */
+function generateSessionId() {
+  const timestamp = Date.now().toString(36);
+  const random = Math.random().toString(36).substring(2, 8);
+  return `sess_${timestamp}_${random}`;
+}
+
+// Initialize session ID immediately
+analyticsState.sessionId = generateSessionId();
+console.log('📊 Analytics session initialized:', analyticsState.sessionId);
 
 /**
  * iframe-main.jsx
@@ -108,18 +141,161 @@ function notifyParentReady() {
   }
 }
 
-// Notify parent of state changes (PRD-compliant events)
-function notifyParentEvent(event, payload = {}) {
-  if (window.parent && window.parent !== window) {
-    // Get parent origin from referrer for security
+/**
+ * Notify parent of state changes (PRD-compliant events with analytics envelope)
+ *
+ * Uses the envelope pattern for schema versioning:
+ * {
+ *   schema_version: "1.0.0",
+ *   session_id: "sess_...",
+ *   tenant_id: "...",
+ *   timestamp: "...",
+ *   step_number: N,
+ *   event: { type: "...", payload: {...} },
+ *   ga_client_id: "..." (if available)
+ * }
+ *
+ * Works in both embedded (iframe) and full-page modes:
+ * - Embedded: Sends via postMessage to parent window
+ * - Full-page: Queues events locally and sends directly to backend
+ *
+ * @param {string} eventType - Event type from eventConstants.js
+ * @param {Object} payload - Event-specific payload data
+ */
+function notifyParentEvent(eventType, payload = {}) {
+  // Always increment step counter for event ordering
+  analyticsState.stepCounter++;
+
+  // Build analytics envelope (schema versioning pattern)
+  const analyticsEvent = {
+    // Envelope fields
+    schema_version: SCHEMA_VERSION,
+    session_id: analyticsState.sessionId,
+    tenant_id: analyticsState.tenantHash,
+    timestamp: new Date().toISOString(),
+    step_number: analyticsState.stepCounter,
+
+    // Event data
+    event: {
+      type: eventType,
+      payload: payload
+    }
+  };
+
+  // Add GA4 client_id if available (for attribution stitching)
+  if (analyticsState.attribution?.ga_client_id) {
+    analyticsEvent.ga_client_id = analyticsState.attribution.ga_client_id;
+  }
+
+  // Validate event type (warn in development only)
+  if (import.meta.env.DEV && !ALL_EVENT_TYPES.includes(eventType)) {
+    console.warn(`[Analytics] Unknown event type: ${eventType}. Expected one of:`, ALL_EVENT_TYPES);
+  }
+
+  // Check if running in iframe (embedded mode) or full-page mode
+  const isEmbedded = window.parent && window.parent !== window;
+
+  if (isEmbedded) {
+    // EMBEDDED MODE: Send to parent via postMessage
     const targetOrigin = document.referrer ? new URL(document.referrer).origin : '*';
     window.parent.postMessage({
       type: 'PICASSO_EVENT',
-      event,
-      payload
+      event: eventType,
+      payload: payload,
+      analytics: analyticsEvent
     }, targetOrigin);
+  } else {
+    // FULL-PAGE MODE: Queue events and send directly to backend
+    // Initialize event queue if not exists
+    if (!analyticsState.eventQueue) {
+      analyticsState.eventQueue = [];
+    }
+    analyticsState.eventQueue.push(analyticsEvent);
+
+    // Log in development mode for debugging
+    if (import.meta.env.DEV) {
+      console.log('📊 [Analytics] Event captured (full-page mode):', eventType, analyticsEvent);
+    }
+
+    // Dispatch custom event for any local listeners
+    window.dispatchEvent(new CustomEvent('picasso-analytics-event', {
+      detail: { event: eventType, payload, analytics: analyticsEvent }
+    }));
+
+    // Flush queue to backend (debounced to batch events)
+    scheduleEventFlush();
   }
 }
+
+/**
+ * Debounced flush of analytics events to backend.
+ * Batches events to reduce API calls.
+ */
+let flushTimeout = null;
+function scheduleEventFlush() {
+  if (flushTimeout) return; // Already scheduled
+
+  flushTimeout = setTimeout(() => {
+    flushTimeout = null;
+    flushEventsToBackend();
+  }, 1000); // Batch events over 1 second
+}
+
+/**
+ * Send queued analytics events to backend.
+ * Uses the Bedrock Streaming Handler's analytics endpoint.
+ */
+async function flushEventsToBackend() {
+  if (!analyticsState.eventQueue || analyticsState.eventQueue.length === 0) return;
+
+  const events = [...analyticsState.eventQueue];
+  analyticsState.eventQueue = []; // Clear queue
+
+  // Get the streaming endpoint (Bedrock Streaming Handler)
+  const streamingEndpoint = environmentConfig.getStreamingEndpoint?.() ||
+                            environmentConfig.STREAMING_ENDPOINT ||
+                            'https://7pluzq3axftklmb4gbgchfdahu0lcnqd.lambda-url.us-east-1.on.aws';
+
+  // Build analytics endpoint URL
+  const analyticsEndpoint = `${streamingEndpoint}?action=analytics`;
+
+  // In development, log but still send to test the pipeline
+  if (import.meta.env.DEV) {
+    console.log('📊 [Analytics] Flushing', events.length, 'events to:', analyticsEndpoint);
+  }
+
+  try {
+    const response = await fetch(analyticsEndpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'analytics', // Include action in body for streaming handler routing
+        batch: true,
+        events: events
+      }),
+      keepalive: true // Ensure request completes even if page unloads
+    });
+
+    if (!response.ok) {
+      throw new Error(`Analytics endpoint returned ${response.status}`);
+    }
+
+    const result = await response.json();
+    if (import.meta.env.DEV) {
+      console.log('📊 [Analytics] Flush successful:', result);
+    }
+  } catch (error) {
+    console.warn('[Analytics] Failed to flush events:', error);
+    // Re-queue failed events for retry
+    analyticsState.eventQueue = [...events, ...(analyticsState.eventQueue || [])];
+  }
+}
+
+// Expose notifyParentEvent globally for other components to use
+window.notifyParentEvent = notifyParentEvent;
+
+// Expose analytics state for components that need session_id
+window.analyticsState = analyticsState;
 
 // Listen for commands from host (PRD-compliant)
 function setupCommandListener() {
@@ -187,11 +363,24 @@ function setupCommandListener() {
         console.error('❌ Rejected PICASSO_INIT from untrusted origin:', event.origin);
         return;
       }
-      
+
       console.log('📡 Received PICASSO_INIT from parent:', event.data);
+
+      // Store tenant hash for analytics
       if (event.data.tenantHash) {
+        analyticsState.tenantHash = event.data.tenantHash;
         console.log('✅ Parent confirmed tenant hash:', event.data.tenantHash);
         // Config will be fetched by normal flow - handshake complete
+      }
+
+      // Store attribution data for analytics (GA4 client_id, UTM params, etc.)
+      if (event.data.attribution) {
+        analyticsState.attribution = event.data.attribution;
+        console.log('📊 Attribution data received:', {
+          ga_client_id: analyticsState.attribution.ga_client_id ? '✓' : '✗',
+          utm_source: analyticsState.attribution.utm_source || '(none)',
+          referrer: analyticsState.attribution.referrer ? 'present' : '(direct)'
+        });
       }
     }
     
