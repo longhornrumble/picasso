@@ -516,8 +516,9 @@ export const FormModeProvider = ({ children }) => {
       ? Math.round((Date.now() - formMetadata.startedAt) / 1000)
       : 0;
 
-    // Only emit if form was actually started (has fields)
-    if (formConfig?.fields?.length > 0) {
+    // Only emit FORM_ABANDONED if user actually engaged with the form (FORM_STARTED fired)
+    // This ensures Starts = Completions + Abandons for accurate funnel math
+    if (formStartedEmittedRef.current) {
       emitFormEvent(FORM_ABANDONED, {
         form_id: currentFormId,
         form_label: formConfig.title || currentFormId,
