@@ -441,6 +441,9 @@ function initializeWidget() {
     const urlParams = new URLSearchParams(window.location.search);
     const tenantHash = urlParams.get('t') || environmentConfig.getDefaultTenantHash();
     console.log('🔑 Using tenant hash:', tenantHash);
+
+    // Set analytics state tenant hash immediately (needed for MESSAGE_SENT/RECEIVED events)
+    analyticsState.tenantHash = tenantHash;
     
     // Set up config for iframe mode to use live API
     if (!window.PicassoConfig) {
@@ -477,6 +480,13 @@ function initializeWidget() {
               });
               
               console.log(`⚡ Config loaded from cache in ${loadTime.toFixed(2)}ms ✅`);
+
+              // Ensure analytics state has tenant hash (fallback if PICASSO_INIT wasn't received)
+              if (!analyticsState.tenantHash && tenantHash) {
+                analyticsState.tenantHash = tenantHash;
+                console.log('📊 Analytics tenant hash set from cached config:', tenantHash);
+              }
+
               return cachedConfig;
             }
           } catch {
@@ -528,7 +538,13 @@ function initializeWidget() {
         });
         
         console.log(`⚡ Config fetched in ${loadTime.toFixed(2)}ms ${loadTime < 200 ? '✅' : '⚠️ (PRD target: <200ms)'}`);
-        
+
+        // Ensure analytics state has tenant hash (fallback if PICASSO_INIT wasn't received)
+        if (!analyticsState.tenantHash && tenantHash) {
+          analyticsState.tenantHash = tenantHash;
+          console.log('📊 Analytics tenant hash set from config fetch:', tenantHash);
+        }
+
         return config;
       } catch (error) {
         performanceMetrics.configEndTime = performance.now();
