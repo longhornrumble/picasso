@@ -629,7 +629,8 @@ export default function StreamingChatProvider({ children }) {
         `${envConfig.API_BASE_URL}?action=stream&t=${tenantHashRef.current}`;
       
       const startTime = Date.now();
-      
+      let firstChunkTime = null;  // Track time to first character (TTFB)
+
       // Try streaming first
       await streamChat({
         url: endpoint,
@@ -645,6 +646,11 @@ export default function StreamingChatProvider({ children }) {
           logger.info('Streaming started', { streamingMessageId });
         },
         onChunk: (delta, total) => {
+          // Track time to first chunk (TTFB) for response time analytics
+          if (firstChunkTime === null) {
+            firstChunkTime = Date.now() - startTime;
+            logger.info(`First chunk received in ${firstChunkTime}ms`);
+          }
           // Update via StreamingRegistry for DOM updates
           streamingRegistry.appendChunk(streamingMessageId, delta, total);
         },
@@ -682,14 +688,15 @@ export default function StreamingChatProvider({ children }) {
           console.log('[StreamingChatProvider] pendingCtasRef.current after assignment:', pendingCtasRef.current);
         },
         onDone: async (fullText) => {
-          const responseTime = Date.now() - startTime;
-          logger.info(`Streaming completed in ${responseTime}ms`);
+          const totalTime = Date.now() - startTime;
+          logger.info(`Streaming completed in ${totalTime}ms (first chunk: ${firstChunkTime}ms)`);
 
           // Emit MESSAGE_RECEIVED analytics event
+          // Use firstChunkTime (TTFB) for response_time_ms - this is when user sees first character
           emitAnalyticsEvent(MESSAGE_RECEIVED, {
             content_preview: fullText.substring(0, 500),
             content_length: fullText.length,
-            response_time_ms: responseTime,
+            response_time_ms: firstChunkTime || totalTime,  // TTFB, fallback to total if no chunks
             step_number: stepNumber
           });
 
