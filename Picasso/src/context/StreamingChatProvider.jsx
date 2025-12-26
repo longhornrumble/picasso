@@ -29,6 +29,20 @@ import { logger } from '../utils/logger';
 import { config as envConfig } from '../config/environment';
 import { streamingRegistry } from '../utils/streamingRegistry';
 import { createConversationManager } from '../utils/conversationManager';
+import { MESSAGE_SENT, MESSAGE_RECEIVED } from '../analytics/eventConstants';
+
+/**
+ * Emit analytics event via global notifyParentEvent
+ * @param {string} eventType - Event type from eventConstants.js
+ * @param {Object} payload - Event payload
+ */
+function emitAnalyticsEvent(eventType, payload) {
+  if (typeof window !== 'undefined' && window.notifyParentEvent) {
+    window.notifyParentEvent(eventType, payload);
+  } else {
+    console.warn('[StreamingChatProvider] notifyParentEvent not available for:', eventType);
+  }
+}
 
 // Streaming timeout constants
 const STREAMING_TIMEOUT = 25000; // 25 seconds (Lambda has 30s limit)
@@ -509,10 +523,20 @@ export default function StreamingChatProvider({ children }) {
 
     // Add user message immediately
     const userMessage = createUserMessage(userInput);
+    const messageStartTime = Date.now();
+    const stepNumber = messages.length + 1; // Current step in conversation
+
     setMessages(prev => {
       const updated = [...prev, userMessage];
       saveToSession('picasso_messages', updated);
       return updated;
+    });
+
+    // Emit MESSAGE_SENT analytics event
+    emitAnalyticsEvent(MESSAGE_SENT, {
+      content_preview: userInput.substring(0, 500),
+      content_length: userInput.length,
+      step_number: stepNumber
     });
 
     setIsTyping(true);
@@ -660,6 +684,14 @@ export default function StreamingChatProvider({ children }) {
         onDone: async (fullText) => {
           const responseTime = Date.now() - startTime;
           logger.info(`Streaming completed in ${responseTime}ms`);
+
+          // Emit MESSAGE_RECEIVED analytics event
+          emitAnalyticsEvent(MESSAGE_RECEIVED, {
+            content_preview: fullText.substring(0, 500),
+            content_length: fullText.length,
+            response_time_ms: responseTime,
+            step_number: stepNumber
+          });
 
           // Debug: Check if pendingCtasRef and pendingShowcaseCardRef survived until onDone
           console.log('[StreamingChatProvider] onDone called, pending refs state:', {

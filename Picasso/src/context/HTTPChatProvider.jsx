@@ -29,6 +29,20 @@ import {
 import { logger } from '../utils/logger';
 import { config as envConfig } from '../config/environment';
 import { createConversationManager } from '../utils/conversationManager';
+import { MESSAGE_SENT, MESSAGE_RECEIVED } from '../analytics/eventConstants';
+
+/**
+ * Emit analytics event via global notifyParentEvent
+ * @param {string} eventType - Event type from eventConstants.js
+ * @param {Object} payload - Event payload
+ */
+function emitAnalyticsEvent(eventType, payload) {
+  if (typeof window !== 'undefined' && window.notifyParentEvent) {
+    window.notifyParentEvent(eventType, payload);
+  } else {
+    console.warn('[HTTPChatProvider] notifyParentEvent not available for:', eventType);
+  }
+}
 
 // HTTP-specific timeout (Lambda has 30 second limit)
 const HTTP_TIMEOUT = 25000; // 25 seconds (5 seconds buffer before Lambda timeout)
@@ -396,12 +410,22 @@ export default function HTTPChatProvider({ children }) {
     
     // Add user message immediately
     const userMessage = createUserMessage(userInput);
+    const messageStartTime = Date.now();
+    const stepNumber = messages.length + 1; // Current step in conversation
+
     setMessages(prev => {
       const updated = [...prev, userMessage];
       saveToSession('picasso_messages', updated);
       return updated;
     });
-    
+
+    // Emit MESSAGE_SENT analytics event
+    emitAnalyticsEvent(MESSAGE_SENT, {
+      content_preview: userInput.substring(0, 500),
+      content_length: userInput.length,
+      step_number: stepNumber
+    });
+
     setIsTyping(true);
     setError(null);
     
@@ -500,8 +524,19 @@ export default function HTTPChatProvider({ children }) {
       const startTime = Date.now();
       const response = await makeHTTPRequest(finalEndpoint, requestBody);
       const responseTime = Date.now() - startTime;
-      
+
       logger.info(`HTTP Response received in ${responseTime}ms`);
+
+      // Extract content early for analytics (before processing)
+      const rawContent = response.content || response.message || response.response || '';
+
+      // Emit MESSAGE_RECEIVED analytics event
+      emitAnalyticsEvent(MESSAGE_RECEIVED, {
+        content_preview: (typeof rawContent === 'string' ? rawContent : JSON.stringify(rawContent)).substring(0, 500),
+        content_length: typeof rawContent === 'string' ? rawContent.length : JSON.stringify(rawContent).length,
+        response_time_ms: responseTime,
+        step_number: stepNumber
+      });
       console.log('🟣🟣🟣 Raw response from Lambda:', response);
       console.log('🟣 Response keys:', Object.keys(response));
       console.log('🟣 response.ctaButtons:', response.ctaButtons);
