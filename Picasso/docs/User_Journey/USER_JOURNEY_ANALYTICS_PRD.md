@@ -1,8 +1,8 @@
 # User Journey Analytics - Product Requirements Document
 
-**Version:** 1.1
-**Date:** 2025-12-25
-**Status:** In Progress (Forms Dashboard Complete)
+**Version:** 1.2
+**Date:** 2025-12-27
+**Status:** MVP Complete (Forms + Conversations Dashboards)
 
 ---
 
@@ -117,17 +117,27 @@ Nonprofits ask "Is my investment in MyRecruiter worth it?" and we cannot answer.
 
 ## Implementation Phases
 
-**MVP (6 weeks):** Forms Dashboard + Conversations Dashboard
+**MVP (6 weeks):** Forms Dashboard + Conversations Dashboard - ✅ **COMPLETE**
 
 | Phase | Duration | Deliverable | Status |
 |-------|----------|-------------|--------|
 | Phase 1: Event Capture | Weeks 1-2 | Event system, DynamoDB tables, SQS buffer | ✅ Complete (2025-12-19) |
 | Phase 2: Analytics API | Weeks 3-4 | JWT auth, query routing, tenant isolation | ✅ Complete (2025-12-19) |
 | Phase 5: Forms Dashboard | Weeks 5-6 | Form funnel, bottlenecks, submissions | ✅ Complete (2025-12-25) |
-| Phase 5: Conversations Dashboard | Weeks 5-6 | Q&A metrics, heat maps, session data | ⏳ Not Started |
-| Phase 6: Polish + Launch | Week 7 | Production deployment, Bubble sunset | ⏳ Not Started |
+| Phase 5: Conversations Dashboard | Weeks 5-6 | Q&A metrics, heat maps, session data | ✅ Complete (2025-12-26) |
+| Phase 6: Polish + Launch | Week 7 | Production deployment, CSV export | ✅ CSV Complete, Deployment Pending |
 
 **v2.0 (defer):** Attribution Dashboard with GA4 integration
+
+### Recent Updates (2025-12-28)
+- Added Lead Workspace Drawer for form submission processing (7-phase implementation)
+- CSV export functionality complete for both Forms and Conversations dashboards
+
+### Recent Fixes (2025-12-27)
+- Fixed Analytics API to extract name/email from `form_data_labeled` (human-readable labels)
+- Fixed duplicate form submission bug in ChatWidget.jsx
+- Added master mock data switch (`VITE_USE_MOCK_DATA`) for development
+- Fixed DynamoDB GSI indexing for form submissions (requires both `submitted_at` AND `timestamp`)
 
 ---
 

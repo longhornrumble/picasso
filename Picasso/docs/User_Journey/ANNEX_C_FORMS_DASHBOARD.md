@@ -2,9 +2,10 @@
 
 **Parent Document:** [USER_JOURNEY_ANALYTICS_PRD.md](USER_JOURNEY_ANALYTICS_PRD.md)
 **Technical Reference:** [USER_JOURNEY_ANALYTICS_PLAN.md](USER_JOURNEY_ANALYTICS_PLAN.md)
-**Version:** 1.0
-**Date:** 2025-12-18
+**Version:** 1.1
+**Date:** 2025-12-27
 **Priority:** MVP CRITICAL (Weeks 5-6)
+**Status:** ✅ COMPLETE
 
 ---
 
@@ -724,7 +725,7 @@ def get_forms_summary(event, context):
 
 ---
 
-**Build Status:** ✅ COMPLETE (2025-12-25)
+**Build Status:** ✅ COMPLETE (2025-12-27)
 
 ## Implementation Summary
 
@@ -751,7 +752,99 @@ The Forms Dashboard has been fully implemented and deployed. Key accomplishments
 
 ### Deployment
 - Dashboard: `/picasso-analytics-dashboard/` (React + Vite + TypeScript)
-- Lambda: `Analytics_Dashboard_API` (Python, Athena queries)
+- Lambda: `Analytics_Dashboard_API` (Python, DynamoDB + Athena)
 - Widget: Picasso production with corrected event tracking
 
-**Next Steps:** Conversations Dashboard, CSV export, pilot testing with 3 tenants
+---
+
+## Recent Fixes (2025-12-27)
+
+### 1. Form Data Extraction Fix
+
+**Problem**: Recent Submissions table showed "Anonymous" instead of actual names.
+
+**Root Cause**: The API was reading from `form_data` (cryptic field IDs like `field_1762286136120`) instead of `form_data_labeled` (human-readable labels like "Name", "Email").
+
+**Solution**: Added new `extract_name_email_from_form_data_labeled()` function to Analytics_Dashboard_API:
+
+```python
+def extract_name_email_from_form_data_labeled(form_data_labeled: Dict) -> tuple:
+    """
+    Extract name and email from DynamoDB form_data_labeled structure.
+    Uses human-readable field labels (e.g., "Name", "Email") instead of
+    cryptic field IDs (e.g., "field_1762286136120").
+    """
+    # Handles simple strings and composite Name fields (First Name + Last Name)
+    # Falls back to form_data for backwards compatibility
+```
+
+### 2. DynamoDB GSI Indexing Fix
+
+**Problem**: API returned 0 submissions even though DynamoDB had records.
+
+**Root Cause**: The `tenant-timestamp-index` GSI uses `timestamp` as the sort key, but new records only had `submitted_at` attribute.
+
+**Solution**: Records now require BOTH `submitted_at` AND `timestamp` attributes:
+
+```json
+{
+  "submission_id": "apply_dare2dream_1766797544456",
+  "submitted_at": "2025-12-27T01:05:44.456Z",
+  "timestamp": "2025-12-27T01:05:44.456Z"  // Required for GSI
+}
+```
+
+**Fix Script** (for existing records):
+```python
+# Add timestamp to records that only have submitted_at
+for item in response.get('Items', []):
+    if 'submitted_at' in item and 'timestamp' not in item:
+        dynamodb.update_item(
+            TableName='picasso_form_submissions',
+            Key={'submission_id': {'S': item['submission_id']['S']}},
+            UpdateExpression='SET #ts = :ts',
+            ExpressionAttributeNames={'#ts': 'timestamp'},
+            ExpressionAttributeValues={':ts': item['submitted_at']}
+        )
+```
+
+### 3. Duplicate Form Submission Fix
+
+**Problem**: Same form submission appearing twice in the table.
+
+**Root Cause**: Both `useEffect` hook AND button handlers in ChatWidget.jsx were calling `recordFormCompletion`, creating duplicate submissions.
+
+**Solution**: Removed redundant calls from button handlers:
+
+```jsx
+// Form completion already recorded via useEffect above
+// Don't call recordFormCompletion here to avoid duplicate submissions
+onEndSession={() => {
+  clearCompletionState();
+  setIsOpen(false);
+}}
+```
+
+### 4. Master Mock Data Switch
+
+**Problem**: Components showed mock data unpredictably during development.
+
+**Solution**: Added `VITE_USE_MOCK_DATA` environment variable:
+
+```env
+# Set to 'true' to show mock data as fallback when API returns empty
+# Set to 'false' (or omit) to only show live data from API
+VITE_USE_MOCK_DATA=false
+```
+
+All components now check this flag before falling back to mock data:
+- Recent Submissions table
+- Top Performing Forms cards
+- Field Bottlenecks display
+- Form filter dropdown
+
+---
+
+**Conversations Dashboard:** ✅ COMPLETE (see [ANNEX_B_CONVERSATIONS_DASHBOARD.md](ANNEX_B_CONVERSATIONS_DASHBOARD.md))
+
+**Next Steps:** Phase 6 - ✅ CSV export complete, production deployment pending, pilot testing with 3 tenants
