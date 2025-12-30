@@ -38,6 +38,9 @@ This repository follows a multi-project structure:
 - **Sandbox/** - Scratch files (ignored by Git)
 - **picasso-webscraping/** - Firecrawl Node.js SDK for web scraping and RAG data preparation
 - **picasso-config-builder/** - Internal operations tool for managing Picasso configurations
+- **picasso-analytics-dashboard/** - Standalone analytics dashboard (React/TypeScript/Vite)
+- **picasso-shared-styles/** - Centralized CSS design tokens for all dashboards
+- **marketing_style_guide** - MyRecruiter brand colors, typography, UI component specs
 
 ## Commands
 
@@ -97,6 +100,20 @@ NODE_OPTIONS=--experimental-vm-modules npm test
 # Build and publish to npm
 npm run build-and-publish
 ```
+
+### Picasso Analytics Dashboard
+```bash
+cd picasso-analytics-dashboard
+npm install
+npm run dev      # Development server at localhost:5173
+npm run build    # Production build
+
+# Deploy to production
+aws s3 sync dist/ s3://app-myrecruiter-ai/ --delete --profile chris-admin
+aws cloudfront create-invalidation --distribution-id EJ0Y6ZUIUBSAT --paths "/*"
+```
+
+**Production URL**: https://d3r39xkfb0snuq.cloudfront.net
 
 ## Architecture Overview
 
@@ -219,6 +236,29 @@ python run_security_tests.py
 python -c "from lambda_function import validate_token; print(validate_token('test_token'))"
 ```
 
+## Design System
+
+### Shared Styles (`picasso-shared-styles/`)
+Centralized CSS design tokens used across all Picasso dashboards and applications.
+
+**Key Files:**
+- `src/tokens.css` - CSS custom properties (colors, spacing, shadows, typography)
+- `src/tailwind-preset.js` - Tailwind CSS preset extending the tokens
+
+**Usage:**
+```css
+@import '../../picasso-shared-styles/src/tokens.css';
+```
+
+### Marketing Style Guide (`marketing_style_guide`)
+Brand reference document for visual consistency. All dashboard styling should align with this guide.
+
+**Key Sections:**
+- Brand Colors (Emerald palette, neutrals, accents)
+- Typography (Plus Jakarta Sans, type scale)
+- UI Components (buttons, cards, callouts)
+- Voice & Tone guidelines
+
 ## Known Configuration Notes
 
 - Lambda functions repo is nested: `Lambdas/lambda/`
@@ -228,3 +268,4 @@ python -c "from lambda_function import validate_token; print(validate_token('tes
 - TypeScript files present but tsconfig.json may need configuration
 - Firecrawl SDK requires Node.js 22.0.0+ for ES modules support
 - RAG scraper examples in `picasso-webscraping/rag-scraper/` for various use cases
+- Analytics dashboard deployed to S3 bucket `app-myrecruiter-ai` with CloudFront `EJ0Y6ZUIUBSAT`
