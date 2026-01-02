@@ -214,10 +214,10 @@ const ENVIRONMENTS = {
                   (typeof __API_BASE_URL__ !== 'undefined' ? __API_BASE_URL__ : 'https://2ho6tw56ccvl6uvicra4f56j740dyxgo.lambda-url.us-east-1.on.aws'),
     CHAT_API_URL: (typeof process !== 'undefined' && process.env && process.env.PICASSO_API_BASE_URL) ||
                   (typeof __API_BASE_URL__ !== 'undefined' ? __API_BASE_URL__ : 'https://2ho6tw56ccvl6uvicra4f56j740dyxgo.lambda-url.us-east-1.on.aws'),
-    ASSET_BASE_URL: typeof __CONFIG_DOMAIN__ !== 'undefined' ? __CONFIG_DOMAIN__ : 'https://picassostaging.s3.amazonaws.com',
+    ASSET_BASE_URL: typeof __CONFIG_DOMAIN__ !== 'undefined' ? __CONFIG_DOMAIN__ : 'https://staging.chat.myrecruiter.ai',
     S3_BUCKET: 'picassostaging', // Code bucket for staging
     CONFIG_BUCKET: 'myrecruiter-picasso', // Tenant configs and mappings for ALL environments
-    WIDGET_DOMAIN: typeof __WIDGET_DOMAIN__ !== 'undefined' ? __WIDGET_DOMAIN__ : 'https://picassostaging.s3.amazonaws.com',
+    WIDGET_DOMAIN: typeof __WIDGET_DOMAIN__ !== 'undefined' ? __WIDGET_DOMAIN__ : 'https://staging.chat.myrecruiter.ai',
     DEBUG: true,
     
     // Staging uses Lambda function URL for config (has hash-to-ID mapping)
@@ -390,7 +390,7 @@ export const config = {
       return `https://picassostaging.s3.amazonaws.com/tenants/${tenantHash}/${assetPath}`;
     }
     if (currentEnv === 'staging') {
-      return `https://chat.myrecruiter.ai/staging/tenants/${tenantHash}/${assetPath}`;
+      return `https://staging.chat.myrecruiter.ai/tenants/${tenantHash}/${assetPath}`;
     }
     return `https://myrecruiter-picasso.s3.us-east-1.amazonaws.com/tenants/${tenantHash}/${assetPath}`;
   },
@@ -585,39 +585,34 @@ export const config = {
     version: typeof process !== 'undefined' ? process.env.npm_package_version : 'unknown'
   }),
   
-  // Staging infrastructure validation - ensures proper Track A+ routing
+  // Staging infrastructure validation - ensures proper staging domain routing
   validateStagingInfrastructure: () => {
     if (currentEnv !== 'staging') {
       return { valid: true, message: 'Not staging environment' };
     }
-    
+
     const stagingConfig = ENVIRONMENTS.staging;
     const issues = [];
-    
-    // Validate API Gateway staging routing
-    if (!stagingConfig.CHAT_ENDPOINT.includes('/primary/staging/Master_Function')) {
-      issues.push('Chat endpoint not routing to staging Master_Function with Track A+');
+
+    // Validate widget domain uses dedicated staging CloudFront
+    if (!stagingConfig.WIDGET_DOMAIN.includes('staging.chat.myrecruiter.ai')) {
+      issues.push('Widget domain not using dedicated staging CloudFront (staging.chat.myrecruiter.ai)');
     }
-    
-    // Validate widget domain uses staging path
-    if (!stagingConfig.WIDGET_DOMAIN.includes('/staging')) {
-      issues.push('Widget domain not using staging infrastructure path');
+
+    // Validate asset routing uses staging CloudFront
+    if (!stagingConfig.ASSET_BASE_URL.includes('staging.chat.myrecruiter.ai')) {
+      issues.push('Asset base URL not using staging CloudFront domain');
     }
-    
-    // Validate asset routing
-    if (!stagingConfig.ASSET_BASE_URL.includes('/staging')) {
-      issues.push('Asset base URL not using staging CloudFront path');
+
+    // Validate streaming endpoint exists
+    if (!stagingConfig.STREAMING_ENDPOINT) {
+      issues.push('Streaming endpoint not configured');
     }
-    
-    // Validate streaming endpoint
-    if (!stagingConfig.STREAMING_ENDPOINT.includes('/primary/staging/')) {
-      issues.push('Streaming endpoint not routing to staging infrastructure');
-    }
-    
+
     const isValid = issues.length === 0;
     return {
       valid: isValid,
-      message: isValid ? 'Staging infrastructure properly configured for Track A+' : issues.join('; '),
+      message: isValid ? 'Staging infrastructure properly configured with dedicated CloudFront' : issues.join('; '),
       issues: issues,
       endpoints: {
         chat: stagingConfig.CHAT_ENDPOINT,
