@@ -60,6 +60,7 @@ async function streamChat({
   onChunk,
   onCards, // New callback for handling smart response cards
   onCtaButtons, // New callback for handling CTA buttons
+  onShowcaseCard, // Callback for handling showcase cards
   onDone,
   onError,
   abortControllersRef,
@@ -215,13 +216,9 @@ async function streamChat({
 
           // Check if this is a showcase card event
           if (obj.type === 'showcase_card' && obj.showcaseCard) {
-            // Handle showcase card separately
+            // Handle showcase card separately via callback
             logger.info('Received showcase card', { showcaseCard: obj.showcaseCard, metadata: obj.metadata });
-
-            // Store showcase card in ref for onDone to include in final state update
-            pendingShowcaseCardRef.current = { showcaseCard: obj.showcaseCard, metadata: obj.metadata };
-
-            console.log('[StreamingChatProvider] pendingShowcaseCardRef.current after assignment:', pendingShowcaseCardRef.current);
+            onShowcaseCard?.(obj.showcaseCard, obj.metadata);
             continue;
           }
 
@@ -687,6 +684,15 @@ export default function StreamingChatProvider({ children }) {
           // Debug: Check if pendingCtasRef is actually set
           console.log('[StreamingChatProvider] pendingCtasRef.current after assignment:', pendingCtasRef.current);
         },
+        onShowcaseCard: (showcaseCard, metadata) => {
+          // Stage showcase card for inclusion in onDone - no immediate state update
+          logger.info('Received showcase card', { showcaseCard, metadata });
+
+          // Store showcase card in ref for onDone to include in final state update
+          pendingShowcaseCardRef.current = { showcaseCard, metadata };
+
+          console.log('[StreamingChatProvider] pendingShowcaseCardRef.current after assignment:', pendingShowcaseCardRef.current);
+        },
         onDone: async (fullText) => {
           const totalTime = Date.now() - startTime;
           logger.info(`Streaming completed in ${totalTime}ms (first chunk: ${firstChunkTime}ms)`);
@@ -753,7 +759,7 @@ export default function StreamingChatProvider({ children }) {
                   ...pendingShowcaseCardRef.current?.metadata,
                   isStreaming: false,
                   streamCompleted: true,
-                  responseTime,
+                  responseTime: totalTime,
                   hasCtas: finalCtaButtons.length > 0,
                   ctaCount: finalCtaButtons.length,
                   hasShowcaseCard: !!rawShowcaseCard

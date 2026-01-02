@@ -575,7 +575,7 @@ export default function HTTPChatProvider({ children }) {
       // Create assistant message
       const assistantMessage = createAssistantMessage(assistantContent, {
         sessionId: response.session_id,
-        responseTime,
+        responseTime: responseTime,  // Explicit syntax to avoid potential ESBuild minification issues
         sources: response.sources,
         ctaButtons: ctaButtons  // PHASE 1B: Include CTAs
       });

@@ -8,6 +8,7 @@ import { FormModeProvider } from './context/FormModeContext.jsx';
 import ChatProviderOrchestrator from './context/ChatProviderOrchestrator.jsx';
 import ChatWidget from './components/chat/ChatWidget.jsx';
 import { CSSVariablesProvider } from './components/chat/useCSSVariables.js';
+import ErrorBoundary from './components/ErrorBoundary.jsx';
 import { config as environmentConfig } from './config/environment.js';
 import { setupGlobalErrorHandling, performanceMonitor } from './utils/errorHandling.js';
 import { performanceTracker } from './utils/performanceTracking.js';
@@ -603,18 +604,20 @@ function initializeWidget() {
     console.log('✅ data-iframe attribute set to:', isIframe);
     console.log('✅ Iframe height setup complete');
     
-    // Create React root and render app
+    // Create React root and render app with ErrorBoundary
     const root = createRoot(container);
     root.render(
-      <ConfigProvider>
-        <CSSVariablesProvider>
-          <FormModeProvider>
-            <ChatProviderOrchestrator>
-              <ChatWidget />
-            </ChatProviderOrchestrator>
-          </FormModeProvider>
-        </CSSVariablesProvider>
-      </ConfigProvider>
+      <ErrorBoundary>
+        <ConfigProvider>
+          <CSSVariablesProvider>
+            <FormModeProvider>
+              <ChatProviderOrchestrator>
+                <ChatWidget />
+              </ChatProviderOrchestrator>
+            </FormModeProvider>
+          </CSSVariablesProvider>
+        </ConfigProvider>
+      </ErrorBoundary>
     );
     
     console.log("✅ Picasso Widget iframe initialized successfully");
