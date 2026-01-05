@@ -1,0 +1,943 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Form Editor - Web Config Builder Wireframe</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #f0f4f3;
+            padding: 20px;
+            color: #2c3e50;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            border-radius: 12px;
+            padding: 24px 32px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            font-size: 24px;
+            font-weight: 600;
+            color: #1a1a1a;
+        }
+
+        .header-subtitle {
+            font-size: 13px;
+            color: #6b7280;
+            margin-top: 4px;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 12px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: white;
+            color: #4CAF50;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+        }
+
+        .btn-secondary {
+            background: white;
+            color: #6b7280;
+            border: 1px solid #e5e7eb;
+        }
+
+        .btn-secondary:hover {
+            background: #f9fafb;
+        }
+
+        .content {
+            display: flex;
+            gap: 20px;
+            height: calc(100vh - 200px);
+        }
+
+        .sidebar {
+            width: 300px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            overflow: hidden;
+        }
+
+        .sidebar-header {
+            padding: 20px;
+            border-bottom: 1px solid #f0f0f0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .sidebar-header h2 {
+            font-size: 16px;
+            font-weight: 600;
+            color: #1a1a1a;
+        }
+
+        .add-btn {
+            width: 32px;
+            height: 32px;
+            border-radius: 6px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            font-size: 20px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .add-btn:hover {
+            background: #45a049;
+        }
+
+        .form-list {
+            padding: 12px;
+        }
+
+        .form-item {
+            padding: 16px;
+            margin-bottom: 8px;
+            background: white;
+            border: 2px solid #f0f0f0;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .form-item:hover {
+            border-color: #e0e0e0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        .form-item.active {
+            border-color: #4CAF50;
+            background: #f0fdf4;
+        }
+
+        .form-name {
+            font-weight: 600;
+            font-size: 14px;
+            color: #1a202c;
+            margin-bottom: 6px;
+        }
+
+        .form-program {
+            display: inline-block;
+            background: #dbeafe;
+            color: #1e40af;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 500;
+            margin-bottom: 6px;
+        }
+
+        .form-fields {
+            font-size: 12px;
+            color: #718096;
+            margin-top: 6px;
+        }
+
+        .main-panel {
+            flex: 1;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            overflow-y: auto;
+            padding: 32px;
+        }
+
+        .form-section {
+            margin-bottom: 32px;
+        }
+
+        .form-section h3 {
+            font-size: 16px;
+            font-weight: 600;
+            color: #1a1a1a;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .help-icon {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #e5e7eb;
+            color: #6b7280;
+            font-size: 12px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: help;
+        }
+
+        .form-group {
+            margin-bottom: 24px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 14px;
+            font-weight: 500;
+            color: #374151;
+            margin-bottom: 8px;
+        }
+
+        .form-label .required {
+            color: #ef4444;
+            margin-left: 2px;
+        }
+
+        .form-help {
+            font-size: 12px;
+            color: #6b7280;
+            margin-top: 6px;
+            line-height: 1.5;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 10px 14px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: #4CAF50;
+            box-shadow: 0 0 0 3px rgba(236, 72, 153, 0.1);
+        }
+
+        .form-textarea {
+            width: 100%;
+            padding: 10px 14px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 14px;
+            min-height: 80px;
+            resize: vertical;
+            font-family: inherit;
+        }
+
+        .form-textarea:focus {
+            outline: none;
+            border-color: #4CAF50;
+            box-shadow: 0 0 0 3px rgba(236, 72, 153, 0.1);
+        }
+
+        .form-select {
+            width: 100%;
+            padding: 10px 14px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 14px;
+            background: white;
+            cursor: pointer;
+        }
+
+        .form-select:focus {
+            outline: none;
+            border-color: #4CAF50;
+            box-shadow: 0 0 0 3px rgba(236, 72, 153, 0.1);
+        }
+
+        .program-selector {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 12px;
+            margin-top: 8px;
+        }
+
+        .program-option {
+            padding: 16px;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .program-option:hover {
+            border-color: #e0e0e0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        .program-option.selected {
+            border-color: #4CAF50;
+            background: #f0fdf4;
+        }
+
+        .program-name {
+            font-weight: 600;
+            font-size: 14px;
+            color: #374151;
+            margin-bottom: 4px;
+        }
+
+        .program-id {
+            font-size: 11px;
+            color: #6b7280;
+            font-family: 'Courier New', monospace;
+        }
+
+        .trigger-input-group {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .trigger-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .trigger-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            background: #f0fdf4;
+            border: 1px solid #86efac;
+            color: #166534;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .trigger-tag .remove {
+            cursor: pointer;
+            font-size: 14px;
+            opacity: 0.6;
+        }
+
+        .trigger-tag .remove:hover {
+            opacity: 1;
+        }
+
+        .field-builder {
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 20px;
+            background: #fafafa;
+        }
+
+        .field-item {
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 6px;
+            padding: 16px;
+            margin-bottom: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .field-info {
+            flex: 1;
+        }
+
+        .field-id {
+            font-weight: 600;
+            font-size: 14px;
+            color: #374151;
+            margin-bottom: 4px;
+        }
+
+        .field-meta {
+            font-size: 12px;
+            color: #6b7280;
+        }
+
+        .field-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .icon-btn {
+            width: 32px;
+            height: 32px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            background: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+        }
+
+        .icon-btn:hover {
+            background: #f3f4f6;
+        }
+
+        .validation-panel {
+            background: #fffbeb;
+            border: 1px solid #fcd34d;
+            border-radius: 8px;
+            padding: 16px;
+            margin-top: 24px;
+        }
+
+        .validation-panel.error {
+            background: #fef2f2;
+            border-color: #fca5a5;
+        }
+
+        .validation-panel.success {
+            background: #f0fdf4;
+            border-color: #86efac;
+        }
+
+        .validation-header {
+            font-weight: 600;
+            font-size: 14px;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .validation-list {
+            list-style: none;
+            font-size: 13px;
+            line-height: 1.8;
+        }
+
+        .validation-list li {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+        }
+
+        .validation-list li::before {
+            content: "⚠️";
+            flex-shrink: 0;
+        }
+
+        .validation-panel.error .validation-list li::before {
+            content: "❌";
+        }
+
+        .validation-panel.success .validation-list li::before {
+            content: "✅";
+        }
+
+        .info-box {
+            background: #eff6ff;
+            border: 1px solid #bfdbfe;
+            border-radius: 8px;
+            padding: 12px;
+            margin-top: 12px;
+        }
+
+        .info-box-title {
+            font-weight: 600;
+            font-size: 13px;
+            color: #1e40af;
+            margin-bottom: 6px;
+        }
+
+        .info-box-text {
+            font-size: 12px;
+            color: #1e40af;
+            line-height: 1.6;
+        }
+
+        .footer-actions {
+            display: flex;
+            justify-content: space-between;
+            padding: 24px 32px;
+            border-top: 1px solid #e5e7eb;
+            background: #fafafa;
+        }
+
+        .btn-danger {
+            background: white;
+            border: 1px solid #dc2626;
+            color: #dc2626;
+        }
+
+        .btn-danger:hover {
+            background: #dc2626;
+            color: white;
+        }
+
+        .btn-save {
+            background: #4CAF50;
+            color: white;
+            padding: 12px 32px;
+        }
+
+        .btn-save:hover {
+            background: #45a049;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(236, 72, 153, 0.3);
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .badge-new {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+
+        .badge-required {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .example-box {
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+            border-radius: 6px;
+            padding: 12px;
+            margin-top: 8px;
+        }
+
+        .example-title {
+            font-weight: 600;
+            font-size: 12px;
+            color: #6b7280;
+            margin-bottom: 6px;
+        }
+
+        .example-content {
+            font-size: 12px;
+            color: #374151;
+            line-height: 1.5;
+        }
+
+        .linked-ctas {
+            background: #f0fdf4;
+            border: 1px solid #86efac;
+            border-radius: 6px;
+            padding: 12px;
+            margin-top: 12px;
+        }
+
+        .linked-title {
+            font-weight: 600;
+            font-size: 12px;
+            color: #166534;
+            margin-bottom: 8px;
+        }
+
+        .cta-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .cta-chip {
+            padding: 4px 10px;
+            background: #d1fae5;
+            border: 1px solid #86efac;
+            color: #047857;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 500;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div>
+                <h1>📝 Form Editor</h1>
+                <div class="header-subtitle">
+                    Tenant: MYR384719 (Atlanta Angels) • Config v1.3
+                </div>
+            </div>
+            <div class="header-actions">
+                <button class="btn btn-secondary">← Back to Config</button>
+                <button class="btn btn-primary">Deploy to S3</button>
+            </div>
+        </div>
+
+        <div class="content">
+            <!-- Sidebar with form list -->
+            <div class="sidebar">
+                <div class="sidebar-header">
+                    <h2>Forms (4)</h2>
+                    <button class="add-btn" title="Add new form">+</button>
+                </div>
+                <div class="form-list">
+                    <div class="form-item active">
+                        <div class="form-name">lb_apply</div>
+                        <div class="form-program">Program: lovebox</div>
+                        <div class="form-fields">8 fields • 3 trigger phrases</div>
+                    </div>
+
+                    <div class="form-item">
+                        <div class="form-name">dd_apply</div>
+                        <div class="form-program">Program: daretodream</div>
+                        <div class="form-fields">10 fields • 2 trigger phrases</div>
+                    </div>
+
+                    <div class="form-item">
+                        <div class="form-name">volunteer_general</div>
+                        <div class="form-program">Program: volunteer</div>
+                        <div class="form-fields">6 fields • 4 trigger phrases</div>
+                    </div>
+
+                    <div class="form-item">
+                        <div class="form-name">contact_form</div>
+                        <div class="form-program" style="background: #fef3c7; color: #92400e;">No program assigned</div>
+                        <div class="form-fields">4 fields • 0 trigger phrases</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main editing panel -->
+            <div class="main-panel">
+                <div class="form-section">
+                    <h3>
+                        Form Configuration
+                        <span class="help-icon">?</span>
+                    </h3>
+
+                    <div class="form-group">
+                        <label class="form-label">
+                            Form ID <span class="required">*</span>
+                        </label>
+                        <input type="text" class="form-input" value="lb_apply" placeholder="e.g., volunteer_application">
+                        <p class="form-help">
+                            Unique identifier for this form. Use lowercase with underscores. Cannot be changed after creation.
+                        </p>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">
+                            Form Title <span class="required">*</span>
+                        </label>
+                        <input type="text" class="form-input" value="Love Box Application" placeholder="e.g., Volunteer Application">
+                        <p class="form-help">
+                            User-facing name shown when the form is presented in conversation.
+                        </p>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">
+                            Description <span class="required">*</span>
+                        </label>
+                        <textarea class="form-textarea" placeholder="Brief description of what this form is for...">Apply to receive emergency financial assistance through our Love Box program. We provide support with bills, groceries, and other urgent needs for families in crisis.</textarea>
+                        <p class="form-help">
+                            Brief explanation of the form's purpose, shown to users before starting.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="form-section">
+                    <h3>
+                        Program Assignment
+                        <span class="help-icon">?</span>
+                        <span class="badge badge-required">Required in v1.3</span>
+                    </h3>
+
+                    <div class="form-group">
+                        <label class="form-label">
+                            Assign to Program <span class="required">*</span>
+                        </label>
+                        <div class="program-selector">
+                            <div class="program-option selected">
+                                <div class="program-name">Love Box</div>
+                                <div class="program-id">lovebox</div>
+                            </div>
+                            <div class="program-option">
+                                <div class="program-name">Dare to Dream</div>
+                                <div class="program-id">daretodream</div>
+                            </div>
+                            <div class="program-option">
+                                <div class="program-name">Volunteer</div>
+                                <div class="program-id">volunteer</div>
+                            </div>
+                            <div class="program-option">
+                                <div class="program-name">General Contact</div>
+                                <div class="program-id">general</div>
+                            </div>
+                        </div>
+                        <p class="form-help">
+                            Forms must be assigned to a program for completion filtering. Once a user completes this form, CTAs for this program won't be shown again.
+                        </p>
+
+                        <div class="info-box">
+                            <div class="info-box-title">🔄 How Completion Filtering Works</div>
+                            <div class="info-box-text">
+                                When a user completes the "Love Box Application" form, the system tracks this by program ID ("lovebox"). Any CTAs that trigger forms with the same program will be filtered out from future conversations with this user, preventing duplicate applications.
+                            </div>
+                        </div>
+
+                        <div class="linked-ctas">
+                            <div class="linked-title">📎 CTAs Linked to This Form</div>
+                            <div class="cta-chips">
+                                <div class="cta-chip">lovebox_apply</div>
+                            </div>
+                            <p style="font-size: 11px; color: #166534; margin-top: 6px;">
+                                These CTAs will be hidden after form completion due to program matching.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-section">
+                    <h3>
+                        Trigger Phrases
+                        <span class="help-icon">?</span>
+                        <span class="badge badge-new">Optional</span>
+                    </h3>
+
+                    <div class="form-group">
+                        <label class="form-label">
+                            Keywords that trigger this form
+                        </label>
+                        <div class="trigger-input-group">
+                            <input type="text" class="form-input" placeholder="Enter trigger phrase and press Enter" style="flex: 1;">
+                            <button class="btn btn-primary">Add</button>
+                        </div>
+                        <p class="form-help">
+                            Optional keywords that allow users to directly trigger this form in conversation. If not set, the form can only be accessed via CTA buttons.
+                        </p>
+
+                        <div class="trigger-list">
+                            <div class="trigger-tag">
+                                apply for love box <span class="remove">×</span>
+                            </div>
+                            <div class="trigger-tag">
+                                love box application <span class="remove">×</span>
+                            </div>
+                            <div class="trigger-tag">
+                                need financial help <span class="remove">×</span>
+                            </div>
+                        </div>
+
+                        <div class="example-box">
+                            <div class="example-title">💡 Trigger Phrase Tips:</div>
+                            <div class="example-content">
+                                • Use natural phrases users might type or say<br>
+                                • Include variations (e.g., "apply", "application", "sign up")<br>
+                                • Be specific enough to avoid false triggers<br>
+                                • Test with common user queries to ensure accuracy
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-section">
+                    <h3>
+                        Form Fields (8)
+                        <span class="help-icon">?</span>
+                    </h3>
+
+                    <div class="field-builder">
+                        <div class="field-item">
+                            <div class="field-info">
+                                <div class="field-id">first_name</div>
+                                <div class="field-meta">Text • Required • "What's your first name?"</div>
+                            </div>
+                            <div class="field-actions">
+                                <button class="icon-btn" title="Edit">✏️</button>
+                                <button class="icon-btn" title="Move up">⬆️</button>
+                                <button class="icon-btn" title="Move down">⬇️</button>
+                                <button class="icon-btn" title="Delete">🗑️</button>
+                            </div>
+                        </div>
+
+                        <div class="field-item">
+                            <div class="field-info">
+                                <div class="field-id">last_name</div>
+                                <div class="field-meta">Text • Required • "What's your last name?"</div>
+                            </div>
+                            <div class="field-actions">
+                                <button class="icon-btn" title="Edit">✏️</button>
+                                <button class="icon-btn" title="Move up">⬆️</button>
+                                <button class="icon-btn" title="Move down">⬇️</button>
+                                <button class="icon-btn" title="Delete">🗑️</button>
+                            </div>
+                        </div>
+
+                        <div class="field-item">
+                            <div class="field-info">
+                                <div class="field-id">email</div>
+                                <div class="field-meta">Email • Required • "What's your email address?"</div>
+                            </div>
+                            <div class="field-actions">
+                                <button class="icon-btn" title="Edit">✏️</button>
+                                <button class="icon-btn" title="Move up">⬆️</button>
+                                <button class="icon-btn" title="Move down">⬇️</button>
+                                <button class="icon-btn" title="Delete">🗑️</button>
+                            </div>
+                        </div>
+
+                        <div class="field-item">
+                            <div class="field-info">
+                                <div class="field-id">phone</div>
+                                <div class="field-meta">Phone • Required • "What's your phone number?"</div>
+                            </div>
+                            <div class="field-actions">
+                                <button class="icon-btn" title="Edit">✏️</button>
+                                <button class="icon-btn" title="Move up">⬆️</button>
+                                <button class="icon-btn" title="Move down">⬇️</button>
+                                <button class="icon-btn" title="Delete">🗑️</button>
+                            </div>
+                        </div>
+
+                        <div class="field-item" style="border-left: 3px solid #fbbf24;">
+                            <div class="field-info">
+                                <div class="field-id">age_confirm <span style="background: #fef3c7; padding: 2px 6px; border-radius: 3px; font-size: 10px; color: #92400e; margin-left: 6px;">ELIGIBILITY GATE</span></div>
+                                <div class="field-meta">Select • Required • "Are you at least 22 years old?"</div>
+                            </div>
+                            <div class="field-actions">
+                                <button class="icon-btn" title="Edit">✏️</button>
+                                <button class="icon-btn" title="Move up">⬆️</button>
+                                <button class="icon-btn" title="Move down">⬇️</button>
+                                <button class="icon-btn" title="Delete">🗑️</button>
+                            </div>
+                        </div>
+
+                        <div class="field-item">
+                            <div class="field-info">
+                                <div class="field-id">assistance_type</div>
+                                <div class="field-meta">Select • Required • "What type of assistance do you need?"</div>
+                            </div>
+                            <div class="field-actions">
+                                <button class="icon-btn" title="Edit">✏️</button>
+                                <button class="icon-btn" title="Move up">⬆️</button>
+                                <button class="icon-btn" title="Move down">⬇️</button>
+                                <button class="icon-btn" title="Delete">🗑️</button>
+                            </div>
+                        </div>
+
+                        <div class="field-item">
+                            <div class="field-info">
+                                <div class="field-id">amount_needed</div>
+                                <div class="field-meta">Number • Required • "How much assistance do you need?"</div>
+                            </div>
+                            <div class="field-actions">
+                                <button class="icon-btn" title="Edit">✏️</button>
+                                <button class="icon-btn" title="Move up">⬆️</button>
+                                <button class="icon-btn" title="Move down">⬇️</button>
+                                <button class="icon-btn" title="Delete">🗑️</button>
+                            </div>
+                        </div>
+
+                        <div class="field-item">
+                            <div class="field-info">
+                                <div class="field-id">situation_details</div>
+                                <div class="field-meta">Textarea • Required • "Please describe your situation"</div>
+                            </div>
+                            <div class="field-actions">
+                                <button class="icon-btn" title="Edit">✏️</button>
+                                <button class="icon-btn" title="Move up">⬆️</button>
+                                <button class="icon-btn" title="Move down">⬇️</button>
+                                <button class="icon-btn" title="Delete">🗑️</button>
+                            </div>
+                        </div>
+
+                        <button class="btn btn-primary" style="width: 100%; margin-top: 12px;">
+                            + Add Field
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Validation Panel -->
+                <div class="validation-panel success">
+                    <div class="validation-header">
+                        ✅ Validation Status: All Checks Passed
+                    </div>
+                    <ul class="validation-list">
+                        <li>Form ID is unique and properly formatted</li>
+                        <li>Form has descriptive title and description</li>
+                        <li>Program "lovebox" is assigned (required in v1.3)</li>
+                        <li>3 trigger phrases defined (optional but recommended)</li>
+                        <li>8 fields defined (minimum 1 required)</li>
+                        <li>All required fields have validation rules</li>
+                        <li>Form is linked to 1 CTA (lovebox_apply)</li>
+                    </ul>
+                </div>
+
+                <!-- Example with errors for missing program -->
+                <!--
+                <div class="validation-panel error">
+                    <div class="validation-header">
+                        ❌ Validation Errors (1)
+                    </div>
+                    <ul class="validation-list">
+                        <li>Program field is required in v1.3. Please assign this form to a program for completion filtering.</li>
+                    </ul>
+                </div>
+                -->
+
+                <!-- Example with warnings -->
+                <!--
+                <div class="validation-panel">
+                    <div class="validation-header">
+                        ⚠️ Validation Warnings (1)
+                    </div>
+                    <ul class="validation-list">
+                        <li>No trigger phrases defined. Users can only access this form via CTA buttons. Consider adding trigger phrases for direct access.</li>
+                    </ul>
+                </div>
+                -->
+            </div>
+        </div>
+
+        <div class="footer-actions">
+            <button class="btn btn-danger">Delete Form</button>
+            <div style="display: flex; gap: 12px;">
+                <button class="btn btn-secondary">Cancel Changes</button>
+                <button class="btn btn-save">Save Form</button>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

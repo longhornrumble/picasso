@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Picasso Conversational Form Mockup</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .chat-container {
+            width: 400px;
+            height: 600px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .chat-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 16px;
+            font-weight: 600;
+            font-size: 16px;
+            text-align: center;
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .message {
+            display: flex;
+            gap: 8px;
+            max-width: 85%;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .message.bot {
+            align-self: flex-start;
+        }
+
+        .message.user {
+            align-self: flex-end;
+            flex-direction: row-reverse;
+        }
+
+        .avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+            font-size: 14px;
+            flex-shrink: 0;
+        }
+
+        .user .avatar {
+            background: #e0e0e0;
+            color: #666;
+        }
+
+        .bubble {
+            padding: 12px 16px;
+            border-radius: 16px;
+            line-height: 1.5;
+            font-size: 14px;
+        }
+
+        .bot .bubble {
+            background: #f0f0f0;
+            color: #333;
+            border-bottom-left-radius: 4px;
+        }
+
+        .user .bubble {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-bottom-right-radius: 4px;
+        }
+
+        .form-intro {
+            background: #f8f9fa;
+            border: 2px solid #e9ecef;
+            border-radius: 12px;
+            padding: 16px;
+            margin: 8px 0;
+        }
+
+        .form-intro-title {
+            font-weight: 600;
+            font-size: 15px;
+            color: #333;
+            margin-bottom: 8px;
+        }
+
+        .form-intro-text {
+            font-size: 13px;
+            color: #666;
+            line-height: 1.6;
+            margin-bottom: 12px;
+        }
+
+        .form-intro-text a {
+            color: #667eea;
+            text-decoration: none;
+        }
+
+        .form-intro-text a:hover {
+            text-decoration: underline;
+        }
+
+        .form-meta {
+            display: flex;
+            gap: 16px;
+            font-size: 12px;
+            color: #999;
+            margin-top: 8px;
+        }
+
+        .form-meta span {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .field-prompt {
+            background: #f0f0f0;
+            padding: 12px 16px;
+            border-radius: 12px;
+            border-bottom-left-radius: 4px;
+            font-size: 14px;
+            color: #333;
+            margin: 8px 0;
+        }
+
+        .field-prompt strong {
+            color: #667eea;
+            font-weight: 600;
+        }
+
+        .field-hint {
+            font-size: 12px;
+            color: #999;
+            font-style: italic;
+            margin-top: 4px;
+        }
+
+        .chat-input-container {
+            padding: 16px;
+            background: #fafafa;
+            border-top: 1px solid #e0e0e0;
+        }
+
+        .chat-input-wrapper {
+            display: flex;
+            gap: 8px;
+            align-items: flex-end;
+        }
+
+        .chat-input {
+            flex: 1;
+            padding: 12px 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 24px;
+            font-size: 14px;
+            font-family: inherit;
+            resize: none;
+            outline: none;
+            transition: border-color 0.2s;
+            max-height: 120px;
+        }
+
+        .chat-input:focus {
+            border-color: #667eea;
+        }
+
+        .send-button {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            color: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.2s;
+            flex-shrink: 0;
+        }
+
+        .send-button:hover {
+            transform: scale(1.05);
+        }
+
+        .send-button:active {
+            transform: scale(0.95);
+        }
+
+        .progress-indicator {
+            display: flex;
+            gap: 6px;
+            justify-content: center;
+            margin: 12px 0;
+            padding: 0 16px;
+        }
+
+        .progress-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #e0e0e0;
+        }
+
+        .progress-dot.active {
+            background: #667eea;
+        }
+
+        .progress-dot.completed {
+            background: #4caf50;
+        }
+
+        .typing-indicator {
+            display: flex;
+            gap: 4px;
+            padding: 12px 16px;
+            background: #f0f0f0;
+            border-radius: 16px;
+            border-bottom-left-radius: 4px;
+            width: fit-content;
+        }
+
+        .typing-indicator span {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #999;
+            animation: typing 1.4s infinite;
+        }
+
+        .typing-indicator span:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .typing-indicator span:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes typing {
+            0%, 60%, 100% {
+                transform: translateY(0);
+                opacity: 0.7;
+            }
+            30% {
+                transform: translateY(-10px);
+                opacity: 1;
+            }
+        }
+
+        .field-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #999;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .validation-error {
+            background: #fee;
+            border: 1px solid #fcc;
+            color: #c33;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 13px;
+            margin: 4px 0;
+        }
+
+        .quick-replies {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            padding: 8px 0;
+        }
+
+        .quick-reply-btn {
+            padding: 8px 16px;
+            background: white;
+            border: 2px solid #667eea;
+            color: #667eea;
+            border-radius: 20px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-weight: 500;
+        }
+
+        .quick-reply-btn:hover {
+            background: #667eea;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="chat-header">
+            Love Box Application
+        </div>
+
+        <div class="chat-messages" id="messages">
+            <!-- Welcome Message -->
+            <div class="message bot">
+                <div class="avatar">AA</div>
+                <div class="bubble">
+                    Hi! 👋 I'm here to help you with the Love Box Application.
+                </div>
+            </div>
+
+            <!-- Form Introduction Card -->
+            <div class="message bot">
+                <div class="avatar">AA</div>
+                <div class="bubble">
+                    <div class="form-intro">
+                        <div class="form-intro-title">📋 Love Box Sponsor Application</div>
+                        <div class="form-intro-text">
+                            This form will help us learn more about your interest in becoming a Love Box sponsor.
+                            It should take about 5 minutes to complete.
+                            <br><br>
+                            If you have questions, contact us at <a href="mailto:sponsors@austinangels.org">sponsors@austinangels.org</a>
+                        </div>
+                        <div class="form-meta">
+                            <span>⏱️ ~5 min</span>
+                            <span>📝 6 fields</span>
+                        </div>
+                    </div>
+                    Ready to get started?
+                </div>
+            </div>
+
+            <!-- User confirms -->
+            <div class="message user">
+                <div class="avatar">U</div>
+                <div class="bubble">
+                    Yes, let's begin!
+                </div>
+            </div>
+
+            <!-- Progress Indicator -->
+            <div class="progress-indicator">
+                <div class="progress-dot active"></div>
+                <div class="progress-dot"></div>
+                <div class="progress-dot"></div>
+                <div class="progress-dot"></div>
+                <div class="progress-dot"></div>
+                <div class="progress-dot"></div>
+            </div>
+
+            <!-- Field 1: Name -->
+            <div class="message bot">
+                <div class="avatar">AA</div>
+                <div class="bubble">
+                    <div class="field-label">Field 1 of 6</div>
+                    <div class="field-prompt">
+                        <strong>What is your full name?</strong>
+                        <div class="field-hint">Please provide your first and last name</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- User Response -->
+            <div class="message user">
+                <div class="avatar">U</div>
+                <div class="bubble">
+                    Sarah Johnson
+                </div>
+            </div>
+
+            <!-- Confirmation & Field 2 -->
+            <div class="message bot">
+                <div class="avatar">AA</div>
+                <div class="bubble">
+                    Thanks, Sarah!
+                </div>
+            </div>
+
+            <div class="progress-indicator">
+                <div class="progress-dot completed"></div>
+                <div class="progress-dot active"></div>
+                <div class="progress-dot"></div>
+                <div class="progress-dot"></div>
+                <div class="progress-dot"></div>
+                <div class="progress-dot"></div>
+            </div>
+
+            <div class="message bot">
+                <div class="avatar">AA</div>
+                <div class="bubble">
+                    <div class="field-label">Field 2 of 6</div>
+                    <div class="field-prompt">
+                        <strong>What is your email address?</strong>
+                        <div class="field-hint">We'll use this to send you confirmation</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- User Response with Validation Error -->
+            <div class="message user">
+                <div class="avatar">U</div>
+                <div class="bubble">
+                    sarah.johnson
+                </div>
+            </div>
+
+            <div class="message bot">
+                <div class="avatar">AA</div>
+                <div class="bubble">
+                    <div class="validation-error">
+                        ⚠️ Please enter a valid email address (e.g., name@example.com)
+                    </div>
+                </div>
+            </div>
+
+            <!-- Corrected Response -->
+            <div class="message user">
+                <div class="avatar">U</div>
+                <div class="bubble">
+                    sarah.johnson@email.com
+                </div>
+            </div>
+
+            <div class="message bot">
+                <div class="avatar">AA</div>
+                <div class="bubble">
+                    Perfect! ✓
+                </div>
+            </div>
+
+            <div class="progress-indicator">
+                <div class="progress-dot completed"></div>
+                <div class="progress-dot completed"></div>
+                <div class="progress-dot active"></div>
+                <div class="progress-dot"></div>
+                <div class="progress-dot"></div>
+                <div class="progress-dot"></div>
+            </div>
+
+            <!-- Field 3: Select with Quick Replies -->
+            <div class="message bot">
+                <div class="avatar">AA</div>
+                <div class="bubble">
+                    <div class="field-label">Field 3 of 6</div>
+                    <div class="field-prompt">
+                        <strong>How did you hear about our Love Box program?</strong>
+                    </div>
+                    <div class="quick-replies">
+                        <button class="quick-reply-btn">Friend or family</button>
+                        <button class="quick-reply-btn">Social media</button>
+                        <button class="quick-reply-btn">Website</button>
+                        <button class="quick-reply-btn">Community event</button>
+                        <button class="quick-reply-btn">Other</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Typing Indicator -->
+            <div class="message bot">
+                <div class="avatar">AA</div>
+                <div class="typing-indicator">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+            </div>
+        </div>
+
+        <div class="chat-input-container">
+            <div class="chat-input-wrapper">
+                <textarea
+                    class="chat-input"
+                    placeholder="Type your answer..."
+                    rows="1"
+                ></textarea>
+                <button class="send-button">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Make input expand as user types
+        const input = document.querySelector('.chat-input');
+        input.addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = (this.scrollHeight) + 'px';
+        });
+
+        // Auto-scroll to bottom
+        const messagesContainer = document.querySelector('.chat-messages');
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+
+        // Quick reply button interaction
+        document.querySelectorAll('.quick-reply-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                input.value = this.textContent;
+                input.focus();
+            });
+        });
+
+        // Send button
+        document.querySelector('.send-button').addEventListener('click', function() {
+            if (input.value.trim()) {
+                console.log('Sending:', input.value);
+                input.value = '';
+                input.style.height = 'auto';
+            }
+        });
+
+        // Enter to send (Shift+Enter for new line)
+        input.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                document.querySelector('.send-button').click();
+            }
+        });
+    </script>
+</body>
+</html>

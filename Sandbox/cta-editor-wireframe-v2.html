@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CTA Editor - Web Config Builder</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #f0f4f3;
+            padding: 20px;
+            color: #2c3e50;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            border-radius: 12px;
+            padding: 24px 32px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            font-size: 24px;
+            font-weight: 600;
+            color: #1a1a1a;
+        }
+
+        .header-subtitle {
+            font-size: 13px;
+            color: #6b7280;
+            margin-top: 4px;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 12px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: #4CAF50;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #45a049;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(76, 175, 80, 0.3);
+        }
+
+        .btn-secondary {
+            background: white;
+            color: #6b7280;
+            border: 1px solid #e5e7eb;
+        }
+
+        .btn-secondary:hover {
+            background: #f9fafb;
+        }
+
+        .content {
+            display: flex;
+            gap: 20px;
+            height: calc(100vh - 200px);
+        }
+
+        .sidebar {
+            width: 300px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            overflow: hidden;
+        }
+
+        .sidebar-header {
+            padding: 20px;
+            border-bottom: 1px solid #f0f0f0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .sidebar-header h2 {
+            font-size: 16px;
+            font-weight: 600;
+            color: #1a1a1a;
+        }
+
+        .add-btn {
+            width: 32px;
+            height: 32px;
+            border-radius: 6px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            font-size: 20px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .add-btn:hover {
+            background: #45a049;
+        }
+
+        .cta-list {
+            padding: 12px;
+            overflow-y: auto;
+            max-height: calc(100vh - 300px);
+        }
+
+        .cta-item {
+            padding: 16px;
+            margin-bottom: 8px;
+            background: white;
+            border: 2px solid #f0f0f0;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .cta-item:hover {
+            border-color: #e0e0e0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        .cta-item.active {
+            border-color: #4CAF50;
+            background: #f0fdf4;
+        }
+
+        .cta-name {
+            font-weight: 600;
+            font-size: 14px;
+            color: #1a1a1a;
+            margin-bottom: 6px;
+        }
+
+        .cta-action {
+            display: inline-block;
+            background: #f3f4f6;
+            color: #6b7280;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 500;
+            margin-bottom: 6px;
+        }
+
+        .cta-action.form {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+
+        .cta-action.link {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .cta-action.info {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .cta-label {
+            font-size: 12px;
+            color: #9ca3af;
+            margin-top: 6px;
+        }
+
+        .main-panel {
+            flex: 1;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            overflow-y: auto;
+            padding: 32px;
+        }
+
+        .form-section {
+            margin-bottom: 32px;
+        }
+
+        .form-section h3 {
+            font-size: 16px;
+            font-weight: 600;
+            color: #1a1a1a;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .help-icon {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #e5e7eb;
+            color: #6b7280;
+            font-size: 12px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: help;
+        }
+
+        .form-group {
+            margin-bottom: 24px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 14px;
+            font-weight: 500;
+            color: #374151;
+            margin-bottom: 8px;
+        }
+
+        .form-label .required {
+            color: #ef4444;
+            margin-left: 2px;
+        }
+
+        .form-help {
+            font-size: 12px;
+            color: #9ca3af;
+            margin-top: 6px;
+            line-height: 1.5;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 10px 14px;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: #4CAF50;
+            box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.1);
+        }
+
+        .form-textarea {
+            width: 100%;
+            padding: 10px 14px;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 14px;
+            min-height: 100px;
+            resize: vertical;
+            font-family: inherit;
+        }
+
+        .form-textarea:focus {
+            outline: none;
+            border-color: #4CAF50;
+            box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.1);
+        }
+
+        .action-type-selector {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            margin-top: 8px;
+        }
+
+        .action-option {
+            padding: 16px;
+            border: 2px solid #f0f0f0;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .action-option:hover {
+            border-color: #e0e0e0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        .action-option.selected {
+            border-color: #4CAF50;
+            background: #f0fdf4;
+        }
+
+        .action-icon {
+            font-size: 24px;
+            margin-bottom: 8px;
+        }
+
+        .action-title {
+            font-weight: 600;
+            font-size: 14px;
+            color: #374151;
+            margin-bottom: 4px;
+        }
+
+        .action-desc {
+            font-size: 12px;
+            color: #9ca3af;
+            line-height: 1.4;
+        }
+
+        .conditional-field {
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .style-selector {
+            display: flex;
+            gap: 12px;
+            margin-top: 8px;
+        }
+
+        .style-option {
+            flex: 1;
+            padding: 12px;
+            border: 2px solid #f0f0f0;
+            border-radius: 8px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .style-option:hover {
+            border-color: #e0e0e0;
+        }
+
+        .style-option.selected {
+            border-color: #4CAF50;
+            background: #f0fdf4;
+        }
+
+        .style-preview {
+            width: 100%;
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            text-align: center;
+            margin-bottom: 8px;
+        }
+
+        .style-preview.primary {
+            background: #4CAF50;
+            color: white;
+        }
+
+        .style-preview.secondary {
+            background: white;
+            border: 2px solid #e5e7eb;
+            color: #374151;
+        }
+
+        .style-preview.info {
+            background: transparent;
+            color: #4CAF50;
+            text-decoration: underline;
+        }
+
+        .style-label {
+            font-weight: 600;
+            font-size: 12px;
+            color: #374151;
+        }
+
+        .validation-panel {
+            background: #fffbeb;
+            border: 1px solid #fde68a;
+            border-radius: 8px;
+            padding: 16px;
+            margin-top: 24px;
+        }
+
+        .validation-panel.error {
+            background: #fef2f2;
+            border-color: #fecaca;
+        }
+
+        .validation-panel.success {
+            background: #f0fdf4;
+            border-color: #86efac;
+        }
+
+        .validation-header {
+            font-weight: 600;
+            font-size: 14px;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .validation-list {
+            list-style: none;
+            font-size: 13px;
+            line-height: 1.8;
+        }
+
+        .validation-list li {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+        }
+
+        .validation-list li::before {
+            content: "⚠️";
+            flex-shrink: 0;
+        }
+
+        .validation-panel.error .validation-list li::before {
+            content: "❌";
+        }
+
+        .validation-panel.success .validation-list li::before {
+            content: "✅";
+        }
+
+        .info-box {
+            background: #eff6ff;
+            border: 1px solid #bfdbfe;
+            border-radius: 8px;
+            padding: 12px;
+            margin-top: 12px;
+        }
+
+        .info-box-title {
+            font-weight: 600;
+            font-size: 13px;
+            color: #1e40af;
+            margin-bottom: 6px;
+        }
+
+        .info-box-text {
+            font-size: 12px;
+            color: #1e40af;
+            line-height: 1.6;
+        }
+
+        .footer-actions {
+            display: flex;
+            justify-content: space-between;
+            padding: 24px 32px;
+            border-top: 1px solid #f0f0f0;
+            background: white;
+            border-radius: 0 0 12px 12px;
+        }
+
+        .btn-danger {
+            background: white;
+            border: 1px solid #dc2626;
+            color: #dc2626;
+        }
+
+        .btn-danger:hover {
+            background: #dc2626;
+            color: white;
+        }
+
+        .btn-save {
+            background: #4CAF50;
+            color: white;
+            padding: 12px 32px;
+        }
+
+        .btn-save:hover {
+            background: #45a049;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(76, 175, 80, 0.3);
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .badge-new {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+
+        .auto-generate-btn {
+            margin-top: 8px;
+            padding: 8px 16px;
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 13px;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .auto-generate-btn:hover {
+            background: #f3f4f6;
+        }
+
+        .example-box {
+            background: #f9fafb;
+            border: 1px solid #f0f0f0;
+            border-radius: 8px;
+            padding: 12px;
+            margin-top: 8px;
+        }
+
+        .example-title {
+            font-weight: 600;
+            font-size: 12px;
+            color: #6b7280;
+            margin-bottom: 6px;
+        }
+
+        .example-content {
+            font-size: 12px;
+            color: #374151;
+            line-height: 1.5;
+        }
+
+        .usage-info {
+            background: #f0fdf4;
+            border: 1px solid #86efac;
+            border-radius: 8px;
+            padding: 12px;
+            margin-top: 8px;
+            font-size: 12px;
+            color: #166534;
+        }
+
+        .usage-info strong {
+            display: block;
+            margin-bottom: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div>
+                <h1>🎯 CTA Editor</h1>
+                <div class="header-subtitle">
+                    Tenant: MYR384719 (Atlanta Angels) • Config v1.3
+                </div>
+            </div>
+            <div class="header-actions">
+                <button class="btn btn-secondary">← Back to Config</button>
+                <button class="btn btn-primary">Deploy to S3</button>
+            </div>
+        </div>
+
+        <div class="content">
+            <!-- Sidebar with CTA list -->
+            <div class="sidebar">
+                <div class="sidebar-header">
+                    <h2>CTAs (8)</h2>
+                    <button class="add-btn" title="Add new CTA">+</button>
+                </div>
+                <div class="cta-list">
+                    <div class="cta-item">
+                        <div class="cta-name">lovebox_apply</div>
+                        <div class="cta-action form">start_form</div>
+                        <div class="cta-label">Apply for Love Box</div>
+                    </div>
+
+                    <div class="cta-item active">
+                        <div class="cta-name">lovebox_info</div>
+                        <div class="cta-action info">show_info</div>
+                        <div class="cta-label">Learn About Love Box</div>
+                    </div>
+
+                    <div class="cta-item">
+                        <div class="cta-name">daretodream_apply</div>
+                        <div class="cta-action form">start_form</div>
+                        <div class="cta-label">Apply for Dare to Dream</div>
+                    </div>
+
+                    <div class="cta-item">
+                        <div class="cta-name">schedule_discovery</div>
+                        <div class="cta-action link">external_link</div>
+                        <div class="cta-label">Schedule Discovery Session</div>
+                    </div>
+
+                    <div class="cta-item">
+                        <div class="cta-name">view_requirements</div>
+                        <div class="cta-action info">show_info</div>
+                        <div class="cta-label">View Requirements</div>
+                    </div>
+
+                    <div class="cta-item">
+                        <div class="cta-name">contact_us</div>
+                        <div class="cta-action link">external_link</div>
+                        <div class="cta-label">Contact Us</div>
+                    </div>
+
+                    <div class="cta-item">
+                        <div class="cta-name">donate_now</div>
+                        <div class="cta-action link">external_link</div>
+                        <div class="cta-label">Donate Now</div>
+                    </div>
+
+                    <div class="cta-item">
+                        <div class="cta-name">volunteer_general</div>
+                        <div class="cta-action form">start_form</div>
+                        <div class="cta-label">General Volunteer Application</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main editing panel -->
+            <div class="main-panel">
+                <div class="form-section">
+                    <h3>
+                        CTA Configuration
+                        <span class="help-icon">?</span>
+                    </h3>
+
+                    <div class="form-group">
+                        <label class="form-label">
+                            CTA ID <span class="required">*</span>
+                        </label>
+                        <input type="text" class="form-input" value="lovebox_info" placeholder="e.g., apply_volunteer">
+                        <p class="form-help">
+                            Unique identifier for this CTA. Use lowercase with underscores. Cannot be changed after creation.
+                        </p>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">
+                            Button Text <span class="required">*</span>
+                        </label>
+                        <input type="text" class="form-input" value="Learn About Love Box" placeholder="e.g., Start Application">
+                        <p class="form-help">
+                            Text displayed on the button. Keep it clear and action-oriented (under 30 characters recommended).
+                        </p>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">
+                            Action Type <span class="required">*</span>
+                            <span class="badge badge-new">v1.3</span>
+                        </label>
+                        <div class="action-type-selector">
+                            <div class="action-option">
+                                <div class="action-icon">📝</div>
+                                <div class="action-title">Start Form</div>
+                                <div class="action-desc">Triggers a conversational form</div>
+                            </div>
+                            <div class="action-option">
+                                <div class="action-icon">🔗</div>
+                                <div class="action-title">External Link</div>
+                                <div class="action-desc">Opens a URL in new tab</div>
+                            </div>
+                            <div class="action-option selected">
+                                <div class="action-icon">💬</div>
+                                <div class="action-title">Show Info</div>
+                                <div class="action-desc">Requests info from Bedrock</div>
+                            </div>
+                            <div class="action-option">
+                                <div class="action-icon">💭</div>
+                                <div class="action-title">Send Query</div>
+                                <div class="action-desc">Sends query as user message</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Conditional field for show_info action -->
+                <div class="form-section conditional-field">
+                    <h3>
+                        Show Info Configuration
+                        <span class="help-icon">?</span>
+                        <span class="badge badge-new">Required in v1.3</span>
+                    </h3>
+
+                    <div class="form-group">
+                        <label class="form-label">
+                            Prompt for Bedrock <span class="required">*</span>
+                        </label>
+                        <textarea class="form-textarea" placeholder="Enter the prompt to send to Bedrock...">Tell me about the Love Box program, including eligibility requirements, application process, and how families can receive support.</textarea>
+                        <p class="form-help">
+                            This prompt is sent to Bedrock when the user clicks this CTA. The prompt is <strong>not shown</strong> to the user - only Bedrock's response is displayed.
+                        </p>
+
+                        <button class="auto-generate-btn">
+                            ✨ Auto-generate prompt from button text
+                        </button>
+
+                        <div class="info-box">
+                            <div class="info-box-title">💡 Prompt Writing Tips</div>
+                            <div class="info-box-text">
+                                • Be specific about what information you want Bedrock to provide<br>
+                                • Include context that helps Bedrock give a complete answer<br>
+                                • Use natural language - write as if asking a knowledgeable assistant<br>
+                                • Avoid generic prompts like "tell me more" - be explicit
+                            </div>
+                        </div>
+
+                        <div class="example-box">
+                            <div class="example-title">✅ Good Prompt Examples:</div>
+                            <div class="example-content">
+                                "Explain the Love Box program's eligibility criteria, including age requirements, commitment expectations, and application timeline."<br><br>
+                                "Describe the volunteer requirements for Atlanta Angels, including background check process, training requirements, and time commitments."
+                            </div>
+                        </div>
+
+                        <div class="example-box" style="border-color: #fecaca; background: #fef2f2;">
+                            <div class="example-title">❌ Avoid Generic Prompts:</div>
+                            <div class="example-content">
+                                "Tell me more" (too vague)<br>
+                                "Learn About Love Box" (just repeating button text)<br>
+                                "Info" (not specific enough)
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="usage-info">
+                        <strong>How this works:</strong>
+                        When a user clicks "Learn About Love Box", the system sends your prompt to Bedrock behind the scenes. The user sees Bedrock's comprehensive response without seeing the technical prompt you wrote.
+                    </div>
+                </div>
+
+                <div class="form-section">
+                    <h3>
+                        Button Style
+                        <span class="help-icon">?</span>
+                    </h3>
+
+                    <div class="form-group">
+                        <label class="form-label">
+                            Style <span class="required">*</span>
+                        </label>
+                        <div class="style-selector">
+                            <div class="style-option">
+                                <div class="style-preview primary">Apply Now</div>
+                                <div class="style-label">Primary</div>
+                            </div>
+                            <div class="style-option">
+                                <div class="style-preview secondary">Learn More</div>
+                                <div class="style-label">Secondary</div>
+                            </div>
+                            <div class="style-option selected">
+                                <div class="style-preview info">View Details</div>
+                                <div class="style-label">Info</div>
+                            </div>
+                        </div>
+                        <p class="form-help">
+                            Primary = Main action (solid button), Secondary = Alternative (outline button), Info = Low priority (text link)
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Validation Panel -->
+                <div class="validation-panel success">
+                    <div class="validation-header">
+                        ✅ Validation Status: All Checks Passed
+                    </div>
+                    <ul class="validation-list">
+                        <li>CTA ID is unique and properly formatted</li>
+                        <li>Button text is clear and under 30 characters</li>
+                        <li>Action type "show_info" selected</li>
+                        <li>Prompt field is filled and specific (65 words)</li>
+                        <li>Style "info" is appropriate for informational CTA</li>
+                        <li>CTA is referenced by 2 conversation branches</li>
+                    </ul>
+                </div>
+
+                <div class="footer-actions">
+                    <button class="btn btn-danger">Delete CTA</button>
+                    <div style="display: flex; gap: 12px;">
+                        <button class="btn btn-secondary">Cancel Changes</button>
+                        <button class="btn btn-save">Save CTA</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

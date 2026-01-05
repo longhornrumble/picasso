@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Branch Editor - Web Config Builder</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #f0f4f3;
+            padding: 20px;
+            color: #2c3e50;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            border-radius: 12px;
+            padding: 24px 32px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            font-size: 24px;
+            font-weight: 600;
+            color: #1a1a1a;
+        }
+
+        .header-subtitle {
+            font-size: 13px;
+            color: #6b7280;
+            margin-top: 4px;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 12px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: #4CAF50;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #45a049;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(76, 175, 80, 0.3);
+        }
+
+        .btn-secondary {
+            background: white;
+            color: #6b7280;
+            border: 1px solid #e5e7eb;
+        }
+
+        .btn-secondary:hover {
+            background: #f9fafb;
+        }
+
+        .content {
+            display: flex;
+            gap: 20px;
+            height: calc(100vh - 200px);
+        }
+
+        .sidebar {
+            width: 300px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            overflow: hidden;
+        }
+
+        .sidebar-header {
+            padding: 20px;
+            border-bottom: 1px solid #f0f0f0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .sidebar-header h2 {
+            font-size: 16px;
+            font-weight: 600;
+            color: #1a1a1a;
+        }
+
+        .add-btn {
+            width: 32px;
+            height: 32px;
+            border-radius: 6px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            font-size: 20px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .add-btn:hover {
+            background: #45a049;
+        }
+
+        .branch-list {
+            padding: 12px;
+            overflow-y: auto;
+            max-height: calc(100vh - 300px);
+        }
+
+        .branch-item {
+            padding: 16px;
+            margin-bottom: 8px;
+            background: white;
+            border: 2px solid #f0f0f0;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .branch-item:hover {
+            border-color: #e0e0e0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        .branch-item.active {
+            border-color: #4CAF50;
+            background: #f0fdf4;
+        }
+
+        .branch-name {
+            font-weight: 600;
+            font-size: 14px;
+            color: #1a1a1a;
+            margin-bottom: 6px;
+        }
+
+        .branch-priority {
+            display: inline-block;
+            background: #f3f4f6;
+            color: #6b7280;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 500;
+            margin-bottom: 6px;
+        }
+
+        .branch-priority.high {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .branch-priority.medium {
+            background: #e0f2fe;
+            color: #075985;
+        }
+
+        .branch-ctas {
+            font-size: 12px;
+            color: #9ca3af;
+            margin-top: 6px;
+        }
+
+        .main-panel {
+            flex: 1;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            overflow-y: auto;
+            padding: 32px;
+        }
+
+        .form-section {
+            margin-bottom: 32px;
+        }
+
+        .form-section h3 {
+            font-size: 16px;
+            font-weight: 600;
+            color: #1a1a1a;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .help-icon {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #e5e7eb;
+            color: #6b7280;
+            font-size: 12px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: help;
+        }
+
+        .form-group {
+            margin-bottom: 24px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 14px;
+            font-weight: 500;
+            color: #374151;
+            margin-bottom: 8px;
+        }
+
+        .form-label .required {
+            color: #ef4444;
+            margin-left: 2px;
+        }
+
+        .form-help {
+            font-size: 12px;
+            color: #9ca3af;
+            margin-top: 6px;
+            line-height: 1.5;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 10px 14px;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: #4CAF50;
+            box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.1);
+        }
+
+        .priority-selector {
+            display: flex;
+            gap: 12px;
+            margin-top: 8px;
+        }
+
+        .priority-option {
+            flex: 1;
+            padding: 12px;
+            border: 2px solid #f0f0f0;
+            border-radius: 8px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .priority-option:hover {
+            border-color: #e0e0e0;
+        }
+
+        .priority-option.selected {
+            border-color: #4CAF50;
+            background: #f0fdf4;
+        }
+
+        .priority-label {
+            font-weight: 600;
+            font-size: 13px;
+            color: #374151;
+            margin-bottom: 4px;
+        }
+
+        .priority-desc {
+            font-size: 11px;
+            color: #9ca3af;
+        }
+
+        .keyword-input-group {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .keyword-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .keyword-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            background: #f0fdf4;
+            border: 1px solid #86efac;
+            color: #166534;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .keyword-tag .remove {
+            cursor: pointer;
+            font-size: 14px;
+            opacity: 0.6;
+        }
+
+        .keyword-tag .remove:hover {
+            opacity: 1;
+        }
+
+        .cta-selector {
+            border: 1px solid #f0f0f0;
+            border-radius: 8px;
+            padding: 16px;
+            background: #fafafa;
+        }
+
+        .cta-group {
+            margin-bottom: 16px;
+        }
+
+        .cta-group:last-child {
+            margin-bottom: 0;
+        }
+
+        .cta-group-label {
+            font-weight: 600;
+            font-size: 13px;
+            color: #374151;
+            margin-bottom: 8px;
+        }
+
+        .cta-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .cta-chip {
+            padding: 8px 16px;
+            border: 2px solid #f0f0f0;
+            border-radius: 8px;
+            background: white;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .cta-chip:hover {
+            border-color: #e0e0e0;
+        }
+
+        .cta-chip.selected {
+            border-color: #4CAF50;
+            background: #f0fdf4;
+            color: #166534;
+            font-weight: 500;
+        }
+
+        .cta-chip.primary {
+            border-color: #4CAF50;
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .validation-panel {
+            background: #fffbeb;
+            border: 1px solid #fde68a;
+            border-radius: 8px;
+            padding: 16px;
+            margin-top: 24px;
+        }
+
+        .validation-panel.error {
+            background: #fef2f2;
+            border-color: #fecaca;
+        }
+
+        .validation-panel.success {
+            background: #f0fdf4;
+            border-color: #86efac;
+        }
+
+        .validation-header {
+            font-weight: 600;
+            font-size: 14px;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .validation-list {
+            list-style: none;
+            font-size: 13px;
+            line-height: 1.8;
+        }
+
+        .validation-list li {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+        }
+
+        .validation-list li::before {
+            content: "⚠️";
+            flex-shrink: 0;
+        }
+
+        .validation-panel.error .validation-list li::before {
+            content: "❌";
+        }
+
+        .validation-panel.success .validation-list li::before {
+            content: "✅";
+        }
+
+        .info-box {
+            background: #eff6ff;
+            border: 1px solid #bfdbfe;
+            border-radius: 8px;
+            padding: 12px;
+            margin-top: 12px;
+        }
+
+        .info-box-title {
+            font-weight: 600;
+            font-size: 13px;
+            color: #1e40af;
+            margin-bottom: 6px;
+        }
+
+        .info-box-text {
+            font-size: 12px;
+            color: #1e40af;
+            line-height: 1.6;
+        }
+
+        .footer-actions {
+            display: flex;
+            justify-content: space-between;
+            padding: 24px 32px;
+            border-top: 1px solid #f0f0f0;
+            background: white;
+            border-radius: 0 0 12px 12px;
+        }
+
+        .btn-danger {
+            background: white;
+            border: 1px solid #dc2626;
+            color: #dc2626;
+        }
+
+        .btn-danger:hover {
+            background: #dc2626;
+            color: white;
+        }
+
+        .btn-save {
+            background: #4CAF50;
+            color: white;
+            padding: 12px 32px;
+        }
+
+        .btn-save:hover {
+            background: #45a049;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(76, 175, 80, 0.3);
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .badge-warning {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .example-box {
+            background: #f9fafb;
+            border: 1px solid #f0f0f0;
+            border-radius: 8px;
+            padding: 12px;
+            margin-top: 8px;
+        }
+
+        .example-title {
+            font-weight: 600;
+            font-size: 12px;
+            color: #6b7280;
+            margin-bottom: 6px;
+        }
+
+        .example-content {
+            font-size: 12px;
+            color: #374151;
+            font-family: 'Courier New', monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div>
+                <h1>🌳 Conversation Branch Editor</h1>
+                <div class="header-subtitle">
+                    Tenant: MYR384719 (Atlanta Angels) • Config v1.3
+                </div>
+            </div>
+            <div class="header-actions">
+                <button class="btn btn-secondary">← Back to Config</button>
+                <button class="btn btn-primary">Deploy to S3</button>
+            </div>
+        </div>
+
+        <div class="content">
+            <!-- Sidebar with branch list -->
+            <div class="sidebar">
+                <div class="sidebar-header">
+                    <h2>Branches (5)</h2>
+                    <button class="add-btn" title="Add new branch">+</button>
+                </div>
+                <div class="branch-list">
+                    <div class="branch-item">
+                        <div class="branch-name">program_exploration</div>
+                        <div class="branch-priority high">Priority: 1 (Broad)</div>
+                        <div class="branch-ctas">1 Primary • 2 Secondary CTAs</div>
+                    </div>
+
+                    <div class="branch-item active">
+                        <div class="branch-name">lovebox_discussion</div>
+                        <div class="branch-priority medium">Priority: 3 (Specific)</div>
+                        <div class="branch-ctas">1 Primary • 2 Secondary CTAs</div>
+                    </div>
+
+                    <div class="branch-item">
+                        <div class="branch-name">daretodream_discussion</div>
+                        <div class="branch-priority medium">Priority: 4 (Specific)</div>
+                        <div class="branch-ctas">1 Primary • 1 Secondary CTA</div>
+                    </div>
+
+                    <div class="branch-item">
+                        <div class="branch-name">volunteer_interest</div>
+                        <div class="branch-priority">Priority: 2 (Medium)</div>
+                        <div class="branch-ctas">1 Primary • 2 Secondary CTAs</div>
+                    </div>
+
+                    <div class="branch-item">
+                        <div class="branch-name">requirements_discussion</div>
+                        <div class="branch-priority">Priority: 2 (Medium)</div>
+                        <div class="branch-ctas">1 Primary • 1 Secondary CTA</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main editing panel -->
+            <div class="main-panel">
+                <div class="form-section">
+                    <h3>
+                        Branch Configuration
+                        <span class="help-icon">?</span>
+                    </h3>
+
+                    <div class="form-group">
+                        <label class="form-label">
+                            Branch Name (ID) <span class="required">*</span>
+                        </label>
+                        <input type="text" class="form-input" value="lovebox_discussion" placeholder="e.g., volunteer_interest">
+                        <p class="form-help">
+                            Unique identifier for this branch. Use lowercase with underscores. Cannot be changed after creation.
+                        </p>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">
+                            Branch Priority <span class="required">*</span>
+                        </label>
+                        <div class="priority-selector">
+                            <div class="priority-option">
+                                <div class="priority-label">1 - High</div>
+                                <div class="priority-desc">Broad topics</div>
+                            </div>
+                            <div class="priority-option">
+                                <div class="priority-label">2 - Medium</div>
+                                <div class="priority-desc">General interest</div>
+                            </div>
+                            <div class="priority-option selected">
+                                <div class="priority-label">3 - Specific</div>
+                                <div class="priority-desc">Program-focused</div>
+                            </div>
+                            <div class="priority-option">
+                                <div class="priority-label">4 - Very Specific</div>
+                                <div class="priority-desc">Narrow topics</div>
+                            </div>
+                        </div>
+                        <p class="form-help">
+                            Priority determines matching order. Lower numbers = higher priority. Broader topics should have higher priority (lower numbers) to match before specific topics.
+                        </p>
+
+                        <div class="info-box">
+                            <div class="info-box-title">💡 Priority Best Practices</div>
+                            <div class="info-box-text">
+                                <strong>Priority 1:</strong> General exploration ("programs", "opportunities")<br>
+                                <strong>Priority 2:</strong> Category interest ("volunteer", "donate")<br>
+                                <strong>Priority 3-4:</strong> Specific programs ("Love Box", "Dare to Dream")
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-section">
+                    <h3>
+                        Detection Keywords
+                        <span class="help-icon">?</span>
+                        <span class="badge badge-warning">Critical</span>
+                    </h3>
+
+                    <div class="form-group">
+                        <label class="form-label">
+                            Keywords <span class="required">*</span>
+                        </label>
+                        <div class="keyword-input-group">
+                            <input type="text" class="form-input" placeholder="Enter keyword and press Enter" style="flex: 1;">
+                            <button class="btn btn-primary">Add</button>
+                        </div>
+                        <p class="form-help">
+                            Keywords match against <strong>Bedrock's response text</strong>, NOT the user's query. Enter words/phrases that Bedrock might use when discussing this topic.
+                        </p>
+
+                        <div class="keyword-list">
+                            <div class="keyword-tag">
+                                Love Box <span class="remove">×</span>
+                            </div>
+                            <div class="keyword-tag">
+                                LoveBox <span class="remove">×</span>
+                            </div>
+                            <div class="keyword-tag">
+                                family support <span class="remove">×</span>
+                            </div>
+                            <div class="keyword-tag">
+                                emergency assistance <span class="remove">×</span>
+                            </div>
+                            <div class="keyword-tag">
+                                financial help <span class="remove">×</span>
+                            </div>
+                        </div>
+
+                        <div class="example-box">
+                            <div class="example-title">✅ Good Keywords (match Bedrock responses):</div>
+                            <div class="example-content">
+                                "Love Box", "LoveBox", "family support", "emergency assistance"
+                            </div>
+                        </div>
+
+                        <div class="example-box" style="border-color: #fecaca; background: #fef2f2;">
+                            <div class="example-title">❌ Bad Keywords (look like user queries):</div>
+                            <div class="example-content">
+                                "how do I apply", "tell me about", "what is", "show me"
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-section">
+                    <h3>
+                        CTA Assignments
+                        <span class="help-icon">?</span>
+                    </h3>
+
+                    <div class="form-group">
+                        <div class="cta-selector">
+                            <div class="cta-group">
+                                <div class="cta-group-label">Primary CTA (Required)</div>
+                                <div class="cta-chips">
+                                    <div class="cta-chip primary">lovebox_apply</div>
+                                    <div class="cta-chip">lovebox_info</div>
+                                    <div class="cta-chip">schedule_discovery</div>
+                                    <div class="cta-chip">view_requirements</div>
+                                </div>
+                            </div>
+
+                            <div class="cta-group">
+                                <div class="cta-group-label">Secondary CTAs (Max 2 recommended for 3 total)</div>
+                                <div class="cta-chips">
+                                    <div class="cta-chip selected">view_requirements</div>
+                                    <div class="cta-chip selected">schedule_discovery</div>
+                                    <div class="cta-chip">lovebox_info</div>
+                                    <div class="cta-chip">contact_us</div>
+                                    <div class="cta-chip">donate_now</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <p class="form-help">
+                            At runtime, the system displays max 3 CTAs (1 primary + 2 secondary). Selecting more than 2 secondary CTAs will show a warning.
+                        </p>
+
+                        <div class="info-box">
+                            <div class="info-box-title">🎯 CTA Selection Tips</div>
+                            <div class="info-box-text">
+                                <strong>Primary CTA:</strong> Main action users should take (e.g., "Apply Now")<br>
+                                <strong>Secondary CTAs:</strong> Alternative paths (e.g., "Learn More", "Schedule Call")<br>
+                                <strong>Max 3 Total:</strong> Prevents decision paralysis and improves conversion
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Validation Panel -->
+                <div class="validation-panel success">
+                    <div class="validation-header">
+                        ✅ Validation Status: All Checks Passed
+                    </div>
+                    <ul class="validation-list">
+                        <li>Branch name is unique and properly formatted</li>
+                        <li>Priority is logical (specific programs after broader topics)</li>
+                        <li>5 detection keywords defined (recommended 3-8)</li>
+                        <li>Keywords match Bedrock response patterns (not user queries)</li>
+                        <li>1 primary CTA assigned</li>
+                        <li>2 secondary CTAs assigned (within 3 CTA limit)</li>
+                        <li>All referenced CTAs exist in cta_definitions</li>
+                    </ul>
+                </div>
+
+                <div class="footer-actions">
+                    <button class="btn btn-danger">Delete Branch</button>
+                    <div style="display: flex; gap: 12px;">
+                        <button class="btn btn-secondary">Cancel Changes</button>
+                        <button class="btn btn-save">Save Branch</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Picasso Unified Button System - Mockup</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 40px 20px;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 40px;
+        }
+
+        .header h1 {
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 16px;
+            opacity: 0.9;
+        }
+
+        .mockup-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+            gap: 30px;
+            margin-bottom: 40px;
+        }
+
+        .device {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+
+        .device-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+
+        .device-icon {
+            font-size: 24px;
+        }
+
+        .device-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .device-subtitle {
+            font-size: 13px;
+            color: #666;
+            margin-top: 2px;
+        }
+
+        /* Chat Message Bubble */
+        .message-bubble {
+            background: #f5f5f5;
+            border-radius: 18px;
+            padding: 16px;
+            margin-bottom: 20px;
+        }
+
+        .message-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+
+        .bot-avatar {
+            width: 32px;
+            height: 32px;
+            background: #a1905f;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 16px;
+        }
+
+        .bot-name {
+            font-weight: 600;
+            color: #333;
+            font-size: 14px;
+        }
+
+        .message-content {
+            color: #444;
+            font-size: 14px;
+            line-height: 1.5;
+            margin-bottom: 12px;
+        }
+
+        /* Form Container */
+        .form-container {
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 12px;
+            padding: 20px;
+        }
+
+        .form-header {
+            margin-bottom: 20px;
+        }
+
+        .form-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 4px;
+        }
+
+        .form-subtitle {
+            font-size: 13px;
+            color: #666;
+        }
+
+        .form-question {
+            font-size: 14px;
+            color: #333;
+            margin-bottom: 12px;
+            font-weight: 500;
+        }
+
+        /* Unified Button System */
+        .button-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .button-group.vertical {
+            flex-direction: column;
+        }
+
+        .btn {
+            padding: 10px 16px;
+            border-radius: 20px;
+            border: none;
+            font-size: 14px;
+            font-weight: 500;
+            font-family: 'Inter', sans-serif;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-align: center;
+            line-height: 1.4;
+            min-height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+
+        /* Primary Button */
+        .btn-primary {
+            background: #a1905f;
+            color: white;
+            box-shadow: 0 2px 4px rgba(161, 144, 95, 0.3);
+        }
+
+        .btn-primary:hover {
+            background: #8f7e4f;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(161, 144, 95, 0.4);
+        }
+
+        .btn-primary:active {
+            transform: translateY(0);
+        }
+
+        /* Secondary Button */
+        .btn-secondary {
+            background: transparent;
+            color: #a1905f;
+            border: 1.5px solid #a1905f;
+        }
+
+        .btn-secondary:hover {
+            background: #a1905f;
+            color: white;
+        }
+
+        /* Form Option Button */
+        .btn-option {
+            background: #f8f8f8;
+            color: #333;
+            border: 1.5px solid #e0e0e0;
+            text-align: left;
+            justify-content: flex-start;
+            padding: 14px 16px;
+        }
+
+        .btn-option:hover {
+            border-color: #a1905f;
+            background: #fafaf5;
+        }
+
+        .btn-option.selected {
+            border-color: #a1905f;
+            background: #faf9f5;
+            box-shadow: 0 0 0 2px rgba(161, 144, 95, 0.1);
+        }
+
+        /* Mobile Specific */
+        .mobile .btn {
+            width: 100%;
+            border-radius: 12px;
+            min-height: 44px;
+            padding: 12px 16px;
+        }
+
+        .mobile .button-group {
+            flex-direction: column;
+        }
+
+        /* Desktop Grid for form options */
+        .desktop .form-options-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px;
+        }
+
+        .desktop .form-options-grid .btn-option {
+            width: 100%;
+        }
+
+        /* Section Labels */
+        .section-label {
+            font-size: 12px;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin: 20px 0 10px 0;
+            font-weight: 600;
+        }
+
+        /* Responsive breakpoint indicator */
+        .breakpoint-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            margin-left: 10px;
+        }
+
+        .breakpoint-badge.mobile {
+            background: #ff6b6b;
+            color: white;
+        }
+
+        .breakpoint-badge.desktop {
+            background: #4ecdc4;
+            color: white;
+        }
+
+        /* Info box */
+        .info-box {
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            padding: 15px;
+            margin-top: 30px;
+            border-radius: 8px;
+            font-size: 13px;
+            line-height: 1.6;
+            color: #1565c0;
+        }
+
+        .info-box strong {
+            display: block;
+            margin-bottom: 8px;
+            color: #0d47a1;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎨 Picasso Unified Button System</h1>
+            <p>Responsive button design across all scenarios</p>
+        </div>
+
+        <div class="mockup-grid">
+            <!-- MOBILE: Welcome Message -->
+            <div class="device mobile">
+                <div class="device-header">
+                    <span class="device-icon">📱</span>
+                    <div>
+                        <div class="device-title">
+                            Welcome Message
+                            <span class="breakpoint-badge mobile">< 480px</span>
+                        </div>
+                        <div class="device-subtitle">Action chips - Mobile stacked layout</div>
+                    </div>
+                </div>
+
+                <div class="message-bubble">
+                    <div class="message-header">
+                        <div class="bot-avatar">🤖</div>
+                        <div class="bot-name">Bot</div>
+                    </div>
+                    <div class="message-content">
+                        Welcome to Atlanta Angels! I can help guide you and answer your questions. How can I help?
+                    </div>
+                    <div class="button-group vertical">
+                        <button class="btn btn-primary">🤝 How can I volunteer?</button>
+                        <button class="btn btn-primary">🎯 Our programs</button>
+                        <button class="btn btn-primary">💝 Donate</button>
+                        <button class="btn btn-primary">❓ Contact us</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- DESKTOP: Welcome Message -->
+            <div class="device desktop">
+                <div class="device-header">
+                    <span class="device-icon">🖥️</span>
+                    <div>
+                        <div class="device-title">
+                            Welcome Message
+                            <span class="breakpoint-badge desktop">> 480px</span>
+                        </div>
+                        <div class="device-subtitle">Action chips - Desktop inline/wrapped</div>
+                    </div>
+                </div>
+
+                <div class="message-bubble">
+                    <div class="message-header">
+                        <div class="bot-avatar">🤖</div>
+                        <div class="bot-name">Bot</div>
+                    </div>
+                    <div class="message-content">
+                        Welcome to Atlanta Angels! I can help guide you and answer your questions. How can I help?
+                    </div>
+                    <div class="button-group">
+                        <button class="btn btn-primary">🤝 How can I volunteer?</button>
+                        <button class="btn btn-primary">🎯 Our programs</button>
+                        <button class="btn btn-primary">💝 Donate</button>
+                        <button class="btn btn-primary">❓ Contact us</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- MOBILE: Form Interruption -->
+            <div class="device mobile">
+                <div class="device-header">
+                    <span class="device-icon">📱</span>
+                    <div>
+                        <div class="device-title">
+                            Form Interruption
+                            <span class="breakpoint-badge mobile">< 480px</span>
+                        </div>
+                        <div class="device-subtitle">Inline CTA buttons - Mobile stacked</div>
+                    </div>
+                </div>
+
+                <div class="message-bubble">
+                    <div class="message-header">
+                        <div class="bot-avatar">🤖</div>
+                        <div class="bot-name">Bot</div>
+                    </div>
+                    <div class="message-content">
+                        I've answered your question about Dare to Dream. Would you like to apply to Dare to Dream instead, or continue with your Love Box Application?
+                    </div>
+                    <div class="button-group vertical">
+                        <button class="btn btn-primary">Apply to Dare to Dream</button>
+                        <button class="btn btn-secondary">Continue Love Box</button>
+                        <button class="btn btn-secondary">Cancel Application</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- DESKTOP: Form Interruption -->
+            <div class="device desktop">
+                <div class="device-header">
+                    <span class="device-icon">🖥️</span>
+                    <div>
+                        <div class="device-title">
+                            Form Interruption
+                            <span class="breakpoint-badge desktop">> 480px</span>
+                        </div>
+                        <div class="device-subtitle">Inline CTA buttons - Desktop wrapped</div>
+                    </div>
+                </div>
+
+                <div class="message-bubble">
+                    <div class="message-header">
+                        <div class="bot-avatar">🤖</div>
+                        <div class="bot-name">Bot</div>
+                    </div>
+                    <div class="message-content">
+                        I've answered your question about Dare to Dream. Would you like to apply to Dare to Dream instead, or continue with your Love Box Application?
+                    </div>
+                    <div class="button-group">
+                        <button class="btn btn-primary">Apply to Dare to Dream</button>
+                        <button class="btn btn-secondary">Continue Love Box</button>
+                        <button class="btn btn-secondary">Cancel Application</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- MOBILE: Form Selection -->
+            <div class="device mobile">
+                <div class="device-header">
+                    <span class="device-icon">📱</span>
+                    <div>
+                        <div class="device-title">
+                            Form Field Selection
+                            <span class="breakpoint-badge mobile">< 480px</span>
+                        </div>
+                        <div class="device-subtitle">Form options - Mobile stacked</div>
+                    </div>
+                </div>
+
+                <div class="form-container">
+                    <div class="form-header">
+                        <div class="form-title">Volunteer Interest Form</div>
+                        <div class="form-subtitle">Let's find the perfect opportunity for you</div>
+                    </div>
+                    <div class="form-question">Which program interests you most?</div>
+                    <div class="button-group vertical">
+                        <button class="btn btn-option">
+                            <div>
+                                <div style="font-weight: 600;">Love Box</div>
+                                <div style="font-size: 12px; color: #666; margin-top: 2px;">(Family Support)</div>
+                            </div>
+                        </button>
+                        <button class="btn btn-option selected">
+                            <div>
+                                <div style="font-weight: 600;">Dare to Dream</div>
+                                <div style="font-size: 12px; color: #666; margin-top: 2px;">(Youth Mentoring)</div>
+                            </div>
+                        </button>
+                        <button class="btn btn-option">Tell me more about both</button>
+                        <button class="btn btn-option">I'm not sure yet</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- DESKTOP: Form Selection -->
+            <div class="device desktop">
+                <div class="device-header">
+                    <span class="device-icon">🖥️</span>
+                    <div>
+                        <div class="device-title">
+                            Form Field Selection
+                            <span class="breakpoint-badge desktop">> 480px</span>
+                        </div>
+                        <div class="device-subtitle">Form options - Desktop 2-column grid</div>
+                    </div>
+                </div>
+
+                <div class="form-container">
+                    <div class="form-header">
+                        <div class="form-title">Volunteer Interest Form</div>
+                        <div class="form-subtitle">Let's find the perfect opportunity for you</div>
+                    </div>
+                    <div class="form-question">Which program interests you most?</div>
+                    <div class="form-options-grid">
+                        <button class="btn btn-option">
+                            <div>
+                                <div style="font-weight: 600;">Love Box</div>
+                                <div style="font-size: 12px; color: #666; margin-top: 2px;">(Family Support)</div>
+                            </div>
+                        </button>
+                        <button class="btn btn-option selected">
+                            <div>
+                                <div style="font-weight: 600;">Dare to Dream</div>
+                                <div style="font-size: 12px; color: #666; margin-top: 2px;">(Youth Mentoring)</div>
+                            </div>
+                        </button>
+                        <button class="btn btn-option">Tell me more about both</button>
+                        <button class="btn btn-option">I'm not sure yet</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="info-box">
+            <strong>🎯 Unified Button System Principles</strong>
+            <ul style="margin-left: 20px; margin-top: 8px;">
+                <li><strong>Primary buttons:</strong> Solid brand color for main actions (Apply, Submit, Start)</li>
+                <li><strong>Secondary buttons:</strong> Outlined style for alternative actions (Continue, Cancel)</li>
+                <li><strong>Form option buttons:</strong> Light background for multi-choice selections</li>
+                <li><strong>Responsive behavior:</strong> Stack vertically on mobile (<480px), inline/grid on desktop</li>
+                <li><strong>Consistent spacing:</strong> 8px gap between all buttons</li>
+                <li><strong>Touch-friendly:</strong> 44px min-height on mobile, 40px on desktop</li>
+                <li><strong>Border radius:</strong> 12px on mobile, 20px on desktop for visual distinction</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        // Add hover effects and interactivity
+        document.querySelectorAll('.btn-option').forEach(btn => {
+            btn.addEventListener('click', function() {
+                // Remove selected from siblings
+                this.parentElement.querySelectorAll('.btn-option').forEach(b => {
+                    b.classList.remove('selected');
+                });
+                // Add selected to clicked button
+                this.classList.add('selected');
+            });
+        });
+    </script>
+</body>
+</html>

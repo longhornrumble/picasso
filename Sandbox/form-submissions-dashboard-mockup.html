@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Form Submissions Dashboard - Mission Intelligence Platform</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #f5f5f5;
+            color: #333;
+            padding: 20px;
+        }
+
+        .header {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .header-left {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .header-right {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+
+        .time-selector {
+            display: flex;
+            gap: 0;
+            background: #f0f0f0;
+            border-radius: 6px;
+            padding: 3px;
+        }
+
+        .time-btn {
+            padding: 8px 16px;
+            border: none;
+            background: transparent;
+            cursor: pointer;
+            border-radius: 4px;
+            font-size: 14px;
+            color: #666;
+            transition: all 0.2s;
+        }
+
+        .time-btn.active {
+            background: white;
+            color: #333;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .filter-dropdown, .date-range-btn {
+            padding: 8px 16px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            background: white;
+            cursor: pointer;
+            font-size: 14px;
+            color: #666;
+        }
+
+        .sign-out-btn {
+            padding: 8px 20px;
+            border: none;
+            border-radius: 6px;
+            background: #4CAF50;
+            color: white;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .metric-card {
+            background: white;
+            border-radius: 12px;
+            padding: 30px 20px;
+            text-align: center;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .metric-value {
+            font-size: 48px;
+            font-weight: 300;
+            color: #333;
+            margin-bottom: 8px;
+        }
+
+        .metric-label {
+            font-size: 13px;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .metric-sublabel {
+            font-size: 11px;
+            color: #4CAF50;
+            margin-top: 4px;
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .card-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .card-subtitle {
+            font-size: 12px;
+            color: #4CAF50;
+        }
+
+        .submissions-table {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .table-filters {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .filter-select {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            background: white;
+            font-size: 14px;
+            color: #666;
+            cursor: pointer;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        thead {
+            background: #f8f9fa;
+        }
+
+        th {
+            text-align: left;
+            padding: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        td {
+            padding: 16px 12px;
+            border-top: 1px solid #f0f0f0;
+            font-size: 14px;
+            color: #333;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .status-submitted {
+            background: #E3F2FD;
+            color: #1976D2;
+        }
+
+        .status-reviewed {
+            background: #FFF3E0;
+            color: #F57C00;
+        }
+
+        .status-contacted {
+            background: #F3E5F5;
+            color: #7B1FA2;
+        }
+
+        .action-btn {
+            padding: 6px 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            background: white;
+            cursor: pointer;
+            font-size: 12px;
+            color: #666;
+            transition: all 0.2s;
+        }
+
+        .action-btn:hover {
+            background: #f8f9fa;
+            border-color: #4CAF50;
+            color: #4CAF50;
+        }
+
+        .chart-container {
+            position: relative;
+            height: 250px;
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 40px;
+            padding: 20px;
+            color: #888;
+            font-size: 13px;
+        }
+
+        .footer a {
+            color: #4CAF50;
+            text-decoration: none;
+        }
+
+        .indicator-dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        .dot-green {
+            background: #4CAF50;
+        }
+
+        .dot-blue {
+            background: #2196F3;
+        }
+
+        .dot-orange {
+            background: #FF9800;
+        }
+
+        .refresh-btn {
+            padding: 8px 16px;
+            border: 1px solid #4CAF50;
+            border-radius: 6px;
+            background: white;
+            color: #4CAF50;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        .refresh-btn:hover {
+            background: #4CAF50;
+            color: white;
+        }
+
+        .form-type-indicator {
+            font-size: 11px;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-top: 2px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <div class="header">
+        <div class="header-left">
+            <div class="time-selector">
+                <button class="time-btn">1 day</button>
+                <button class="time-btn">1 week</button>
+                <button class="time-btn active">1 month</button>
+            </div>
+            <select class="filter-dropdown">
+                <option>All Tenants</option>
+                <option>Foster Village</option>
+                <option>MyRecruiter</option>
+            </select>
+            <select class="filter-dropdown">
+                <option>All Form Types</option>
+                <option>Volunteer Application</option>
+                <option>Contact Us</option>
+                <option>Support Request</option>
+            </select>
+        </div>
+        <div class="header-right">
+            <button class="date-range-btn">📅 Select Date Range</button>
+            <button class="refresh-btn">↻ Refresh Analytics</button>
+            <button class="sign-out-btn">Sign out</button>
+        </div>
+    </div>
+
+    <!-- Metrics Grid -->
+    <div class="metrics-grid">
+        <div class="metric-card">
+            <div class="metric-value">47</div>
+            <div class="metric-label">Total Submissions</div>
+            <div class="metric-sublabel">+12 from last period</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-value">23</div>
+            <div class="metric-label">This Month</div>
+            <div class="metric-sublabel">48.9% of total</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-value">31.3%</div>
+            <div class="metric-label">Conversion Rate</div>
+            <div class="metric-sublabel">Forms / Conversations</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-value">8</div>
+            <div class="metric-label">Pending Review</div>
+            <div class="metric-sublabel">Require action</div>
+        </div>
+    </div>
+
+    <!-- Charts Grid -->
+    <div class="dashboard-grid">
+        <!-- Submissions Over Time -->
+        <div class="card">
+            <div class="card-header">
+                <div>
+                    <div class="card-title">Submissions Over Time</div>
+                    <div class="card-subtitle">Daily submission trends</div>
+                </div>
+            </div>
+            <div class="chart-container">
+                <canvas id="submissionsChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Submissions by Form Type -->
+        <div class="card">
+            <div class="card-header">
+                <div>
+                    <div class="card-title">Submissions by Form Type</div>
+                    <div class="card-subtitle">Distribution of form types</div>
+                </div>
+            </div>
+            <div class="chart-container">
+                <canvas id="formTypeChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Submissions Table -->
+    <div class="submissions-table">
+        <div class="card-header">
+            <div class="card-title">Recent Form Submissions</div>
+            <div class="card-subtitle">47 Total Submissions</div>
+        </div>
+
+        <div class="table-filters">
+            <select class="filter-select">
+                <option>All Statuses</option>
+                <option>New Submission</option>
+                <option>Reviewed</option>
+                <option>Contacted</option>
+                <option>Approved</option>
+            </select>
+            <select class="filter-select">
+                <option>All Forms</option>
+                <option>Volunteer Application</option>
+                <option>Contact Us</option>
+                <option>Support Request</option>
+            </select>
+            <input type="text" class="filter-select" placeholder="Search by name or email...">
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Applicant</th>
+                    <th>Email</th>
+                    <th>Form Type</th>
+                    <th>Program/Interest</th>
+                    <th>Submitted</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>
+                        <div><span class="indicator-dot dot-green"></span>Sarah Martinez</div>
+                        <div class="form-type-indicator">Oct 2, 2025 3:45 PM</div>
+                    </td>
+                    <td>sarah.martinez@email.com</td>
+                    <td>Volunteer Application</td>
+                    <td>Foster Care Mentor</td>
+                    <td>2 hours ago</td>
+                    <td><span class="status-badge status-submitted">New Submission</span></td>
+                    <td><button class="action-btn">View Details</button></td>
+                </tr>
+                <tr>
+                    <td>
+                        <div><span class="indicator-dot dot-blue"></span>Michael Chen</div>
+                        <div class="form-type-indicator">Oct 2, 2025 1:20 PM</div>
+                    </td>
+                    <td>m.chen@email.com</td>
+                    <td>Contact Us</td>
+                    <td>General Inquiry</td>
+                    <td>4 hours ago</td>
+                    <td><span class="status-badge status-reviewed">Reviewed</span></td>
+                    <td><button class="action-btn">View Details</button></td>
+                </tr>
+                <tr>
+                    <td>
+                        <div><span class="indicator-dot dot-orange"></span>Jessica Thompson</div>
+                        <div class="form-type-indicator">Oct 2, 2025 10:15 AM</div>
+                    </td>
+                    <td>jthompson@email.com</td>
+                    <td>Volunteer Application</td>
+                    <td>Weekend Programs</td>
+                    <td>7 hours ago</td>
+                    <td><span class="status-badge status-contacted">Contacted</span></td>
+                    <td><button class="action-btn">View Details</button></td>
+                </tr>
+                <tr>
+                    <td>
+                        <div><span class="indicator-dot dot-green"></span>David Rodriguez</div>
+                        <div class="form-type-indicator">Oct 1, 2025 4:30 PM</div>
+                    </td>
+                    <td>david.r@email.com</td>
+                    <td>Support Request</td>
+                    <td>Financial Assistance</td>
+                    <td>Yesterday</td>
+                    <td><span class="status-badge status-submitted">New Submission</span></td>
+                    <td><button class="action-btn">View Details</button></td>
+                </tr>
+                <tr>
+                    <td>
+                        <div><span class="indicator-dot dot-blue"></span>Emily Watson</div>
+                        <div class="form-type-indicator">Oct 1, 2025 2:10 PM</div>
+                    </td>
+                    <td>emily.watson@email.com</td>
+                    <td>Volunteer Application</td>
+                    <td>Educational Support</td>
+                    <td>Yesterday</td>
+                    <td><span class="status-badge status-reviewed">Reviewed</span></td>
+                    <td><button class="action-btn">View Details</button></td>
+                </tr>
+                <tr>
+                    <td>
+                        <div><span class="indicator-dot dot-green"></span>James Anderson</div>
+                        <div class="form-type-indicator">Oct 1, 2025 11:45 AM</div>
+                    </td>
+                    <td>j.anderson@email.com</td>
+                    <td>Contact Us</td>
+                    <td>Partnership Opportunity</td>
+                    <td>Yesterday</td>
+                    <td><span class="status-badge status-submitted">New Submission</span></td>
+                    <td><button class="action-btn">View Details</button></td>
+                </tr>
+                <tr>
+                    <td>
+                        <div><span class="indicator-dot dot-orange"></span>Maria Garcia</div>
+                        <div class="form-type-indicator">Sep 30, 2025 5:20 PM</div>
+                    </td>
+                    <td>maria.g@email.com</td>
+                    <td>Volunteer Application</td>
+                    <td>Tutoring Program</td>
+                    <td>2 days ago</td>
+                    <td><span class="status-badge status-contacted">Contacted</span></td>
+                    <td><button class="action-btn">View Details</button></td>
+                </tr>
+                <tr>
+                    <td>
+                        <div><span class="indicator-dot dot-blue"></span>Robert Johnson</div>
+                        <div class="form-type-indicator">Sep 30, 2025 3:00 PM</div>
+                    </td>
+                    <td>rob.johnson@email.com</td>
+                    <td>Support Request</td>
+                    <td>Housing Assistance</td>
+                    <td>2 days ago</td>
+                    <td><span class="status-badge status-reviewed">Reviewed</span></td>
+                    <td><button class="action-btn">View Details</button></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+        Mission Intelligence Platform powered by <a href="#">MyRecruiter</a>
+    </div>
+
+    <script>
+        // Submissions Over Time Chart
+        const ctx1 = document.getElementById('submissionsChart').getContext('2d');
+        const submissionsChart = new Chart(ctx1, {
+            type: 'line',
+            data: {
+                labels: ['Sep 25', 'Sep 26', 'Sep 27', 'Sep 28', 'Sep 29', 'Sep 30', 'Oct 1', 'Oct 2'],
+                datasets: [{
+                    label: 'Form Submissions',
+                    data: [3, 5, 2, 7, 4, 8, 6, 12],
+                    borderColor: '#4CAF50',
+                    backgroundColor: 'rgba(76, 175, 80, 0.1)',
+                    tension: 0.4,
+                    fill: true,
+                    pointRadius: 4,
+                    pointBackgroundColor: '#4CAF50',
+                    pointBorderColor: '#fff',
+                    pointBorderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            stepSize: 2
+                        },
+                        grid: {
+                            color: '#f0f0f0'
+                        }
+                    },
+                    x: {
+                        grid: {
+                            display: false
+                        }
+                    }
+                }
+            }
+        });
+
+        // Form Type Distribution Chart
+        const ctx2 = document.getElementById('formTypeChart').getContext('2d');
+        const formTypeChart = new Chart(ctx2, {
+            type: 'doughnut',
+            data: {
+                labels: ['Volunteer Application', 'Contact Us', 'Support Request'],
+                datasets: [{
+                    data: [28, 12, 7],
+                    backgroundColor: [
+                        '#4CAF50',
+                        '#2196F3',
+                        '#FF9800'
+                    ],
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            padding: 15,
+                            font: {
+                                size: 12
+                            }
+                        }
+                    }
+                },
+                cutout: '70%'
+            }
+        });
+    </script>
+</body>
+</html>

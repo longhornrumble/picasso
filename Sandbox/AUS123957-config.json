@@ -1,0 +1,96 @@
+{
+  "tenant_id": "AUS123957",
+  "tenant_hash": "auc5b0ecb0adcb",
+  "chat_title": "Austin Angels",
+  "chat_subtitle": "How can we help you today?",
+  "tone_prompt": "You are the official virtual assistant for Austin Angels, a nonprofit organization that supports children, youth, and families in the foster care community. You speak as if you are part of the Austin Angels team\u2014warm, genuine, and service-oriented. Your tone is courteous, positive, and compassionate. You keep responses brief and conversational, suitable for a chat format. Use plain, human language that is easy to understand and avoid unnecessary filler. Reflect hope, belonging, and care in every message. Always aim to be helpful first by answering questions clearly or guiding visitors to the right resources. Speak as \u201cwe,\u201d representing Austin Angels, not as an outsider. Keep your replies short\u2014usually two to four sentences. When visitors express interest, curiosity, or emotion, respond with empathy and warmth. Avoid sounding overly formal; sound like a friendly, informed team member who truly cares about helping others.",
+  "welcome_message": "Hello! \ud83d\udc4b How can I help you today? You can choose a topic or type a question.",
+  "callout_text": "Hi! \ud83d\udc4b Need help? I'm here to assist you.",
+  "version": "1.0",
+  "generated_at": 1761321484,
+  "branding": {
+    "logo_background_color": "#FFFFFF",
+    "primary_color": "#A18F65",
+    "avatar_background_color": "#FFFFFF",
+    "header_text_color": "#FFFFFF",
+    "widget_icon_color": "#FFFFFF",
+    "user_bubble_text_color": "#FFFFFF",
+    "bot_bubble_text_color": "#000000",
+    "action_chip_hover_color": "#FFFFFF",
+    "button_text_primary": "#FFFFFF",
+    "font_family": "Inter",
+    "logo_url": "https://chat.myrecruiter.ai/",
+    "avatar_url": "https://chat.myrecruiter.ai/"
+  },
+  "features": {
+    "uploads": false,
+    "photo_uploads": false,
+    "voice_input": false,
+    "conversational_forms": true,
+    "callout": {
+      "enabled": true,
+      "text": "Hi! \ud83d\udc4b Need help? I'm here to assist you.",
+      "auto_dismiss": true
+    }
+  },
+  "quick_help": {
+    "enabled": true,
+    "title": "Common Questions",
+    "toggle_text": "Help Menu \u2b06\ufe0f",
+    "close_after_selection": true,
+    "prompts": [
+      "\ud83d\udc9c What does Austin Angels do?",
+      "\ud83d\ude4b\u200d\u2640\ufe0f How can I volunteer or become a mentor?",
+      "\ud83c\udf81 How can I donate or give monthly?",
+      "\ud83c\udfe0 Do you work directly with foster families?",
+      "\ud83d\udcc5 Are there upcoming events or ways to get involved locally?",
+      "\ud83d\udcde How can I contact your team?"
+    ]
+  },
+  "action_chips": {
+    "enabled": true,
+    "max_display": 5,
+    "show_on_welcome": true,
+    "default_chips": [
+      {
+        "label": "Learn about Mentoring",
+        "value": "Tell me about Dare to Dream"
+      },
+      {
+        "label": "Sponsor a Family",
+        "value": "Tell me about Love Box"
+      },
+      {
+        "label": "Request Support for Your Family",
+        "value": "I'd like to request support for my family."
+      },
+      {
+        "label": "Make a Donation",
+        "value": "What are the ways to donate?"
+      },
+      {
+        "label": "Contact Us",
+        "value": "How can I contact Austin Angels?"
+      }
+    ]
+  },
+  "widget_behavior": {
+    "start_open": true,
+    "remember_state": true
+  },
+  "aws": {
+    "knowledge_base_id": "XI09CFPD4H",
+    "aws_region": "us-east-1"
+  },
+  "programs": {},
+  "conversational_forms": {},
+  "cta_definitions": {},
+  "conversation_branches": {},
+  "metadata": {
+    "transformation_version": "1.0",
+    "original_field_count": 42,
+    "deployment_timestamp": 1761321484,
+    "s3_bucket": "myrecruiter-picasso",
+    "cloudfront_domain": "chat.myrecruiter.ai"
+  }
+}

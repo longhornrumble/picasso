@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Program Cards vs CTAs - Chat Mockup</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+
+        .chat-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .chat-header h1 {
+            font-size: 20px;
+            font-weight: 600;
+        }
+
+        .chat-header p {
+            font-size: 12px;
+            opacity: 0.9;
+            margin-top: 5px;
+        }
+
+        .chat-messages {
+            padding: 20px;
+            height: 700px;
+            overflow-y: auto;
+            background: #f9fafb;
+        }
+
+        .message {
+            margin-bottom: 16px;
+            display: flex;
+            gap: 8px;
+        }
+
+        .message.user {
+            flex-direction: row-reverse;
+        }
+
+        .message-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: #667eea;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            flex-shrink: 0;
+        }
+
+        .message.user .message-avatar {
+            background: #10b981;
+        }
+
+        .message-content {
+            max-width: 70%;
+        }
+
+        .message-bubble {
+            background: white;
+            padding: 12px 16px;
+            border-radius: 16px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        .message.user .message-bubble {
+            background: #667eea;
+            color: white;
+        }
+
+        .message-time {
+            font-size: 11px;
+            color: #9ca3af;
+            margin-top: 4px;
+            padding: 0 8px;
+        }
+
+        /* Program Cards Styling */
+        .program-cards-container {
+            margin-top: 8px;
+        }
+
+        .program-cards-header {
+            font-size: 13px;
+            font-weight: 600;
+            color: #6b7280;
+            margin-bottom: 12px;
+        }
+
+        .program-cards {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .program-card {
+            background: white;
+            border: 2px solid #e5e7eb;
+            border-radius: 12px;
+            padding: 16px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .program-card:hover {
+            border-color: #667eea;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
+        }
+
+        .program-card-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .program-card-icon {
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 18px;
+        }
+
+        .program-card-name {
+            font-size: 15px;
+            font-weight: 600;
+            color: #111827;
+            flex: 1;
+        }
+
+        .program-card-description {
+            font-size: 13px;
+            color: #6b7280;
+            margin-bottom: 10px;
+            line-height: 1.5;
+        }
+
+        .program-card-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .program-card-commitment {
+            font-size: 12px;
+            color: #9ca3af;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .program-card-link {
+            font-size: 12px;
+            color: #667eea;
+            font-weight: 600;
+            text-decoration: none;
+        }
+
+        /* CTA Styling */
+        .cta-container {
+            margin-top: 16px;
+        }
+
+        .cta-button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 14px 24px;
+            border-radius: 12px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: all 0.2s;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+        }
+
+        .cta-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
+        }
+
+        .cta-button svg {
+            width: 20px;
+            height: 20px;
+        }
+
+        .section-label {
+            display: inline-block;
+            background: #fef3c7;
+            color: #92400e;
+            font-size: 11px;
+            font-weight: 600;
+            padding: 4px 10px;
+            border-radius: 12px;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .requirements-section {
+            margin-top: 8px;
+        }
+
+        .requirement-badge {
+            display: inline-block;
+            background: #dbeafe;
+            color: #1e40af;
+            font-size: 12px;
+            padding: 6px 12px;
+            border-radius: 16px;
+            margin: 4px 4px 4px 0;
+        }
+
+        .requirement-badge.critical {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="chat-header">
+            <h1>Volunteer Chat Assistant</h1>
+            <p>MyRecruiter · Powered by Picasso</p>
+        </div>
+
+        <div class="chat-messages">
+            <!-- User message -->
+            <div class="message user">
+                <div class="message-avatar">JD</div>
+                <div class="message-content">
+                    <div class="message-bubble">
+                        I'm interested in volunteering with your organization
+                    </div>
+                    <div class="message-time">2:34 PM</div>
+                </div>
+            </div>
+
+            <!-- Bot response -->
+            <div class="message">
+                <div class="message-avatar">🤖</div>
+                <div class="message-content">
+                    <div class="message-bubble">
+                        That's wonderful! I'd love to help you find the perfect volunteer opportunity. Let me ask you a few quick questions first to make sure we match you with the right program.
+                    </div>
+                    <div class="message-time">2:34 PM</div>
+                </div>
+            </div>
+
+            <!-- User response -->
+            <div class="message user">
+                <div class="message-avatar">JD</div>
+                <div class="message-content">
+                    <div class="message-bubble">
+                        Sure, go ahead
+                    </div>
+                    <div class="message-time">2:35 PM</div>
+                </div>
+            </div>
+
+            <!-- Bot shows requirements -->
+            <div class="message">
+                <div class="message-avatar">🤖</div>
+                <div class="message-content">
+                    <div class="message-bubble">
+                        Great! Here are our basic requirements for volunteers:
+                    </div>
+                    <div class="requirements-section">
+                        <span class="section-label">📋 Requirements</span>
+                        <div>
+                            <span class="requirement-badge critical">Must be 18+ years old</span>
+                            <span class="requirement-badge critical">Pass background check</span>
+                            <span class="requirement-badge">Available for orientation</span>
+                            <span class="requirement-badge">Valid driver's license (preferred)</span>
+                        </div>
+                    </div>
+                    <div class="message-time">2:35 PM</div>
+                </div>
+            </div>
+
+            <!-- User confirms -->
+            <div class="message user">
+                <div class="message-avatar">JD</div>
+                <div class="message-content">
+                    <div class="message-bubble">
+                        Yes, I meet all those requirements. What programs do you have available?
+                    </div>
+                    <div class="message-time">2:36 PM</div>
+                </div>
+            </div>
+
+            <!-- Bot shows PROGRAM CARDS -->
+            <div class="message">
+                <div class="message-avatar">🤖</div>
+                <div class="message-content">
+                    <div class="message-bubble">
+                        Perfect! Based on your profile, here are some programs that might interest you:
+                    </div>
+                    <div class="program-cards-container">
+                        <span class="section-label">✨ Available Programs</span>
+                        <div class="program-cards">
+                            <!-- Program Card 1 -->
+                            <div class="program-card">
+                                <div class="program-card-header">
+                                    <div class="program-card-icon">📚</div>
+                                    <div class="program-card-name">After School Tutoring</div>
+                                </div>
+                                <div class="program-card-description">
+                                    Help elementary students with homework and reading. Build lasting relationships while making a difference in education.
+                                </div>
+                                <div class="program-card-footer">
+                                    <div class="program-card-commitment">
+                                        ⏰ 2 hours/week · Flexible schedule
+                                    </div>
+                                    <a href="#" class="program-card-link">Learn more →</a>
+                                </div>
+                            </div>
+
+                            <!-- Program Card 2 -->
+                            <div class="program-card">
+                                <div class="program-card-header">
+                                    <div class="program-card-icon">🍽️</div>
+                                    <div class="program-card-name">Weekend Meal Service</div>
+                                </div>
+                                <div class="program-card-description">
+                                    Prepare and serve meals at our community center. Join a team dedicated to fighting hunger in our community.
+                                </div>
+                                <div class="program-card-footer">
+                                    <div class="program-card-commitment">
+                                        ⏰ One Saturday/month · 9am-1pm
+                                    </div>
+                                    <a href="#" class="program-card-link">Learn more →</a>
+                                </div>
+                            </div>
+
+                            <!-- Program Card 3 -->
+                            <div class="program-card">
+                                <div class="program-card-header">
+                                    <div class="program-card-icon">🤝</div>
+                                    <div class="program-card-name">Youth Mentorship</div>
+                                </div>
+                                <div class="program-card-description">
+                                    Be a positive role model for at-risk youth. Guide them through challenges and celebrate their successes.
+                                </div>
+                                <div class="program-card-footer">
+                                    <div class="program-card-commitment">
+                                        ⏰ 4 hours/week · 6-month commitment
+                                    </div>
+                                    <a href="#" class="program-card-link">Learn more →</a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="message-time">2:36 PM</div>
+                </div>
+            </div>
+
+            <!-- User shows interest -->
+            <div class="message user">
+                <div class="message-avatar">JD</div>
+                <div class="message-content">
+                    <div class="message-bubble">
+                        The tutoring program sounds perfect! I love working with kids and have a flexible schedule.
+                    </div>
+                    <div class="message-time">2:38 PM</div>
+                </div>
+            </div>
+
+            <!-- Bot shows CTA -->
+            <div class="message">
+                <div class="message-avatar">🤖</div>
+                <div class="message-content">
+                    <div class="message-bubble">
+                        Excellent choice! The After School Tutoring program is one of our most rewarding opportunities. I can help you get started right now!
+                    </div>
+                    <div class="cta-container">
+                        <span class="section-label">🎯 Next Step</span>
+                        <button class="cta-button">
+                            <span>Apply to Tutoring Program Now</span>
+                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"></path>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="message-time">2:38 PM</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Add click handlers for interactivity
+        document.querySelectorAll('.program-card').forEach(card => {
+            card.addEventListener('click', function(e) {
+                if (!e.target.classList.contains('program-card-link')) {
+                    alert('Program card clicked! In a real chat, this would show more details.');
+                }
+            });
+        });
+
+        document.querySelector('.cta-button').addEventListener('click', function() {
+            alert('CTA clicked! In a real chat, this would open the application form.');
+        });
+
+        // Auto scroll to bottom
+        document.querySelector('.chat-messages').scrollTop = document.querySelector('.chat-messages').scrollHeight;
+    </script>
+</body>
+</html>

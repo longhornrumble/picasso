@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Forms Routing Configuration</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: #ffffff;
+            color: #333;
+            padding: 40px 60px;
+            line-height: 1.6;
+        }
+
+        .header {
+            margin-bottom: 40px;
+        }
+
+        .header h1 {
+            font-size: 20px;
+            font-weight: 600;
+            color: #000;
+            margin-bottom: 4px;
+        }
+
+        .header p {
+            font-size: 13px;
+            color: #666;
+        }
+
+        .section {
+            margin-bottom: 36px;
+        }
+
+        .section-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #e8e8e8;
+        }
+
+        .section-icon {
+            font-size: 18px;
+            margin-right: 10px;
+        }
+
+        .section-title {
+            font-size: 15px;
+            font-weight: 600;
+            color: #000;
+            flex-grow: 1;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 12px;
+            font-weight: 500;
+            color: #333;
+            margin-bottom: 6px;
+        }
+
+        .info-text {
+            font-size: 12px;
+            color: #666;
+            line-height: 1.5;
+            margin-bottom: 16px;
+        }
+
+        .warning-box {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            border-radius: 6px;
+            padding: 12px 16px;
+            margin-bottom: 16px;
+            font-size: 13px;
+            color: #856404;
+        }
+
+        .warning-box strong {
+            display: block;
+            margin-bottom: 4px;
+        }
+
+        .program-item {
+            background: #fafafa;
+            border: 1px solid #e8e8e8;
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .program-info {
+            flex-grow: 1;
+        }
+
+        .program-name {
+            font-size: 14px;
+            font-weight: 500;
+            color: #000;
+            margin-bottom: 2px;
+        }
+
+        .program-id {
+            font-size: 11px;
+            color: #666;
+            font-family: 'Courier New', monospace;
+        }
+
+        .btn {
+            padding: 6px 14px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            border: 1px solid #d4d4d4;
+            background: white;
+            color: #333;
+            transition: all 0.2s;
+        }
+
+        .btn:hover {
+            border-color: #007aff;
+            color: #007aff;
+        }
+
+        .btn-primary {
+            background: #007aff;
+            color: white;
+            border-color: #007aff;
+        }
+
+        .btn-primary:hover {
+            background: #0051d5;
+        }
+
+        .btn-block {
+            width: 100%;
+            display: block;
+            margin-top: 12px;
+            padding: 10px;
+        }
+
+        .rule-card {
+            background: #fafafa;
+            border: 1px solid #e8e8e8;
+            border-radius: 8px;
+            padding: 14px 16px;
+            margin-bottom: 12px;
+        }
+
+        .rule-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+
+        .rule-title {
+            font-size: 14px;
+            font-weight: 500;
+            color: #000;
+            display: flex;
+            align-items: center;
+        }
+
+        .rule-title input[type="checkbox"] {
+            margin-right: 10px;
+            width: 16px;
+            height: 16px;
+        }
+
+        .rule-details {
+            font-size: 12px;
+            color: #666;
+            line-height: 1.8;
+            margin-left: 26px;
+        }
+
+        .form-card {
+            background: #fafafa;
+            border: 1px solid #e8e8e8;
+            border-radius: 8px;
+            padding: 14px 16px;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .form-card-info {
+            flex-grow: 1;
+        }
+
+        .form-card-title {
+            font-size: 14px;
+            font-weight: 500;
+            color: #000;
+            margin-bottom: 4px;
+        }
+
+        .form-card-meta {
+            font-size: 11px;
+            color: #666;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            margin-left: 8px;
+        }
+
+        .status-active {
+            background: #d4f4dd;
+            color: #1e7e34;
+        }
+
+        .sync-indicator {
+            background: #e7f3ff;
+            border: 1px solid #b3d7ff;
+            border-radius: 6px;
+            padding: 8px 12px;
+            font-size: 12px;
+            color: #004085;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .sync-icon {
+            font-size: 16px;
+        }
+
+        .code-block {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 8px 12px;
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+            color: #495057;
+            margin-top: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🔔 Forms Routing Configuration</h1>
+        <p>Configure notification and integration routing for form submissions</p>
+    </div>
+
+    <!-- Programs Reference -->
+    <div class="section">
+        <div class="section-header">
+            <span class="section-icon">🎯</span>
+            <h2 class="section-title">Programs Reference</h2>
+        </div>
+
+        <div class="warning-box">
+            <strong>⚠️ Important: Program Names Must Match Config File</strong>
+            Programs are defined in the tenant's config file (Web Config Builder). The program names below must EXACTLY match the config file for routing to work correctly.
+        </div>
+
+        <div class="sync-indicator">
+            <span class="sync-icon">📄</span>
+            <span>Programs loaded from: <code>s3://myrecruiter-picasso/tenants/MYR384719/MYR384719-config.json</code></span>
+        </div>
+
+        <div class="form-group">
+            <label>Available Programs (from config file)</label>
+        </div>
+
+        <div class="program-item">
+            <div class="program-info">
+                <div class="program-name">Love Box</div>
+                <div class="program-id">program_id: love_box</div>
+            </div>
+        </div>
+
+        <div class="program-item">
+            <div class="program-info">
+                <div class="program-name">Dare to Dream</div>
+                <div class="program-id">program_id: dare_to_dream</div>
+            </div>
+        </div>
+
+        <div class="program-item">
+            <div class="program-info">
+                <div class="program-name">Summer Camp</div>
+                <div class="program-id">program_id: summer_camp</div>
+            </div>
+        </div>
+
+        <div class="info-text" style="margin-top: 16px;">
+            <strong>Note:</strong> To add new programs, update the tenant config file in Web Config Builder. Programs will automatically appear here on next page load.
+        </div>
+    </div>
+
+    <!-- Notification Rules -->
+    <div class="section">
+        <div class="section-header">
+            <span class="section-icon">📧</span>
+            <h2 class="section-title">Notification Rules</h2>
+        </div>
+
+        <div class="info-text">
+            Configure email notifications when forms are submitted. Notifications are sent based on the applicant's program interest.
+        </div>
+
+        <div class="form-group">
+            <label>Active Rules</label>
+        </div>
+
+        <div class="rule-card">
+            <div class="rule-header">
+                <div class="rule-title">
+                    <input type="checkbox" checked>
+                    Love Box Applications
+                </div>
+                <button class="btn">Edit</button>
+            </div>
+            <div class="rule-details">
+                <strong>Program Interest:</strong> Love Box<br>
+                <strong>Notify:</strong> sarah@atlantaangels.org<br>
+                <strong>Template:</strong> Standard Form Email<br>
+                <strong>Trigger:</strong> When submission contains "Love Box" in program_interest field
+            </div>
+        </div>
+
+        <div class="rule-card">
+            <div class="rule-header">
+                <div class="rule-title">
+                    <input type="checkbox" checked>
+                    Dare to Dream Applications
+                </div>
+                <button class="btn">Edit</button>
+            </div>
+            <div class="rule-details">
+                <strong>Program Interest:</strong> Dare to Dream<br>
+                <strong>Notify:</strong> john@atlantaangels.org<br>
+                <strong>Template:</strong> Standard Form Email<br>
+                <strong>Trigger:</strong> When submission contains "Dare to Dream" in program_interest field
+            </div>
+        </div>
+
+        <div class="rule-card">
+            <div class="rule-header">
+                <div class="rule-title">
+                    <input type="checkbox" checked>
+                    Summer Camp Registrations
+                </div>
+                <button class="btn">Edit</button>
+            </div>
+            <div class="rule-details">
+                <strong>Program Interest:</strong> Summer Camp<br>
+                <strong>Notify:</strong> lisa@atlantaangels.org, programs@atlantaangels.org<br>
+                <strong>Template:</strong> Summer Camp Confirmation<br>
+                <strong>Trigger:</strong> When submission contains "Summer Camp" in program_interest field
+            </div>
+        </div>
+
+        <button class="btn btn-primary btn-block">+ Add Notification Rule</button>
+
+        <div style="margin-top: 24px;">
+            <div class="form-group">
+                <label>Email Template Settings</label>
+            </div>
+            <button class="btn">Configure Email Templates</button>
+        </div>
+    </div>
+
+    <!-- Integration Settings -->
+    <div class="section">
+        <div class="section-header">
+            <span class="section-icon">🔗</span>
+            <h2 class="section-title">Integration Settings</h2>
+        </div>
+
+        <div class="info-text">
+            Connect form submissions to external systems via N8N webhooks. Route submissions to different integrations based on program interest.
+        </div>
+
+        <div class="form-group">
+            <label>Configured Integrations</label>
+        </div>
+
+        <div class="form-card">
+            <div class="form-card-info">
+                <div class="form-card-title">
+                    Google Sheets - Love Box
+                    <span class="status-badge status-active">Active</span>
+                </div>
+                <div class="form-card-meta">
+                    Endpoint: N8N Webhook<br>
+                    URL: http://44.200.215.180.nip.io:5678/webhook/lovebox-submissions<br>
+                    Last Test: Oct 14, 2025 2:45 PM (Success)
+                </div>
+            </div>
+            <div>
+                <button class="btn">Edit</button>
+            </div>
+        </div>
+
+        <div class="form-card">
+            <div class="form-card-info">
+                <div class="form-card-title">
+                    Google Sheets - Dare to Dream
+                    <span class="status-badge status-active">Active</span>
+                </div>
+                <div class="form-card-meta">
+                    Endpoint: N8N Webhook<br>
+                    URL: http://44.200.215.180.nip.io:5678/webhook/dare-to-dream-submissions<br>
+                    Last Test: Oct 14, 2025 2:30 PM (Success)
+                </div>
+            </div>
+            <div>
+                <button class="btn">Edit</button>
+            </div>
+        </div>
+
+        <button class="btn btn-primary btn-block">+ Add Integration</button>
+
+        <div style="margin-top: 24px;">
+            <div class="form-group">
+                <label>Routing Rules</label>
+            </div>
+
+            <div class="rule-card">
+                <div class="rule-header">
+                    <div class="rule-title">
+                        <input type="checkbox" checked>
+                        Love Box → Google Sheets
+                    </div>
+                    <button class="btn">Edit</button>
+                </div>
+                <div class="rule-details">
+                    <strong>Program Interest:</strong> Love Box<br>
+                    <strong>Integration:</strong> Google Sheets - Love Box<br>
+                    <strong>Submissions Sent:</strong> 28<br>
+                    <strong>Trigger:</strong> When submission contains "Love Box" in program_interest field
+                </div>
+                <div class="code-block">
+                    if (submission.program_interest.includes("Love Box")) {<br>
+                    &nbsp;&nbsp;send_to_integration("Google Sheets - Love Box")<br>
+                    }
+                </div>
+            </div>
+
+            <div class="rule-card">
+                <div class="rule-header">
+                    <div class="rule-title">
+                        <input type="checkbox" checked>
+                        Dare to Dream → Google Sheets
+                    </div>
+                    <button class="btn">Edit</button>
+                </div>
+                <div class="rule-details">
+                    <strong>Program Interest:</strong> Dare to Dream<br>
+                    <strong>Integration:</strong> Google Sheets - Dare to Dream<br>
+                    <strong>Submissions Sent:</strong> 19<br>
+                    <strong>Trigger:</strong> When submission contains "Dare to Dream" in program_interest field
+                </div>
+                <div class="code-block">
+                    if (submission.program_interest.includes("Dare to Dream")) {<br>
+                    &nbsp;&nbsp;send_to_integration("Google Sheets - Dare to Dream")<br>
+                    }
+                </div>
+            </div>
+
+            <div class="rule-card">
+                <div class="rule-header">
+                    <div class="rule-title">
+                        <input type="checkbox" checked>
+                        Summer Camp → Google Sheets + Salesforce
+                    </div>
+                    <button class="btn">Edit</button>
+                </div>
+                <div class="rule-details">
+                    <strong>Program Interest:</strong> Summer Camp<br>
+                    <strong>Integrations:</strong> Google Sheets - Love Box, Salesforce CRM<br>
+                    <strong>Submissions Sent:</strong> 5<br>
+                    <strong>Trigger:</strong> When submission contains "Summer Camp" in program_interest field<br>
+                    <strong>Note:</strong> Sends to multiple integrations
+                </div>
+                <div class="code-block">
+                    if (submission.program_interest.includes("Summer Camp")) {<br>
+                    &nbsp;&nbsp;send_to_integration("Google Sheets - Love Box")<br>
+                    &nbsp;&nbsp;send_to_integration("Salesforce CRM")<br>
+                    }
+                </div>
+            </div>
+
+            <button class="btn btn-primary btn-block">+ Add Routing Rule</button>
+        </div>
+    </div>
+
+    <!-- Webhook Test Console -->
+    <div class="section">
+        <div class="section-header">
+            <span class="section-icon">🧪</span>
+            <h2 class="section-title">Test & Debug</h2>
+        </div>
+
+        <div class="info-text">
+            Test notification and integration routing with sample submissions.
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <div>
+                <div class="form-group">
+                    <label>Test Program Interest</label>
+                    <select style="width: 100%; padding: 8px; border: 1px solid #d4d4d4; border-radius: 6px; font-size: 13px;">
+                        <option>Love Box</option>
+                        <option>Dare to Dream</option>
+                        <option>Summer Camp</option>
+                    </select>
+                </div>
+            </div>
+            <div>
+                <div class="form-group">
+                    <label>Test Email</label>
+                    <input type="email" placeholder="test@example.com" style="width: 100%; padding: 8px; border: 1px solid #d4d4d4; border-radius: 6px; font-size: 13px;">
+                </div>
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 8px; margin-top: 12px;">
+            <button class="btn btn-primary">Send Test Notification</button>
+            <button class="btn btn-primary">Trigger Test Integration</button>
+            <button class="btn">View Logs</button>
+        </div>
+
+        <div class="sync-indicator" style="margin-top: 16px;">
+            <span class="sync-icon">✅</span>
+            <span>Last test: Oct 14, 2025 3:15 PM - All routes functioning correctly</span>
+        </div>
+    </div>
+
+</body>
+</html>

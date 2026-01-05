@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Picasso Date Field Mockup</title>
+  <style>
+    /* Picasso Theme Variables */
+    :root {
+      --primary-color: #3b82f6;
+      --primary-light: #60a5fa;
+      --primary-dark: #2563eb;
+      --font-color: #374151;
+      --background-color: #ffffff;
+      --border-color: rgba(59, 130, 246, 0.1);
+      --font-family: system-ui, -apple-system, sans-serif;
+      --font-size-base: 14px;
+      --border-radius: 12px;
+
+      /* Form input styles */
+      --form-input-padding: 12px 16px;
+      --form-input-bg: #ffffff;
+      --form-input-border: rgba(59, 130, 246, 0.2);
+      --form-input-border-focus: #3b82f6;
+      --form-input-radius: 10px;
+      --form-input-font-size: 15px;
+      --form-input-text: #374151;
+      --form-input-placeholder: #9ca3af;
+      --form-input-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+      --form-input-shadow-focus: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+
+    body {
+      margin: 0;
+      padding: 20px;
+      background: #f3f4f6;
+      font-family: var(--font-family);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+    }
+
+    .mockup-container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 30px;
+      max-width: 1200px;
+      width: 100%;
+    }
+
+    @media (max-width: 900px) {
+      .mockup-container {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .device-frame {
+      background: #1f2937;
+      border-radius: 24px;
+      padding: 16px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    }
+
+    .device-screen {
+      background: #f3f4f6;
+      border-radius: 16px;
+      overflow: hidden;
+      height: 600px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .chat-widget {
+      background: white;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      border-radius: 12px;
+      margin: 8px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    }
+
+    .chat-header {
+      background: var(--primary-color);
+      color: white;
+      padding: 16px;
+      font-weight: 600;
+      font-size: 16px;
+      border-radius: 12px 12px 0 0;
+    }
+
+    .chat-messages {
+      flex: 1;
+      padding: 16px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .message {
+      display: flex;
+      gap: 8px;
+    }
+
+    .message.bot {
+      align-self: flex-start;
+      max-width: 85%;
+    }
+
+    .message-bubble {
+      background: #f8fafc;
+      color: #374151;
+      padding: 12px 16px;
+      border-radius: 12px;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .form-field-prompt {
+      background: white;
+      border: 2px solid var(--border-color);
+      border-radius: 12px;
+      padding: 20px;
+      margin: 8px;
+    }
+
+    .form-header {
+      margin-bottom: 16px;
+    }
+
+    .form-header-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--font-color);
+      margin-bottom: 4px;
+    }
+
+    .form-header-subtitle {
+      font-size: 13px;
+      color: #6b7280;
+    }
+
+    .form-progress {
+      margin-bottom: 20px;
+    }
+
+    .form-progress-bar {
+      height: 6px;
+      background: #e5e7eb;
+      border-radius: 3px;
+      overflow: hidden;
+      margin-bottom: 8px;
+    }
+
+    .form-progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--primary-color), var(--primary-light));
+      border-radius: 3px;
+      transition: width 0.3s ease;
+    }
+
+    .form-progress-text {
+      font-size: 12px;
+      color: #6b7280;
+      text-align: center;
+    }
+
+    .form-field-content {
+      margin-bottom: 16px;
+    }
+
+    .form-field-label {
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--font-color);
+      margin-bottom: 12px;
+      line-height: 1.5;
+    }
+
+    .form-field-hint {
+      font-size: 13px;
+      color: #6b7280;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .form-field-hint::before {
+      content: "ℹ️";
+      font-size: 14px;
+    }
+
+    .form-field-input-container {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .form-field-input {
+      width: 100%;
+      padding: var(--form-input-padding);
+      background: var(--form-input-bg);
+      border: 2px solid var(--form-input-border);
+      border-radius: var(--form-input-radius);
+      font-size: var(--form-input-font-size);
+      color: var(--form-input-text);
+      font-family: var(--font-family);
+      box-shadow: var(--form-input-shadow);
+      transition: all 0.2s ease;
+      box-sizing: border-box;
+    }
+
+    .form-field-input:focus {
+      outline: none;
+      border-color: var(--form-input-border-focus);
+      box-shadow: var(--form-input-shadow-focus);
+    }
+
+    /* Date input specific styles */
+    input[type="date"] {
+      cursor: pointer;
+      position: relative;
+    }
+
+    /* Enhanced date picker icon */
+    input[type="date"]::-webkit-calendar-picker-indicator {
+      cursor: pointer;
+      opacity: 0.6;
+      filter: invert(46%) sepia(13%) saturate(692%) hue-rotate(182deg) brightness(91%) contrast(87%);
+    }
+
+    input[type="date"]:hover::-webkit-calendar-picker-indicator {
+      opacity: 1;
+    }
+
+    .form-submit-button {
+      width: 100%;
+      padding: 12px 16px;
+      background: var(--primary-color);
+      color: white;
+      border: none;
+      border-radius: var(--form-input-radius);
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s ease;
+      font-family: var(--font-family);
+    }
+
+    .form-submit-button:hover {
+      background: var(--primary-dark);
+    }
+
+    .form-submit-button:disabled {
+      background: #d1d5db;
+      cursor: not-allowed;
+    }
+
+    .form-field-required {
+      font-size: 12px;
+      color: #6b7280;
+      margin-top: 8px;
+    }
+
+    .form-field-actions {
+      padding-top: 12px;
+      border-top: 1px solid #e5e7eb;
+    }
+
+    .form-cancel-button {
+      width: 100%;
+      padding: 10px 16px;
+      background: transparent;
+      color: #6b7280;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      font-family: var(--font-family);
+    }
+
+    .form-cancel-button:hover {
+      background: #f3f4f6;
+      border-color: #9ca3af;
+      color: var(--font-color);
+    }
+
+    .mockup-label {
+      text-align: center;
+      margin-top: 16px;
+      font-size: 14px;
+      color: #9ca3af;
+      font-weight: 500;
+    }
+
+    .comparison-note {
+      grid-column: 1 / -1;
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    }
+
+    .comparison-note h3 {
+      margin-top: 0;
+      color: var(--primary-color);
+      font-size: 18px;
+    }
+
+    .comparison-note ul {
+      margin: 12px 0;
+      padding-left: 24px;
+      color: #374151;
+      line-height: 1.8;
+    }
+
+    .comparison-note code {
+      background: #f3f4f6;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 13px;
+      color: var(--primary-dark);
+    }
+
+    .desktop-preview {
+      grid-column: 1 / -1;
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+      overflow: hidden;
+    }
+
+    .browser-chrome {
+      background: #e5e7eb;
+      padding: 8px 12px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      border-bottom: 1px solid #d1d5db;
+    }
+
+    .browser-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #ef4444;
+    }
+
+    .browser-dot:nth-child(2) {
+      background: #f59e0b;
+    }
+
+    .browser-dot:nth-child(3) {
+      background: #10b981;
+    }
+
+    .desktop-content {
+      display: flex;
+      height: 500px;
+    }
+
+    .desktop-left {
+      flex: 1;
+      background: #f9fafb;
+      padding: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #9ca3af;
+      font-size: 14px;
+    }
+
+    .desktop-right {
+      width: 380px;
+      background: white;
+      border-left: 1px solid #e5e7eb;
+      display: flex;
+      flex-direction: column;
+    }
+  </style>
+</head>
+<body>
+  <div class="mockup-container">
+    <!-- Note Section -->
+    <div class="comparison-note">
+      <h3>📅 Date Field Implementation Preview</h3>
+      <p><strong>This mockup demonstrates how date fields would appear in the Picasso conversational form UI.</strong></p>
+      <ul>
+        <li><strong>Native HTML5 Date Picker</strong> - Uses <code>&lt;input type="date"&gt;</code> for cross-platform compatibility</li>
+        <li><strong>Mobile-Friendly</strong> - Each platform provides its own optimized date picker (iOS wheel, Android calendar, desktop popup)</li>
+        <li><strong>Consistent Styling</strong> - Matches existing form field aesthetics with Picasso theme variables</li>
+        <li><strong>Accessibility</strong> - Fully keyboard navigable and screen reader compatible</li>
+        <li><strong>Validation</strong> - Browser-native date format validation (YYYY-MM-DD)</li>
+      </ul>
+      <p style="margin-top: 16px; color: #6b7280; font-size: 13px;">
+        <strong>Implementation:</strong> Add 10 lines to FormFieldPrompt.jsx (lines 331-345) to enable this field type.
+      </p>
+    </div>
+
+    <!-- Mobile View - Empty State -->
+    <div>
+      <div class="device-frame">
+        <div class="device-screen">
+          <div class="chat-widget">
+            <div class="chat-header">
+              Volunteer Application
+            </div>
+            <div class="chat-messages">
+              <div class="message bot">
+                <div class="message-bubble">
+                  Hi! I'm here to help you apply to become a volunteer. Let me collect a few details from you.
+                </div>
+              </div>
+            </div>
+            <div class="form-field-prompt">
+              <div class="form-header">
+                <div class="form-header-title">Volunteer Application</div>
+                <div class="form-header-subtitle">Help us get to know you</div>
+              </div>
+
+              <div class="form-progress">
+                <div class="form-progress-bar">
+                  <div class="form-progress-fill" style="width: 60%"></div>
+                </div>
+                <div class="form-progress-text">Step 3 of 5</div>
+              </div>
+
+              <div class="form-field-content">
+                <div class="form-field-label">
+                  What is your date of birth?
+                </div>
+
+                <div class="form-field-hint">
+                  We need this to verify you meet the age requirement (22+)
+                </div>
+
+                <div class="form-field-input-container">
+                  <input
+                    type="date"
+                    class="form-field-input"
+                    placeholder="Select date..."
+                    required
+                  />
+                  <button type="button" class="form-submit-button" disabled>
+                    Submit
+                  </button>
+                </div>
+
+                <div class="form-field-required">
+                  * Required field
+                </div>
+              </div>
+
+              <div class="form-field-actions">
+                <button class="form-cancel-button" type="button">
+                  Cancel Form
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="mockup-label">Mobile - Date Field (Empty)</div>
+    </div>
+
+    <!-- Mobile View - With Value -->
+    <div>
+      <div class="device-frame">
+        <div class="device-screen">
+          <div class="chat-widget">
+            <div class="chat-header">
+              Volunteer Application
+            </div>
+            <div class="chat-messages">
+              <div class="message bot">
+                <div class="message-bubble">
+                  Hi! I'm here to help you apply to become a volunteer. Let me collect a few details from you.
+                </div>
+              </div>
+            </div>
+            <div class="form-field-prompt">
+              <div class="form-header">
+                <div class="form-header-title">Volunteer Application</div>
+                <div class="form-header-subtitle">Help us get to know you</div>
+              </div>
+
+              <div class="form-progress">
+                <div class="form-progress-bar">
+                  <div class="form-progress-fill" style="width: 60%"></div>
+                </div>
+                <div class="form-progress-text">Step 3 of 5</div>
+              </div>
+
+              <div class="form-field-content">
+                <div class="form-field-label">
+                  What is your date of birth?
+                </div>
+
+                <div class="form-field-hint">
+                  We need this to verify you meet the age requirement (22+)
+                </div>
+
+                <div class="form-field-input-container">
+                  <input
+                    type="date"
+                    class="form-field-input"
+                    value="1995-06-15"
+                    required
+                  />
+                  <button type="button" class="form-submit-button">
+                    Submit
+                  </button>
+                </div>
+
+                <div class="form-field-required">
+                  * Required field
+                </div>
+              </div>
+
+              <div class="form-field-actions">
+                <button class="form-cancel-button" type="button">
+                  Cancel Form
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="mockup-label">Mobile - Date Field (Filled)</div>
+    </div>
+
+    <!-- Desktop View - Full Context -->
+    <div class="desktop-preview">
+      <div class="browser-chrome">
+        <div class="browser-dot"></div>
+        <div class="browser-dot"></div>
+        <div class="browser-dot"></div>
+      </div>
+      <div class="desktop-content">
+        <div class="desktop-left">
+          Your website content here
+        </div>
+        <div class="desktop-right">
+          <div class="chat-header">
+            Volunteer Application
+          </div>
+          <div class="chat-messages">
+            <div class="message bot">
+              <div class="message-bubble">
+                Hi! I'm here to help you apply to become a volunteer. Let me collect a few details from you.
+              </div>
+            </div>
+          </div>
+          <div class="form-field-prompt" style="margin: 0; border-radius: 0;">
+            <div class="form-header">
+              <div class="form-header-title">Volunteer Application</div>
+              <div class="form-header-subtitle">Help us get to know you</div>
+            </div>
+
+            <div class="form-progress">
+              <div class="form-progress-bar">
+                <div class="form-progress-fill" style="width: 60%"></div>
+              </div>
+              <div class="form-progress-text">Step 3 of 5</div>
+            </div>
+
+            <div class="form-field-content">
+              <div class="form-field-label">
+                What is your date of birth?
+              </div>
+
+              <div class="form-field-hint">
+                We need this to verify you meet the age requirement (22+)
+              </div>
+
+              <div class="form-field-input-container">
+                <input
+                  type="date"
+                  class="form-field-input"
+                  value="1995-06-15"
+                  required
+                />
+                <button type="button" class="form-submit-button">
+                  Submit
+                </button>
+              </div>
+
+              <div class="form-field-required">
+                * Required field
+              </div>
+            </div>
+
+            <div class="form-field-actions">
+              <button class="form-cancel-button" type="button">
+                Cancel Form
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="mockup-label">Desktop - Embedded Widget</div>
+    </div>
+  </div>
+
+  <script>
+    // Make the date inputs interactive
+    document.querySelectorAll('input[type="date"]').forEach(input => {
+      input.addEventListener('change', function() {
+        const submitBtn = this.closest('.form-field-input-container').querySelector('.form-submit-button');
+        if (this.value) {
+          submitBtn.disabled = false;
+        } else {
+          submitBtn.disabled = true;
+        }
+      });
+    });
+
+    // Show calendar picker behavior note on click
+    document.querySelectorAll('input[type="date"]').forEach(input => {
+      input.addEventListener('click', function() {
+        const hint = this.closest('.form-field-content').querySelector('.form-field-hint');
+        const originalText = hint.textContent;
+        hint.textContent = '📱 On mobile: Native date picker wheel | 🖥️ On desktop: Calendar popup';
+        setTimeout(() => {
+          hint.textContent = originalText;
+        }, 2000);
+      });
+    });
+  </script>
+</body>
+</html>
