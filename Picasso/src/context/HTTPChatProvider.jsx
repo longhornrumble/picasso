@@ -255,8 +255,10 @@ export default function HTTPChatProvider({ children }) {
             completedPrograms: completedPrograms.length
           });
         } else {
-          // Generate new session
-          sessionIdRef.current = `session_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
+          // Use analytics session ID if available (for form → conversation linking)
+          // Fall back to generating a new session ID if analytics not initialized
+          sessionIdRef.current = window.analyticsState?.sessionId ||
+            `sess_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 8)}`;
           saveToSession('picasso_session_id', sessionIdRef.current);
           saveToSession('picasso_session_timestamp', Date.now());
           
@@ -751,8 +753,9 @@ export default function HTTPChatProvider({ children }) {
       cancelForm();
     }
 
-    // Reset session
-    sessionIdRef.current = `session_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
+    // Reset session - generate new analytics-compatible session ID
+    // Use same format as analytics (sess_<timestamp36>_<random>) for form→conversation linking
+    sessionIdRef.current = `sess_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 8)}`;
     saveToSession('picasso_session_id', sessionIdRef.current);
 
     // Restore welcome message and action cards
