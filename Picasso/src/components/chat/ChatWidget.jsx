@@ -631,19 +631,15 @@ function ChatWidget() {
                   formFields={completedFormConfig?.fields}
                   config={completedFormConfig?.post_submission}
                   onEndSession={() => {
-                    // Record the form completion before closing
-                    if (recordFormCompletion) {
-                      recordFormCompletion(currentFormId, completedFormData);
-                    }
+                    // Form completion already recorded via useEffect above
+                    // Don't call recordFormCompletion here to avoid duplicate submissions
                     clearCompletionState();
                     // Close the widget
                     setIsOpen(false);
                   }}
                   onContinue={() => {
-                    // Record the form completion
-                    if (recordFormCompletion) {
-                      recordFormCompletion(currentFormId, completedFormData);
-                    }
+                    // Form completion already recorded via useEffect above
+                    // Don't call recordFormCompletion here to avoid duplicate submissions
                     clearCompletionState();
                     // Widget stays open for continued conversation
                   }}

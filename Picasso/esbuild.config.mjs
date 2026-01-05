@@ -62,6 +62,18 @@ const bundleAnalyzerPlugin = {
   }
 };
 
+// External fonts plugin - preserves absolute URLs to self-hosted fonts
+const externalFontsPlugin = {
+  name: 'external-fonts',
+  setup(build) {
+    // Mark absolute font paths as external - they'll be served from CDN
+    build.onResolve({ filter: /^\/fonts\// }, args => ({
+      path: args.path,
+      external: true
+    }));
+  }
+};
+
 // Code splitting plugin for vendor libraries
 const codeSplittingPlugin = {
   name: 'code-splitting',
@@ -185,6 +197,28 @@ testFiles.forEach(file => {
   }
 });
 
+// Copy self-hosted fonts directory
+const fontsSourceDir = path.join('public', 'fonts');
+const fontsDestDir = path.join(distDir, 'fonts');
+if (fs.existsSync(fontsSourceDir)) {
+  // Recursively copy fonts directory
+  const copyDirRecursive = (src, dest) => {
+    fs.mkdirSync(dest, { recursive: true });
+    const entries = fs.readdirSync(src, { withFileTypes: true });
+    for (const entry of entries) {
+      const srcPath = path.join(src, entry.name);
+      const destPath = path.join(dest, entry.name);
+      if (entry.isDirectory()) {
+        copyDirRecursive(srcPath, destPath);
+      } else {
+        fs.copyFileSync(srcPath, destPath);
+      }
+    }
+  };
+  copyDirRecursive(fontsSourceDir, fontsDestDir);
+  console.log('📋 Copied fonts directory to dist');
+}
+
 // Copy root-level test HTML files to dist for dev server access
 const rootTestFiles = [
   'test-local-dev.html',
@@ -273,12 +307,13 @@ const widgetBuildOptions = {
   // Add plugins for enhanced functionality
   plugins: [
     pathAliasPlugin,
-    bundleAnalyzerPlugin
+    bundleAnalyzerPlugin,
+    externalFontsPlugin
   ],
 
   // Production optimizations (only for actual production builds)
   ...(environment === 'production' && !isDevelopment ? {
-    drop: ['console', 'debugger'], // Drop console logs in production only
+    drop: ['debugger'], // Only drop debugger - console removal breaks useEffect hooks with only console.log
     dropLabels: ['DEV'],
     legalComments: 'none',
     treeShaking: true,
@@ -338,12 +373,13 @@ const iframeBuildOptions = {
   // Add plugins for enhanced functionality
   plugins: [
     pathAliasPlugin,
-    bundleAnalyzerPlugin
+    bundleAnalyzerPlugin,
+    externalFontsPlugin
   ],
 
   // Production optimizations (only for actual production builds)
   ...(environment === 'production' && !isDevelopment ? {
-    drop: ['console', 'debugger'], // Drop console logs in production only
+    drop: ['debugger'], // Only drop debugger - console removal breaks useEffect hooks with only console.log
     dropLabels: ['DEV'],
     legalComments: 'none',
     treeShaking: true,

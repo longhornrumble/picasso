@@ -79,7 +79,12 @@ Picasso/
 │   │   ├── logger.js
 │   │   └── conversationManager.js
 │   └── styles/
-│       └── theme.css             # Global theme (117 KB, CSS variables)
+│       ├── theme.css             # Global theme (117 KB, CSS variables)
+│       └── fonts.css             # Self-hosted @font-face definitions
+├── public/                       # Static assets
+│   └── fonts/                    # Self-hosted web fonts
+│       ├── montserrat/           # Montserrat (35KB woff2)
+│       └── inter/                # Inter (48KB woff2)
 ├── dist/                         # Build outputs
 │   ├── development/              # Dev build (4.5 MB, unminified)
 │   ├── staging/                  # Staging build (468 KB)
@@ -383,6 +388,14 @@ Picasso Widget (embedded on client website)
 - All user-generated content sanitized
 - HTML, Markdown, and link protection
 - Custom allowlist for safe tags
+
+**Self-Hosted Fonts**: Multi-tenant font system
+- Fonts served from same CDN as widget (no cross-origin issues in iframes)
+- ~50-100ms faster than Google Fonts (same-origin, no extra DNS lookups)
+- Fonts cached across all tenants using the same font family
+- Currently supported: Montserrat, Inter (Latin subset, weights 400-700)
+- Add new fonts: Drop woff2 in `public/fonts/<fontname>/`, add @font-face to `src/styles/fonts.css`
+- Build copies fonts to `dist/<env>/fonts/` automatically
 
 **Conversational Forms**: All-Picasso approach (v4 - No Lex)
 - Progressive field collection
@@ -901,10 +914,29 @@ Test pages should include:
 #### Existing Test Pages
 
 Current test pages in the repository:
-- `test-local-dev.html` - ✅ Embedded widget test (Foster Village default)
-- `test-austin-angels.html` - Should be embedded mode
-- `test-aus123957.html` - Should be embedded mode
-- `test-composite-fields.html` - Should be embedded mode
+- `test-dynamic.html` - **Dynamic tenant testing via URL parameter** (recommended for testing any tenant)
+- `test-local-dev.html` - Embedded widget test (uses dev.config.json default)
+- `test-austin-angels.html` - Austin Angels tenant test
+- `test-aus123957.html` - AUS123957 tenant test
+- `test-composite-fields.html` - Composite form fields test
+
+**Dynamic Tenant Testing (Recommended)**
+
+Use `test-dynamic.html` to test any tenant without editing files:
+```
+http://localhost:8000/test-dynamic.html?t=TENANT_HASH
+```
+
+Examples:
+```bash
+# Test MyRecruiter default tenant
+http://localhost:8000/test-dynamic.html?t=my87674d777bf9
+
+# Test Foster Village tenant
+http://localhost:8000/test-dynamic.html?t=fo85e6a06dcdf4
+```
+
+The page reads the `?t=` parameter and dynamically loads the widget with that tenant hash. Defaults to `my87674d777bf9` if no parameter is provided.
 
 **All test pages should follow the embedded widget pattern shown above.**
 
@@ -1253,6 +1285,16 @@ See `/Picasso/docs/COMPLETE_CONVERSATIONAL_FORMS_IMPLEMENTATION_PLAN.md` for ful
 
 ## Recent Updates
 
+### v1.5.1 - Self-Hosted Fonts (2026-01-05)
+- Added self-hosted font system for multi-tenant deployments
+- Fonts served from same CDN as widget (eliminates cross-origin iframe issues)
+- ~50-100ms faster than Google Fonts (same origin = no extra DNS lookups)
+- Fonts shared/cached across tenants using the same font family
+- Added Montserrat and Inter (Latin subset, weights 400-700)
+- New files: `src/styles/fonts.css`, `public/fonts/`
+- Build system auto-copies fonts to dist via `esbuild.config.mjs`
+- Added `externalFontsPlugin` to preserve `/fonts/` URLs in CSS
+
 ### v1.5 - Context-Based CTA Styling (2025-10-30)
 - Implemented responsive button system with context-based styling
 - Fixed button padding inconsistency for long text labels
@@ -1318,6 +1360,7 @@ See `/Picasso/docs/COMPLETE_CONVERSATIONAL_FORMS_IMPLEMENTATION_PLAN.md` for ful
 | Streaming Provider | `/Users/chrismiller/Desktop/Working_Folder/Picasso/src/context/StreamingChatProvider.jsx` |
 | Environment Config | `/Users/chrismiller/Desktop/Working_Folder/Picasso/src/config/environment.js` |
 | Theme CSS | `/Users/chrismiller/Desktop/Working_Folder/Picasso/src/styles/theme.css` |
+| Fonts CSS | `/Users/chrismiller/Desktop/Working_Folder/Picasso/src/styles/fonts.css` |
 | Config Schema | `/Users/chrismiller/Desktop/Working_Folder/Picasso/docs/TENANT_CONFIG_SCHEMA.md` |
 
 ### Key Lambda Files (Absolute Paths)

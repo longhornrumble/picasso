@@ -15,6 +15,7 @@ import { performanceTracker } from './utils/performanceTracking.js';
 import { SCHEMA_VERSION, ALL_EVENT_TYPES } from './analytics/eventConstants.js';
 import "./styles/widget-entry.css";
 import "./styles/theme.css";
+import "./styles/fonts.css";
 
 // ============================================================================
 // ANALYTICS STATE (for User Journey Analytics)
