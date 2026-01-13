@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="mobile-web-app-capable" content="yes">
+  <title>Chat Assistant</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    html, body {
+      height: 100%;
+      width: 100%;
+      overflow: hidden;
+      background: #f9fafb;
+    }
+    /* Handle iOS safe areas */
+    body {
+      padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    }
+    #fullpage-iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+      display: block;
+    }
+    .error-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      padding: 2rem;
+      text-align: center;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+    .error-container h1 {
+      color: #1f2937;
+      font-size: 1.5rem;
+      margin-bottom: 1rem;
+    }
+    .error-container p {
+      color: #6b7280;
+      font-size: 1rem;
+    }
+    .loading-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+    .loading-spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid #e5e7eb;
+      border-top-color: #3b82f6;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .loading-text {
+      margin-top: 1rem;
+      color: #6b7280;
+      font-size: 0.875rem;
+    }
+  </style>
+</head>
+<body>
+  <div id="loading-container" class="loading-container">
+    <div class="loading-spinner"></div>
+    <p class="loading-text">Loading chat...</p>
+  </div>
+
+  <div id="error-container" class="error-container" style="display: none;">
+    <h1>Chat Not Available</h1>
+    <p>This chat link appears to be invalid or expired.</p>
+  </div>
+
+  <script>
+    // Fullpage Chat Launcher
+    // Loads the Picasso chat iframe at 100% viewport for social media links
+    (function() {
+      const urlParams = new URLSearchParams(window.location.search);
+      const tenantHash = urlParams.get('t') || urlParams.get('tenant');
+
+      if (!tenantHash) {
+        // Show error if no tenant specified
+        document.getElementById('loading-container').style.display = 'none';
+        document.getElementById('error-container').style.display = 'flex';
+        return;
+      }
+
+      // Create fullpage iframe
+      const iframe = document.createElement('iframe');
+      iframe.id = 'fullpage-iframe';
+      iframe.title = 'Chat Assistant';
+      iframe.allow = 'camera *; microphone *; geolocation *';
+
+      // Build iframe URL with fullpage mode flag
+      const iframeSrc = window.location.origin + '/iframe.html?t=' + encodeURIComponent(tenantHash) + '&mode=fullpage';
+      iframe.src = iframeSrc;
+
+      // Handle iframe load
+      iframe.onload = function() {
+        // Hide loading, show iframe
+        document.getElementById('loading-container').style.display = 'none';
+
+        // Send fullpage init command to iframe
+        iframe.contentWindow.postMessage({
+          type: 'PICASSO_COMMAND',
+          action: 'OPEN_CHAT'
+        }, '*');
+
+        // Also send init message with tenant info
+        iframe.contentWindow.postMessage({
+          type: 'PICASSO_INIT',
+          tenantHash: tenantHash,
+          config: { mode: 'fullpage' }
+        }, '*');
+      };
+
+      // Handle iframe load errors
+      iframe.onerror = function() {
+        document.getElementById('loading-container').style.display = 'none';
+        document.getElementById('error-container').style.display = 'flex';
+      };
+
+      // Add iframe to page
+      document.body.appendChild(iframe);
+
+      // Listen for messages from iframe to update page title
+      window.addEventListener('message', function(event) {
+        if (event.data.type === 'PICASSO_LOADED' && event.data.config) {
+          const title = event.data.config.chat_title || event.data.config.branding?.chat_title;
+          if (title) {
+            document.title = title;
+          }
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

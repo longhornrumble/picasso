@@ -219,6 +219,28 @@ if (fs.existsSync(fontsSourceDir)) {
   console.log('📋 Copied fonts directory to dist');
 }
 
+// Copy /go/ directory for fullpage social media links
+const goSourceDir = path.join('public', 'go');
+const goDestDir = path.join(distDir, 'go');
+if (fs.existsSync(goSourceDir)) {
+  // Reuse copyDirRecursive from fonts section
+  const copyDir = (src, dest) => {
+    fs.mkdirSync(dest, { recursive: true });
+    const entries = fs.readdirSync(src, { withFileTypes: true });
+    for (const entry of entries) {
+      const srcPath = path.join(src, entry.name);
+      const destPath = path.join(dest, entry.name);
+      if (entry.isDirectory()) {
+        copyDir(srcPath, destPath);
+      } else {
+        fs.copyFileSync(srcPath, destPath);
+      }
+    }
+  };
+  copyDir(goSourceDir, goDestDir);
+  console.log('📋 Copied /go/ directory to dist (fullpage social media links)');
+}
+
 // Copy root-level test HTML files to dist for dev server access
 const rootTestFiles = [
   'test-local-dev.html',
@@ -271,7 +293,7 @@ console.log('🌐 Environment variables:', defineVars);
 // Widget build options (IIFE format - no code splitting, no imports)
 const widgetBuildOptions = {
   entryPoints: {
-    'widget': './src/widget-host.js'  // Build widget.js from widget-host.js (iframe host)
+    'widget': './src/widget-host.js'           // Build widget.js from widget-host.js (iframe host)
   },
   bundle: true,
   outdir: distDir,

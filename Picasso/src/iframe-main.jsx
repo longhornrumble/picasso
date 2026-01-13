@@ -442,20 +442,30 @@ function initializeWidget() {
     // Get tenant hash from URL or use default
     const urlParams = new URLSearchParams(window.location.search);
     const tenantHash = urlParams.get('t') || environmentConfig.getDefaultTenantHash();
+    const isFullpageMode = urlParams.get('mode') === 'fullpage';
     console.log('🔑 Using tenant hash:', tenantHash);
+    console.log('📐 Fullpage mode:', isFullpageMode);
 
     // Set analytics state tenant hash immediately (needed for MESSAGE_SENT/RECEIVED events)
     analyticsState.tenantHash = tenantHash;
-    
+
     // Set up config for iframe mode to use live API
     if (!window.PicassoConfig) {
       window.PicassoConfig = {
-        mode: 'widget',
+        mode: isFullpageMode ? 'fullpage' : 'widget',
+        fullpage: isFullpageMode,
         tenant: tenantHash,
         tenant_id: tenantHash,
         iframe_mode: false  // Allow normal API loading
       };
       console.log('✅ Set iframe config to use live API with tenant hash:', tenantHash);
+    }
+
+    // In fullpage mode, apply fullpage styling and auto-open chat
+    if (isFullpageMode) {
+      document.body.classList.add('fullpage-mode', 'chat-open');
+      document.documentElement.classList.add('fullpage-mode');
+      console.log('📐 Fullpage mode enabled - chat auto-opened');
     }
     
     // Create a proper fetchTenantConfig function for the iframe context

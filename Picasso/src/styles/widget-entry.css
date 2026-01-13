@@ -33,6 +33,80 @@
   backface-visibility: hidden;
 }
 
+/* Fullpage mode styles for social media links (/go/) */
+html.fullpage-mode,
+body.fullpage-mode {
+  height: 100% !important;
+  width: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+
+body.fullpage-mode #root {
+  height: 100% !important;
+  width: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+/* In fullpage mode, the chat container takes full viewport */
+body.fullpage-mode .chat-widget-root {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  max-height: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+body.fullpage-mode .chat-container,
+body[data-iframe="true"].fullpage-mode .chat-container,
+body[data-iframe="true"].fullpage-mode.chat-open .chat-container,
+html body.fullpage-mode .chat-container {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  max-height: 100% !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  margin: 0 !important;
+  border: none !important;
+}
+
+/* Remove border radius from header in fullpage mode */
+body.fullpage-mode .chat-header,
+body[data-iframe="true"].fullpage-mode .chat-header {
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+/* Hide the toggle button in fullpage mode - chat is always open */
+/* Use high specificity to override theme.css rules */
+body.fullpage-mode .chat-toggle-wrapper,
+body.fullpage-mode .chat-toggle-button,
+body.fullpage-mode .toggle-button,
+body.fullpage-mode .widget-toggle,
+body.fullpage-mode .callout-bubble,
+body[data-iframe="true"].fullpage-mode .chat-toggle-wrapper,
+body[data-iframe="true"].fullpage-mode.chat-open .chat-toggle-wrapper,
+html body.fullpage-mode .chat-toggle-wrapper {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
 /* Print styles */
 @media print {
   #picasso-widget-root,
