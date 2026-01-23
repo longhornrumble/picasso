@@ -127,6 +127,7 @@ export function useCSSVariables(config) {
       /* === INTERFACE COLORS === */
       '--header-background-color': branding.header_background_color || branding.primary_color || '#3b82f6',
       '--header-text-color': branding.header_text_color || determineHeaderTextColor(branding),
+      '--header-subtitle-color': branding.header_subtitle_color || generateSubtitleColor(branding),
       '--widget-icon-color': branding.widget_icon_color || '#ffffff',
       '--widget-background-color': branding.widget_background_color || branding.primary_color || '#3b82f6',
       '--link-color': branding.link_color || branding.primary_color || '#3b82f6',
@@ -589,7 +590,7 @@ function determineHeaderTextColor(branding) {
   return isLightColor(headerBg) ? '#1f2937' : '#ffffff';
 }
 
-function _generateSubtitleColor(branding) {
+function generateSubtitleColor(branding) {
   // Get the header text color first
   const headerTextColor = determineHeaderTextColor(branding);
   
