@@ -1697,6 +1697,12 @@ p {
   color: var(--widget-icon-color);
 }
 
+/* Ensure SVG icons in toggle button inherit color */
+.chat-toggle-button svg {
+  stroke: currentColor;
+  fill: none;
+}
+
 .chat-toggle-button:hover {
   transform: translateY(-2px) scale(1.05);
   box-shadow: var(--primary-shadow-hover, 0 12px 32px rgba(59, 130, 246, 0.35));
