@@ -437,7 +437,8 @@ import { config as environmentConfig } from './config/environment.js';
           type: 'PICASSO_INIT',
           tenantHash: this.tenantHash,
           config: this.config,
-          attribution: this.attribution // GA4 client_id, UTM params, referrer
+          attribution: this.attribution, // GA4 client_id, UTM params, referrer
+          hostViewportWidth: window.innerWidth
         }, '*');
       }
     },

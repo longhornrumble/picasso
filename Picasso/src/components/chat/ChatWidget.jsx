@@ -219,6 +219,26 @@ function ChatWidget() {
     }
   }, [isOpen, lastReadMessageIndex, widgetBehavior.remember_state, notifyParentEvent, measureClosedDimensions]);
 
+  // Apply start_open when config loads asynchronously
+  useEffect(() => {
+    if (!isOpen && widgetBehavior.start_open) {
+      // Respect remember_state: don't override if user explicitly closed
+      if (widgetBehavior.remember_state) {
+        try {
+          const saved = sessionStorage.getItem('picasso_chat_state');
+          const lastActivity = sessionStorage.getItem('picasso_last_activity');
+          if (saved !== null && lastActivity) {
+            const timeSinceActivity = Date.now() - parseInt(lastActivity);
+            if (timeSinceActivity < 30 * 60 * 1000 && JSON.parse(saved) === false) {
+              return; // User closed it within session, respect that
+            }
+          }
+        } catch (e) { /* ignore */ }
+      }
+      setIsOpen(true);
+    }
+  }, [widgetBehavior.start_open, widgetBehavior.remember_state]);
+
   // Auto-open delay functionality with remember_state support - optimized dependencies
   useEffect(() => {
     const widgetConfig = widgetBehavior;

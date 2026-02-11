@@ -10,6 +10,7 @@ import ChatWidget from './components/chat/ChatWidget.jsx';
 import { CSSVariablesProvider } from './components/chat/useCSSVariables.js';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
 import { config as environmentConfig } from './config/environment.js';
+import { setHostViewportWidth } from './utils/resolveWidgetBehavior.js';
 import { setupGlobalErrorHandling, performanceMonitor } from './utils/errorHandling.js';
 import { performanceTracker } from './utils/performanceTracking.js';
 import { SCHEMA_VERSION, ALL_EVENT_TYPES } from './analytics/eventConstants.js';
@@ -373,6 +374,11 @@ function setupCommandListener() {
         analyticsState.tenantHash = event.data.tenantHash;
         console.log('✅ Parent confirmed tenant hash:', event.data.tenantHash);
         // Config will be fetched by normal flow - handshake complete
+      }
+
+      // Store host viewport width for mobile/desktop behavior resolution
+      if (event.data.hostViewportWidth != null) {
+        setHostViewportWidth(event.data.hostViewportWidth);
       }
 
       // Store attribution data for analytics (GA4 client_id, UTM params, etc.)
