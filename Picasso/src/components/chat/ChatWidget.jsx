@@ -5,6 +5,7 @@ import { useChat } from "../../hooks/useChat";
 import { useConfig } from "../../hooks/useConfig";
 import { useCSSVariables } from "./useCSSVariables";
 import { initializeMobileCompatibility } from "../../utils/mobileCompatibility";
+import { resolveWidgetBehavior } from "../../utils/resolveWidgetBehavior";
 import ChatHeader from "./ChatHeader";
 import InputBar from "./InputBar";
 import ChatFooter from "./ChatFooter";
@@ -22,9 +23,12 @@ function ChatWidget() {
   const { config } = useConfig();
   const { isFormMode, isSuspended, cancelForm, isFormComplete, completedFormData, completedFormConfig, currentFormId, clearCompletionState } = useFormMode();
 
+  // Resolve widget behavior: merges mobile overrides onto global defaults when on mobile
+  const widgetBehavior = useMemo(() => resolveWidgetBehavior(config), [config]);
+
   // In iframe mode, we don't need breakpoints - the iframe container handles responsive sizing
   // The widget should always fill its container
-  
+
   // Apply CSS variables for theming
   useCSSVariables(config);
   
@@ -59,7 +63,7 @@ function ChatWidget() {
   
   // Chat state with sessionStorage persistence (matches conversation persistence)
   const [isOpen, setIsOpen] = useState(() => {
-    const widgetConfig = config?.widget_behavior || {};
+    const widgetConfig = widgetBehavior;
     
     if (!widgetConfig.remember_state) {
       return widgetConfig.start_open || false;
@@ -95,7 +99,7 @@ function ChatWidget() {
   // Track last read message and user interaction
   const [lastReadMessageIndex, setLastReadMessageIndex] = useState(() => {
     // Initialize from sessionStorage if available
-    if (config?.widget_behavior?.remember_state) {
+    if (widgetBehavior.remember_state) {
       try {
         const savedState = sessionStorage.getItem('picasso_chat_state');
         const lastActivity = sessionStorage.getItem('picasso_last_activity');
@@ -201,7 +205,7 @@ function ChatWidget() {
       }, '*');
     }
 
-    if (config?.widget_behavior?.remember_state) {
+    if (widgetBehavior.remember_state) {
       try {
         sessionStorage.setItem('picasso_chat_state', JSON.stringify(newOpen));
         sessionStorage.setItem('picasso_last_activity', Date.now().toString());
@@ -213,11 +217,11 @@ function ChatWidget() {
         console.warn('Failed to save chat state on toggle:', e);
       }
     }
-  }, [isOpen, lastReadMessageIndex, config?.widget_behavior?.remember_state, notifyParentEvent, measureClosedDimensions]);
+  }, [isOpen, lastReadMessageIndex, widgetBehavior.remember_state, notifyParentEvent, measureClosedDimensions]);
 
   // Auto-open delay functionality with remember_state support - optimized dependencies
   useEffect(() => {
-    const widgetConfig = config?.widget_behavior || {};
+    const widgetConfig = widgetBehavior;
     if (!isOpen && widgetConfig.auto_open_delay > 0) {
       let skipAutoOpen = false;
       if (widgetConfig.remember_state) {
@@ -253,7 +257,7 @@ function ChatWidget() {
         return () => clearTimeout(timer);
       }
     }
-  }, [config?.widget_behavior?.auto_open_delay, config?.widget_behavior?.remember_state, isOpen]);
+  }, [widgetBehavior.auto_open_delay, widgetBehavior.remember_state, isOpen]);
 
   // Add/remove chat-open class immediately for iframe communication
   useEffect(() => {
@@ -365,7 +369,7 @@ function ChatWidget() {
       setHasOpenedChat(true);
       
       // Update saved read index when opening chat
-      if (config?.widget_behavior?.remember_state) {
+      if (widgetBehavior.remember_state) {
         try {
           sessionStorage.setItem('picasso_last_read_index', messages.length.toString());
         } catch (e) {
@@ -373,7 +377,7 @@ function ChatWidget() {
         }
       }
     }
-  }, [isOpen, messages.length, config?.widget_behavior?.remember_state]);
+  }, [isOpen, messages.length, widgetBehavior.remember_state]);
 
   // Update unread count only when new bot messages arrive while chat is closed
   useEffect(() => {
