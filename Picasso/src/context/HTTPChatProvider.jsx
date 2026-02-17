@@ -506,7 +506,9 @@ export default function HTTPChatProvider({ children }) {
         console.log('[HTTPChatProvider] 🎯 CTA metadata included:', {
           cta_triggered: metadata.cta_triggered,
           cta_id: metadata.cta_id,
-          cta_action: metadata.cta_action
+          cta_action: metadata.cta_action,
+          target_branch: metadata.target_branch,
+          program_id: metadata.program_id
         });
       }
 

@@ -61,6 +61,7 @@ async function streamChat({
   onCards, // New callback for handling smart response cards
   onCtaButtons, // New callback for handling CTA buttons
   onShowcaseCard, // Callback for handling showcase cards
+  onSuggestedChips, // v3.0 Evolution: callback for AI-generated follow-up chips
   onDone,
   onError,
   abortControllersRef,
@@ -229,6 +230,13 @@ async function streamChat({
             continue;
           }
 
+          // Check if this is a suggested chips event (v3.0 Evolution)
+          if (obj.type === 'suggested_chips' && obj.chips) {
+            logger.info('Received suggested chips', { count: obj.chips.length });
+            onSuggestedChips?.(obj.chips);
+            continue;
+          }
+
           // Handle regular text content
           let text = obj.content ?? obj.text ?? obj.delta ?? '';
           if (typeof text === 'object' && text !== null) {
@@ -346,6 +354,7 @@ export default function StreamingChatProvider({ children }) {
   const abortControllersRef = useRef(new Map());
   const pendingCtasRef = useRef(null); // Fix: Use ref instead of closure variable
   const pendingShowcaseCardRef = useRef(null); // Ref for staging showcase card
+  const pendingSuggestedChipsRef = useRef(null); // v3.0: AI-generated follow-up chips
 
   // Get config
   const { config: tenantConfig } = useConfig();
@@ -552,6 +561,7 @@ export default function StreamingChatProvider({ children }) {
       ctaButtons: [], // Initialize empty array for CTAs
       cards: [], // Initialize empty array for cards
       showcaseCard: null, // Initialize null for showcase card
+      suggestedChips: [], // v3.0: AI-generated follow-up chips
       metadata: {
         streamId: streamingMessageId,
         isStreaming: true
@@ -613,7 +623,9 @@ export default function StreamingChatProvider({ children }) {
         console.log('[StreamingChatProvider] 🎯 CTA metadata included:', {
           cta_triggered: metadata.cta_triggered,
           cta_id: metadata.cta_id,
-          cta_action: metadata.cta_action
+          cta_action: metadata.cta_action,
+          target_branch: metadata.target_branch,
+          program_id: metadata.program_id
         });
       }
       
@@ -695,6 +707,11 @@ export default function StreamingChatProvider({ children }) {
 
           console.log('[StreamingChatProvider] pendingShowcaseCardRef.current after assignment:', pendingShowcaseCardRef.current);
         },
+        onSuggestedChips: (chips) => {
+          // Stage suggested chips for inclusion in onDone
+          logger.info('Received suggested chips', { count: chips.length });
+          pendingSuggestedChipsRef.current = chips;
+        },
         onDone: async (fullText) => {
           const totalTime = Date.now() - startTime;
           logger.info(`Streaming completed in ${totalTime}ms (first chunk: ${firstChunkTime}ms)`);
@@ -726,6 +743,7 @@ export default function StreamingChatProvider({ children }) {
           // FORM INTERRUPTION: Filter CTAs and create CTA buttons if form is suspended
           const rawCtaButtons = pendingCtasRef.current?.ctaButtons || [];
           const rawShowcaseCard = pendingShowcaseCardRef.current?.showcaseCard || null;
+          const rawSuggestedChips = pendingSuggestedChipsRef.current || [];
           const { isFormMode: formActive, isSuspended: formSuspended, currentFormId: activeFormId, formConfig: activeFormConfig } = formModeRef.current || {};
 
           console.log('[StreamingChatProvider] 🔍 Form state at CTA finalization:', { formActive, formSuspended, activeFormId, ctaCount: rawCtaButtons.length, hasShowcaseCard: !!rawShowcaseCard });
@@ -749,12 +767,16 @@ export default function StreamingChatProvider({ children }) {
               if (msg.id !== streamingMessageId) return msg;
 
               // Simple, direct update preserving all fields
+              // Suppress chips during active forms (same logic as CTAs)
+              const finalSuggestedChips = (formActive) ? [] : rawSuggestedChips;
+
               const updatedMsg = {
                 ...msg,
                 content: finalContent,
                 isStreaming: false,
                 ctaButtons: finalCtaButtons, // Use filtered CTAs (including interruption buttons)
                 showcaseCard: rawShowcaseCard, // Include showcase card if present
+                suggestedChips: finalSuggestedChips, // v3.0: AI-generated follow-up chips
                 metadata: {
                   ...msg.metadata,
                   ...pendingCtasRef.current?.metadata,
@@ -828,9 +850,10 @@ export default function StreamingChatProvider({ children }) {
             logger.warn('Failed to update conversation manager (non-critical)', cmErr);
           }
 
-          // NOW clear pendingCtasRef and pendingShowcaseCardRef after all usage is complete
+          // NOW clear pending refs after all usage is complete
           pendingCtasRef.current = null;
           pendingShowcaseCardRef.current = null;
+          pendingSuggestedChipsRef.current = null;
 
           // CHECK FOR SUSPENDED FORM - Add resume prompt if needed
           // Capture rawCtaButtons before they're cleared (for program switch detection)

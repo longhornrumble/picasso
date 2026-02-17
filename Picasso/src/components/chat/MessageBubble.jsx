@@ -113,6 +113,7 @@ export default function MessageBubble({
   ctaButtons = [],  // CTA buttons from backend
   cards = [],       // Response cards from backend
   showcaseCard,     // Showcase card from backend (single card)
+  suggestedChips = [], // v3.0: AI-generated follow-up chips
   uploadState,
   onCancel,
   metadata = {},
@@ -530,22 +531,45 @@ export default function MessageBubble({
       chip_action: action.action || 'send_query'
     });
 
-    // Handle show_info action - display static message without Bedrock
+    // Handle show_info action
     if (action.action === 'show_info') {
-      console.log('[MessageBubble] Action chip show_info triggered - displaying static message');
       const staticMessage = action.value || action.label;
-      addMessage({
-        role: 'assistant',
-        content: staticMessage,
-        metadata: {
-          action_chip_triggered: true,
-          action_chip_id: action.id || action.label,
-          action_chip_action: action.action,
-          static_info: true,
-          target_branch: action.target_branch // Still include for CTA routing
+
+      // Resolve branch CTAs from config if target_branch is specified
+      let branchCtas = [];
+      if (action.target_branch && config) {
+        const branch = config.conversation_branches?.[action.target_branch];
+        const ctaDefs = config.cta_definitions || {};
+        if (branch?.available_ctas) {
+          const { primary, secondary = [] } = branch.available_ctas;
+          if (primary && ctaDefs[primary]) {
+            branchCtas.push({ ...ctaDefs[primary], id: primary, _position: 'primary' });
+          }
+          for (const secId of secondary) {
+            if (ctaDefs[secId]) {
+              branchCtas.push({ ...ctaDefs[secId], id: secId, _position: 'secondary' });
+            }
+          }
+          console.log('[MessageBubble] Action chip show_info resolved branch CTAs:', action.target_branch, branchCtas.length);
         }
-      });
-      return; // Don't send to Bedrock
+      }
+
+      if (addMessage) {
+        console.log('[MessageBubble] Action chip show_info — displaying message with', branchCtas.length, 'CTAs');
+        addMessage({
+          role: 'assistant',
+          content: staticMessage,
+          ctaButtons: branchCtas.length > 0 ? branchCtas : undefined,
+          metadata: {
+            action_chip_triggered: true,
+            action_chip_id: action.id || action.label,
+            action_chip_action: action.action,
+            static_info: true,
+            branch: action.target_branch || null
+          }
+        });
+      }
+      return;
     }
 
     // Handle show_showcase action - display showcase card without Bedrock
@@ -718,7 +742,9 @@ export default function MessageBubble({
         sendMessage(cta.query, {
           cta_triggered: true,
           cta_id: cta.id || cta.cta_id,
-          cta_action: cta.action
+          cta_action: cta.action,
+          target_branch: cta.target_branch,
+          program_id: cta.program_id
         });
       }
       return;
@@ -809,20 +835,43 @@ export default function MessageBubble({
           });
         }
       }
-    } else if (cta.action === 'show_info' && addMessage) {
-      // Show static info message directly without calling Bedrock
+    } else if (cta.action === 'show_info') {
       const staticMessage = cta.prompt || cta.text || cta.label;
-      addMessage({
-        role: 'assistant',
-        content: staticMessage,
-        metadata: {
-          cta_triggered: true,
-          cta_id: cta.id || cta.cta_id,
-          cta_action: cta.action,
-          static_info: true,
-          target_branch: cta.target_branch // Include for CTA routing
+
+      // Resolve branch CTAs from config if target_branch is specified
+      let branchCtas = [];
+      if (cta.target_branch && config) {
+        const branch = config.conversation_branches?.[cta.target_branch];
+        const ctaDefs = config.cta_definitions || {};
+        if (branch?.available_ctas) {
+          const { primary, secondary = [] } = branch.available_ctas;
+          if (primary && ctaDefs[primary]) {
+            branchCtas.push({ ...ctaDefs[primary], id: primary, _position: 'primary' });
+          }
+          for (const secId of secondary) {
+            if (ctaDefs[secId]) {
+              branchCtas.push({ ...ctaDefs[secId], id: secId, _position: 'secondary' });
+            }
+          }
+          console.log('[MessageBubble] show_info resolved branch CTAs:', cta.target_branch, branchCtas.length);
         }
-      });
+      }
+
+      if (addMessage) {
+        console.log('[MessageBubble] show_info — displaying message with', branchCtas.length, 'CTAs');
+        addMessage({
+          role: 'assistant',
+          content: staticMessage,
+          ctaButtons: branchCtas.length > 0 ? branchCtas : undefined,
+          metadata: {
+            cta_triggered: true,
+            cta_id: cta.id || cta.cta_id,
+            cta_action: cta.action,
+            static_info: true,
+            branch: cta.target_branch || null
+          }
+        });
+      }
     }
   };
 
@@ -924,6 +973,26 @@ export default function MessageBubble({
           >
             Try again
           </button>
+        )}
+
+        {/* Suggested Chips — v3.0 AI-generated follow-up questions */}
+        {(role === "assistant" || role === "bot") && suggestedChips && suggestedChips.length > 0 && !streamingFlag && (
+          <div className="suggested-chips">
+            {suggestedChips.map((chip, index) => (
+              <button
+                key={index}
+                className="suggested-chip"
+                disabled={isTyping}
+                onClick={() => {
+                  if (sendMessage) {
+                    sendMessage(chip);
+                  }
+                }}
+              >
+                {chip}
+              </button>
+            ))}
+          </div>
         )}
 
         {/* CTA Buttons (assistant/bot only) */}

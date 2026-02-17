@@ -103,6 +103,7 @@ export default function MessageList({
               showcaseCard={msg.showcaseCard}
               ctaButtons={msg.ctaButtons}
               cards={msg.cards}
+              suggestedChips={msg.suggestedChips}
             />
           </div>
         );

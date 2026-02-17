@@ -2079,7 +2079,7 @@ p {
   font-size: var(--button-font-size, 14px);
   font-weight: var(--button-font-weight, 500);
   line-height: 1.4;
-  white-space: nowrap !important; /* Force single line */
+  white-space: nowrap; /* Single line by default (action chips) */
 
   /* Border */
   border: 1.5px solid var(--button-bg-primary);
@@ -2091,6 +2091,23 @@ p {
   /* Visual effects */
   backdrop-filter: blur(8px);
   box-sizing: border-box;
+}
+
+/* === CTA BUTTON TEXT WRAPPING === */
+/* CTA buttons can have long labels — allow text to wrap and stay within bounds */
+.cta-button-group {
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.cta-button-group .cta-button {
+  white-space: normal !important;
+  overflow: hidden;
+  max-width: 100% !important;
+  flex: 0 1 auto !important; /* Allow shrinking to fit container */
+  text-align: center;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 /* === PRIMARY VARIANT === */
@@ -2239,7 +2256,49 @@ p {
   }
 }
 
+/* === SUGGESTED CHIPS (v3.0 AI-generated follow-up questions) === */
+.suggested-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 0 4px;
+}
 
+.suggested-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 14px;
+  border: 1px dashed var(--primary-color, #10b981);
+  border-radius: 16px;
+  background: transparent;
+  color: var(--primary-color, #10b981);
+  font-family: var(--font-family);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.4;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.suggested-chip:hover:not(:disabled) {
+  background-color: var(--primary-color, #10b981);
+  color: #fff;
+  border-style: solid;
+}
+
+.suggested-chip:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.suggested-chip:active:not(:disabled) {
+  transform: scale(0.97);
+}
 
 /* === MESSAGE LIST === */
 .message-list-container {

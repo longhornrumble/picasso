@@ -172,8 +172,14 @@ fs.mkdirSync(distDir, { recursive: true });
 
 // Copy public files to environment-specific directory
 // For esbuild, use the iframe-esbuild.html which loads built JS
-fs.copyFileSync('public/iframe-esbuild.html', path.join(distDir, 'iframe.html'));
-console.log('📋 Copied iframe-esbuild.html as iframe.html');
+// Add cache-busting timestamp to JS/CSS references to prevent stale browser cache
+const buildTimestamp = Date.now();
+let iframeHtml = fs.readFileSync('public/iframe-esbuild.html', 'utf8');
+iframeHtml = iframeHtml
+  .replace('./iframe-main.js', `./iframe-main.js?v=${buildTimestamp}`)
+  .replace('./iframe-main.css', `./iframe-main.css?v=${buildTimestamp}`);
+fs.writeFileSync(path.join(distDir, 'iframe.html'), iframeHtml);
+console.log(`📋 Copied iframe-esbuild.html as iframe.html (cache-bust: v=${buildTimestamp})`);
 
 // Copy widget-frame.html from root if it exists
 const widgetFramePath = 'widget-frame.html';
