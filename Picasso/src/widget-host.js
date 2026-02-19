@@ -204,8 +204,9 @@ import { config as environmentConfig } from './config/environment.js';
       }
       
       // Determine the correct iframe path for staging builds
+      // In dev mode, esbuild serves from servedir root so always use /iframe.html
       const isStaging = typeof __IS_STAGING__ !== 'undefined' && __IS_STAGING__;
-      const iframePath = isStaging && widgetDomain === window.location.origin ?
+      const iframePath = !devMode && isStaging && widgetDomain === window.location.origin ?
         '/dist/staging/iframe.html' :
         '/iframe.html';
       

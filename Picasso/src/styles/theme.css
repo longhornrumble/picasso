@@ -2067,17 +2067,17 @@ p {
   position: relative;
   overflow: hidden;
 
-  /* Sizing - Desktop default: fit content width */
-  padding: var(--button-padding-desktop, 10px 16px);
-  min-height: var(--button-min-height-desktop, 40px);
-  border-radius: var(--button-radius-desktop, 20px);
+  /* Sizing - Sleek pill dimensions */
+  padding: var(--button-padding-desktop, 6px 14px);
+  min-height: auto;
+  border-radius: var(--button-radius-desktop, 16px);
   width: auto; /* Desktop: fit content width */
   flex: 0 0 auto; /* Don't grow or shrink - maintain padding */
 
   /* Typography */
   font-family: var(--font-family);
-  font-size: var(--button-font-size, 14px);
-  font-weight: var(--button-font-weight, 500);
+  font-size: var(--button-font-size, 13px);
+  font-weight: var(--button-font-weight, 400);
   line-height: 1.4;
   white-space: nowrap; /* Single line by default (action chips) */
 

@@ -169,17 +169,6 @@ export default function MessageBubble({
     return !!(metaFlag || registryFlag);
   }, [isStreamingProp, metadata, messageId, renderMode]);
 
-  // Debug restored message rendering
-  if (role === "assistant" && content) {
-    console.log('🎯 Bot message render check:', {
-      id: explicitId || messageIdProp,
-      streamingFlag,
-      renderMode,
-      hasContent: !!content,
-      contentLength: content?.length,
-      willRender: (!streamingFlag) && typeof content === 'string' && content.length > 0
-    });
-  }
 
   // try { console.log('[Bubble] render flags', { id: messageId, streamingFlag, hasContent: !!content, len: (content || '').length }); } catch {}
 

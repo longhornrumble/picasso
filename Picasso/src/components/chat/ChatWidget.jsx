@@ -631,6 +631,7 @@ function ChatWidget() {
                     cards={msg.cards}
                     ctaButtons={msg.ctaButtons}
                     showcaseCard={msg.showcaseCard}
+                    suggestedChips={msg.suggestedChips}
                     uploadState={msg.uploadState}
                     onCancel={msg.onCancel}
                     isStreaming={msg.isStreaming}
