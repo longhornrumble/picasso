@@ -251,14 +251,14 @@ export function useCSSVariables(config) {
       '--button-border-option-hover': branding.button_border_option_hover || branding.primary_color || '#3b82f6',
 
       '--button-radius-mobile': ensurePixelUnit(branding.button_radius_mobile || '12px'),
-      '--button-radius-desktop': ensurePixelUnit(branding.button_radius_desktop || '20px'),
+      '--button-radius-desktop': ensurePixelUnit(branding.button_radius_desktop || '16px'),
       '--button-padding-mobile': branding.button_padding_mobile || '12px 16px',
-      '--button-padding-desktop': branding.button_padding_desktop || '10px 16px',
+      '--button-padding-desktop': branding.button_padding_desktop || '6px 14px',
       '--button-min-height-mobile': ensurePixelUnit(branding.button_min_height_mobile || '44px'),
-      '--button-min-height-desktop': ensurePixelUnit(branding.button_min_height_desktop || '40px'),
+      '--button-min-height-desktop': ensurePixelUnit(branding.button_min_height_desktop || 'auto'),
       '--button-gap': branding.button_gap || '8px',
-      '--button-font-size': ensurePixelUnit(branding.button_font_size || branding.action_chip_font_size || '14px'),
-      '--button-font-weight': branding.button_font_weight || branding.action_chip_font_weight || '500',
+      '--button-font-size': ensurePixelUnit(branding.button_font_size || branding.action_chip_font_size || '13px'),
+      '--button-font-weight': branding.button_font_weight || branding.action_chip_font_weight || '400',
 
       /* === CALLOUT SYSTEM === */
       '--callout-background': branding.callout_background || branding.background_color || '#ffffff',

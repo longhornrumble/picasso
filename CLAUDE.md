@@ -32,15 +32,32 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project Structure
 
 This repository follows a multi-project structure:
+
+### Core Platform
 - **Picasso/** - React-based chat widget frontend (TypeScript/JSX)
 - **Lambdas/lambda/** - AWS Lambda functions backend (Python/Node.js)
 - **Infra/** - Infrastructure as code
-- **Sandbox/** - Scratch files (ignored by Git)
+
+### Operations & Tooling
+- **picasso-config-builder/** - Internal operations tool for managing Picasso configurations (React/TypeScript/ESBuild)
+- **picasso-analytics-dashboard/** - Standalone analytics dashboard (React/TypeScript/Vite) v1.1.2
 - **picasso-webscraping/** - Firecrawl Node.js SDK for web scraping and RAG data preparation
-- **picasso-config-builder/** - Internal operations tool for managing Picasso configurations
-- **picasso-analytics-dashboard/** - Standalone analytics dashboard (React/TypeScript/Vite)
 - **picasso-shared-styles/** - Centralized CSS design tokens for all dashboards
-- **marketing_style_guide** - MyRecruiter brand colors, typography, UI component specs
+
+### Business Tools
+- **Deal_prep_level-2/** - Deal Preparation Brief generator using n8n + Claude AI + AWS (TypeScript/ESM)
+- **Website Redesign/** - MyRecruiter marketing homepage (Astro 5 + Tailwind CSS), deployed to `www.myrecruiter.ai`
+
+### Planning & Reference
+- **scheduling/** - Appointment scheduling feature plan (documentation only, not yet implemented)
+- **marketing_style_guide** - MyRecruiter brand colors, typography, UI component specs (single reference file, not a directory)
+- **docs/** - Project documentation (admin prompts, brand skill, conversational forms, roadmap)
+
+### Workspace
+- **Sandbox/** - Scratch files (ignored by Git)
+- **lambda-repo/** - Standalone clone of Lambda functions (separate git repo)
+- **.firecrawl/** - Firecrawl scraping workspace and cached outputs
+- **.agents/**, **.codex/**, **.cursor/** - AI tool configurations (not tracked in git)
 
 ## Commands
 
@@ -73,12 +90,15 @@ npm run lint
 
 ### Lambda Functions
 ```bash
-# Python Lambda deployment (Master_Function_Staging, Analytics_Function, Aggregator_Function)
+# Python Lambda deployment
+# Functions: Master_Function_Staging, Analytics_Function, Aggregator_Function,
+#   Analytics_Dashboard_API, Analytics_Event_Processor, Analytics_Aggregator,
+#   SSO_Token_Generator, send_email, ses_event_handler, deploy_tenant_stack
 cd Lambdas/lambda/[function_name]
 zip -r deployment.zip . -x "*.pyc" -x "__pycache__/*"
 aws lambda update-function-code --function-name [function_name] --zip-file fileb://deployment.zip
 
-# Node.js Lambda deployment (Bedrock_Streaming_Handler_Staging)
+# Node.js Lambda deployment (Bedrock_Streaming_Handler_Staging, Picasso_Config_Manager)
 cd Lambdas/lambda/Bedrock_Streaming_Handler_Staging
 npm ci --production
 npm run package
@@ -115,6 +135,60 @@ aws cloudfront create-invalidation --distribution-id EJ0Y6ZUIUBSAT --paths "/*"
 
 **Production URL**: https://d3r39xkfb0snuq.cloudfront.net
 
+### Picasso Config Builder
+```bash
+cd picasso-config-builder
+npm install
+npm run dev              # Development server
+npm run build:production # Production build
+npm run server:dev       # Backend dev server
+npm run server:dev:mock  # Backend with mock data
+npm run validate         # Full validation suite
+npm run test:all         # All tests
+npm run test:e2e         # Playwright E2E tests
+npm run test:e2e:headed  # E2E with browser visible
+npm run deploy:production # Deploy to S3
+
+# Documentation automation
+npm run docs:update      # Auto-update docs
+npm run docs:validate    # Validate docs
+```
+
+**Infrastructure:**
+- S3: `picasso-config-builder-prod`
+- URL: http://picasso-config-builder-prod.s3-website-us-east-1.amazonaws.com
+- Lambda API: `picasso-config-api` → https://56mwo4zatkiqzpancrkkzqr43e0nkrui.lambda-url.us-east-1.on.aws
+
+### Deal Prep System
+```bash
+cd Deal_prep_level-2
+npm install
+npm run build         # Compile TypeScript to ES modules
+npm run build:watch   # Watch mode
+npm test              # Run all tests
+npm run test:unit     # Unit tests only
+npm run test:integration
+npm run typecheck     # TypeScript checking
+npm run lint          # ESLint
+```
+
+**Infrastructure:**
+- n8n: `https://integrate.myrecruiter.ai` (EC2 i-04281d9886e3a6c41)
+- S3: `deal-prep-artifacts`
+- Webhook: `https://integrate.myrecruiter.ai/webhook/deal-prep`
+
+### Website Redesign (Marketing Site)
+```bash
+cd "Website Redesign"
+npm install
+npm run dev      # Dev server at localhost:4321
+npm run build    # Production build to dist/
+npm run preview  # Preview production build
+```
+
+**Deployment:** Vercel → `www.myrecruiter.ai`
+**GitHub:** https://github.com/longhornrumble/website_redesign
+
 ## Architecture Overview
 
 ### Request Flow
@@ -128,15 +202,18 @@ aws cloudfront create-invalidation --distribution-id EJ0Y6ZUIUBSAT --paths "/*"
 
 ### Frontend (Picasso)
 - **Build System**: ESBuild with environment-specific configs
+- **Source**: `Picasso/src/` is the single Picasso source directory
 - **Entry Points**:
-  - `src/widget-standalone.js` - Embeddable widget
-  - `src/iframe-main.jsx` - React app loaded in iframe
+  - `Picasso/src/widget.js` - Embeddable widget
+  - `Picasso/src/iframe-main.jsx` - React app loaded in iframe
 - **Chat Providers**: Multiple implementations for HTTP/SSE streaming
 - **Environment Detection**: Hierarchical system (config > env vars > URL params)
 - **XSS Protection**: DOMPurify sanitization layer
 
 ### Backend (Lambda Functions)
-- **Master_Function_Staging** (Python):
+
+**Core:**
+- **Master_Function_Staging** (Python 3.13):
   - JWT authentication with blacklist support
   - Multi-tenant configuration from S3
   - DynamoDB session/audit logging
@@ -146,7 +223,27 @@ aws cloudfront create-invalidation --distribution-id EJ0Y6ZUIUBSAT --paths "/*"
   - True Lambda response streaming (`awslambda.streamifyResponse`)
   - Bedrock Agent Runtime for knowledge base RAG
   - 5-minute in-memory cache
-  - Claude 3.5 Haiku default model
+  - Claude 4.5 Haiku default model
+  - V3.5 Tag & Map: AI picks CTA IDs from vocabulary, mapper resolves actions
+  - Vocabulary built from `cta_definitions` where `ai_available: true`
+  - Feature flags: `DYNAMIC_ACTIONS`, `DYNAMIC_CHIPS`, `GUIDANCE_MODULES`
+
+- **Picasso_Config_Manager** (Node.js 20.x ESM):
+  - Backend API for picasso-config-builder
+  - S3 tenant config CRUD operations
+
+**Analytics Pipeline:**
+- **Analytics_Dashboard_API** (Python) - Backend API for analytics dashboard (DynamoDB + Athena)
+- **Analytics_Event_Processor** (Python) - SQS → S3 pipeline for analytics events
+- **Analytics_Aggregator** (Python) - Hourly EventBridge-triggered data aggregation
+- **Analytics_Function** (Python) - Analytics event ingestion
+- **Aggregator_Function** (Python) - Legacy aggregation
+
+**Tenant & Infrastructure:**
+- **deploy_tenant_stack** (Python 3.13) - Tenant onboarding automation
+- **SSO_Token_Generator** (Python) - SSO tokens for dashboard login
+- **send_email** (Python) - Reusable email sending via SES
+- **ses_event_handler** (Python) - SES bounce/complaint event handler
 
 ### Webscraping (Firecrawl SDK)
 - **FirecrawlApp** - Main class for web scraping/crawling operations
@@ -211,9 +308,20 @@ Per the Developer Playbook:
 
 ### Configuration Structure
 Each tenant config includes:
-- **card_inventory**: Extracted actions, requirements, programs
+- **cta_definitions**: Call-to-action buttons with action types (`start_form`, `show_info`, `external_link`, `send_query`). CTAs with `ai_available: true` are surfaced by the AI; others appear only in branches.
+- **conversation_branches**: Guided multi-step paths with primary/secondary CTAs. Activated by `show_info` CTAs with `target_branch`.
 - **conversational_forms**: Explicit field definitions for data collection
 - **form_settings**: Global form behavior and validation
+- **feature_flags**: V3.5 AI behavior toggles (`DYNAMIC_ACTIONS`, `DYNAMIC_CHIPS`, `GUIDANCE_MODULES`)
+- **action_chips**: Quick-action buttons with explicit routing (v1.4.1 dictionary format)
+- **card_inventory**: Extracted actions, requirements, programs (legacy)
+
+**V3.5 CTA Architecture (current):**
+- `available_actions` is **deprecated** — legacy fallback only in the Lambda handler
+- All AI vocabulary is derived from `cta_definitions` where `ai_available: true`
+- CTA with `target_branch` → rigid path (AI exits loop, branch CTAs take over)
+- CTA without `target_branch` → flexible path (AI stays in loop, CHIPS generate follow-ups)
+- See `docs/CTA_BRANCH_CHIPS_INTEGRATION_PLAN.md` for full architecture
 
 ## Testing
 
@@ -262,10 +370,13 @@ Brand reference document for visual consistency. All dashboard styling should al
 ## Known Configuration Notes
 
 - Lambda functions repo is nested: `Lambdas/lambda/`
+- `lambda-repo/` is a separate git clone of the same Lambda functions — prefer `Lambdas/lambda/` for changes
 - Streaming requires Lambda runtime configuration
 - Cache TTL is 5 minutes for Bedrock handler
 - Environment detection supports multiple sources (config, env vars, URL params)
-- TypeScript files present but tsconfig.json may need configuration
 - Firecrawl SDK requires Node.js 22.0.0+ for ES modules support
 - RAG scraper examples in `picasso-webscraping/rag-scraper/` for various use cases
 - Analytics dashboard deployed to S3 bucket `app-myrecruiter-ai` with CloudFront `EJ0Y6ZUIUBSAT`
+- Deal_prep_level-2 and Website Redesign each have their own CLAUDE.md with project-specific guidance
+- `scheduling/` contains only a planning doc — no code implemented yet
+- `.firecrawl/` is a working directory for scraping operations (cached data, not source code)

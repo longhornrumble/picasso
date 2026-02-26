@@ -255,7 +255,8 @@ const rootTestFiles = [
   'test-foster-village.html',
   'test-composite-fields.html',
   'test-form-completion.html',
-  'test-dynamic.html'
+  'test-dynamic.html',
+  'test-v4-pipeline.html'
 ];
 rootTestFiles.forEach(file => {
   const sourcePath = path.join(__dirname, file);

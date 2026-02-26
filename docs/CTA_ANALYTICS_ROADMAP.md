@@ -55,8 +55,8 @@ The streaming handler logs a `QA_COMPLETE` event to CloudWatch with an `ai_actio
   "timestamp": "2026-02-16T...",
   "turn_number": 2,
   "ctas_shown": [
-    { "id": "get_involved", "label": "How to Get Involved", "action": "send_query", "position": "primary" },
-    { "id": "dd_apply", "label": "Learn About Dare to Dream", "action": "send_query", "position": "secondary" }
+    { "id": "lb_explore", "label": "Learn About Love Box", "action": "show_info", "position": "primary" },
+    { "id": "dd_explore", "label": "Learn About Dare to Dream", "action": "show_info", "position": "secondary" }
   ],
   "cta_count": 2
 }
@@ -76,8 +76,8 @@ The streaming handler logs a `QA_COMPLETE` event to CloudWatch with an `ai_actio
   "session_context": {
     "completed_forms": ["lovebox"],
     "ctas_clicked": [
-      { "id": "get_involved", "turn": 2 },
-      { "id": "discovery", "turn": 3 }
+      { "id": "lb_explore", "turn": 2 },
+      { "id": "donate", "turn": 4 }
     ]
   }
 }
@@ -85,7 +85,7 @@ The streaming handler logs a `QA_COMPLETE` event to CloudWatch with an `ai_actio
 
 **Dual purpose:**
 
-1. **Better button selection:** Code-side vocabulary pre-filtering can remove buttons the user already clicked. No prompt changes needed -- just filter the vocabulary array before building the prompt.
+1. **Better button selection:** Vocabulary annotation tells the AI which CTAs the user already engaged with. No prompt rule changes needed — just append click history to the vocabulary block.
 
 2. **Journey analytics:** The sequence of clicked CTAs tells the user's decision story. Combined with `CTA_SHOWN`, we can reconstruct the full funnel: what was offered -> what was chosen -> what converted.
 
@@ -113,24 +113,23 @@ The v3.5 Tag & Map system gives the AI a predefined vocabulary of buttons to cho
 
 Using `ctas_clicked` from session_context, code removes already-clicked buttons from the vocabulary before building the prompt. The AI can't pick a button it can't see.
 
-**Example:** User clicked "How to Get Involved" on turn 2. On turn 3, `query:get_involved` is removed from the vocabulary. The AI naturally progresses to `query:discovery` or `apply:` actions.
+**Example:** User clicked "Learn About Love Box" on turn 2. On turn 3, `lb_explore` is annotated as already-engaged in the vocabulary block. The AI naturally progresses to other CTAs.
 
-**Implementation:** Filter `formEntries`, `queryEntries`, `linkEntries` arrays in `buildV3Prompt()` based on `sessionContext.ctas_clicked`. Zero prompt text changes, zero latency impact.
+**Implementation:** Annotate the vocabulary block in `buildV3Prompt()` with `sessionContext.ctas_clicked` history. Zero prompt text changes, zero latency impact. See [CTA_ACCURACY_AND_TRACKING_PLAN.md](CTA_ACCURACY_AND_TRACKING_PLAN.md) for details.
 
-### Lever 2: Better Descriptions in Vocabulary
+### Lever 2: Intent-Aware Hints (`ai_hint`)
 
-The vocabulary entries include brief descriptions that guide the AI's selection:
+CTA definitions can include an `ai_hint` field — an LLM-facing description of *when* to offer the button:
 
 ```
 Explore:
-  learn:lb_apply -- Tell them more about Love Box
-  learn:dd_apply -- Tell them more about Dare to Dream
-Commit:
-  apply:lb_apply -- Love Box application form
-  query:get_involved -- Explain the volunteer process
+  lb_explore — They're curious about Love Box but haven't heard details yet
+  dd_explore — They're curious about Dare to Dream but haven't heard details yet
+Links:
+  donate — They've expressed interest in donating or financial support
 ```
 
-Refining these descriptions (informed by analytics data on what actually converts) improves selection without changing the prompt structure.
+Refining these hints (informed by analytics data on what actually converts) improves selection without changing the prompt structure. See [CTA_ACCURACY_AND_TRACKING_PLAN.md](CTA_ACCURACY_AND_TRACKING_PLAN.md) for details.
 
 ### Feedback Loop
 
@@ -140,7 +139,7 @@ Analytics data closes the loop:
 2. **CTA_CLICKED** tells us what users wanted
 3. **CTR per button** identifies mismatches (high-shown, low-clicked = bad selection)
 4. **Journey sequences** reveal natural progressions
-5. Insights feed back into vocabulary descriptions and pre-filtering rules
+5. Insights feed back into `ai_hint` descriptions and annotation/filtering rules
 
 ---
 
@@ -149,7 +148,7 @@ Analytics data closes the loop:
 | Phase | Work | Effort | Impact |
 |-------|------|--------|--------|
 | **Phase 1** | `CTA_SHOWN` event from frontend | Small (frontend emit + existing pipeline) | Unlocks all supply-side metrics |
-| **Phase 2** | `ctas_clicked` in session_context | Medium (frontend state + Lambda parsing + vocabulary filtering) | Better button selection + journey data |
+| **Phase 2** | `ctas_clicked` in session_context | Medium (frontend state + Lambda annotation) | Better button selection + journey data |
 | **Phase 3** | Dashboard correlation views | Medium (new dashboard components + queries) | Visibility into CTA effectiveness |
 | **Phase 4** | Vocabulary tuning based on data | Ongoing | Continuous improvement of button relevance |
 
@@ -164,4 +163,5 @@ Analytics data closes the loop:
 
 ---
 
-*Created: 2026-02-16 | Context: Picasso v3.5 Tag & Map CTA system (Lambda v76)*
+*Created: 2026-02-16 | Updated: 2026-02-24 — retooled for cta_definitions + ai_available architecture (Lambda v2.6.0)*
+*Related: [CTA_ACCURACY_AND_TRACKING_PLAN.md](CTA_ACCURACY_AND_TRACKING_PLAN.md)*

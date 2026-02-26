@@ -627,6 +627,12 @@ export default function StreamingChatProvider({ children }) {
           target_branch: metadata.target_branch,
           program_id: metadata.program_id
         });
+        // Reset turns_since_click when user clicks a CTA
+        setSessionContext(prev => {
+          const updated = { ...prev, turns_since_click: 0 };
+          saveToSession('picasso_session_context', updated);
+          return updated;
+        });
       }
       
       // Include state token if available (matching original)
@@ -759,6 +765,39 @@ export default function StreamingChatProvider({ children }) {
             // Form is active but not suspended - filter out all CTAs
             console.log('[StreamingChatProvider] 📝 Form is active - filtering out all CTAs');
             finalCtaButtons = [];
+          }
+
+          // Update session context with conversation context from CTA metadata (round-trip pipeline)
+          const ctaMetadata = pendingCtasRef.current?.metadata;
+          if (ctaMetadata?.conversation_context) {
+            const ctx = ctaMetadata.conversation_context;
+            setSessionContext(prev => {
+              const updated = {
+                ...prev,
+                // Accumulate topics from this turn (keep last 3 turns worth, deduplicated)
+                accumulated_topics: [...new Set([
+                  ...(ctx.matched_topics || []),
+                  ...(prev.accumulated_topics || []).slice(0, 10)
+                ])].slice(0, 15),
+                // Track detected role (sticky across turns)
+                detected_role: ctx.detected_role || prev.detected_role || null,
+                // Track recently shown CTAs (last 2 turns)
+                recently_shown_ctas: [
+                  ...(ctx.selected_ctas || []),
+                  ...(prev.recently_shown_ctas || []).slice(0, 4)
+                ].slice(0, 8),
+                // Increment turns since CTA click
+                turns_since_click: (prev.turns_since_click || 0) + 1
+              };
+              saveToSession('picasso_session_context', updated);
+              console.log('[StreamingChatProvider] 🔄 Updated session context with conversation context:', {
+                accumulated_topics: updated.accumulated_topics,
+                detected_role: updated.detected_role,
+                recently_shown_ctas: updated.recently_shown_ctas,
+                turns_since_click: updated.turns_since_click
+              });
+              return updated;
+            });
           }
 
           // SIMPLIFIED: Direct state update with explicit CTA and showcase card preservation

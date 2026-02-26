@@ -168,4 +168,4 @@ $RECYCLE.BIN/
 *.mp3
 *.mov
 *.avi
-!src/assets/**
+!src/assets/**.firecrawl/
