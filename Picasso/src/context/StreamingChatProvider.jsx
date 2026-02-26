@@ -343,7 +343,12 @@ export default function StreamingChatProvider({ children }) {
     console.log('🔍🔍🔍 [StreamingChatProvider] ❌ No saved session context, using empty state');
     return {
       completed_forms: [],
-      form_submissions: {}
+      form_submissions: {},
+      // Sprint 1: Workflow tracking fields
+      current_node: null,
+      node_history: [],
+      last_transition: null,
+      ctas_clicked: []
     };
   });
 
@@ -630,6 +635,10 @@ export default function StreamingChatProvider({ children }) {
         // Reset turns_since_click when user clicks a CTA
         setSessionContext(prev => {
           const updated = { ...prev, turns_since_click: 0 };
+          // Sprint 1: Track CTA clicks (FR-9) — gated on WORKFLOW_TRACKING
+          if (tenantConfig?.feature_flags?.WORKFLOW_TRACKING && metadata.cta_id) {
+            updated.ctas_clicked = [...(prev.ctas_clicked || []), metadata.cta_id];
+          }
           saveToSession('picasso_session_context', updated);
           return updated;
         });
@@ -796,6 +805,37 @@ export default function StreamingChatProvider({ children }) {
                 recently_shown_ctas: updated.recently_shown_ctas,
                 turns_since_click: updated.turns_since_click
               });
+              return updated;
+            });
+          }
+
+          // Sprint 1: Node tracking (FR-6/7/8) — update current_node, node_history, last_transition
+          const resolvedBranch = pendingCtasRef.current?.metadata?.branch;
+          const workflowTrackingEnabled = tenantConfig?.feature_flags?.WORKFLOW_TRACKING;
+
+          if (workflowTrackingEnabled && resolvedBranch) {
+            setSessionContext(prev => {
+              const from = prev.current_node;
+              const to = resolvedBranch;
+
+              // FR-8: No consecutive duplicates in node_history
+              const updatedHistory = from !== to
+                ? [to, ...(prev.node_history || [])].slice(0, 5)  // FR-7: Cap at 5
+                : prev.node_history || [];
+
+              const updated = {
+                ...prev,
+                current_node: to,
+                node_history: updatedHistory,
+                last_transition: {
+                  from: from,
+                  to: to,
+                  trigger: pendingCtasRef.current?.metadata?.routing_method || 'unknown',
+                  timestamp: new Date().toISOString()
+                }
+              };
+              saveToSession('picasso_session_context', updated);
+              console.log('[WorkflowTracking] Node transition:', { from, to, history: updatedHistory });
               return updated;
             });
           }
