@@ -217,6 +217,11 @@ import { config as environmentConfig } from './config/environment.js';
       } else if (isStaging) {
         iframeUrl += '&picasso-env=staging';
       }
+
+      // Pass nocache param through to iframe for config cache bypass during testing
+      if (urlParams.has('nocache')) {
+        iframeUrl += '&nocache';
+      }
       
       console.log(`🌐 Loading iframe from: ${iframeUrl} (${isLocal ? 'LOCAL' : 'PROD'} mode)`);
       console.log(`💡 To use dev mode, add ?picasso-dev=true to URL or data-dev="true" to script tag`);

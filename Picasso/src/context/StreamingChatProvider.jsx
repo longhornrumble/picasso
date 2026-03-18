@@ -596,6 +596,9 @@ export default function StreamingChatProvider({ children }) {
         turn: conversationManagerRef.current?.turn || 0
       });
       
+      // Check for nocache URL param (bypasses Lambda config cache for testing)
+      const nocacheParam = new URLSearchParams(window.location.search).has('nocache');
+
       // Prepare request body - matching original ChatProvider structure
       const requestBody = {
         tenant_hash: tenantHashRef.current,
@@ -612,7 +615,9 @@ export default function StreamingChatProvider({ children }) {
         // Include session context for form tracking - read from sessionStorage to get latest value
         session_context: getFromSession('picasso_session_context') || sessionContext,
         // Include CTA metadata for explicit routing - must be wrapped in routing_metadata object
-        routing_metadata: metadata || {}
+        routing_metadata: metadata || {},
+        // Cache bypass for config testing
+        ...(nocacheParam && { nocache: true })
       };
 
       // Debug: Log session context and CTA metadata being sent
@@ -651,8 +656,10 @@ export default function StreamingChatProvider({ children }) {
       }
       
       // Streaming endpoint
-      const endpoint = envConfig.STREAMING_ENDPOINT || 
+      let endpoint = envConfig.STREAMING_ENDPOINT ||
         `${envConfig.API_BASE_URL}?action=stream&t=${tenantHashRef.current}`;
+      // Append nocache to Lambda URL for config cache bypass
+      if (nocacheParam) endpoint += '&nocache';
       
       const startTime = Date.now();
       let firstChunkTime = null;  // Track time to first character (TTFB)
@@ -795,6 +802,8 @@ export default function StreamingChatProvider({ children }) {
                   ...(ctx.selected_ctas || []),
                   ...(prev.recently_shown_ctas || []).slice(0, 4)
                 ].slice(0, 8),
+                // Track last classified topic for continuation detection
+                last_classified_topic: ctx.last_classified_topic || prev.last_classified_topic || null,
                 // Increment turns since CTA click
                 turns_since_click: (prev.turns_since_click || 0) + 1
               };
@@ -809,18 +818,19 @@ export default function StreamingChatProvider({ children }) {
             });
           }
 
-          // Sprint 1: Node tracking (FR-6/7/8) — update current_node, node_history, last_transition
+          // Workflow tracking — update current_node, node_history, last_transition, detected_intent
           const resolvedBranch = pendingCtasRef.current?.metadata?.branch;
           const workflowTrackingEnabled = tenantConfig?.feature_flags?.WORKFLOW_TRACKING;
+          const detectedIntent = pendingCtasRef.current?.metadata?.detected_intent || null;
 
           if (workflowTrackingEnabled && resolvedBranch) {
             setSessionContext(prev => {
               const from = prev.current_node;
               const to = resolvedBranch;
 
-              // FR-8: No consecutive duplicates in node_history
+              // No consecutive duplicates in node_history
               const updatedHistory = from !== to
-                ? [to, ...(prev.node_history || [])].slice(0, 5)  // FR-7: Cap at 5
+                ? [to, ...(prev.node_history || [])].slice(0, 5)  // Cap at 5
                 : prev.node_history || [];
 
               const updated = {
@@ -832,10 +842,11 @@ export default function StreamingChatProvider({ children }) {
                   to: to,
                   trigger: pendingCtasRef.current?.metadata?.routing_method || 'unknown',
                   timestamp: new Date().toISOString()
-                }
+                },
+                detected_intent: detectedIntent
               };
               saveToSession('picasso_session_context', updated);
-              console.log('[WorkflowTracking] Node transition:', { from, to, history: updatedHistory });
+              console.log('[WorkflowTracking] Node transition:', { from, to, intent: detectedIntent, history: updatedHistory });
               return updated;
             });
           }
