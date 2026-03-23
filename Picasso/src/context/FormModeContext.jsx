@@ -172,6 +172,12 @@ export const FormModeProvider = ({ children }) => {
     const currentField = formConfig.fields[currentFieldIndex];
     if (!currentField) return { valid: false, error: 'Invalid field index' };
 
+    // Auto-capitalize first character for text-type fields (not email, phone, date, select, etc.)
+    const TEXT_TYPES = ['text', 'name', 'textarea'];
+    if (TEXT_TYPES.includes(currentField.type) && typeof value === 'string' && value.length > 0) {
+      value = value.charAt(0).toUpperCase() + value.slice(1);
+    }
+
     // Basic validation
     if (currentField.required && !value) {
       const error = 'This field is required. Please provide a value.';

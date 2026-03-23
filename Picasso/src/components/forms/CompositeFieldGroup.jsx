@@ -17,9 +17,13 @@ export default function CompositeFieldGroup({ field, onSubmit, inputRef, labelId
   const [errors, setErrors] = useState({});
 
   const handleChange = (subfieldId, value) => {
+    // Auto-capitalize first character for name-type composite fields
+    const normalized = (field.type === 'name' && typeof value === 'string' && value.length > 0)
+      ? value.charAt(0).toUpperCase() + value.slice(1)
+      : value;
     setValues(prev => ({
       ...prev,
-      [subfieldId]: value
+      [subfieldId]: normalized
     }));
     // Clear error for this field when user types
     if (errors[subfieldId]) {
