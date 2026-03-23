@@ -209,32 +209,30 @@ const ENVIRONMENTS = {
     STREAMING_DISABLED_REASON: null // Streaming now enabled
   },
   staging: {
-    // STAGING ENDPOINTS: Use esbuild-defined staging Lambda endpoints or fallbacks
-    API_BASE_URL: (typeof process !== 'undefined' && process.env && process.env.PICASSO_API_BASE_URL) ||
-                  (typeof __API_BASE_URL__ !== 'undefined' ? __API_BASE_URL__ : 'https://2ho6tw56ccvl6uvicra4f56j740dyxgo.lambda-url.us-east-1.on.aws'),
-    CHAT_API_URL: (typeof process !== 'undefined' && process.env && process.env.PICASSO_API_BASE_URL) ||
-                  (typeof __API_BASE_URL__ !== 'undefined' ? __API_BASE_URL__ : 'https://2ho6tw56ccvl6uvicra4f56j740dyxgo.lambda-url.us-east-1.on.aws'),
+    // STAGING ENDPOINTS: Mirrors production — CloudFront proxies to API Gateway for config/chat
+    // CloudFront: staging.chat.myrecruiter.ai (E1CGYA1AJ9OYL0) → S3: picassostaging
+    // API Gateway: kgvc8xnewf → /primary/staging/Master_Function → Master_Function:staging Lambda
+    // Streaming: Bedrock_Streaming_Handler_Staging via Lambda Function URL
+    API_BASE_URL: typeof __API_BASE_URL__ !== 'undefined' ? __API_BASE_URL__ : 'https://staging.chat.myrecruiter.ai/Master_Function',
+    CHAT_API_URL: typeof __API_BASE_URL__ !== 'undefined' ? __API_BASE_URL__ : 'https://staging.chat.myrecruiter.ai/Master_Function',
     ASSET_BASE_URL: typeof __CONFIG_DOMAIN__ !== 'undefined' ? __CONFIG_DOMAIN__ : 'https://staging.chat.myrecruiter.ai',
     S3_BUCKET: 'picassostaging', // Code bucket for staging
     CONFIG_BUCKET: 'myrecruiter-picasso', // Tenant configs and mappings for ALL environments
     WIDGET_DOMAIN: typeof __WIDGET_DOMAIN__ !== 'undefined' ? __WIDGET_DOMAIN__ : 'https://staging.chat.myrecruiter.ai',
     DEBUG: true,
-    
-    // Staging uses Lambda function URL for config (has hash-to-ID mapping)
-    CONFIG_ENDPOINT: (typeof process !== 'undefined' && process.env && process.env.PICASSO_CONFIG_ENDPOINT) || 
-                     (typeof __CONFIG_ENDPOINT__ !== 'undefined' ? __CONFIG_ENDPOINT__ : 'https://2ho6tw56ccvl6uvicra4f56j740dyxgo.lambda-url.us-east-1.on.aws/?action=get_config'),
-    CHAT_ENDPOINT: (typeof process !== 'undefined' && process.env && process.env.PICASSO_CHAT_ENDPOINT) || 
-                   (typeof __CHAT_ENDPOINT__ !== 'undefined' ? __CHAT_ENDPOINT__ : 'https://2ho6tw56ccvl6uvicra4f56j740dyxgo.lambda-url.us-east-1.on.aws/?action=chat'),
-    CONVERSATION_ENDPOINT: (typeof process !== 'undefined' && process.env && process.env.PICASSO_CONVERSATION_ENDPOINT) || 
-                           (typeof __CONVERSATION_ENDPOINT__ !== 'undefined' ? __CONVERSATION_ENDPOINT__ : 'https://2ho6tw56ccvl6uvicra4f56j740dyxgo.lambda-url.us-east-1.on.aws/?action=conversation'), // NEW staging Lambda URL (CORS in Lambda code only)
-    ERROR_REPORTING_ENDPOINT: typeof __ERROR_REPORTING_ENDPOINT__ !== 'undefined' ? __ERROR_REPORTING_ENDPOINT__ : 'https://2ho6tw56ccvl6uvicra4f56j740dyxgo.lambda-url.us-east-1.on.aws/?action=log_error',
-    STREAMING_ENDPOINT: typeof __STREAMING_ENDPOINT__ !== 'undefined' ? __STREAMING_ENDPOINT__ : 'https://7pluzq3axftklmb4gbgchfdahu0lcnqd.lambda-url.us-east-1.on.aws', // Bedrock_Streaming_Handler_Staging // Staging streaming handler with CORS
+
+    // Staging config/chat endpoints go through CloudFront → API Gateway (unwraps Lambda response)
+    CONFIG_ENDPOINT: typeof __CONFIG_ENDPOINT__ !== 'undefined' ? __CONFIG_ENDPOINT__ : 'https://staging.chat.myrecruiter.ai/Master_Function?action=get_config',
+    CHAT_ENDPOINT: typeof __CHAT_ENDPOINT__ !== 'undefined' ? __CHAT_ENDPOINT__ : 'https://staging.chat.myrecruiter.ai/Master_Function?action=chat',
+    CONVERSATION_ENDPOINT: typeof __CONVERSATION_ENDPOINT__ !== 'undefined' ? __CONVERSATION_ENDPOINT__ : 'https://staging.chat.myrecruiter.ai/Master_Function?action=conversation',
+    ERROR_REPORTING_ENDPOINT: typeof __ERROR_REPORTING_ENDPOINT__ !== 'undefined' ? __ERROR_REPORTING_ENDPOINT__ : 'https://staging.chat.myrecruiter.ai/Master_Function?action=log_error',
+    STREAMING_ENDPOINT: typeof __STREAMING_ENDPOINT__ !== 'undefined' ? __STREAMING_ENDPOINT__ : 'https://7pluzq3axftklmb4gbgchfdahu0lcnqd.lambda-url.us-east-1.on.aws', // Bedrock_Streaming_Handler_Staging
     STREAMING_METHOD: 'POST', // Lambda expects POST requests with JSON body
     DEFAULT_TENANT_HASH: typeof __DEFAULT_TENANT_HASH__ !== 'undefined' ? __DEFAULT_TENANT_HASH__ : 'my87674d777bf9', // MyRecruiter tenant: ID=MYR384719, Hash=my87674d777bf9
-    
+
     // CONVERSATION API: Temporarily disabled until separate endpoint is configured
     CONVERSATION_ENDPOINT_AVAILABLE: false, // Disabled - using local storage fallback
-    
+
     // Staging-specific settings
     ENABLE_HOT_RELOAD: false,
     LOG_LEVEL: 'info',

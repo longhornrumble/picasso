@@ -45,8 +45,8 @@ function emitAnalyticsEvent(eventType, payload) {
 }
 
 // Streaming timeout constants
-const STREAMING_TIMEOUT = 25000; // 25 seconds (Lambda has 30s limit)
-const FIRST_CHUNK_TIMEOUT = 7500; // 7.5 seconds to receive first chunk
+const STREAMING_TIMEOUT = 60000; // 60 seconds (Lambda timeout is 900s; this covers slow Bedrock responses)
+const FIRST_CHUNK_TIMEOUT = 15000; // 15 seconds to receive first byte (heartbeats arrive every 2s; Bedrock cold starts can take 8-10s)
 
 /**
  * Core streaming function that handles SSE and NDJSON
@@ -270,7 +270,13 @@ async function streamChat({
       if (done) break;
       
       buffer += decoder.decode(value, { stream: true });
-      
+
+      // Any data from the server (including heartbeat comments) means the connection is alive
+      if (!gotFirstChunk) {
+        gotFirstChunk = true;
+        if (watchdogId) { clearTimeout(watchdogId); watchdogId = null; }
+      }
+
       // Process complete lines
       const lastNL = buffer.lastIndexOf('\n');
       if (lastNL >= 0) {

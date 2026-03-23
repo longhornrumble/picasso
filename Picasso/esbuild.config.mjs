@@ -138,14 +138,14 @@ const ENVIRONMENT_CONFIG = {
     STREAMING_ENDPOINT: 'https://7pluzq3axftklmb4gbgchfdahu0lcnqd.lambda-url.us-east-1.on.aws'
   },
   staging: {
-    // Staging uses Lambda Function URLs directly for all endpoints
-    API_BASE_URL: 'https://2ho6tw56ccvl6uvicra4f56j740dyxgo.lambda-url.us-east-1.on.aws',
-    WIDGET_DOMAIN: 'https://picassostaging.s3.amazonaws.com',
-    CONFIG_DOMAIN: 'https://picassostaging.s3.amazonaws.com',
-    CONFIG_ENDPOINT: 'https://2ho6tw56ccvl6uvicra4f56j740dyxgo.lambda-url.us-east-1.on.aws/?action=get_config',
-    CHAT_ENDPOINT: 'https://2ho6tw56ccvl6uvicra4f56j740dyxgo.lambda-url.us-east-1.on.aws/?action=chat',
-    CONVERSATION_ENDPOINT: 'https://2ho6tw56ccvl6uvicra4f56j740dyxgo.lambda-url.us-east-1.on.aws/?action=conversation',
-    ERROR_REPORTING_ENDPOINT: 'https://2ho6tw56ccvl6uvicra4f56j740dyxgo.lambda-url.us-east-1.on.aws/?action=log_error',
+    // Staging mirrors production: CloudFront proxies to API Gateway for config/chat, Lambda Function URL for streaming
+    API_BASE_URL: 'https://staging.chat.myrecruiter.ai/Master_Function',
+    WIDGET_DOMAIN: 'https://staging.chat.myrecruiter.ai',
+    CONFIG_DOMAIN: 'https://staging.chat.myrecruiter.ai',
+    CONFIG_ENDPOINT: 'https://staging.chat.myrecruiter.ai/Master_Function?action=get_config',
+    CHAT_ENDPOINT: 'https://staging.chat.myrecruiter.ai/Master_Function?action=chat',
+    CONVERSATION_ENDPOINT: 'https://staging.chat.myrecruiter.ai/Master_Function?action=conversation',
+    ERROR_REPORTING_ENDPOINT: 'https://staging.chat.myrecruiter.ai/Master_Function?action=log_error',
     STREAMING_ENDPOINT: 'https://7pluzq3axftklmb4gbgchfdahu0lcnqd.lambda-url.us-east-1.on.aws'
   },
   production: {

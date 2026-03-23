@@ -203,12 +203,11 @@ import { config as environmentConfig } from './config/environment.js';
         widgetDomain = isLocal ? window.location.origin : environmentConfig.WIDGET_DOMAIN;
       }
       
-      // Determine the correct iframe path for staging builds
-      // In dev mode, esbuild serves from servedir root so always use /iframe.html
+      // Determine the correct iframe path
+      // Always use /iframe.html - staging builds deploy iframe.html to the root of the S3 bucket
+      // The /dist/staging/ path only exists during local dev server builds
       const isStaging = typeof __IS_STAGING__ !== 'undefined' && __IS_STAGING__;
-      const iframePath = !devMode && isStaging && widgetDomain === window.location.origin ?
-        '/dist/staging/iframe.html' :
-        '/iframe.html';
+      const iframePath = '/iframe.html';
       
       let iframeUrl = `${widgetDomain}${iframePath}?t=${this.tenantHash}`;
       
