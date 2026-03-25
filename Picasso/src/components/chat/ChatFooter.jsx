@@ -8,8 +8,8 @@ export default function ChatFooter({ brandText = "MyRecruiter" }) {
   const { config } = useConfig();
   const [logoError, setLogoError] = useState(false);
   
-  // MyRecruiter company logo - this is YOUR company's logo that powers the platform
-  const myRecruiterLogoUrl = config?.branding?.company_logo_url || `${environmentConfig.API_BASE_URL}/collateral/MyRecruiterLogo.png`;
+  // MyRecruiter platform logo - always points to the MyRecruiter brand asset, never tenant-configurable
+  const myRecruiterLogoUrl = 'https://picassocode.s3.us-east-1.amazonaws.com/collateral/MyRecruiterLogo.png';
   const showLogo = myRecruiterLogoUrl && !logoError;
   
   const handleLogoError = () => {
