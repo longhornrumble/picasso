@@ -602,6 +602,23 @@ body[data-iframe="true"].callout-visible:not(.chat-open) {
   contain: layout style paint;
 }
 
+/* Edge mode: widget pinned flush to right edge of viewport */
+body.edge-mode.chat-open .chat-container {
+  top: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  border-radius: 12px 0 0 12px !important;
+  border-right: none !important;
+  border-top: none !important;
+  border-bottom: none !important;
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.12) !important;
+}
+
+body.edge-mode .chat-header {
+  border-top-right-radius: 0 !important;
+}
+
 /* Chat positioning based on chat_position from config */
 .chat-container[data-position="top-left"] {
   top: var(--widget-top, 24px);

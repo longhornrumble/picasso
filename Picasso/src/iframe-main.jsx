@@ -348,6 +348,15 @@ function setupCommandListener() {
           }
           break;
           
+        case 'SET_EDGE_MODE':
+          // Flush widget to right edge — remove right border-radius and gaps
+          if (payload?.enabled) {
+            document.body.classList.add('edge-mode');
+          } else {
+            document.body.classList.remove('edge-mode');
+          }
+          break;
+
         case 'MINIMIZE':
           console.log('📡 Received MINIMIZE command');
           document.body.classList.remove('chat-open');

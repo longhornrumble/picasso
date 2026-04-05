@@ -20,7 +20,7 @@ import { config as environmentConfig } from './config/environment.js';
       minimizedSize: '56px',
       expandedWidth: '360px',
       expandedHeight: '640px',
-      activeHeight: '85vh', // Expanded height after first user message (desktop only)
+      activeHeight: '100vh', // Full viewport height after first user message (desktop only)
       zIndex: 10000
     },
     isActive: false, // True after first user message — controls expanded height on desktop
@@ -486,21 +486,36 @@ import { config as environmentConfig } from './config/environment.js';
           bottom: '20px',
           right: '20px'
         });
-      } else {
-        // Desktop: Use activeHeight if session is active, otherwise default
-        const desktopHeight = this.isActive ? this.config.activeHeight : this.config.expandedHeight;
+      } else if (this.isActive) {
+        // Desktop active: full height, flush right edge, rounded left corners only
         Object.assign(this.container.style, {
           width: this.config.expandedWidth,
-          height: desktopHeight,
+          height: 'auto',
+          top: '0',
+          bottom: '0',
+          right: '0',
+          left: 'auto'
+        });
+      } else {
+        // Desktop default: standard dimensions from config
+        Object.assign(this.container.style, {
+          width: this.config.expandedWidth,
+          height: this.config.expandedHeight,
+          top: 'auto',
           bottom: '20px',
           right: '20px'
         });
       }
-      
+
+      // Border radius and edge mode: left-only when active desktop
+      const activeDesktop = !isMobile && !isTablet && this.isActive;
       Object.assign(this.iframe.style, {
-        borderRadius: isMobile ? '12px' : '12px'
+        borderRadius: activeDesktop ? '12px 0 0 12px' : '12px'
       });
-      
+      if (activeDesktop) {
+        this.sendCommand('SET_EDGE_MODE', { enabled: true });
+      }
+
       console.log(`📈 Widget expanded - ${isMobile ? 'mobile' : isTablet ? 'tablet' : 'desktop'} mode`);
     },
     
@@ -527,17 +542,25 @@ import { config as environmentConfig } from './config/environment.js';
       console.log('📉 Widget minimized');
     },
 
-    // Activate session — expand to activeHeight on desktop after first user message
+    // Activate session — expand to full height on desktop after first user message
     activateSession() {
       if (this.isActive) return;
       this.isActive = true;
 
-      // If already expanded on desktop, smoothly resize to activeHeight
+      // If already expanded on desktop, smoothly resize to full height
       const isMobile = window.innerWidth <= 768;
       const isTablet = window.innerWidth > 768 && window.innerWidth <= 1024;
       if (this.isOpen && !isMobile && !isTablet) {
-        this.container.style.height = this.config.activeHeight;
-        console.log('📐 Session activated — desktop height expanded to', this.config.activeHeight);
+        Object.assign(this.container.style, {
+          height: 'auto',
+          top: '0',
+          bottom: '0',
+          right: '0',
+          left: 'auto'
+        });
+        this.iframe.style.borderRadius = '12px 0 0 12px';
+        this.sendCommand('SET_EDGE_MODE', { enabled: true });
+        console.log('📐 Session activated — full height, pinned right');
       }
     },
 
@@ -549,8 +572,16 @@ import { config as environmentConfig } from './config/environment.js';
       const isMobile = window.innerWidth <= 768;
       const isTablet = window.innerWidth > 768 && window.innerWidth <= 1024;
       if (this.isOpen && !isMobile && !isTablet) {
-        this.container.style.height = this.config.expandedHeight;
-        console.log('📐 Session deactivated — desktop height reset to', this.config.expandedHeight);
+        Object.assign(this.container.style, {
+          height: this.config.expandedHeight,
+          top: 'auto',
+          bottom: '20px',
+          right: '20px',
+          left: 'auto'
+        });
+        this.iframe.style.borderRadius = '12px';
+        this.sendCommand('SET_EDGE_MODE', { enabled: false });
+        console.log('📐 Session deactivated — default height restored');
       }
     },
 
@@ -605,13 +636,32 @@ import { config as environmentConfig } from './config/environment.js';
           if (this.isOpen) {
             // Re-apply mobile/desktop sizing
             const isMobile = window.innerWidth <= 768;
-            const desktopHeight = this.isActive ? this.config.activeHeight : this.config.expandedHeight;
-            Object.assign(this.container.style, {
-              width: isMobile ? 'calc(100vw - 20px)' : this.config.expandedWidth,
-              height: isMobile ? 'calc(100vh - 40px)' : desktopHeight,
-              bottom: isMobile ? '10px' : '20px',
-              right: isMobile ? '10px' : '20px'
-            });
+            if (isMobile) {
+              Object.assign(this.container.style, {
+                width: 'calc(100vw - 20px)',
+                height: 'calc(100vh - 40px)',
+                bottom: '10px',
+                right: '10px',
+                top: 'auto'
+              });
+            } else if (this.isActive) {
+              Object.assign(this.container.style, {
+                width: this.config.expandedWidth,
+                height: 'auto',
+                top: '0',
+                bottom: '0',
+                right: '0',
+                left: 'auto'
+              });
+            } else {
+              Object.assign(this.container.style, {
+                width: this.config.expandedWidth,
+                height: this.config.expandedHeight,
+                bottom: '20px',
+                right: '20px',
+                top: 'auto'
+              });
+            }
           }
         });
         
