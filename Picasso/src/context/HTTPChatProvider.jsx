@@ -789,6 +789,9 @@ export default function HTTPChatProvider({ children }) {
       conversationManagerRef.current.reset();
     }
 
+    // Notify host to reset adaptive height
+    emitAnalyticsEvent('SESSION_CLEARED', {});
+
     logger.info('HTTP Provider: Messages cleared and reset to welcome state');
   }, [tenantConfig, cancelForm]);
   

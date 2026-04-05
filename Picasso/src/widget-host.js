@@ -20,8 +20,10 @@ import { config as environmentConfig } from './config/environment.js';
       minimizedSize: '56px',
       expandedWidth: '360px',
       expandedHeight: '640px',
+      activeHeight: 'min(85vh, 800px)', // Expanded height after first user message (desktop only)
       zIndex: 10000
     },
+    isActive: false, // True after first user message — controls expanded height on desktop
     attribution: null, // Captured on init for analytics
 
     // ========================================================================
@@ -350,6 +352,12 @@ import { config as environmentConfig } from './config/environment.js';
 
         case 'MESSAGE_SENT':
           console.log('💬 Message sent event received');
+          this.activateSession();
+          break;
+
+        case 'SESSION_CLEARED':
+          console.log('🔄 Session cleared — resetting adaptive height');
+          this.deactivateSession();
           break;
 
         case 'RESIZE_REQUEST':
@@ -479,10 +487,11 @@ import { config as environmentConfig } from './config/environment.js';
           right: '20px'
         });
       } else {
-        // Desktop: Standard dimensions from config
+        // Desktop: Use activeHeight if session is active, otherwise default
+        const desktopHeight = this.isActive ? this.config.activeHeight : this.config.expandedHeight;
         Object.assign(this.container.style, {
           width: this.config.expandedWidth,
-          height: this.config.expandedHeight,
+          height: desktopHeight,
           bottom: '20px',
           right: '20px'
         });
@@ -517,7 +526,34 @@ import { config as environmentConfig } from './config/environment.js';
 
       console.log('📉 Widget minimized');
     },
-    
+
+    // Activate session — expand to activeHeight on desktop after first user message
+    activateSession() {
+      if (this.isActive) return;
+      this.isActive = true;
+
+      // If already expanded on desktop, smoothly resize to activeHeight
+      const isMobile = window.innerWidth <= 768;
+      const isTablet = window.innerWidth > 768 && window.innerWidth <= 1024;
+      if (this.isOpen && !isMobile && !isTablet) {
+        this.container.style.height = this.config.activeHeight;
+        console.log('📐 Session activated — desktop height expanded to', this.config.activeHeight);
+      }
+    },
+
+    // Deactivate session — return to default height on next open
+    deactivateSession() {
+      this.isActive = false;
+
+      // If currently expanded on desktop, resize back to default
+      const isMobile = window.innerWidth <= 768;
+      const isTablet = window.innerWidth > 768 && window.innerWidth <= 1024;
+      if (this.isOpen && !isMobile && !isTablet) {
+        this.container.style.height = this.config.expandedHeight;
+        console.log('📐 Session deactivated — desktop height reset to', this.config.expandedHeight);
+      }
+    },
+
     // Toggle widget state
     toggle() {
       if (this.isOpen) {
@@ -569,9 +605,10 @@ import { config as environmentConfig } from './config/environment.js';
           if (this.isOpen) {
             // Re-apply mobile/desktop sizing
             const isMobile = window.innerWidth <= 768;
+            const desktopHeight = this.isActive ? this.config.activeHeight : this.config.expandedHeight;
             Object.assign(this.container.style, {
               width: isMobile ? 'calc(100vw - 20px)' : this.config.expandedWidth,
-              height: isMobile ? 'calc(100vh - 40px)' : this.config.expandedHeight,
+              height: isMobile ? 'calc(100vh - 40px)' : desktopHeight,
               bottom: isMobile ? '10px' : '20px',
               right: isMobile ? '10px' : '20px'
             });

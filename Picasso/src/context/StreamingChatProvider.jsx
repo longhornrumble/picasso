@@ -1245,6 +1245,9 @@ export default function StreamingChatProvider({ children }) {
       conversationManagerRef.current.resetLocalState();
     }
 
+    // Notify host to reset adaptive height
+    emitAnalyticsEvent('SESSION_CLEARED', {});
+
     logger.info('Streaming Provider: Messages cleared and reset to welcome state');
   }, [tenantConfig, cancelForm, clearCompletionState]);
   
