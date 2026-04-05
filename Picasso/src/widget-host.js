@@ -20,7 +20,7 @@ import { config as environmentConfig } from './config/environment.js';
       minimizedSize: '56px',
       expandedWidth: '360px',
       expandedHeight: '640px',
-      activeHeight: 'min(85vh, 800px)', // Expanded height after first user message (desktop only)
+      activeHeight: '85vh', // Expanded height after first user message (desktop only)
       zIndex: 10000
     },
     isActive: false, // True after first user message — controls expanded height on desktop
