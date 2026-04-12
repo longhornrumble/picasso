@@ -86,7 +86,9 @@ export default function FormCompletionCard({
     let result = text;
     Object.entries(formData).forEach(([fieldId, value]) => {
       const placeholder = `{${fieldId}}`;
-      result = result.replace(new RegExp(placeholder, 'g'), value);
+      // Skip composite objects — they can't be interpolated into text
+      if (typeof value === 'object' && value !== null) return;
+      result = result.replace(new RegExp(placeholder, 'g'), String(value));
     });
     return result;
   };
@@ -159,6 +161,13 @@ export default function FormCompletionCard({
               const phone = value[`${fieldId}.phone`];
               const email = value[`${fieldId}.email`];
               displayValue = [phone, email].filter(Boolean).join('\n');
+            } else if (fieldDef?.type === 'phone_with_consent' && typeof value === 'object') {
+              // Render phone number only (consent is internal, not shown to user)
+              const phone = value[`${fieldId}.phone`];
+              displayValue = phone || '';
+            } else if (typeof value === 'object' && value !== null) {
+              // Generic composite fallback — join non-empty values
+              displayValue = Object.values(value).filter(v => v && typeof v === 'string').join(', ');
             } else if (fieldDef?.type === 'select' && fieldDef?.options) {
               // For select fields, try to get the option label instead of value
               const option = fieldDef.options.find(opt => opt.value === value);

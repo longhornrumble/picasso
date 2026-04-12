@@ -275,7 +275,7 @@ export default function FormFieldPrompt({ onCancel }) {
       <div className="form-field-content">
         <label
           id={`label-${currentField.id}`}
-          htmlFor={!['select', 'name', 'address'].includes(currentField.type) ? `field-${currentField.id}` : undefined}
+          htmlFor={!['select', 'name', 'address', 'phone_with_consent'].includes(currentField.type) ? `field-${currentField.id}` : undefined}
           className="form-field-label"
         >
           {currentField.prompt || currentField.label}
@@ -429,8 +429,8 @@ export default function FormFieldPrompt({ onCancel }) {
             </div>
           )}
 
-          {/* Composite fields (name, address) */}
-          {(currentField.type === 'name' || currentField.type === 'address') && currentField.subfields && (
+          {/* Composite fields (name, address, phone_with_consent) */}
+          {(currentField.type === 'name' || currentField.type === 'address' || currentField.type === 'phone_with_consent') && currentField.subfields && (
             <CompositeFieldGroup
               field={currentField}
               onSubmit={handleCompositeSubmit}

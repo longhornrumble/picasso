@@ -4438,6 +4438,12 @@ body[data-iframe="true"].minimized {
   transform: translateY(0) scale(0.98);
 }
 
+.form-select-option.selected {
+  background: var(--button-bg-option-hover, #fafaf5);
+  border-color: var(--primary-color, #50C878);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary-color, #50C878) 25%, transparent);
+}
+
 /* Desktop grid layout for form options */
 @media (min-width: 481px) {
   .form-select-options {
