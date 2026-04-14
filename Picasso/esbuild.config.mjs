@@ -139,14 +139,14 @@ const ENVIRONMENT_CONFIG = {
   },
   staging: {
     // Staging mirrors production: CloudFront proxies to API Gateway for config/chat, Lambda Function URL for streaming
-    API_BASE_URL: 'https://staging.chat.myrecruiter.ai/Master_Function',
+    API_BASE_URL: 'https://chat.myrecruiter.ai/Master_Function', // Temporarily using production for E2E testing
     WIDGET_DOMAIN: 'https://staging.chat.myrecruiter.ai',
     CONFIG_DOMAIN: 'https://staging.chat.myrecruiter.ai',
-    CONFIG_ENDPOINT: 'https://staging.chat.myrecruiter.ai/Master_Function?action=get_config',
-    CHAT_ENDPOINT: 'https://staging.chat.myrecruiter.ai/Master_Function?action=chat',
-    CONVERSATION_ENDPOINT: 'https://staging.chat.myrecruiter.ai/Master_Function?action=conversation',
-    ERROR_REPORTING_ENDPOINT: 'https://staging.chat.myrecruiter.ai/Master_Function?action=log_error',
-    STREAMING_ENDPOINT: 'https://7pluzq3axftklmb4gbgchfdahu0lcnqd.lambda-url.us-east-1.on.aws'
+    CONFIG_ENDPOINT: 'https://chat.myrecruiter.ai/Master_Function?action=get_config', // Temporarily using production for E2E testing
+    CHAT_ENDPOINT: 'https://chat.myrecruiter.ai/Master_Function?action=chat', // Temporarily using production for E2E testing
+    CONVERSATION_ENDPOINT: 'https://chat.myrecruiter.ai/Master_Function?action=conversation', // Temporarily using production for E2E testing
+    ERROR_REPORTING_ENDPOINT: 'https://chat.myrecruiter.ai/Master_Function?action=log_error', // Temporarily using production for E2E testing
+    STREAMING_ENDPOINT: 'https://xqc4wnxwia2nytjkbw6xasjd6q0jckgb.lambda-url.us-east-1.on.aws' // Temporarily using production Lambda for E2E testing
   },
   production: {
     // Production uses API Gateway/CloudFront for main endpoints, Lambda URLs only where needed
