@@ -146,10 +146,10 @@ const ENVIRONMENT_CONFIG = {
     CHAT_ENDPOINT: 'https://staging.chat.myrecruiter.ai/Master_Function?action=chat',
     CONVERSATION_ENDPOINT: process.env.PICASSO_STAGING_CONVERSATION_ENDPOINT || 'https://staging.chat.myrecruiter.ai/Master_Function?action=conversation',
     ERROR_REPORTING_ENDPOINT: 'https://staging.chat.myrecruiter.ai/Master_Function?action=log_error',
-    STREAMING_ENDPOINT: process.env.PICASSO_STAGING_STREAMING_ENDPOINT || ''
+    STREAMING_ENDPOINT: 'https://staging.chat.myrecruiter.ai/stream'
   },
   production: {
-    // Production uses API Gateway/CloudFront for main endpoints, Lambda URLs from CI secrets
+    // Production: all traffic through CloudFront (chat.myrecruiter.ai)
     API_BASE_URL: 'https://chat.myrecruiter.ai/Master_Function',
     WIDGET_DOMAIN: 'https://chat.myrecruiter.ai',
     CONFIG_DOMAIN: 'https://picassocode.s3.amazonaws.com',
@@ -157,7 +157,7 @@ const ENVIRONMENT_CONFIG = {
     CHAT_ENDPOINT: 'https://chat.myrecruiter.ai/Master_Function?action=chat',
     CONVERSATION_ENDPOINT: process.env.PICASSO_CONVERSATION_ENDPOINT || '',
     ERROR_REPORTING_ENDPOINT: 'https://chat.myrecruiter.ai/Master_Function?action=log_error',
-    STREAMING_ENDPOINT: process.env.PICASSO_STREAMING_ENDPOINT || ''
+    STREAMING_ENDPOINT: 'https://chat.myrecruiter.ai/stream'
   }
 };
 
