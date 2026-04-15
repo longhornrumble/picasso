@@ -124,6 +124,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Checkout Lambda repo
+        uses: actions/checkout@v4
+        with:
+          repository: longhornrumble/lambda
+          path: Lambdas/lambda
+          token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
