@@ -289,10 +289,15 @@ describe('FormCompletionCard', () => {
 
   describe('Composite Field Rendering', () => {
     test('renders name composite field', () => {
+      // Composite fields are stored as a single key with an object value.
+      // The component checks typeof value === 'object' && fieldDef.type === 'name'
+      // and reads sub-keys as value[`${fieldId}.first_name`], etc.
       const compositeFormData = {
-        'full_name.first_name': 'John',
-        'full_name.middle_name': 'Q',
-        'full_name.last_name': 'Public'
+        'full_name': {
+          'full_name.first_name': 'John',
+          'full_name.middle_name': 'Q',
+          'full_name.last_name': 'Public'
+        }
       };
 
       const compositeFormFields = [
@@ -319,12 +324,17 @@ describe('FormCompletionCard', () => {
     });
 
     test('renders address composite field', () => {
+      // Composite fields are stored as a single key with an object value.
+      // The component checks typeof value === 'object' && fieldDef.type === 'address'
+      // and reads sub-keys as value[`${fieldId}.street`], etc.
       const compositeFormData = {
-        'address.street': '123 Main St',
-        'address.apt_unit': 'Apt 4B',
-        'address.city': 'Austin',
-        'address.state': 'TX',
-        'address.zip_code': '78701'
+        'address': {
+          'address.street': '123 Main St',
+          'address.apt_unit': 'Apt 4B',
+          'address.city': 'Austin',
+          'address.state': 'TX',
+          'address.zip_code': '78701'
+        }
       };
 
       const compositeFormFields = [
