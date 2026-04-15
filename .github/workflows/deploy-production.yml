@@ -135,10 +135,17 @@ jobs:
         working-directory: ./Picasso
         run: npm ci
 
-      - name: Run npm audit
+      - name: Run npm audit (Picasso)
         working-directory: ./Picasso
-        run: npm audit --production --audit-level=high
-        continue-on-error: true
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Run npm audit (Bedrock Lambda)
+        working-directory: ./Lambdas/lambda/Bedrock_Streaming_Handler_Staging
+        run: npm install --omit=dev --ignore-scripts && npm audit --omit=dev --audit-level=high
+
+      - name: Run npm audit (Config Manager Lambda)
+        working-directory: ./Lambdas/lambda/Picasso_Config_Manager
+        run: npm install --omit=dev --ignore-scripts && npm audit --omit=dev --audit-level=high
 
       - name: Run Snyk security scan
         uses: snyk/actions/node@master
@@ -189,6 +196,17 @@ jobs:
         run: npm run build:production
         env:
           BUILD_ENV: production
+          PICASSO_CONVERSATION_ENDPOINT: ${{ secrets.PICASSO_CONVERSATION_ENDPOINT }}
+          PICASSO_STREAMING_ENDPOINT: ${{ secrets.PICASSO_STREAMING_ENDPOINT }}
+
+      - name: Validate no hardcoded Lambda URLs in build
+        working-directory: ./Picasso
+        run: |
+          if grep -r 'lambda-url\.us-east-1\.on\.aws' dist/production/ 2>/dev/null; then
+            echo "ERROR: Hardcoded Lambda URLs found in production build"
+            exit 1
+          fi
+          echo "OK: No hardcoded Lambda URLs in production build"
 
       - name: Analyze bundle size
         working-directory: ./Picasso
@@ -254,6 +272,8 @@ jobs:
         run: npm run build:staging
         env:
           BUILD_ENV: staging
+          PICASSO_STAGING_CONVERSATION_ENDPOINT: ${{ secrets.PICASSO_STAGING_CONVERSATION_ENDPOINT }}
+          PICASSO_STAGING_STREAMING_ENDPOINT: ${{ secrets.PICASSO_STAGING_STREAMING_ENDPOINT }}
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -334,6 +354,8 @@ jobs:
         run: npm run build:production
         env:
           BUILD_ENV: production
+          PICASSO_CONVERSATION_ENDPOINT: ${{ secrets.PICASSO_CONVERSATION_ENDPOINT }}
+          PICASSO_STREAMING_ENDPOINT: ${{ secrets.PICASSO_STREAMING_ENDPOINT }}
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4

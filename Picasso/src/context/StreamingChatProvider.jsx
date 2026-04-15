@@ -23,7 +23,9 @@ import {
   getTenantHash,
   saveToSession,
   getFromSession,
-  clearSession
+  clearSession,
+  _storeGet,
+  _storeKeys
 } from './shared/messageHelpers';
 import { logger } from '../utils/logger';
 import { config as envConfig } from '../config/environment';
@@ -415,7 +417,7 @@ export default function StreamingChatProvider({ children }) {
           });
 
           // Check raw sessionStorage to see what's actually stored
-          const rawStoredItem = sessionStorage.getItem('picasso_messages');
+          const rawStoredItem = _storeGet('picasso_messages');
           if (rawStoredItem) {
             try {
               const parsedRaw = JSON.parse(rawStoredItem);
@@ -957,13 +959,7 @@ export default function StreamingChatProvider({ children }) {
 
           setTimeout(() => {
             // Check sessionStorage for suspended forms
-            const suspendedFormKeys = [];
-            for (let i = 0; i < sessionStorage.length; i++) {
-              const key = sessionStorage.key(i);
-              if (key && key.startsWith('picasso_form_')) {
-                suspendedFormKeys.push(key);
-              }
-            }
+            const suspendedFormKeys = _storeKeys().filter(key => key.startsWith('picasso_form_'));
 
             console.log('[StreamingChatProvider] Checking for suspended forms after response:', {
               suspendedFormKeys,
@@ -973,7 +969,7 @@ export default function StreamingChatProvider({ children }) {
 
             if (suspendedFormKeys.length > 0) {
               // Get the first suspended form
-              const formStateStr = sessionStorage.getItem(suspendedFormKeys[0]);
+              const formStateStr = _storeGet(suspendedFormKeys[0]);
               if (formStateStr) {
                 const formState = JSON.parse(formStateStr);
                 const formId = formState.formId;

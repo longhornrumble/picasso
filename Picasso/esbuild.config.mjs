@@ -144,20 +144,20 @@ const ENVIRONMENT_CONFIG = {
     CONFIG_DOMAIN: 'https://staging.chat.myrecruiter.ai',
     CONFIG_ENDPOINT: 'https://staging.chat.myrecruiter.ai/Master_Function?action=get_config',
     CHAT_ENDPOINT: 'https://staging.chat.myrecruiter.ai/Master_Function?action=chat',
-    CONVERSATION_ENDPOINT: 'https://staging.chat.myrecruiter.ai/Master_Function?action=conversation',
+    CONVERSATION_ENDPOINT: process.env.PICASSO_STAGING_CONVERSATION_ENDPOINT || 'https://staging.chat.myrecruiter.ai/Master_Function?action=conversation',
     ERROR_REPORTING_ENDPOINT: 'https://staging.chat.myrecruiter.ai/Master_Function?action=log_error',
-    STREAMING_ENDPOINT: 'https://7pluzq3axftklmb4gbgchfdahu0lcnqd.lambda-url.us-east-1.on.aws'
+    STREAMING_ENDPOINT: process.env.PICASSO_STAGING_STREAMING_ENDPOINT || ''
   },
   production: {
-    // Production uses API Gateway/CloudFront for main endpoints, Lambda URLs only where needed
+    // Production uses API Gateway/CloudFront for main endpoints, Lambda URLs from CI secrets
     API_BASE_URL: 'https://chat.myrecruiter.ai/Master_Function',
     WIDGET_DOMAIN: 'https://chat.myrecruiter.ai',
     CONFIG_DOMAIN: 'https://picassocode.s3.amazonaws.com',
     CONFIG_ENDPOINT: 'https://chat.myrecruiter.ai/Master_Function?action=get_config',
     CHAT_ENDPOINT: 'https://chat.myrecruiter.ai/Master_Function?action=chat',
-    CONVERSATION_ENDPOINT: 'https://hfkpcekuxi3z7kllmoitt7ngae0fggxf.lambda-url.us-east-1.on.aws?action=conversation', // Lambda URL for JWT support
+    CONVERSATION_ENDPOINT: process.env.PICASSO_CONVERSATION_ENDPOINT || '',
     ERROR_REPORTING_ENDPOINT: 'https://chat.myrecruiter.ai/Master_Function?action=log_error',
-    STREAMING_ENDPOINT: 'https://xqc4wnxwia2nytjkbw6xasjd6q0jckgb.lambda-url.us-east-1.on.aws'
+    STREAMING_ENDPOINT: process.env.PICASSO_STREAMING_ENDPOINT || ''
   }
 };
 
@@ -283,6 +283,7 @@ const defineVars = {
   __IS_STAGING__: JSON.stringify(environment === 'staging'),
   __DEFAULT_TENANT_HASH__: JSON.stringify(isDevelopment ? devConfig.DEFAULT_TENANT_HASH : 'my87674d777bf9'),
   __DISABLE_AUTO_DEV_MODE__: JSON.stringify(environment !== 'development'),
+  __ALLOW_CONFIG_PATH_OVERRIDE__: JSON.stringify(isDevelopment),
   
   // Vite compatibility - import.meta.env support
   'import.meta.env.DEV': JSON.stringify(isDevelopment),

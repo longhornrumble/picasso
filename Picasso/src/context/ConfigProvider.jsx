@@ -1,5 +1,6 @@
 import { createContext, useState, useEffect, useRef, useContext } from 'react';
 import { config as environmentConfig } from '../config/environment';
+import { _storeGet, _storeSet } from './shared/messageHelpers';
 
 const ConfigContext = createContext();
 
@@ -71,8 +72,9 @@ const ConfigProvider = ({ children }) => {
         tenantHash
       });
 
-      // Check if there's a local config path override (for local testing)
-      if (typeof window !== 'undefined' && window.PICASSO_CONFIG_PATH) {
+      // Check if there's a local config path override (dev builds only — gated by build flag)
+      if (typeof __ALLOW_CONFIG_PATH_OVERRIDE__ !== 'undefined' && __ALLOW_CONFIG_PATH_OVERRIDE__ &&
+          typeof window !== 'undefined' && window.PICASSO_CONFIG_PATH) {
         console.log('🔧 Using local config path override:', window.PICASSO_CONFIG_PATH);
         const response = await fetch(window.PICASSO_CONFIG_PATH);
         console.log('📡 Local config fetch response:', response.status, response.ok);
@@ -96,7 +98,7 @@ const ConfigProvider = ({ children }) => {
       
       // Check cache first with version validation
       const cacheKey = `picasso-config-${tenantHash}`;
-      const cachedData = sessionStorage.getItem(cacheKey);
+      const cachedData = _storeGet(cacheKey);
       
       if (!force && cachedData) {
         const cached = JSON.parse(cachedData);
@@ -210,7 +212,7 @@ const ConfigProvider = ({ children }) => {
         version: version,
         timestamp: Date.now()
       };
-      sessionStorage.setItem(`picasso-config-${tenantHash}`, JSON.stringify(cacheData));
+      _storeSet(`picasso-config-${tenantHash}`, JSON.stringify(cacheData));
 
       console.log('✅ Config loaded successfully from Lambda Master_Function', {
         hash: tenantHash.slice(0, 8) + '...',

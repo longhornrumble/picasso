@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { useConfig } from '../hooks/useConfig';
+import { _storeGet, _storeSet, _storeRemove, _storeKeys } from './shared/messageHelpers';
 import {
   FORM_VIEWED,
   FORM_STARTED,
@@ -58,10 +59,10 @@ export const FormModeProvider = ({ children }) => {
 
   // Session storage key prefix
   const STORAGE_PREFIX = 'picasso_form_';
-  const SESSION_ID = sessionStorage.getItem('picasso_session_id') ||
+  const SESSION_ID = _storeGet('picasso_session_id') ||
                       (() => {
                         const id = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-                        sessionStorage.setItem('picasso_session_id', id);
+                        _storeSet('picasso_session_id', id);
                         return id;
                       })();
 
@@ -69,17 +70,17 @@ export const FormModeProvider = ({ children }) => {
   useEffect(() => {
     const loadSuspendedForms = () => {
       const forms = new Map();
-      for (let i = 0; i < sessionStorage.length; i++) {
-        const key = sessionStorage.key(i);
+      const allKeys = _storeKeys();
+      for (const key of allKeys) {
         if (key && key.startsWith(STORAGE_PREFIX)) {
           try {
-            const data = JSON.parse(sessionStorage.getItem(key));
+            const data = JSON.parse(_storeGet(key));
             // Check if form is still valid (30 minute TTL)
             if (data.suspendedAt && Date.now() - data.suspendedAt < 30 * 60 * 1000) {
               forms.set(data.formId, data);
             } else {
               // Clean up expired forms
-              sessionStorage.removeItem(key);
+              _storeRemove(key);
             }
           } catch (e) {
             console.error('Error loading suspended form:', e);
@@ -465,7 +466,7 @@ export const FormModeProvider = ({ children }) => {
 
     // Save to session storage
     const storageKey = `${STORAGE_PREFIX}${currentFormId}_${SESSION_ID}`;
-    sessionStorage.setItem(storageKey, JSON.stringify(suspendedData));
+    _storeSet(storageKey, JSON.stringify(suspendedData));
 
     // Update suspended forms map
     setSuspendedForms(prev => new Map(prev).set(currentFormId, suspendedData));
@@ -508,7 +509,7 @@ export const FormModeProvider = ({ children }) => {
 
     // Clear from session storage
     const storageKey = `${STORAGE_PREFIX}${formId}_${SESSION_ID}`;
-    sessionStorage.removeItem(storageKey);
+    _storeRemove(storageKey);
 
     return true;
   }, [suspendedForms]);
@@ -543,7 +544,7 @@ export const FormModeProvider = ({ children }) => {
 
     // Clear from session storage if suspended
     const storageKey = `${STORAGE_PREFIX}${currentFormId}_${SESSION_ID}`;
-    sessionStorage.removeItem(storageKey);
+    _storeRemove(storageKey);
 
     // Reset all form state
     setIsFormMode(false);

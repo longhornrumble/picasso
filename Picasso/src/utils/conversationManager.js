@@ -8,6 +8,7 @@
 import { config as environmentConfig } from '../config/environment';
 import { errorLogger, performanceMonitor } from './errorHandling';
 import { createLogger } from './logger';
+import { _storeGet, _storeSet, _storeRemove } from '../context/shared/messageHelpers';
 
 const logger = createLogger('ConversationManager');
 
@@ -42,7 +43,7 @@ export class ConversationManager {
     this.sessionId = sessionId;
     
     // Check for existing conversation ID in sessionStorage for conversation recall
-    const existingConversationId = sessionStorage.getItem('picasso_conversation_id');
+    const existingConversationId = _storeGet('picasso_conversation_id');
     if (existingConversationId && existingConversationId.startsWith('session_')) {
       this.conversationId = existingConversationId;
       logger.debug('♻️ Using existing conversation ID from storage:', this.conversationId);
@@ -546,7 +547,7 @@ export class ConversationManager {
         
         // Persist conversation ID to sessionStorage for conversation recall
         try {
-          sessionStorage.setItem('picasso_conversation_id', this.conversationId);
+          _storeSet('picasso_conversation_id', this.conversationId);
           logger.debug('💾 Persisted conversation ID to sessionStorage');
         } catch (e) {
           logger.warn('Failed to persist conversation ID:', e);
@@ -1197,7 +1198,7 @@ export class ConversationManager {
   // Token management methods
   loadStateToken() {
     try {
-      const stored = sessionStorage.getItem(CONVERSATION_CONFIG.TOKEN_STORAGE_KEY);
+      const stored = _storeGet(CONVERSATION_CONFIG.TOKEN_STORAGE_KEY);
       if (stored) {
         const tokenData = JSON.parse(stored);
         // Check if token is still valid (basic expiry check)
@@ -1224,7 +1225,7 @@ export class ConversationManager {
         expires: new Date(Date.now() + CONVERSATION_CONFIG.CACHE_DURATION).toISOString()
       };
       
-      sessionStorage.setItem(
+      _storeSet(
         CONVERSATION_CONFIG.TOKEN_STORAGE_KEY,
         JSON.stringify(tokenData)
       );
@@ -1236,7 +1237,7 @@ export class ConversationManager {
   clearStateToken() {
     try {
       this.stateToken = null;
-      sessionStorage.removeItem(CONVERSATION_CONFIG.TOKEN_STORAGE_KEY);
+      _storeRemove(CONVERSATION_CONFIG.TOKEN_STORAGE_KEY);
     } catch (error) {
       errorLogger.logError(error, { context: 'clear_state_token' });
     }
@@ -1380,7 +1381,7 @@ export class ConversationManager {
         savedAt: Date.now()
       };
       
-      sessionStorage.setItem(
+      _storeSet(
         CONVERSATION_CONFIG.SESSION_STORAGE_KEY,
         JSON.stringify(sessionData)
       );
@@ -1392,7 +1393,7 @@ export class ConversationManager {
   
   loadFromSessionStorage() {
     try {
-      const stored = sessionStorage.getItem(CONVERSATION_CONFIG.SESSION_STORAGE_KEY);
+      const stored = _storeGet(CONVERSATION_CONFIG.SESSION_STORAGE_KEY);
       if (!stored) return null;
       
       const data = JSON.parse(stored);
@@ -1443,7 +1444,7 @@ export class ConversationManager {
   
   clearSessionStorage() {
     try {
-      sessionStorage.removeItem(CONVERSATION_CONFIG.SESSION_STORAGE_KEY);
+      _storeRemove(CONVERSATION_CONFIG.SESSION_STORAGE_KEY);
     } catch (error) {
       errorLogger.logError(error, { context: 'clear_session_storage' });
     }

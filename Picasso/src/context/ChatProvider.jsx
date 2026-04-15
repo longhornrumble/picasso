@@ -3,6 +3,7 @@ import { useConfig } from "../hooks/useConfig";
 import { config as environmentConfig } from '../config/environment';
 import { ChatContext } from './shared/ChatContext';
 import { useFormMode } from './FormModeContext';
+import { _storeGet, _storeSet, _storeRemove, _storeKeys } from './shared/messageHelpers';
 import PropTypes from "prop-types";
 import { 
   errorLogger, 
@@ -514,13 +515,13 @@ const ChatProvider = ({ children }) => {
   
   // 🔧 FIX: Session validation - ALWAYS reuse for widget persistence
   const validateAndPurgeSession = () => {
-    const stored = sessionStorage.getItem(STORAGE_KEYS.SESSION_ID);
+    const stored = _storeGet(STORAGE_KEYS.SESSION_ID);
 
     // ALWAYS reuse existing session for widget persistence
     // Session should only expire on browser tab close, not widget close
     if (stored) {
       // Update activity timestamp
-      sessionStorage.setItem(STORAGE_KEYS.LAST_ACTIVITY, Date.now().toString());
+      _storeSet(STORAGE_KEYS.LAST_ACTIVITY, Date.now().toString());
       logger.debug('Session validation: Reusing existing session for widget persistence', stored);
       return stored;
     }
@@ -528,8 +529,8 @@ const ChatProvider = ({ children }) => {
     // Only create new session if none exists (first time)
     // Use consistent format with ConversationManager: session_TIMESTAMP
     const newSessionId = `session_${Date.now()}`;
-    sessionStorage.setItem(STORAGE_KEYS.SESSION_ID, newSessionId);
-    sessionStorage.setItem(STORAGE_KEYS.LAST_ACTIVITY, Date.now().toString());
+    _storeSet(STORAGE_KEYS.SESSION_ID, newSessionId);
+    _storeSet(STORAGE_KEYS.LAST_ACTIVITY, Date.now().toString());
     logger.debug('Session validation: Created new session (first time)', newSessionId);
     return newSessionId;
   };
@@ -552,8 +553,8 @@ const ChatProvider = ({ children }) => {
       ];
       
       keysToRemove.forEach(key => {
-        if (sessionStorage.getItem(key)) {
-          sessionStorage.removeItem(key);
+        if (_storeGet(key)) {
+          _storeRemove(key);
           logger.debug(`Purged session storage key: ${key}`);
         }
       });
@@ -595,11 +596,11 @@ const ChatProvider = ({ children }) => {
 
     // DEBUG: Show ALL sessionStorage keys
     try {
-      const allKeys = Object.keys(sessionStorage);
+      const allKeys = _storeKeys();
       console.log('📦 ALL SessionStorage keys:', allKeys.length, 'keys');
       allKeys.forEach(key => {
         if (key.startsWith('picasso')) {
-          const value = sessionStorage.getItem(key);
+          const value = _storeGet(key);
           console.log(`📦 ${key}:`, value ? value.slice(0, 100) : 'null');
         }
       });
@@ -608,9 +609,9 @@ const ChatProvider = ({ children }) => {
     }
 
     // Check for existing session first, create new one only if needed
-    const storedSessionId = sessionStorage.getItem(STORAGE_KEYS.SESSION_ID);
-    const storedMessages = sessionStorage.getItem(STORAGE_KEYS.MESSAGES);
-    const lastActivity = sessionStorage.getItem(STORAGE_KEYS.LAST_ACTIVITY);
+    const storedSessionId = _storeGet(STORAGE_KEYS.SESSION_ID);
+    const storedMessages = _storeGet(STORAGE_KEYS.MESSAGES);
+    const lastActivity = _storeGet(STORAGE_KEYS.LAST_ACTIVITY);
 
     console.log('🟢 SessionStorage on mount:', {
       sessionId: storedSessionId?.slice(0, 12),
@@ -624,7 +625,7 @@ const ChatProvider = ({ children }) => {
       // Session should only expire when browser tab closes, not widget close
       console.log('🟢 REUSING existing session for widget persistence:', storedSessionId.slice(0, 12) + '...');
       sessionIdRef.current = storedSessionId;
-      sessionStorage.setItem(STORAGE_KEYS.LAST_ACTIVITY, Date.now().toString());
+      _storeSet(STORAGE_KEYS.LAST_ACTIVITY, Date.now().toString());
 
       // Note: We're NOT checking SESSION_TIMEOUT here because:
       // 1. Widget close/reopen should maintain session (user expectation)
@@ -635,8 +636,8 @@ const ChatProvider = ({ children }) => {
       console.log('🟢 CREATING new session (no existing session found)');
       const newSessionId = `session_${Date.now()}`;
       sessionIdRef.current = newSessionId;
-      sessionStorage.setItem(STORAGE_KEYS.SESSION_ID, newSessionId);
-      sessionStorage.setItem(STORAGE_KEYS.LAST_ACTIVITY, Date.now().toString());
+      _storeSet(STORAGE_KEYS.SESSION_ID, newSessionId);
+      _storeSet(STORAGE_KEYS.LAST_ACTIVITY, Date.now().toString());
     }
 
     // Signal that session is ready
@@ -694,9 +695,9 @@ const ChatProvider = ({ children }) => {
   const loadPersistedMessages = () => {
     console.log('🔵 loadPersistedMessages called');
     try {
-      const stored = sessionStorage.getItem(STORAGE_KEYS.MESSAGES);
-      const lastActivity = sessionStorage.getItem(STORAGE_KEYS.LAST_ACTIVITY);
-      const storedSessionId = sessionStorage.getItem(STORAGE_KEYS.SESSION_ID);
+      const stored = _storeGet(STORAGE_KEYS.MESSAGES);
+      const lastActivity = _storeGet(STORAGE_KEYS.LAST_ACTIVITY);
+      const storedSessionId = _storeGet(STORAGE_KEYS.SESSION_ID);
       const currentSessionId = sessionIdRef.current;
 
       console.log('🔵 Persisted message check:', {
@@ -797,7 +798,7 @@ const ChatProvider = ({ children }) => {
           currentSession: currentSessionId?.slice(0, 12)
         });
         // Clear old session data
-        sessionStorage.removeItem(STORAGE_KEYS.MESSAGES);
+        _storeRemove(STORAGE_KEYS.MESSAGES);
       } else {
         console.log('🔵 NO MESSAGES TO LOAD:', {
           hasStored: !!stored,
@@ -904,8 +905,8 @@ const ChatProvider = ({ children }) => {
             }
             return msg;
           });
-          sessionStorage.setItem(STORAGE_KEYS.MESSAGES, JSON.stringify(messagesToPersist));
-          sessionStorage.setItem(STORAGE_KEYS.LAST_ACTIVITY, Date.now().toString());
+          _storeSet(STORAGE_KEYS.MESSAGES, JSON.stringify(messagesToPersist));
+          _storeSet(STORAGE_KEYS.LAST_ACTIVITY, Date.now().toString());
           errorLogger.logInfo('💾 Persisted conversation state', {
             messageCount: messages.length,
             sessionId: sessionIdRef.current
@@ -1010,7 +1011,7 @@ const ChatProvider = ({ children }) => {
           }
           
           // 🔧 FIX: Final session validation before creating conversation manager
-          const currentStoredSession = sessionStorage.getItem(STORAGE_KEYS.SESSION_ID);
+          const currentStoredSession = _storeGet(STORAGE_KEYS.SESSION_ID);
           if (sessionId !== currentStoredSession) {
             logger.debug('🚨 Session ID mismatch during initialization, re-validating');
             const validSessionId = validateAndPurgeSession();
@@ -1020,12 +1021,12 @@ const ChatProvider = ({ children }) => {
           
           // 🔧 FIX: Only clear conversation state if session is new or expired
           // Don't clear for existing valid sessions as this prevents conversation recall
-          const isNewSession = !sessionStorage.getItem('picasso_conversation_id');
+          const isNewSession = !_storeGet('picasso_conversation_id');
           if (isNewSession) {
             logger.debug('🧹 New session detected, clearing any stale conversation state');
             try {
-              sessionStorage.removeItem('picasso_conversation_id');
-              sessionStorage.removeItem('picasso_state_token');
+              _storeRemove('picasso_conversation_id');
+              _storeRemove('picasso_state_token');
             } catch (e) {
               logger.warn('🧹 Error during conversation cleanup:', e);
             }
@@ -1084,8 +1085,8 @@ const ChatProvider = ({ children }) => {
               setMessages(restoredMessages);
 
               // Update sessionStorage to match server state
-              sessionStorage.setItem(STORAGE_KEYS.MESSAGES, JSON.stringify(restoredMessages));
-              sessionStorage.setItem(STORAGE_KEYS.SESSION_ID, conversationManagerRef.current.conversationId);
+              _storeSet(STORAGE_KEYS.MESSAGES, JSON.stringify(restoredMessages));
+              _storeSet(STORAGE_KEYS.SESSION_ID, conversationManagerRef.current.conversationId);
 
               errorLogger.logInfo('✅ Synchronized UI with server messages', {
                 sessionId: conversationManagerRef.current.conversationId,
@@ -1095,7 +1096,7 @@ const ChatProvider = ({ children }) => {
           } else {
             // No messages from server - ensure we're not showing stale messages
             const currentSessionId = conversationManagerRef.current?.conversationId || sessionIdRef.current;
-            const storedSessionId = sessionStorage.getItem(STORAGE_KEYS.SESSION_ID);
+            const storedSessionId = _storeGet(STORAGE_KEYS.SESSION_ID);
 
             if (storedSessionId && storedSessionId !== currentSessionId) {
               logger.debug('🧹 Clearing stale messages from different session', {
@@ -1103,7 +1104,7 @@ const ChatProvider = ({ children }) => {
                 currentSession: currentSessionId?.slice(0, 12)
               });
               setMessages([]);
-              sessionStorage.removeItem(STORAGE_KEYS.MESSAGES);
+              _storeRemove(STORAGE_KEYS.MESSAGES);
             }
           }
 
@@ -1179,9 +1180,9 @@ const ChatProvider = ({ children }) => {
       console.log('🔴 WIDGET CLOSING - ChatProvider unmounting');
       console.log('🔴 Current messages in state:', messages.length);
       console.log('🔴 SessionStorage contents:', {
-        sessionId: sessionStorage.getItem(STORAGE_KEYS.SESSION_ID),
-        messagesExist: !!sessionStorage.getItem(STORAGE_KEYS.MESSAGES),
-        messageCount: JSON.parse(sessionStorage.getItem(STORAGE_KEYS.MESSAGES) || '[]').length
+        sessionId: _storeGet(STORAGE_KEYS.SESSION_ID),
+        messagesExist: !!_storeGet(STORAGE_KEYS.MESSAGES),
+        messageCount: JSON.parse(_storeGet(STORAGE_KEYS.MESSAGES) || '[]').length
       });
       console.log('🔴 ConversationManager state:', {
         exists: !!conversationManagerRef.current,
@@ -2343,7 +2344,7 @@ const ChatProvider = ({ children }) => {
     }
     
     // Clear session storage to prevent message restoration
-    sessionStorage.removeItem(STORAGE_KEYS.MESSAGES);
+    _storeRemove(STORAGE_KEYS.MESSAGES);
     
     // Abort any in-flight requests
     abortControllersRef.current.forEach(controller => {

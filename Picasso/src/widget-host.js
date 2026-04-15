@@ -235,8 +235,8 @@ import { config as environmentConfig } from './config/environment.js';
         src: iframeUrl,
         id: 'picasso-widget-iframe',
         title: 'Picasso Chat Widget',
-        allow: 'camera *; microphone *; geolocation *'
-        // Removed sandbox attribute to avoid security warning - iframe provides sufficient isolation
+        allow: 'camera *; microphone *; geolocation *',
+        sandbox: 'allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox'
       });
       
       // Style iframe for seamless integration
@@ -404,8 +404,7 @@ import { config as environmentConfig } from './config/environment.js';
       this.analyticsQueue = [];
 
       // Get streaming endpoint from config or use default
-      const streamingEndpoint = this.config?.streamingEndpoint ||
-                                'https://7pluzq3axftklmb4gbgchfdahu0lcnqd.lambda-url.us-east-1.on.aws';
+      const streamingEndpoint = this.config?.streamingEndpoint || '';
       const analyticsEndpoint = `${streamingEndpoint}?action=analytics`;
 
       console.log('📊 [Analytics Host] Flushing', events.length, 'events');
