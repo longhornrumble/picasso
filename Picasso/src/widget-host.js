@@ -211,6 +211,9 @@ import { config as environmentConfig } from './config/environment.js';
       const isStaging = typeof __IS_STAGING__ !== 'undefined' && __IS_STAGING__;
       const iframePath = '/iframe.html';
       
+      // Store the iframe origin for secure postMessage targeting
+      this.iframeOrigin = widgetDomain;
+
       let iframeUrl = `${widgetDomain}${iframePath}?t=${this.tenantHash}`;
       
       if (isLocal && !iframeUrl.includes('picasso-env')) {
@@ -439,10 +442,10 @@ import { config as environmentConfig } from './config/environment.js';
           type: 'PICASSO_COMMAND',
           action,
           payload
-        }, '*');
+        }, this.iframeOrigin);
       }
     },
-    
+
     // Send initialization data to iframe
     sendInitMessage() {
       if (this.iframe.contentWindow) {
@@ -452,7 +455,7 @@ import { config as environmentConfig } from './config/environment.js';
           config: this.config,
           attribution: this.attribution, // GA4 client_id, UTM params, referrer
           hostViewportWidth: window.innerWidth
-        }, '*');
+        }, this.iframeOrigin);
       }
     },
     
