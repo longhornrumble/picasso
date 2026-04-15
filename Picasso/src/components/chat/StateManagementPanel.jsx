@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 
 import { useChat } from '../../hooks/useChat';
+import { _storeRemove } from '../../context/shared/messageHelpers';
 import { errorLogger } from '../../utils/errorHandling';
 import { config as environmentConfig } from '../../config/environment';
 
@@ -144,7 +145,7 @@ const StateManagementPanel = ({ isOpen, onClose }) => {
 
       // Clear local history
       localStorage.removeItem('picasso_conversations');
-      sessionStorage.removeItem('picasso_current_conversation');
+      _storeRemove('picasso_current_conversation');
       
       setConversationHistory([]);
       setShowClearConfirm(false);

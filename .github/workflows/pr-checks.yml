@@ -1,0 +1,242 @@
+name: PR Quality Gates
+
+on:
+  pull_request:
+    branches:
+      - main
+
+env:
+  NODE_VERSION: '22'
+  AWS_REGION: 'us-east-1'
+
+jobs:
+  lint:
+    name: Code Quality - Linting
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: 'Picasso/package-lock.json'
+
+      - name: Install dependencies
+        working-directory: ./Picasso
+        run: npm ci
+
+      - name: Run linting
+        working-directory: ./Picasso
+        run: npm run lint
+
+  typecheck:
+    name: Code Quality - Type Checking
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: 'Picasso/package-lock.json'
+
+      - name: Install dependencies
+        working-directory: ./Picasso
+        run: npm ci
+
+      - name: Run type checking
+        working-directory: ./Picasso
+        run: npm run typecheck
+
+  test:
+    name: Test Suite
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: 'Picasso/package-lock.json'
+
+      - name: Install dependencies
+        working-directory: ./Picasso
+        run: npm ci
+
+      - name: Run tests
+        working-directory: ./Picasso
+        run: npm run test:coverage
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-coverage
+          path: Picasso/coverage/
+          retention-days: 7
+
+  security:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Checkout Lambda repo
+        uses: actions/checkout@v4
+        with:
+          repository: longhornrumble/lambda
+          path: Lambdas/lambda
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: 'Picasso/package-lock.json'
+
+      - name: Install dependencies
+        working-directory: ./Picasso
+        run: npm ci
+
+      - name: Run npm audit (Picasso)
+        working-directory: ./Picasso
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Run npm audit (Bedrock Lambda)
+        working-directory: ./Lambdas/lambda/Bedrock_Streaming_Handler_Staging
+        run: npm install --omit=dev --ignore-scripts && npm audit --omit=dev --audit-level=high
+
+      - name: Run npm audit (Config Manager Lambda)
+        working-directory: ./Lambdas/lambda/Picasso_Config_Manager
+        run: npm install --omit=dev --ignore-scripts && npm audit --omit=dev --audit-level=high
+
+  build:
+    name: Build Validation
+    runs-on: ubuntu-latest
+    needs: [lint, typecheck, test]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: 'Picasso/package-lock.json'
+
+      - name: Install dependencies
+        working-directory: ./Picasso
+        run: npm ci
+
+      - name: Build production bundle
+        working-directory: ./Picasso
+        run: npm run build:production
+        env:
+          BUILD_ENV: production
+          PICASSO_CONVERSATION_ENDPOINT: ${{ secrets.PICASSO_CONVERSATION_ENDPOINT }}
+          PICASSO_STREAMING_ENDPOINT: ${{ secrets.PICASSO_STREAMING_ENDPOINT }}
+
+      - name: Validate no dev/staging Lambda URLs in production build
+        working-directory: ./Picasso
+        run: |
+          # Dev and staging Lambda Function URLs that must not appear in production builds
+          DEV_URLS="2ho6tw56ccvl6uvicra4f56j740dyxgo\|7pluzq3axftklmb4gbgchfdahu0lcnqd"
+          if grep -r "$DEV_URLS" dist/production/ 2>/dev/null; then
+            echo "ERROR: Development/staging Lambda URLs found in production build"
+            exit 1
+          fi
+          echo "OK: No dev/staging Lambda URLs in production build"
+
+      - name: Check bundle size
+        working-directory: ./Picasso
+        run: |
+          WIDGET_SIZE=$(stat -c%s "dist/production/widget.js" 2>/dev/null || stat -f%z "dist/production/widget.js")
+          IFRAME_SIZE=$(stat -c%s "dist/production/iframe-main.js" 2>/dev/null || stat -f%z "dist/production/iframe-main.js")
+          echo "Widget size: $((WIDGET_SIZE / 1024))KB"
+          echo "Iframe size: $((IFRAME_SIZE / 1024))KB"
+
+          if [ $WIDGET_SIZE -gt 25600 ]; then
+            echo "ERROR: Widget size exceeds 25KB limit"
+            exit 1
+          fi
+
+          if [ $IFRAME_SIZE -gt 512000 ]; then
+            echo "ERROR: Iframe size exceeds 500KB limit"
+            exit 1
+          fi
+
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: [build, security]
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: 'Picasso/package-lock.json'
+
+      - name: Install dependencies
+        working-directory: ./Picasso
+        run: npm ci
+
+      - name: Build staging bundle
+        working-directory: ./Picasso
+        run: npm run build:staging
+        env:
+          BUILD_ENV: staging
+          PICASSO_STAGING_CONVERSATION_ENDPOINT: ${{ secrets.PICASSO_STAGING_CONVERSATION_ENDPOINT }}
+          PICASSO_STAGING_STREAMING_ENDPOINT: ${{ secrets.PICASSO_STAGING_STREAMING_ENDPOINT }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy to staging S3
+        working-directory: ./Picasso
+        run: |
+          aws s3 sync dist/staging/ s3://picassostaging/ \
+            --exclude "*.map" \
+            --exclude "collateral/*" \
+            --exclude "tenants/*" \
+            --cache-control "public, max-age=60" \
+            --delete
+
+      - name: Invalidate staging CloudFront
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ secrets.CLOUDFRONT_STAGING_DISTRIBUTION_ID }} \
+            --paths '/*'
+
+      - name: Post staging URL to PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## Staging Deployed\n\nTest at: **https://staging.chat.myrecruiter.ai**\n\nTest tenant: MYR384719 (hash \`my87674d777bf9\`)\n\nAll quality gates passed. Merge when staging verification is complete.`
+            })

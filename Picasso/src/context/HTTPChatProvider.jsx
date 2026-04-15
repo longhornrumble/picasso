@@ -24,7 +24,11 @@ import {
   getTenantHash,
   saveToSession,
   getFromSession,
-  clearSession
+  clearSession,
+  _storeGet,
+  _storeSet,
+  _storeRemove,
+  _storeKeys
 } from './shared/messageHelpers';
 import { logger } from '../utils/logger';
 import { config as envConfig } from '../config/environment';
@@ -172,10 +176,10 @@ export default function HTTPChatProvider({ children }) {
             });
 
             // Clear stale session
-            sessionStorage.removeItem('picasso_session_id');
-            sessionStorage.removeItem('picasso_messages');
-            sessionStorage.removeItem('picasso_session_context');
-            sessionStorage.removeItem('picasso_session_timestamp');
+            _storeRemove('picasso_session_id');
+            _storeRemove('picasso_messages');
+            _storeRemove('picasso_session_context');
+            _storeRemove('picasso_session_timestamp');
 
             // Start fresh
             sessionIdRef.current = generateSessionId();
@@ -447,11 +451,10 @@ export default function HTTPChatProvider({ children }) {
       const suspendedForms = [];
       let suspendedProgramInterest = null; // Track program_interest from volunteer form
 
-      for (let i = 0; i < sessionStorage.length; i++) {
-        const key = sessionStorage.key(i);
+      for (const key of _storeKeys()) {
         if (key && key.startsWith('picasso_form_')) {
           try {
-            const formState = JSON.parse(sessionStorage.getItem(key));
+            const formState = JSON.parse(_storeGet(key));
             if (formState && formState.formId) {
               suspendedForms.push(formState.formId);
 
@@ -600,8 +603,7 @@ export default function HTTPChatProvider({ children }) {
 
         // Check sessionStorage for suspended forms
         const suspendedFormKeys = [];
-        for (let i = 0; i < sessionStorage.length; i++) {
-          const key = sessionStorage.key(i);
+        for (const key of _storeKeys()) {
           if (key && key.startsWith('picasso_form_')) {
             suspendedFormKeys.push(key);
           }
@@ -615,7 +617,7 @@ export default function HTTPChatProvider({ children }) {
 
         if (suspendedFormKeys.length > 0) {
           // Get the first suspended form
-          const formStateStr = sessionStorage.getItem(suspendedFormKeys[0]);
+          const formStateStr = _storeGet(suspendedFormKeys[0]);
           if (formStateStr) {
             try {
               const formState = JSON.parse(formStateStr);

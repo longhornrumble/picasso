@@ -10,6 +10,7 @@ import ChatWidget from './components/chat/ChatWidget.jsx';
 import { CSSVariablesProvider } from './components/chat/useCSSVariables.js';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
 import { config as environmentConfig } from './config/environment.js';
+import { _storeGet, _storeSet } from './context/shared/messageHelpers.js';
 import { setHostViewportWidth } from './utils/resolveWidgetBehavior.js';
 import { setupGlobalErrorHandling, performanceMonitor } from './utils/errorHandling.js';
 import { performanceTracker } from './utils/performanceTracking.js';
@@ -257,7 +258,7 @@ async function flushEventsToBackend() {
   // Get the streaming endpoint (Bedrock Streaming Handler)
   const streamingEndpoint = environmentConfig.getStreamingEndpoint?.() ||
                             environmentConfig.STREAMING_ENDPOINT ||
-                            'https://7pluzq3axftklmb4gbgchfdahu0lcnqd.lambda-url.us-east-1.on.aws';
+                            '';
 
   // Build analytics endpoint URL
   const analyticsEndpoint = `${streamingEndpoint}?action=analytics`;
@@ -490,7 +491,7 @@ function initializeWidget() {
       try {
         // Check for cached config first (performance optimization)
         const cacheKey = `picasso_config_${tenantHash}`;
-        const cached = sessionStorage.getItem(cacheKey);
+        const cached = _storeGet(cacheKey);
         if (cached) {
           try {
             const cachedConfig = JSON.parse(cached);
@@ -550,7 +551,7 @@ function initializeWidget() {
         // Cache the config with timestamp
         config._cached = Date.now();
         try {
-          sessionStorage.setItem(cacheKey, JSON.stringify(config));
+          _storeSet(cacheKey, JSON.stringify(config));
         } catch (e) {
           console.warn('Failed to cache config:', e);
         }
