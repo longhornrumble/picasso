@@ -138,26 +138,26 @@ const ENVIRONMENT_CONFIG = {
     STREAMING_ENDPOINT: 'https://7pluzq3axftklmb4gbgchfdahu0lcnqd.lambda-url.us-east-1.on.aws'
   },
   staging: {
-    // Staging mirrors production: CloudFront proxies to API Gateway for config/chat, Lambda Function URL for streaming
+    // Staging: all traffic through CloudFront (staging.chat.myrecruiter.ai)
     API_BASE_URL: 'https://staging.chat.myrecruiter.ai/Master_Function',
     WIDGET_DOMAIN: 'https://staging.chat.myrecruiter.ai',
     CONFIG_DOMAIN: 'https://staging.chat.myrecruiter.ai',
     CONFIG_ENDPOINT: 'https://staging.chat.myrecruiter.ai/Master_Function?action=get_config',
     CHAT_ENDPOINT: 'https://staging.chat.myrecruiter.ai/Master_Function?action=chat',
-    CONVERSATION_ENDPOINT: process.env.PICASSO_STAGING_CONVERSATION_ENDPOINT || 'https://staging.chat.myrecruiter.ai/Master_Function?action=conversation',
+    CONVERSATION_ENDPOINT: 'https://staging.chat.myrecruiter.ai/Master_Function?action=conversation',
     ERROR_REPORTING_ENDPOINT: 'https://staging.chat.myrecruiter.ai/Master_Function?action=log_error',
-    STREAMING_ENDPOINT: process.env.PICASSO_STAGING_STREAMING_ENDPOINT || ''
+    STREAMING_ENDPOINT: 'https://staging.chat.myrecruiter.ai/stream'
   },
   production: {
-    // Production uses API Gateway/CloudFront for main endpoints, Lambda URLs from CI secrets
+    // Production: all traffic through CloudFront (chat.myrecruiter.ai)
     API_BASE_URL: 'https://chat.myrecruiter.ai/Master_Function',
     WIDGET_DOMAIN: 'https://chat.myrecruiter.ai',
     CONFIG_DOMAIN: 'https://picassocode.s3.amazonaws.com',
     CONFIG_ENDPOINT: 'https://chat.myrecruiter.ai/Master_Function?action=get_config',
     CHAT_ENDPOINT: 'https://chat.myrecruiter.ai/Master_Function?action=chat',
-    CONVERSATION_ENDPOINT: process.env.PICASSO_CONVERSATION_ENDPOINT || '',
+    CONVERSATION_ENDPOINT: 'https://chat.myrecruiter.ai/Master_Function?action=conversation',
     ERROR_REPORTING_ENDPOINT: 'https://chat.myrecruiter.ai/Master_Function?action=log_error',
-    STREAMING_ENDPOINT: process.env.PICASSO_STREAMING_ENDPOINT || ''
+    STREAMING_ENDPOINT: 'https://chat.myrecruiter.ai/stream'
   }
 };
 

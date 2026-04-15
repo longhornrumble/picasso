@@ -226,7 +226,7 @@ const ENVIRONMENTS = {
     CHAT_ENDPOINT: typeof __CHAT_ENDPOINT__ !== 'undefined' ? __CHAT_ENDPOINT__ : 'https://staging.chat.myrecruiter.ai/Master_Function?action=chat',
     CONVERSATION_ENDPOINT: typeof __CONVERSATION_ENDPOINT__ !== 'undefined' ? __CONVERSATION_ENDPOINT__ : 'https://staging.chat.myrecruiter.ai/Master_Function?action=conversation',
     ERROR_REPORTING_ENDPOINT: typeof __ERROR_REPORTING_ENDPOINT__ !== 'undefined' ? __ERROR_REPORTING_ENDPOINT__ : 'https://staging.chat.myrecruiter.ai/Master_Function?action=log_error',
-    STREAMING_ENDPOINT: typeof __STREAMING_ENDPOINT__ !== 'undefined' ? __STREAMING_ENDPOINT__ : '', // Set via CI secrets
+    STREAMING_ENDPOINT: typeof __STREAMING_ENDPOINT__ !== 'undefined' ? __STREAMING_ENDPOINT__ : 'https://staging.chat.myrecruiter.ai/stream',
     STREAMING_METHOD: 'POST', // Lambda expects POST requests with JSON body
     DEFAULT_TENANT_HASH: typeof __DEFAULT_TENANT_HASH__ !== 'undefined' ? __DEFAULT_TENANT_HASH__ : 'my87674d777bf9', // MyRecruiter tenant: ID=MYR384719, Hash=my87674d777bf9
 
@@ -252,10 +252,9 @@ const ENVIRONMENTS = {
     DEBUG: false,
     CONFIG_ENDPOINT: typeof __CONFIG_ENDPOINT__ !== 'undefined' ? __CONFIG_ENDPOINT__ : 'https://chat.myrecruiter.ai/Master_Function?action=get_config',
     CHAT_ENDPOINT: typeof __CHAT_ENDPOINT__ !== 'undefined' ? __CHAT_ENDPOINT__ : 'https://chat.myrecruiter.ai/Master_Function?action=chat',
-    // Use Lambda Function URL for conversation to preserve JWT headers (CloudFront strips them)
-    CONVERSATION_ENDPOINT: typeof __CONVERSATION_ENDPOINT__ !== 'undefined' ? __CONVERSATION_ENDPOINT__ : '', // Set via CI secrets
+    CONVERSATION_ENDPOINT: typeof __CONVERSATION_ENDPOINT__ !== 'undefined' ? __CONVERSATION_ENDPOINT__ : 'https://chat.myrecruiter.ai/Master_Function?action=conversation',
     ERROR_REPORTING_ENDPOINT: typeof __ERROR_REPORTING_ENDPOINT__ !== 'undefined' ? __ERROR_REPORTING_ENDPOINT__ : 'https://chat.myrecruiter.ai/Master_Function?action=log_error',
-    STREAMING_ENDPOINT: typeof __STREAMING_ENDPOINT__ !== 'undefined' ? __STREAMING_ENDPOINT__ : '', // Set via CI secrets
+    STREAMING_ENDPOINT: typeof __STREAMING_ENDPOINT__ !== 'undefined' ? __STREAMING_ENDPOINT__ : 'https://chat.myrecruiter.ai/stream',
     STREAMING_METHOD: 'POST', // Lambda expects POST requests with JSON body
     DEFAULT_TENANT_HASH: typeof __DEFAULT_TENANT_HASH__ !== 'undefined' ? __DEFAULT_TENANT_HASH__ : 'my87674d777bf9', // MyRecruiter default tenant for production
     
