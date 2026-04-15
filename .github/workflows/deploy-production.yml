@@ -1,0 +1,407 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      invalidate_cache:
+        description: 'Invalidate CloudFront cache after deployment'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  NODE_VERSION: '18'
+  AWS_REGION: 'us-east-1'
+  S3_BUCKET: 's3://picassocode/'
+  CLOUDFRONT_DISTRIBUTION_ID: ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }}
+
+jobs:
+  lint:
+    name: Code Quality - Linting
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: 'Picasso/package-lock.json'
+
+      - name: Install dependencies
+        working-directory: ./Picasso
+        run: npm ci
+
+      - name: Run linting
+        working-directory: ./Picasso
+        run: npm run lint
+
+      - name: Upload lint results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-results
+          path: Picasso/eslint-report.json
+          retention-days: 7
+
+  typecheck:
+    name: Code Quality - Type Checking
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: 'Picasso/package-lock.json'
+
+      - name: Install dependencies
+        working-directory: ./Picasso
+        run: npm ci
+
+      - name: Run type checking
+        working-directory: ./Picasso
+        run: npm run typecheck
+
+  test:
+    name: Test Suite
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: 'Picasso/package-lock.json'
+
+      - name: Install dependencies
+        working-directory: ./Picasso
+        run: npm ci
+
+      - name: Run tests
+        working-directory: ./Picasso
+        run: npm run test:coverage
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./Picasso/coverage/lcov.info
+          flags: frontend
+          name: picasso-frontend
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: |
+            Picasso/coverage/
+            Picasso/test-results.xml
+          retention-days: 30
+
+  security:
+    name: Security Scanning
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: 'Picasso/package-lock.json'
+
+      - name: Install dependencies
+        working-directory: ./Picasso
+        run: npm ci
+
+      - name: Run npm audit
+        working-directory: ./Picasso
+        run: npm audit --production --audit-level=high
+        continue-on-error: true
+
+      - name: Run Snyk security scan
+        uses: snyk/actions/node@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --severity-threshold=high --file=Picasso/package.json
+        continue-on-error: true
+
+      - name: Run OWASP Dependency Check
+        uses: dependency-check/Dependency-Check_Action@main
+        with:
+          project: 'Picasso'
+          path: './Picasso'
+          format: 'HTML'
+
+      - name: Upload security scan results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-scan-results
+          path: |
+            dependency-check-report.html
+          retention-days: 30
+
+  performance:
+    name: Performance Evaluation
+    runs-on: ubuntu-latest
+    needs: [lint, typecheck, test]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: 'Picasso/package-lock.json'
+
+      - name: Install dependencies
+        working-directory: ./Picasso
+        run: npm ci
+
+      - name: Build production bundle
+        working-directory: ./Picasso
+        run: npm run build:production
+        env:
+          BUILD_ENV: production
+
+      - name: Analyze bundle size
+        working-directory: ./Picasso
+        run: |
+          WIDGET_SIZE=$(stat -c%s "dist/production/widget.js" 2>/dev/null || stat -f%z "dist/production/widget.js")
+          IFRAME_SIZE=$(stat -c%s "dist/production/iframe-main.js" 2>/dev/null || stat -f%z "dist/production/iframe-main.js")
+          echo "Widget size: $((WIDGET_SIZE / 1024))KB"
+          echo "Iframe size: $((IFRAME_SIZE / 1024))KB"
+
+          # Fail if widget exceeds 20KB (gzipped should be ~5KB)
+          if [ $WIDGET_SIZE -gt 20480 ]; then
+            echo "ERROR: Widget size exceeds 20KB limit"
+            exit 1
+          fi
+
+          # Fail if iframe exceeds 500KB (gzipped should be ~150KB)
+          if [ $IFRAME_SIZE -gt 512000 ]; then
+            echo "ERROR: Iframe size exceeds 500KB limit"
+            exit 1
+          fi
+
+      - name: Run bundle analysis
+        working-directory: ./Picasso
+        run: npm run build:analyze
+        env:
+          ANALYZE: true
+          BUILD_ENV: production
+
+      - name: Upload bundle analysis
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundle-analysis
+          path: Picasso/dist/bundle-analysis.html
+          retention-days: 30
+
+  build:
+    name: Build Production Bundle
+    runs-on: ubuntu-latest
+    needs: [lint, typecheck, test, security, performance]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: 'Picasso/package-lock.json'
+
+      - name: Install dependencies
+        working-directory: ./Picasso
+        run: npm ci
+
+      - name: Build production bundle
+        working-directory: ./Picasso
+        run: npm run build:production
+        env:
+          BUILD_ENV: production
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-build
+          path: Picasso/dist/production/
+          retention-days: 30
+
+  deploy:
+    name: Deploy to S3
+    runs-on: ubuntu-latest
+    needs: build
+    environment:
+      name: production
+      url: https://chat.myrecruiter.ai
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: production-build
+          path: Picasso/dist/production/
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Create backup of current production
+        run: |
+          BACKUP_DIR="backups/production-$(date +%Y%m%d-%H%M%S)"
+          mkdir -p $BACKUP_DIR
+          aws s3 sync ${{ env.S3_BUCKET }} $BACKUP_DIR --exclude "*.map" --exclude "collateral/*"
+          echo "BACKUP_DIR=$BACKUP_DIR" >> $GITHUB_ENV
+
+      - name: Deploy to S3
+        working-directory: ./Picasso
+        run: |
+          aws s3 sync dist/production/ ${{ env.S3_BUCKET }} \
+            --exclude "*.map" \
+            --exclude "collateral/*" \
+            --cache-control "public, max-age=31536000" \
+            --delete
+
+      - name: Verify protected files
+        run: |
+          if aws s3 ls ${S3_BUCKET}collateral/MyRecruiterLogo.png; then
+            echo "✓ Protected files preserved"
+          else
+            echo "✗ ERROR: Protected files missing!"
+            exit 1
+          fi
+
+      - name: Invalidate CloudFront cache (optional)
+        if: github.event.inputs.invalidate_cache == 'true'
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ env.CLOUDFRONT_DISTRIBUTION_ID }} \
+            --paths '/*'
+
+      - name: Create deployment tag
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          TAG_NAME="deploy-production-$(date +%Y%m%d-%H%M%S)"
+          git tag -a $TAG_NAME -m "Production deployment $TAG_NAME"
+          git push origin $TAG_NAME
+
+      - name: Deployment summary
+        run: |
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Timestamp**: $(date '+%Y-%m-%d %H:%M:%S')" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **S3 Bucket**: ${{ env.S3_BUCKET }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **CloudFront**: https://chat.myrecruiter.ai" >> $GITHUB_STEP_SUMMARY
+          echo "- **Backup**: ${{ env.BACKUP_DIR }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Rollback Instructions" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "aws s3 sync ${{ env.BACKUP_DIR }}/ ${{ env.S3_BUCKET }} --delete" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+
+  notify:
+    name: Notify Deployment Status
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: always()
+    steps:
+      - name: Send Slack notification
+        if: always()
+        uses: slackapi/slack-github-action@v1
+        with:
+          payload: |
+            {
+              "text": "Picasso Production Deployment ${{ needs.deploy.result }}",
+              "blocks": [
+                {
+                  "type": "header",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "🚀 Picasso Production Deployment"
+                  }
+                },
+                {
+                  "type": "section",
+                  "fields": [
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Status:*\n${{ needs.deploy.result }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Commit:*\n${{ github.sha }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Branch:*\n${{ github.ref_name }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Actor:*\n${{ github.actor }}"
+                    }
+                  ]
+                },
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "View deployment: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+
+      - name: Send email notification
+        if: failure()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.SMTP_SERVER }}
+          server_port: ${{ secrets.SMTP_PORT }}
+          username: ${{ secrets.SMTP_USERNAME }}
+          password: ${{ secrets.SMTP_PASSWORD }}
+          subject: "FAILED: Picasso Production Deployment"
+          body: |
+            Picasso production deployment FAILED.
+
+            Commit: ${{ github.sha }}
+            Branch: ${{ github.ref_name }}
+            Actor: ${{ github.actor }}
+
+            View details: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          to: ${{ secrets.DEPLOYMENT_NOTIFY_EMAIL }}
+          from: GitHub Actions
