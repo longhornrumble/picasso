@@ -351,7 +351,7 @@ jobs:
       url: https://chat.myrecruiter.ai
     permissions:
       id-token: write
-      contents: read
+      contents: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
