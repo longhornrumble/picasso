@@ -49,14 +49,14 @@ export const sanitizeHTML = (html, options = {}) => {
   try {
     // Check if DOMPurify is properly initialized
     if (!DOMPurify || typeof DOMPurify.sanitize !== 'function') {
-      console.warn('⚠️ DOMPurify not available, returning unsanitized HTML (SECURITY RISK)');
-      return html;
+      console.warn('⚠️ DOMPurify not available, returning empty string for safety');
+      return '';
     }
     return DOMPurify.sanitize(html, defaultOptions);
   } catch (error) {
     console.error('Error sanitizing HTML:', error);
-    console.warn('⚠️ Returning unsanitized HTML due to error (SECURITY RISK)');
-    return html;
+    console.warn('⚠️ Returning empty string due to sanitization error');
+    return '';
   }
 };
 
