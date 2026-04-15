@@ -204,7 +204,6 @@ jobs:
         env:
           BUILD_ENV: production
           PICASSO_CONVERSATION_ENDPOINT: ${{ secrets.PICASSO_CONVERSATION_ENDPOINT }}
-          PICASSO_STREAMING_ENDPOINT: ${{ secrets.PICASSO_STREAMING_ENDPOINT }}
 
       - name: Validate no dev/staging Lambda URLs in production build
         working-directory: ./Picasso
@@ -281,7 +280,6 @@ jobs:
         env:
           BUILD_ENV: staging
           PICASSO_STAGING_CONVERSATION_ENDPOINT: ${{ secrets.PICASSO_STAGING_CONVERSATION_ENDPOINT }}
-          PICASSO_STAGING_STREAMING_ENDPOINT: ${{ secrets.PICASSO_STAGING_STREAMING_ENDPOINT }}
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -363,7 +361,6 @@ jobs:
         env:
           BUILD_ENV: production
           PICASSO_CONVERSATION_ENDPOINT: ${{ secrets.PICASSO_CONVERSATION_ENDPOINT }}
-          PICASSO_STREAMING_ENDPOINT: ${{ secrets.PICASSO_STREAMING_ENDPOINT }}
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
