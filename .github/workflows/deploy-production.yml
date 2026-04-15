@@ -11,12 +11,19 @@ on:
         required: false
         type: boolean
         default: false
+      skip_staging:
+        description: 'Skip staging and deploy directly to production (hotfix only)'
+        required: false
+        type: boolean
+        default: false
 
 env:
   NODE_VERSION: '18'
   AWS_REGION: 'us-east-1'
-  S3_BUCKET: 's3://picassocode/'
+  S3_BUCKET_PRODUCTION: 's3://picassocode/'
+  S3_BUCKET_STAGING: 's3://picassostaging/'
   CLOUDFRONT_DISTRIBUTION_ID: ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }}
+  CLOUDFRONT_STAGING_ID: ${{ secrets.CLOUDFRONT_STAGING_DISTRIBUTION_ID }}
 
 jobs:
   lint:
@@ -216,10 +223,96 @@ jobs:
           path: Picasso/dist/bundle-analysis.html
           retention-days: 30
 
+  # ─────────────────────────────────────────────────────────────────────
+  # STAGING: Deploy to staging S3 for human testing
+  # ─────────────────────────────────────────────────────────────────────
+  build-and-deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: [lint, typecheck, test, security, performance]
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: 'Picasso/package-lock.json'
+
+      - name: Install dependencies
+        working-directory: ./Picasso
+        run: npm ci
+
+      - name: Build staging bundle
+        working-directory: ./Picasso
+        run: npm run build:staging
+        env:
+          BUILD_ENV: staging
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy to staging S3
+        working-directory: ./Picasso
+        run: |
+          aws s3 sync dist/staging/ ${{ env.S3_BUCKET_STAGING }} \
+            --exclude "*.map" \
+            --exclude "collateral/*" \
+            --exclude "tenants/*" \
+            --cache-control "public, max-age=60" \
+            --delete
+
+      - name: Invalidate staging CloudFront
+        if: env.CLOUDFRONT_STAGING_ID != ''
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ env.CLOUDFRONT_STAGING_ID }} \
+            --paths '/*'
+
+      - name: Post staging URL to summary
+        run: |
+          echo "## Staging Deployed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Test at: **https://staging.chat.myrecruiter.ai**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Use test tenant MYR384719 (hash \`my87674d777bf9\`)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "When testing is complete, approve the **Deploy to Production** step to continue." >> $GITHUB_STEP_SUMMARY
+
+  # ─────────────────────────────────────────────────────────────────────
+  # MANUAL APPROVAL GATE: Human tests staging before production
+  # ─────────────────────────────────────────────────────────────────────
+  approve-production:
+    name: Approve Production Deploy
+    runs-on: ubuntu-latest
+    needs: build-and-deploy-staging
+    if: ${{ github.event.inputs.skip_staging != 'true' }}
+    environment:
+      name: production-approval
+    steps:
+      - name: Approval received
+        run: |
+          echo "## Production Deploy Approved" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Approved by: **${{ github.actor }}**" >> $GITHUB_STEP_SUMMARY
+          echo "Proceeding to production deployment..." >> $GITHUB_STEP_SUMMARY
+
+  # ─────────────────────────────────────────────────────────────────────
+  # PRODUCTION: Deploy to production S3 after approval
+  # ─────────────────────────────────────────────────────────────────────
   build:
     name: Build Production Bundle
     runs-on: ubuntu-latest
-    needs: [lint, typecheck, test, security, performance]
+    needs: approve-production
+    if: always() && (needs.approve-production.result == 'success' || github.event.inputs.skip_staging == 'true')
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -278,24 +371,25 @@ jobs:
         run: |
           BACKUP_DIR="backups/production-$(date +%Y%m%d-%H%M%S)"
           mkdir -p $BACKUP_DIR
-          aws s3 sync ${{ env.S3_BUCKET }} $BACKUP_DIR --exclude "*.map" --exclude "collateral/*"
+          aws s3 sync ${{ env.S3_BUCKET_PRODUCTION }} $BACKUP_DIR --exclude "*.map" --exclude "collateral/*" --exclude "tenants/*"
           echo "BACKUP_DIR=$BACKUP_DIR" >> $GITHUB_ENV
 
       - name: Deploy to S3
         working-directory: ./Picasso
         run: |
-          aws s3 sync dist/production/ ${{ env.S3_BUCKET }} \
+          aws s3 sync dist/production/ ${{ env.S3_BUCKET_PRODUCTION }} \
             --exclude "*.map" \
             --exclude "collateral/*" \
+            --exclude "tenants/*" \
             --cache-control "public, max-age=31536000" \
             --delete
 
       - name: Verify protected files
         run: |
-          if aws s3 ls ${S3_BUCKET}collateral/MyRecruiterLogo.png; then
-            echo "✓ Protected files preserved"
+          if aws s3 ls ${{ env.S3_BUCKET_PRODUCTION }}collateral/MyRecruiterLogo.png; then
+            echo "Protected files preserved"
           else
-            echo "✗ ERROR: Protected files missing!"
+            echo "ERROR: Protected files missing!"
             exit 1
           fi
 
@@ -321,14 +415,14 @@ jobs:
           echo "- **Timestamp**: $(date '+%Y-%m-%d %H:%M:%S')" >> $GITHUB_STEP_SUMMARY
           echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **S3 Bucket**: ${{ env.S3_BUCKET }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **S3 Bucket**: ${{ env.S3_BUCKET_PRODUCTION }}" >> $GITHUB_STEP_SUMMARY
           echo "- **CloudFront**: https://chat.myrecruiter.ai" >> $GITHUB_STEP_SUMMARY
           echo "- **Backup**: ${{ env.BACKUP_DIR }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Rollback Instructions" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
-          echo "aws s3 sync ${{ env.BACKUP_DIR }}/ ${{ env.S3_BUCKET }} --delete" >> $GITHUB_STEP_SUMMARY
+          echo "aws s3 sync ${{ env.BACKUP_DIR }}/ ${{ env.S3_BUCKET_PRODUCTION }} --delete --exclude 'collateral/*' --exclude 'tenants/*'" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
 
   notify:
@@ -349,7 +443,7 @@ jobs:
                   "type": "header",
                   "text": {
                     "type": "plain_text",
-                    "text": "🚀 Picasso Production Deployment"
+                    "text": "Picasso Production Deployment"
                   }
                 },
                 {
