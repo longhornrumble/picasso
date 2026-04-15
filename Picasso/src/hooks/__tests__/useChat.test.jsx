@@ -3,6 +3,7 @@ import { describe, it, expect, jest } from '@jest/globals';
 import { useChat } from '../useChat';
 import { ChatProvider } from '../../context/ChatProvider';
 import { ConfigProvider } from '../../context/ConfigProvider';
+import { FormModeProvider } from '../../context/FormModeContext';
 
 describe('useChat', () => {
   it('should throw error when used outside ChatProvider', () => {
@@ -30,9 +31,12 @@ describe('useChat', () => {
   });
 
   it('should return chat context when used within ChatProvider', () => {
+    // ChatProvider requires ConfigProvider (for useConfig) and FormModeProvider (for useFormMode)
     const wrapper = ({ children }) => (
       <ConfigProvider>
-        <ChatProvider>{children}</ChatProvider>
+        <FormModeProvider>
+          <ChatProvider>{children}</ChatProvider>
+        </FormModeProvider>
       </ConfigProvider>
     );
 
@@ -46,4 +50,4 @@ describe('useChat', () => {
     expect(result.current.clearMessages).toBeDefined();
     expect(result.current.retryMessage).toBeDefined();
   });
-}); 
+});
