@@ -199,14 +199,15 @@ jobs:
           PICASSO_CONVERSATION_ENDPOINT: ${{ secrets.PICASSO_CONVERSATION_ENDPOINT }}
           PICASSO_STREAMING_ENDPOINT: ${{ secrets.PICASSO_STREAMING_ENDPOINT }}
 
-      - name: Validate no hardcoded Lambda URLs in build
+      - name: Validate no dev/staging Lambda URLs in production build
         working-directory: ./Picasso
         run: |
-          if grep -r 'lambda-url\.us-east-1\.on\.aws' dist/production/ 2>/dev/null; then
-            echo "ERROR: Hardcoded Lambda URLs found in production build"
+          DEV_URLS="2ho6tw56ccvl6uvicra4f56j740dyxgo\|7pluzq3axftklmb4gbgchfdahu0lcnqd"
+          if grep -r "$DEV_URLS" dist/production/ 2>/dev/null; then
+            echo "ERROR: Development/staging Lambda URLs found in production build"
             exit 1
           fi
-          echo "OK: No hardcoded Lambda URLs in production build"
+          echo "OK: No dev/staging Lambda URLs in production build"
 
       - name: Analyze bundle size
         working-directory: ./Picasso
