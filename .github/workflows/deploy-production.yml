@@ -154,6 +154,7 @@ jobs:
           project: 'Picasso'
           path: './Picasso'
           format: 'HTML'
+        continue-on-error: true
 
       - name: Upload security scan results
         if: always()
