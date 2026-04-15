@@ -236,7 +236,7 @@ import { config as environmentConfig } from './config/environment.js';
         id: 'picasso-widget-iframe',
         title: 'Picasso Chat Widget',
         allow: 'camera *; microphone *; geolocation *',
-        sandbox: 'allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox'
+        sandbox: 'allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation'
       });
       
       // Style iframe for seamless integration
