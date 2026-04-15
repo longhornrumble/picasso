@@ -1,20 +1,8 @@
 # Portal Project — Status (as of 2026-04-07)
 
-## Completed
+> Notifications are tracked separately in [NOTIFICATIONS_PORTAL_STATUS.md](NOTIFICATIONS_PORTAL_STATUS.md).
 
-### Notification Migration
-| Item | Status |
-|------|--------|
-| Phase 1 — notification reliability | Complete |
-| Phase 2a — dashboard API + frontend | Complete |
-| Phase 2b — recipients management | Complete |
-| Phase 2c — template editing | Complete |
-| Applicant confirmation emails (name extraction, auto-capitalize) | Complete |
-| GitHub issues #6, #7, #10 closed; #13 created | Complete |
-| Feature flag `dashboard_notifications` in config builder | Complete |
-| SSO_Token_Generator reads flag from config (not auto-derived) | Complete |
-| Notification summary fix (single source of truth from events table) | Complete |
-| Mock data for demo tenant (MYR384719) | Complete |
+## Completed
 
 ### Config Builder Remediation
 | Item | Status |
@@ -65,8 +53,7 @@
 ### Uncommitted Work
 | Repo | What |
 |------|------|
-| Lambda | SSO_Token_Generator feature flag change, Analytics API summary fix |
-| Dashboard | Mock data for notifications, legacy API function removal |
+| Dashboard | Legacy API function removal |
 | Config builder | FeaturesSettings `dashboard_notifications` toggle |
 
 ### Not Started
@@ -75,9 +62,6 @@
 | Clerk productionization | `portal-users` DynamoDB table, user management page, invite flow, webhooks |
 | Portal UI cleanup | Awaiting review — dead ends and unbuilt features identified during testing |
 | Merge to main | After Clerk productionization and UI cleanup |
-| SES OPEN/CLICK events on ConfigurationSet | Prerequisite for open/click tracking in production |
-| Production tenant config population (#11) | Deferred until per-tenant approval |
-| Bubble SES forwarding disable | Deferred — notifications still dual-writing to Bubble |
 | Phase 3 — Settings & Profile | On hold |
 
 ---
@@ -87,7 +71,6 @@
 |------|-----------|------------|
 | picasso | `feature/portal` | `main` |
 | lambda | `feature/portal` | `main` |
-| dashboard | `feature/notifications-dashboard` | — |
 | config-builder | `feature/config-builder-v3.5-gaps` | — |
 
 ## Key Infrastructure
@@ -97,5 +80,4 @@
 | Config builder S3 | `picasso-config-builder-prod` |
 | Config builder Clerk (prod) | `pk_live_Y2xlcmsubXlyZWNydWl0ZXIuYWkk` |
 | Dashboard Clerk (dev) | `pk_test_Y2Fw...` (capable-peacock-51) |
-| Analytics API | `Analytics_Dashboard_API` Lambda |
 | Config Manager | `Picasso_Config_Manager` Lambda |

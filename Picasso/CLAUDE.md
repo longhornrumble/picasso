@@ -470,10 +470,11 @@ VERSION=1.1.2
 - Form mode handling (local validation, no Bedrock)
 - Tenant config loading and caching
 - Primary path (~80% of traffic)
-- V3.5 Tag & Map: AI emits CTA IDs in `<!-- NEXT: cta_id -->` tags, `mapNextTagsToActions()` resolves them against `cta_definitions`
-- Vocabulary builder: scans `cta_definitions` where `ai_available: true`, groups into Explore/Apply/Links for AI prompt
-- Feature flags: `DYNAMIC_ACTIONS` (CTA tags), `DYNAMIC_CHIPS` (AI-generated follow-up chips), `GUIDANCE_MODULES`
-- Legacy fallback: `mapLegacyPrefixTag()` supports old `apply:`/`link:` prefixed tags from `available_actions` (deprecated)
+- **V4.0 Action Selector** (preferred): LLM-based CTA selection — focused Haiku call after response, picks from `ai_available` vocabulary. Gated by `feature_flags.V4_ACTION_SELECTOR`.
+- V4.1 Pool Selection (fallback): Topic classification + deterministic filtering via `topic_definitions`
+- V3.5 enhanceResponse (legacy): Branch-based routing for tenants without topic_definitions
+- Simplified locked prompt rules: SOURCE, CONTEXT, FORMATTING, CLOSING
+- KB query enrichment: Follow-up queries append prior context for retrieval diversity
 
 **Configuration**:
 - **Model**: Claude 3.5 Haiku (us.anthropic.claude-3-5-haiku-20241022-v1:0)
@@ -806,15 +807,18 @@ Each tenant config (`s3://myrecruiter-picasso/tenants/{tenant_id}/{tenant_id}-co
 **Key Sections**:
 - `cta_definitions` - CTA buttons with action types (`start_form`, `show_info`, `external_link`, `send_query`). CTAs with `ai_available: true` form the AI's vocabulary; others appear only in branches.
 - `conversation_branches` - Guided multi-step paths with primary/secondary CTAs. Activated when a `show_info` CTA with `target_branch` is clicked.
-- `feature_flags` - V3.5 AI behavior toggles: `DYNAMIC_ACTIONS` (CTA tag mapping), `DYNAMIC_CHIPS` (AI-generated follow-up chips), `GUIDANCE_MODULES`
+- `feature_flags` - Pipeline behavior toggles: `V4_ACTION_SELECTOR` (LLM-based CTA selection), `V4_PIPELINE`/`DYNAMIC_CTA_SELECTION` (V4.1 taxonomy), legacy V3.5 flags (`DYNAMIC_ACTIONS`, `DYNAMIC_CHIPS`, `GUIDANCE_MODULES`)
 - `action_chips` - Quick-action buttons with explicit routing (v1.4.1 dictionary format)
 - `cta_settings` - Fallback routing configuration
 - `conversational_forms` - Data collection workflows
 - `form_settings` - Validation and behavior rules
 - `card_inventory` - Extracted actions, requirements, programs (legacy)
 
-**V3.5 CTA Architecture**:
-- `available_actions` is **deprecated** — the Lambda has a legacy fallback but all new configs use `cta_definitions` with `ai_available`
+**CTA Architecture (V4.0 Action Selector is preferred):**
+- `available_actions` is **deprecated** — legacy fallback only
+- V4.0: `feature_flags.V4_ACTION_SELECTOR` + CTAs with `ai_available: true` — LLM picks CTAs per turn
+- V4.1: `topic_definitions` + `selection_metadata` — taxonomy-driven pool selection (fallback)
+- V3.5: Branch-based routing via `conversation_branches` (legacy)
 - CTA with `target_branch` → rigid path (AI exits loop, branch CTAs take over)
 - CTA without `target_branch` → flexible path (AI stays in loop, CHIPS resume)
 - See `docs/CTA_BRANCH_CHIPS_INTEGRATION_PLAN.md` for full spec
@@ -1296,12 +1300,19 @@ See `/Picasso/docs/COMPLETE_CONVERSATIONAL_FORMS_IMPLEMENTATION_PLAN.md` for ful
 
 ## Recent Updates
 
+### V4.0 - Action Selector (2026-03-25)
+- LLM-based CTA selection replaces V4.1 taxonomy and V3.5 branch routing as preferred pipeline
+- Single focused Haiku call after response streams — reads conversation + CTA vocabulary, picks 0-4 relevant CTAs
+- Gated per-tenant by `feature_flags.V4_ACTION_SELECTOR`
+- Simplified locked prompt rules: SOURCE, CONTEXT, FORMATTING, CLOSING (reduced from ~40 lines to ~10)
+- KB query enrichment: follow-up queries diversify retrieval across conversation turns
+- Footer logo hardcoded to MyRecruiter brand asset (no longer reads from tenant config)
+- Config optimization skill: `docs/V4_CONFIG_OPTIMIZATION.skill`
+- Reference implementation: Austin Angels (`AUS123957`)
+
 ### v3.5 - CTA + Branch + CHIPS Architecture (2026-02-23)
 - Unified CTA architecture: `cta_definitions` with `ai_available` flag replaces `available_actions` vocabulary system
-- Lambda vocabulary builder scans `cta_definitions` where `ai_available: true` (no more prefix-based tags)
-- Dual-path CTA routing: branch-linked CTAs → rigid guided path; branchless CTAs → AI stays in loop with CHIPS
 - Feature flags (`DYNAMIC_ACTIONS`, `DYNAMIC_CHIPS`, `GUIDANCE_MODULES`) control V3.5 behavior per tenant
-- Config builder: removed AvailableActionsEditor, added `ai_available` checkbox to CTAs, merged Feature Flags into Features tab
 - Legacy backward compat: `mapLegacyPrefixTag()` in Lambda supports old `available_actions` tenants
 
 ### v1.5.1 - Self-Hosted Fonts (2026-01-05)
