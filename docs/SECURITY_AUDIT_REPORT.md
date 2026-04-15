@@ -129,42 +129,42 @@ WIDGET-001 (streaming innerHTML without DOMPurify)
 
 ## Recommended Remediation Priority
 
-### Immediate (This Week) — Stop the Bleeding
+### Immediate (This Week) — Stop the Bleeding — ✅ COMPLETE (2026-04-14)
 
-| Priority | Finding | Action | Effort |
+| Priority | Finding | Action | Status |
 |----------|---------|--------|--------|
-| 1 | CONFIG-002 | Set `ENFORCE_AUTH = true` in Picasso_Config_Manager Lambda | 1 line |
-| 2 | CONFIG-006 | Wire Clerk token into API client headers (so frontend works with auth on) | ~2 hours |
-| 3 | CONFIG-001 | Retire `picasso-config-builder/lambda/` from production; point to Config_Manager | Config change |
-| 4 | WIDGET-004 | DOMPurify failure paths return `''` instead of raw HTML | 2 lines |
-| 5 | CORE-004 | Remove base64 token fallback in Master_Function | ~1 hour |
-| 6 | WIDGET-001 | Add `DOMPurify.sanitize()` to streaming `writeAccumulated` before `innerHTML` | ~1 hour |
+| 1 | CONFIG-002 | Set `ENFORCE_AUTH = true` in Picasso_Config_Manager Lambda | ✅ Done |
+| 2 | CONFIG-006 | Wire Clerk token into API client headers (so frontend works with auth on) | ✅ Done |
+| 3 | CONFIG-001 | Retire `picasso-config-builder/lambda/` from production; point to Config_Manager | ✅ Done |
+| 4 | WIDGET-004 | DOMPurify failure paths return `''` instead of raw HTML | ✅ Done |
+| 5 | CORE-004 | Remove base64 token fallback in Master_Function | ✅ Done |
+| 6 | WIDGET-001 | Add `DOMPurify.sanitize()` to streaming `writeAccumulated` before `innerHTML` | ✅ Done |
 
-### Short-Term (Next 2 Weeks)
+### Short-Term (Next 2 Weeks) — ✅ COMPLETE (2026-04-15)
 
-| Priority | Finding | Action |
-|----------|---------|--------|
-| 7 | PORTAL-002 | Add `PyJWT[cryptography]` Lambda layer; verify RS256 signature |
-| 8 | PORTAL-004 | Remove multi-org → super_admin shortcut; use `publicMetadata.picasso_role` only |
-| 9 | CORE-003 | Sanitize `bedrock_instructions`/`tone_prompt` before prompt injection |
-| 10 | CORE-002 | Route OPTIONS through `add_cors_headers()` allowlist |
-| 11 | CONFIG-003 | Apply tenantId regex to all route handlers |
-| 12 | WIDGET-002 | Sanitize `calloutText` through DOMPurify before rendering |
-| 13 | WIDGET-003 | Replace `targetOrigin: '*'` with computed iframe origin |
-| 14 | CORE-001 | Change blacklist fail-open to fail-closed (return 503) |
-| 15 | CONFIG-009 | Apply schema validation even when `merge=false` |
+| Priority | Finding | Action | Status |
+|----------|---------|--------|--------|
+| 7 | PORTAL-002 | Add `PyJWT[cryptography]` Lambda layer; verify RS256 signature | ✅ Done |
+| 8 | PORTAL-004 | Remove multi-org → super_admin shortcut; use `publicMetadata.picasso_role` only | ✅ Done |
+| 9 | CORE-003 | Sanitize `bedrock_instructions`/`tone_prompt` before prompt injection | ✅ Done |
+| 10 | CORE-002 | Route OPTIONS through `add_cors_headers()` allowlist | ✅ Done |
+| 11 | CONFIG-003 | Apply tenantId regex to all route handlers | ✅ Done |
+| 12 | WIDGET-002 | Sanitize `calloutText` through DOMPurify before rendering | ✅ Done (Phase 1) |
+| 13 | WIDGET-003 | Replace `targetOrigin: '*'` with computed iframe origin | ✅ Done |
+| 14 | CORE-001 | Change blacklist fail-open to fail-closed (return 503) | ✅ Done |
+| 15 | CONFIG-009 | Apply schema validation even when `merge=false` | ✅ Done |
 
-### Medium-Term (Next Month)
+### Medium-Term (Next Month) — OPEN
 
-| Priority | Finding | Action |
-|----------|---------|--------|
-| 16 | PORTAL-001 | Move JWT to HttpOnly cookie or sessionStorage + short-lived tokens |
-| 17 | PORTAL-005/006 | TTL-based signing key cache; separate staging/production keys |
-| 18 | WIDGET-005 | Remove `PICASSO_CONFIG_PATH` override or restrict to dev builds |
-| 19 | WIDGET-007 | Restore iframe `sandbox` attribute with appropriate permissions |
-| 20 | PORTAL-003 | Remove `allow-same-origin` from notification preview iframe |
-| 21 | All | Run `npm audit` across all 3 frontends; remediate HIGH/CRITICAL CVEs |
-| 22 | All | Move Lambda URLs behind API Gateway with WAF; remove hardcoded URLs from bundles |
+| Priority | Finding | Action | Status |
+|----------|---------|--------|--------|
+| 16 | PORTAL-001 | Move JWT to HttpOnly cookie or sessionStorage + short-lived tokens | Open |
+| 17 | PORTAL-005/006 | TTL-based signing key cache; separate staging/production keys | Open |
+| 18 | WIDGET-005 | Remove `PICASSO_CONFIG_PATH` override or restrict to dev builds | Open |
+| 19 | WIDGET-007 | Restore iframe `sandbox` attribute with appropriate permissions | Open |
+| 20 | PORTAL-003 | Remove `allow-same-origin` from notification preview iframe | Open |
+| 21 | All | Run `npm audit` across all 3 frontends; remediate HIGH/CRITICAL CVEs | Open |
+| 22 | All | Move Lambda URLs behind API Gateway with WAF; remove hardcoded URLs from bundles | Open |
 
 ---
 
