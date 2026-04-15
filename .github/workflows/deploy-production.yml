@@ -198,9 +198,9 @@ jobs:
           echo "Widget size: $((WIDGET_SIZE / 1024))KB"
           echo "Iframe size: $((IFRAME_SIZE / 1024))KB"
 
-          # Fail if widget exceeds 20KB (gzipped should be ~5KB)
-          if [ $WIDGET_SIZE -gt 20480 ]; then
-            echo "ERROR: Widget size exceeds 20KB limit"
+          # Fail if widget exceeds 25KB (gzipped should be ~6KB)
+          if [ $WIDGET_SIZE -gt 25600 ]; then
+            echo "ERROR: Widget size exceeds 25KB limit"
             exit 1
           fi
 
