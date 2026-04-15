@@ -17,6 +17,7 @@ import StateManagementPanel from "./StateManagementPanel";
 import FormFieldPrompt from "../forms/FormFieldPrompt";
 import FormCompletionCard from "../forms/FormCompletionCard";
 import { useFormMode } from "../../context/FormModeContext";
+import { sanitizeHTML } from "../../utils/security";
 
 function ChatWidget() {
   const { messages, isTyping, renderMode, recordFormCompletion } = useChat();
@@ -593,7 +594,7 @@ function ChatWidget() {
               }}
             >
               <div className="chat-callout-header">
-                <div className="chat-callout-text" dangerouslySetInnerHTML={{ __html: calloutText }}/>
+                <div className="chat-callout-text" dangerouslySetInnerHTML={{ __html: sanitizeHTML(calloutText) }}/>
                 <button onClick={handleCalloutClose} className="chat-callout-close">
                   <X size={14} />
                 </button>
