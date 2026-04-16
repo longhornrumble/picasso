@@ -1,0 +1,9 @@
+[submodule "Lambdas/lambda"]
+	path = Lambdas/lambda
+	url = https://github.com/longhornrumble/lambda.git
+	branch = main
+
+[submodule "picasso-config-builder"]
+	path = picasso-config-builder
+	url = https://github.com/longhornrumble/picasso-config-builder.git
+	branch = main
