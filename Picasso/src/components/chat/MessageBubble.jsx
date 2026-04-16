@@ -445,7 +445,13 @@ export default function MessageBubble({
         
         // Apply HTML to element with streaming-formatted wrapper for CSS
         // This ensures all theme.css rules for streaming content are applied
-        elNode.innerHTML = `<div class="streaming-formatted">${html}</div>`;
+        // Sanitize through DOMPurify before innerHTML to prevent XSS from streamed content
+        const sanitizedHtml = DOMPurify.sanitize(`<div class="streaming-formatted">${html}</div>`, {
+          ALLOWED_TAGS: ['div', 'span', 'p', 'br', 'strong', 'em', 'b', 'i', 'u', 'a', 'ul', 'ol', 'li', 'code', 'pre', 'blockquote', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hr', 'table', 'thead', 'tbody', 'tr', 'th', 'td'],
+          ALLOWED_ATTR: ['href', 'target', 'rel', 'class', 'id'],
+          ALLOW_DATA_ATTR: false,
+        });
+        elNode.innerHTML = sanitizedHtml;
         console.log('[Bubble] writeAccumulated -> el.innerHTML set with streaming-formatted wrapper', { id: messageId, len: nextText.length });
       } catch (err) {
         // Fallback to plain text if processing fails

@@ -165,9 +165,45 @@ export const getTenantHash = () => {
 };
 
 /**
- * Session storage helpers with expiration
+ * Session storage helpers with expiration.
+ * Falls back to an in-memory Map when sessionStorage is unavailable
+ * (e.g. inside a sandboxed iframe without allow-same-origin).
  */
 const SESSION_EXPIRY = 30 * 60 * 1000; // 30 minutes
+
+// In-memory fallback when sessionStorage is inaccessible
+const _memoryStore = new Map();
+
+const _hasSessionStorage = (() => {
+  try {
+    const key = '__picasso_ss_test__';
+    sessionStorage.setItem(key, '1');
+    sessionStorage.removeItem(key);
+    return true;
+  } catch {
+    return false;
+  }
+})();
+
+const _storeGet = (key) => {
+  if (_hasSessionStorage) return sessionStorage.getItem(key);
+  return _memoryStore.get(key) ?? null;
+};
+
+const _storeSet = (key, value) => {
+  if (_hasSessionStorage) { sessionStorage.setItem(key, value); return; }
+  _memoryStore.set(key, value);
+};
+
+const _storeRemove = (key) => {
+  if (_hasSessionStorage) { sessionStorage.removeItem(key); return; }
+  _memoryStore.delete(key);
+};
+
+const _storeKeys = () => {
+  if (_hasSessionStorage) return Object.keys(sessionStorage);
+  return Array.from(_memoryStore.keys());
+};
 
 export const saveToSession = (key, value) => {
   try {
@@ -175,7 +211,7 @@ export const saveToSession = (key, value) => {
       value,
       timestamp: Date.now()
     };
-    sessionStorage.setItem(key, JSON.stringify(data));
+    _storeSet(key, JSON.stringify(data));
   } catch (error) {
     console.warn('Failed to save to session storage:', error);
   }
@@ -183,7 +219,7 @@ export const saveToSession = (key, value) => {
 
 export const getFromSession = (key) => {
   try {
-    const item = sessionStorage.getItem(key);
+    const item = _storeGet(key);
     if (!item) return null;
 
     const data = JSON.parse(item);
@@ -192,7 +228,7 @@ export const getFromSession = (key) => {
     if (typeof data !== 'object' || !data.hasOwnProperty('timestamp') || !data.hasOwnProperty('value')) {
       // Invalid structure - clean up and return null
       console.warn(`[getFromSession] Invalid data structure for key "${key}" - cleaning up`);
-      sessionStorage.removeItem(key);
+      _storeRemove(key);
       return null;
     }
 
@@ -209,7 +245,7 @@ export const getFromSession = (key) => {
     const age = Date.now() - data.timestamp;
 
     if (age > SESSION_EXPIRY) {
-      sessionStorage.removeItem(key);
+      _storeRemove(key);
       return null;
     }
 
@@ -218,7 +254,7 @@ export const getFromSession = (key) => {
     // JSON parse error or other issue - clean up the corrupted data
     console.warn(`[getFromSession] Failed to read from session storage for key "${key}":`, error.message);
     try {
-      sessionStorage.removeItem(key);
+      _storeRemove(key);
     } catch (removeError) {
       // Silently fail if we can't remove
     }
@@ -229,14 +265,17 @@ export const getFromSession = (key) => {
 export const clearSession = () => {
   try {
     const keysToKeep = ['picasso_config_cache']; // Keep config cache
-    const allKeys = Object.keys(sessionStorage);
-    
+    const allKeys = _storeKeys();
+
     allKeys.forEach(key => {
       if (key.startsWith('picasso_') && !keysToKeep.includes(key)) {
-        sessionStorage.removeItem(key);
+        _storeRemove(key);
       }
     });
   } catch (error) {
     console.warn('Failed to clear session storage:', error);
   }
 };
+
+// Export storage helpers for direct callers that bypass saveToSession/getFromSession
+export { _storeGet, _storeSet, _storeRemove, _storeKeys };

@@ -1,0 +1,107 @@
+name: Scheduled Task Reminders
+
+on:
+  schedule:
+    # Run daily at 9am CT (14:00 UTC)
+    - cron: '0 14 * * *'
+  workflow_dispatch:
+
+jobs:
+  p22-step8-lambda-auth:
+    name: P22 Step 8 — Lambda Auth Hardening
+    runs-on: ubuntu-latest
+    # Only run on the target date (2026-04-29)
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'schedule' && startsWith(github.event.schedule, '0 14') && contains('2026-04-29', github.event.repository.updated_at) == false)
+    steps:
+      - name: Check if target date
+        id: check-date
+        run: |
+          TODAY=$(date -u '+%Y-%m-%d')
+          if [ "$TODAY" = "2026-04-29" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "should_run=true" >> $GITHUB_OUTPUT
+          else
+            echo "should_run=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check if issue already exists
+        if: steps.check-date.outputs.should_run == 'true'
+        id: check-issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          EXISTING=$(gh issue list --repo ${{ github.repository }} --label "p22-step8" --state open --json number --jq 'length')
+          echo "exists=$EXISTING" >> $GITHUB_OUTPUT
+
+      - name: Create Step 8 issue
+        if: steps.check-date.outputs.should_run == 'true' && steps.check-issue.outputs.exists == '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue create \
+            --repo ${{ github.repository }} \
+            --title "P22 Step 8: Harden Lambda streaming auth (AWS_IAM + CloudFront OAC)" \
+            --label "security,p22-step8" \
+            --body "$(cat <<'ISSUE_BODY'
+          ## Context
+
+          P22 Phase 2 deployed on 2026-04-15. Streaming traffic now routes through CloudFront + WAF. The Lambda Function URLs still have `AuthType: NONE` — anyone who discovers the raw URL can bypass CloudFront and WAF.
+
+          This issue was auto-created after the 2-week stability window. Check the WAF dashboard (`Picasso-WAF-Streaming`) to confirm no issues before proceeding.
+
+          ## Pre-flight checks
+
+          - [ ] WAF dashboard shows stable traffic patterns for 2 weeks
+          - [ ] No rate limit false positives reported
+          - [ ] No streaming issues reported by users
+          - [ ] CloudFront `/stream` path confirmed working in both staging and production
+
+          ## Implementation plan
+
+          **Write a detailed plan document before making any changes.** This is infrastructure work that can break streaming entirely if misconfigured.
+
+          ### High-level steps
+
+          1. **Staging first.** Change `Bedrock_Streaming_Handler_Staging` Function URL AuthType from `NONE` to `AWS_IAM`
+          2. **Create CloudFront OAC** (Origin Access Control) for the staging streaming origin
+          3. **Update staging CloudFront** (`E1CGYA1AJ9OYL0`) to use OAC for the `picasso-streaming-lambda` origin
+          4. **Update Lambda resource policy** to allow CloudFront to invoke via SigV4
+          5. **Test staging E2E** — chat must stream correctly through CloudFront. Direct Lambda URL calls must return 403.
+          6. **Repeat for production** (`E3G0LSWB1AQ9LP`, `Bedrock_Streaming_Handler`)
+          7. **Test production E2E**
+
+          ### Key resources
+
+          | Resource | Value |
+          |----------|-------|
+          | WAF Web ACL | `picasso-streaming-waf` |
+          | Staging CloudFront | `E1CGYA1AJ9OYL0` (`staging.chat.myrecruiter.ai`) |
+          | Production CloudFront | `E3G0LSWB1AQ9LP` (`chat.myrecruiter.ai`) |
+          | Staging Lambda | `Bedrock_Streaming_Handler_Staging` |
+          | Production Lambda | `Bedrock_Streaming_Handler` |
+          | Staging Lambda URL | `7pluzq3axftklmb4gbgchfdahu0lcnqd.lambda-url.us-east-1.on.aws` |
+          | Production Lambda URL | `xqc4wnxwia2nytjkbw6xasjd6q0jckgb.lambda-url.us-east-1.on.aws` |
+          | Full P22 plan | `docs/roadmap/P22_CLOUDFRONT_WAF_PLAN.md` |
+          | Security audit | `docs/SECURITY_AUDIT_REPORT.md` |
+
+          ### Rollback
+
+          If streaming breaks after changing AuthType:
+          1. Revert Lambda AuthType to `NONE`: `aws lambda update-function-url-config --function-name <name> --auth-type NONE`
+          2. Remove OAC from CloudFront origin
+          3. Streaming immediately recovers (no code deploy needed)
+
+          ### Risks
+
+          - **SigV4 signing adds latency** — measure before/after
+          - **Misconfigured resource policy** — Lambda rejects all requests including from CloudFront
+          - **No fallback** — once AuthType is AWS_IAM, the raw Lambda URL is dead. CloudFront is the only path.
+
+          ## Definition of done
+
+          - [ ] Both Lambda Function URLs have `AuthType: AWS_IAM`
+          - [ ] CloudFront OAC configured for both staging and production streaming origins
+          - [ ] Direct Lambda URL calls return 403 (not 200)
+          - [ ] Chat streaming works E2E through CloudFront on both environments
+          - [ ] Security remediation memory updated to mark Step 8 complete
+          ISSUE_BODY
+          )"

@@ -17,6 +17,8 @@ import StateManagementPanel from "./StateManagementPanel";
 import FormFieldPrompt from "../forms/FormFieldPrompt";
 import FormCompletionCard from "../forms/FormCompletionCard";
 import { useFormMode } from "../../context/FormModeContext";
+import { sanitizeHTML } from "../../utils/security";
+import { _storeGet, _storeSet, _storeRemove } from "../../context/shared/messageHelpers";
 
 function ChatWidget() {
   const { messages, isTyping, renderMode, recordFormCompletion } = useChat();
@@ -71,8 +73,8 @@ function ChatWidget() {
     
     try {
       // Use sessionStorage to match conversation persistence behavior
-      const savedState = sessionStorage.getItem('picasso_chat_state');
-      const lastActivity = sessionStorage.getItem('picasso_last_activity');
+      const savedState = _storeGet('picasso_chat_state');
+      const lastActivity = _storeGet('picasso_last_activity');
       
       if (savedState !== null && lastActivity) {
         const timeSinceActivity = Date.now() - parseInt(lastActivity);
@@ -101,9 +103,9 @@ function ChatWidget() {
     // Initialize from sessionStorage if available
     if (widgetBehavior.remember_state) {
       try {
-        const savedState = sessionStorage.getItem('picasso_chat_state');
-        const lastActivity = sessionStorage.getItem('picasso_last_activity');
-        const savedReadIndex = sessionStorage.getItem('picasso_last_read_index');
+        const savedState = _storeGet('picasso_chat_state');
+        const lastActivity = _storeGet('picasso_last_activity');
+        const savedReadIndex = _storeGet('picasso_last_read_index');
         
         if (savedState !== null && lastActivity && savedReadIndex !== null) {
           const timeSinceActivity = Date.now() - parseInt(lastActivity);
@@ -207,11 +209,11 @@ function ChatWidget() {
 
     if (widgetBehavior.remember_state) {
       try {
-        sessionStorage.setItem('picasso_chat_state', JSON.stringify(newOpen));
-        sessionStorage.setItem('picasso_last_activity', Date.now().toString());
+        _storeSet('picasso_chat_state', JSON.stringify(newOpen));
+        _storeSet('picasso_last_activity', Date.now().toString());
         // Save the last read index when closing
         if (!newOpen) {
-          sessionStorage.setItem('picasso_last_read_index', lastReadMessageIndex.toString());
+          _storeSet('picasso_last_read_index', lastReadMessageIndex.toString());
         }
       } catch (e) {
         console.warn('Failed to save chat state on toggle:', e);
@@ -225,8 +227,8 @@ function ChatWidget() {
       // Respect remember_state: don't override if user explicitly closed
       if (widgetBehavior.remember_state) {
         try {
-          const saved = sessionStorage.getItem('picasso_chat_state');
-          const lastActivity = sessionStorage.getItem('picasso_last_activity');
+          const saved = _storeGet('picasso_chat_state');
+          const lastActivity = _storeGet('picasso_last_activity');
           if (saved !== null && lastActivity) {
             const timeSinceActivity = Date.now() - parseInt(lastActivity);
             if (timeSinceActivity < 30 * 60 * 1000 && JSON.parse(saved) === false) {
@@ -246,8 +248,8 @@ function ChatWidget() {
       let skipAutoOpen = false;
       if (widgetConfig.remember_state) {
         try {
-          const saved = sessionStorage.getItem('picasso_chat_state');
-          const lastActivity = sessionStorage.getItem('picasso_last_activity');
+          const saved = _storeGet('picasso_chat_state');
+          const lastActivity = _storeGet('picasso_last_activity');
           
           if (saved !== null && lastActivity) {
             const timeSinceActivity = Date.now() - parseInt(lastActivity);
@@ -267,8 +269,8 @@ function ChatWidget() {
           // Update activity timestamp when auto-opening
           if (widgetConfig.remember_state) {
             try {
-              sessionStorage.setItem('picasso_chat_state', 'true');
-              sessionStorage.setItem('picasso_last_activity', Date.now().toString());
+              _storeSet('picasso_chat_state', 'true');
+              _storeSet('picasso_last_activity', Date.now().toString());
             } catch (e) {
               console.warn('Failed to save chat state on auto-open:', e);
             }
@@ -356,15 +358,15 @@ function ChatWidget() {
   useEffect(() => {
     if (!isOpen && chatWindowRef.current) {
       const scrollPosition = chatWindowRef.current.scrollTop;
-      sessionStorage.setItem('picasso_scroll_position', scrollPosition.toString());
+      _storeSet('picasso_scroll_position', scrollPosition.toString());
     }
   }, [isOpen]);
 
   // Restore scroll position when chat opens with persisted conversation
   useEffect(() => {
     if (isOpen && chatWindowRef.current && !hasRestoredScrollRef.current && messages.length > 1) {
-      const savedPosition = sessionStorage.getItem('picasso_scroll_position');
-      const hasPersistedMessages = sessionStorage.getItem('picasso_messages');
+      const savedPosition = _storeGet('picasso_scroll_position');
+      const hasPersistedMessages = _storeGet('picasso_messages');
       
       if (savedPosition) {
         // Delay to ensure DOM is ready
@@ -391,7 +393,7 @@ function ChatWidget() {
       // Update saved read index when opening chat
       if (widgetBehavior.remember_state) {
         try {
-          sessionStorage.setItem('picasso_last_read_index', messages.length.toString());
+          _storeSet('picasso_last_read_index', messages.length.toString());
         } catch (e) {
           console.warn('Failed to save last read index:', e);
         }
@@ -593,7 +595,7 @@ function ChatWidget() {
               }}
             >
               <div className="chat-callout-header">
-                <div className="chat-callout-text" dangerouslySetInnerHTML={{ __html: calloutText }}/>
+                <div className="chat-callout-text" dangerouslySetInnerHTML={{ __html: sanitizeHTML(calloutText) }}/>
                 <button onClick={handleCalloutClose} className="chat-callout-close">
                   <X size={14} />
                 </button>

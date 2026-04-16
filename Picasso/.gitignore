@@ -189,6 +189,7 @@ dev.config.json
 
 # Test HTML files (local testing only)
 test-*.html
+!public/test-staging.html
 
 # Session/deployment summaries (one-time docs)
 *_DEPLOYMENT_*.md

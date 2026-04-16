@@ -29,6 +29,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ---
 
+## 🎯 Tenant Config Optimization
+
+After building a tenant config in the Config Builder, invoke the optimization skill to audit and fine-tune:
+
+- **[V4.0 Config Optimization Skill](skills/V4_CONFIG_OPTIMIZATION.skill)** — 6-step playbook for V4.0 Action Selector tenants. Covers CTA audit, tone prompt cleanup, KB optimization, and verification scenarios.
+
+**When to use:** After creating/editing a tenant config in the Config Builder. The skill audits CTA coverage, validates formatting preferences, checks KB chunking strategy, and runs test conversations.
+
+**Reference implementation:** Austin Angels (`AUS123957`)
+
+---
+
 ## Project Structure
 
 This repository follows a multi-project structure:
@@ -224,9 +236,10 @@ npm run preview  # Preview production build
   - Bedrock Agent Runtime for knowledge base RAG
   - 5-minute in-memory cache
   - Claude 4.5 Haiku default model
-  - V3.5 Tag & Map: AI picks CTA IDs from vocabulary, mapper resolves actions
-  - Vocabulary built from `cta_definitions` where `ai_available: true`
-  - Feature flags: `DYNAMIC_ACTIONS`, `DYNAMIC_CHIPS`, `GUIDANCE_MODULES`
+  - **V4.0 Action Selector** (preferred): LLM-based CTA selection — focused Haiku call after response streams, picks CTAs from `ai_available` vocabulary. Gated by `feature_flags.V4_ACTION_SELECTOR`.
+  - V4.1 Pool Selection (fallback): Topic classification + deterministic CTA pool filtering via `topic_definitions` and `selection_metadata`. Active when tenant has topic_definitions but no V4_ACTION_SELECTOR flag.
+  - V3.5 enhanceResponse (legacy): Branch-based routing. Active when tenant has no topic_definitions.
+  - Simplified locked prompt rules: SOURCE, CONTEXT, FORMATTING, CLOSING
 
 - **Picasso_Config_Manager** (Node.js 20.x ESM):
   - Backend API for picasso-config-builder
@@ -308,20 +321,28 @@ Per the Developer Playbook:
 
 ### Configuration Structure
 Each tenant config includes:
-- **cta_definitions**: Call-to-action buttons with action types (`start_form`, `show_info`, `external_link`, `send_query`). CTAs with `ai_available: true` are surfaced by the AI; others appear only in branches.
-- **conversation_branches**: Guided multi-step paths with primary/secondary CTAs. Activated by `show_info` CTAs with `target_branch`.
-- **conversational_forms**: Explicit field definitions for data collection
-- **form_settings**: Global form behavior and validation
-- **feature_flags**: V3.5 AI behavior toggles (`DYNAMIC_ACTIONS`, `DYNAMIC_CHIPS`, `GUIDANCE_MODULES`)
+- **cta_definitions**: Call-to-action buttons with action types (`start_form`, `show_info`, `external_link`, `send_query`). CTAs with `ai_available: true` form the AI's vocabulary for the action selector.
+- **conversational_forms**: Explicit field definitions for in-widget data collection
+- **feature_flags**: Pipeline behavior toggles. Key flag: `V4_ACTION_SELECTOR` enables LLM-based CTA selection.
+- **conversation_branches**: Guided multi-step paths (legacy — used by V3.5 tenants, optional for V4.0)
 - **action_chips**: Quick-action buttons with explicit routing (v1.4.1 dictionary format)
-- **card_inventory**: Extracted actions, requirements, programs (legacy)
+- **tone_prompt**: AI persona (who it is, not how it behaves)
+- **bedrock_instructions**: Formatting preferences, custom constraints, fallback message
 
-**V3.5 CTA Architecture (current):**
-- `available_actions` is **deprecated** — legacy fallback only in the Lambda handler
-- All AI vocabulary is derived from `cta_definitions` where `ai_available: true`
-- CTA with `target_branch` → rigid path (AI exits loop, branch CTAs take over)
-- CTA without `target_branch` → flexible path (AI stays in loop, CHIPS generate follow-ups)
-- See `docs/CTA_BRANCH_CHIPS_INTEGRATION_PLAN.md` for full architecture
+**V4.0 Action Selector (preferred):**
+- Single focused Haiku call after response streams — reads conversation + CTA vocabulary, picks 0-4 relevant CTAs
+- No topic definitions, no selection_metadata, no taxonomy — the AI makes a judgment call
+- Gated by `feature_flags.V4_ACTION_SELECTOR: true`
+- Config optimization skill: `docs/V4_CONFIG_OPTIMIZATION.skill`
+- Reference implementation: Austin Angels (`AUS123957`)
+
+**V4.1 Pool Selection (fallback for taxonomy tenants):**
+- Topic classification → deterministic CTA pool filtering via `topic_definitions` and `selection_metadata`
+- Active when tenant has `topic_definitions` but no `V4_ACTION_SELECTOR` flag
+
+**V3.5 Branch Routing (legacy):**
+- `available_actions` is **deprecated**
+- Active when tenant has no `topic_definitions`
 
 ## Testing
 
