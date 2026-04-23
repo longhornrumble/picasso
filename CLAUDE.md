@@ -29,6 +29,30 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ---
 
+## 🧠 Working Principles (always in effect)
+
+These behavioral rules apply to every task in this repo. They counter common LLM coding failure modes — overcomplication, speculative abstraction, scope creep, satisficing.
+
+### 1. Think Before Coding
+
+State assumptions explicitly. If uncertain, ask. If multiple interpretations exist, present them — don't silently pick one. If a simpler approach exists, say so. If something is unclear, stop and name what's confusing rather than inventing an interpretation.
+
+### 2. Simplicity First
+
+Minimum code that solves the problem. No features beyond what was asked. No abstractions for single-use code. No "flexibility" or "configurability" that wasn't requested. No error handling for impossible scenarios. If you write 200 lines and it could be 50, rewrite. Ask yourself: "would a senior engineer say this is overcomplicated?"
+
+### 3. Surgical Changes
+
+Touch only what you must. Don't "improve" adjacent code, comments, or formatting. Don't refactor things that aren't broken. Match existing style, even if you'd do it differently. If you notice unrelated dead code, mention it — don't delete it. Every changed line should trace directly to the user's request.
+
+### 4. Goal-Driven Execution
+
+Transform tasks into verifiable success criteria before coding. "Add validation" → "write tests for invalid inputs, then make them pass." "Fix the bug" → "write a test that reproduces it, then make it pass." For multi-step tasks, state a brief plan with per-step verify checks. Strong criteria let you loop independently; weak criteria force constant clarification.
+
+**Full reference:** [`~/.claude/plugins/cache/karpathy-skills/andrej-karpathy-skills/1.0.0/skills/karpathy-guidelines/SKILL.md`](~/.claude/plugins/cache/karpathy-skills/andrej-karpathy-skills/1.0.0/skills/karpathy-guidelines/SKILL.md) — invoke via `/karpathy-guidelines` for the full-context version. A per-turn hook re-injects a condensed form of these on every message to counter long-session drift.
+
+---
+
 ## 🎯 Tenant Config Optimization
 
 After building a tenant config in the Config Builder, invoke the optimization skill to audit and fine-tune:
