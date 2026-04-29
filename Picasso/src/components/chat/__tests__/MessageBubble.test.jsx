@@ -247,6 +247,90 @@ describe('MessageBubble - ShowcaseCard Integration', () => {
   });
 });
 
+describe('MessageBubble - scheduling dispatch branches', () => {
+  let consoleLogSpy;
+
+  beforeEach(() => {
+    consoleLogSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+    mockFormModeContext.startFormWithConfig.mockClear();
+    mockFormModeContext.resumeForm.mockClear();
+    mockFormModeContext.cancelForm.mockClear();
+    mockChatContext.sendMessage.mockClear();
+  });
+
+  afterEach(() => {
+    consoleLogSpy.mockRestore();
+  });
+
+  const findSchedulingLog = (action) =>
+    consoleLogSpy.mock.calls.find(
+      (call) => typeof call[0] === 'string' && call[0].includes(`${action} action received`)
+    );
+
+  it('logs and short-circuits on start_scheduling without firing form or chat handlers', () => {
+    const ctaButtons = [
+      {
+        id: 'book_intake',
+        label: 'Schedule a call',
+        action: 'start_scheduling',
+      },
+    ];
+
+    renderWithProviders(
+      <MessageBubble
+        role="assistant"
+        content="Ready to book?"
+        ctaButtons={ctaButtons}
+        renderMode="static"
+      />
+    );
+
+    screen.getByText('Schedule a call').click();
+
+    const logCall = findSchedulingLog('start_scheduling');
+    expect(logCall).toBeDefined();
+    expect(logCall[1]).toEqual({ cta_id: 'book_intake', label: 'Schedule a call' });
+
+    expect(mockFormModeContext.startFormWithConfig).not.toHaveBeenCalled();
+    expect(mockFormModeContext.resumeForm).not.toHaveBeenCalled();
+    expect(mockFormModeContext.cancelForm).not.toHaveBeenCalled();
+    expect(mockChatContext.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('logs and short-circuits on resume_scheduling without firing form or chat handlers', () => {
+    const ctaButtons = [
+      {
+        id: 'resume_booking',
+        label: 'Pick up where you left off',
+        action: 'resume_scheduling',
+      },
+    ];
+
+    renderWithProviders(
+      <MessageBubble
+        role="assistant"
+        content="Want to continue?"
+        ctaButtons={ctaButtons}
+        renderMode="static"
+      />
+    );
+
+    screen.getByText('Pick up where you left off').click();
+
+    const logCall = findSchedulingLog('resume_scheduling');
+    expect(logCall).toBeDefined();
+    expect(logCall[1]).toEqual({
+      cta_id: 'resume_booking',
+      label: 'Pick up where you left off',
+    });
+
+    expect(mockFormModeContext.startFormWithConfig).not.toHaveBeenCalled();
+    expect(mockFormModeContext.resumeForm).not.toHaveBeenCalled();
+    expect(mockFormModeContext.cancelForm).not.toHaveBeenCalled();
+    expect(mockChatContext.sendMessage).not.toHaveBeenCalled();
+  });
+});
+
 describe('MessageBubble - Accessibility', () => {
   it('should have proper ARIA attributes on ShowcaseCard', () => {
     const showcaseCard = {
