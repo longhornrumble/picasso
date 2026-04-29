@@ -729,6 +729,20 @@ export default function MessageBubble({
       cta.action = 'start_form';
     }
 
+    if (cta.action === 'start_scheduling') {
+      // Placeholder dispatch — full wiring to pre-call form via FormModeContext lands in
+      // sub-phase C of the scheduling v1 plan (scheduling/docs/scheduling_implementation_plan.md).
+      // Branch exists in sub-phase A so V4 Action Selector emissions don't silently fall through.
+      console.log('[MessageBubble] start_scheduling action received:', { cta_id: cta.id || cta.cta_id, label: cta.label });
+      return;
+    } else if (cta.action === 'resume_scheduling') {
+      // Placeholder dispatch — `resume_scheduling` is metadata-driven per schema spec §9
+      // (operator configs should not emit it directly; widget renders the affordance from
+      // `suspended_scheduling_detected` metadata). Full wiring lands in sub-phase D.
+      console.log('[MessageBubble] resume_scheduling action received:', { cta_id: cta.id || cta.cta_id, label: cta.label });
+      return;
+    }
+
     if (cta.action === 'send_query' && cta.query) {
       // Send a query to Bedrock (UX shortcut button)
       console.log('[MessageBubble] Send query clicked:', cta.query);
