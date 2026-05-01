@@ -421,8 +421,13 @@ jobs:
             exit 1
           fi
 
-      - name: Invalidate CloudFront cache (optional)
-        if: github.event.inputs.invalidate_cache == 'true'
+      - name: Invalidate CloudFront cache
+        # Always invalidate on push-triggered deploys; allow opt-out only on manual dispatch.
+        # Without this, the 1-year max-age on widget assets makes new code invisible to users
+        # for up to a year. PR #48 (analytics fix) sat dormant in S3 for 20 minutes after
+        # deploy until manually invalidated. PR #49 attempted this fix but on the wrong file
+        # (Picasso/.github/workflows/, which is unused — this is the actual workflow file).
+        if: github.event_name == 'push' || github.event.inputs.invalidate_cache != 'false'
         run: |
           aws cloudfront create-invalidation \
             --distribution-id ${{ env.CLOUDFRONT_DISTRIBUTION_ID }} \
