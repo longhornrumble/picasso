@@ -60,6 +60,15 @@ describe('Environment Configuration', () => {
     expect(config.RETRY_ATTEMPTS).toBe(2);
   });
 
+  it('should resolve STREAMING_ENDPOINT to an absolute https URL in production', async () => {
+    // Regression: P22 (commit 63468cb, 2026-04-15) replaced widget-host.js's hardcoded
+    // streaming URL fallback with an empty string, which silently 404'd analytics POSTs
+    // from embedding sites for 16 days. The widget's only remaining fallback is the env
+    // config's STREAMING_ENDPOINT, so it must always be an absolute URL.
+    const { config: freshConfig } = await import('../environment');
+    expect(freshConfig.STREAMING_ENDPOINT).toMatch(/^https:\/\//);
+  });
+
   it('should have enhanced utility methods', async () => {
     const { config: freshConfig } = await import('../environment');
     config = freshConfig;
