@@ -403,8 +403,13 @@ import { config as environmentConfig } from './config/environment.js';
       const events = [...this.analyticsQueue];
       this.analyticsQueue = [];
 
-      // Get streaming endpoint from config or use default
-      const streamingEndpoint = this.config?.streamingEndpoint || '';
+      // Resolve streaming endpoint: tenant config → env config getter → env config default.
+      // Empty fallback yields a relative URL that 404s on the embedding host (silent
+      // analytics drop). Production analytics ingestion stalled 4/15–5/1 from this gap.
+      const streamingEndpoint = this.config?.streamingEndpoint ||
+                                environmentConfig.getStreamingEndpoint?.() ||
+                                environmentConfig.STREAMING_ENDPOINT ||
+                                '';
       const analyticsEndpoint = `${streamingEndpoint}?action=analytics`;
 
       console.log('📊 [Analytics Host] Flushing', events.length, 'events');
