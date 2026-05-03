@@ -1,13 +1,21 @@
 # CloudFront — Forward Origin Header to Lambda Origins
 
-**Status:** DRAFT — placeholder for a future DevOps session.
+**Status:** INVESTIGATED — root cause identified, fix pending user authorization for shared API Gateway change.
 **Surfaced:** 2026-05-02 during P0a Phase 1 staging deploy.
+**Investigated:** 2026-05-03 on branch fix/cloudfront-origin-header-forwarding.
 
 ## Problem
 
-The CloudFront distribution `E1CGYA1AJ9OYL0` (`staging.chat.myrecruiter.ai`) — and presumably its production sibling `E3G0LSWB1AQ9LP` (`chat.myrecruiter.ai`) — does NOT forward the browser's `Origin` request header to the Lambda origins (API Gateway + Function URL).
+All responses from the Picasso API return `Access-Control-Allow-Origin: *` regardless of the requesting origin. The Lambda's CORS allowlist logic (`add_cors_headers()` in `lambda_function.py`) never takes effect.
 
-**Evidence:** during the 2026-05-02 P0a Phase 1 verification, a curl request explicitly setting `Origin: https://staging.chat.myrecruiter.ai` resulted in the Lambda's CloudWatch logs showing only the synthetic `host: kgvc8xnewf.execute-api.us-east-1.amazonaws.com` and `via: ... CloudFront ...` headers — no Origin header. The Lambda's CORS allowlist logic (`add_cors_headers()` in `lambda_function.py`) consequently can't differentiate origins and falls back to wildcard `*`.
+**Original hypothesis (incorrect):** CloudFront was not forwarding the `Origin` header.
+
+**Actual root cause (confirmed 2026-05-03):** The API Gateway HTTP API `kgvc8xnewf` ("picasso") has `CorsConfiguration.AllowOrigins: ["*"]`. When API Gateway has a CORS configuration, it adds/overwrites `Access-Control-Allow-Origin` on every response using its own policy — overriding whatever the Lambda function returns. The Lambda's carefully-computed specific origin is silently replaced with `*` at the API Gateway layer.
+
+**Evidence (2026-05-03 investigation):**
+- CloudWatch log for invocation `61dd1a45-0e6b-4660-a481-8f6e0ce28cb9` shows `"origin": "https://staging.chat.myrecruiter.ai"` was present in the Lambda event headers — CloudFront WAS forwarding it correctly.
+- The same log shows `CORS: Allowing specific origin https://staging.chat.myrecruiter.ai` — the Lambda DID set the correct header.
+- But the curl response still showed `access-control-allow-origin: *` — API Gateway overwrote it.
 
 ## Impact
 
@@ -17,31 +25,41 @@ The CloudFront distribution `E1CGYA1AJ9OYL0` (`staging.chat.myrecruiter.ai`) —
 
 ## Fix
 
-Update each CloudFront distribution's cache behaviors to include `Origin` in the **Origin Request Policy** (or the legacy `WhitelistedHeaders`). For each behavior whose target is a Lambda origin (API Gateway, Function URL):
+**CloudFront is NOT the fix target.** The Origin Request Policy `a33e0165` ("Picasso-Origin-Request") already includes `Origin` in the whitelist on both `/Master_Function*` behaviors. The `/stream*` behaviors use `Managed-AllViewerExceptHostHeader` which forwards all headers. CloudFront is working correctly.
+
+**The fix requires updating three resources:**
+
+### 1. API Gateway `kgvc8xnewf` CorsConfiguration (SHARED — affects both staging and prod)
 
 ```bash
-# Example: identify the Origin Request Policy attached to the /Master_Function* behavior
-aws cloudfront get-distribution-config --id E1CGYA1AJ9OYL0 --profile chris-admin \
-  --query 'DistributionConfig.CacheBehaviors.Items[?PathPattern==`/Master_Function*`]'
-
-# Either attach an Origin Request Policy that forwards the Origin header (recommended),
-# or update the legacy ForwardedValues.Headers list.
+aws apigatewayv2 update-api --api-id kgvc8xnewf --profile chris-admin \
+  --cors-configuration 'AllowCredentials=false,AllowHeaders=x-api-key,AllowHeaders=content-type,AllowHeaders=authorization,AllowMethods=GET,AllowMethods=POST,AllowMethods=OPTIONS,AllowMethods=PUT,AllowMethods=DELETE,AllowOrigins=https://chat.myrecruiter.ai,AllowOrigins=https://staging.chat.myrecruiter.ai,AllowOrigins=http://localhost:8000,AllowOrigins=http://localhost:5173,AllowOrigins=http://localhost:3000,ExposeHeaders=content-type,MaxAge=0'
 ```
 
-## Distributions affected
+**WARNING:** This API Gateway is shared between staging (`/primary/staging`) and production (`/primary`). There is no staging-only API Gateway. The change takes effect for both environments simultaneously.
 
-- `E1CGYA1AJ9OYL0` — staging.chat.myrecruiter.ai (verified problem)
-- `E3G0LSWB1AQ9LP` — chat.myrecruiter.ai (production — verify same issue)
-- Possibly: `EJ0Y6ZUIUBSAT` (analytics dashboard production), `E2R9VHBON5PHMK` (analytics staging) — verify if they have similar issues
+### 2. Bedrock_Streaming_Handler_Staging Function URL CORS
 
-## Cache behaviors that need the fix
+```bash
+aws lambda update-function-url-config --function-name Bedrock_Streaming_Handler_Staging \
+  --profile chris-admin \
+  --cors 'AllowCredentials=false,AllowHeaders=*,AllowMethods=*,AllowOrigins=https://staging.chat.myrecruiter.ai,AllowOrigins=https://chat.myrecruiter.ai,AllowOrigins=http://localhost:8000,AllowOrigins=http://localhost:5173,AllowOrigins=http://localhost:3000'
+```
 
-For each CloudFront distribution above, audit:
-- `/Master_Function*` → API Gateway origin
-- `/stream*` → Lambda Function URL origin
-- (Any other behaviors targeting Lambda origins)
+### 3. Bedrock_Streaming_Handler (production) Function URL CORS
 
-S3-backed behaviors (e.g., `/tenants/*`, `/collateral/*`) do not need this — S3 doesn't process Origin.
+```bash
+aws lambda update-function-url-config --function-name Bedrock_Streaming_Handler \
+  --profile chris-admin \
+  --cors 'AllowCredentials=false,AllowHeaders=*,AllowMethods=*,AllowOrigins=https://chat.myrecruiter.ai,AllowOrigins=https://staging.chat.myrecruiter.ai,AllowOrigins=http://localhost:8000,AllowOrigins=http://localhost:5173,AllowOrigins=http://localhost:3000,MaxAge=300'
+```
+
+## Resources affected
+
+- API Gateway `kgvc8xnewf` ("picasso") — `CorsConfiguration.AllowOrigins` — SHARED between staging and production
+- Lambda Function URL: `Bedrock_Streaming_Handler_Staging` — `/stream*` on staging CloudFront
+- Lambda Function URL: `Bedrock_Streaming_Handler` — `/stream*` on production CloudFront
+- CloudFront distributions: NO CHANGES NEEDED (already correct)
 
 ## Acceptance criteria
 
@@ -51,7 +69,7 @@ S3-backed behaviors (e.g., `/tenants/*`, `/collateral/*`) do not need this — S
 
 ## Caching consideration
 
-Forwarding `Origin` adds it to the cache key, which can fragment the cache by origin. For Lambda-backed dynamic responses that don't cache anyway (`Cache-Control: no-cache`), this has no impact. Verify the cache TTLs on the affected behaviors are 0 (dynamic) before flipping the policy — if any behavior caches at all, evaluate whether per-origin cache entries are acceptable.
+**Confirmed not an issue.** Both Lambda-backed behaviors (`/Master_Function*` and `/stream*`) use the `Managed-CachingDisabled` cache policy (DefaultTTL=0, MaxTTL=0, MinTTL=0). Forwarding Origin in the request policy has zero impact on cache behavior — there is nothing to fragment.
 
 ## Priority
 
@@ -60,7 +78,16 @@ Low. Browser CORS is still functioning (the wildcard fallback works for current 
 - A security audit flags wildcard CORS as an issue
 - Cross-tenant origin verification becomes operationally important (e.g., tenant A's widget shouldn't be able to make authenticated calls to tenant B's API even on the same CloudFront)
 
+## Authorization checkpoint
+
+Before executing the fix:
+1. User must authorize the API Gateway `CorsConfiguration` change (shared infra — affects production paths)
+2. Since there is no way to isolate staging, the change must be treated as a production change
+
+The risk is low (additive allowlist change, no removal of working behavior), but the principle holds: shared infrastructure changes need explicit sign-off.
+
 ## References
 
-- [PR #36 in lambda repo](https://github.com/longhornrumble/lambda/pull/36) — restored `validate_cors_origin` in Lambda code; this CloudFront fix is the missing other half
+- [PR #36 in lambda repo](https://github.com/longhornrumble/lambda/pull/36) — restored `validate_cors_origin` in Lambda code; this API Gateway fix is the missing other half
 - 2026-05-02 P0a Phase 1 investigation transcript
+- 2026-05-03 fix/cloudfront-origin-header-forwarding investigation (this session)
