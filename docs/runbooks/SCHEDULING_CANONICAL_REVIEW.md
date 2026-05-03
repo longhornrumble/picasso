@@ -1,65 +1,111 @@
-# Scheduling Canonical Design — Adversarial Review
+# Scheduling Canonical Design — Adversarial Review Protocol
 
-**Status:** DRAFT — placeholder for a future scheduling-project session, ideally before sub-phase B starts.
+**Status:** IN PROGRESS  
+**Branch:** docs/scheduling-canonical-adversarial-review  
+**Target doc:** `scheduling/docs/scheduling_design.md` (1556 lines)  
+**Session date:** 2026-05-02  
+**Lead reviewer:** Architect agent
 
-## Why this PR exists
+---
 
-`scheduling/docs/scheduling_design.md` (1556 lines) is the canonical source-of-truth for the scheduling v1 feature. It has been amended twice during the 2026-05-02 session:
+## Purpose
 
-1. §11 missed-event cadence rewritten (escalate-and-keep model; T+30min, T+24h cc, T+72h urgent, T+7d weekly digest; explicit no-auto-completion)
-2. §2.3 + §17 V4→V5 reframed as parallel post-v1 track (was "simultaneously" Austin's V4→V5 migration)
+`scheduling/docs/scheduling_design.md` is the source of truth for the scheduling v1 feature. All sibling planning docs (implementation plan, UI plan, CI strategy, schema spec) received 2-3 adversarial reviewer passes during the 2026-05-02 session with ~50 applied findings. The canonical was lightly amended in that session (§11 missed-event cadence, §2.3+§17 V4→V5 reframing, §8 permissions reference) but never independently adversarially reviewed. This runbook governs the independent review.
 
-Plus §8 gained a permissions-matrix forward-reference.
+Sub-phase B implementers (Calendar_Watch_Listener, Calendar_Watch_Renewer) work directly from the canonical. Unresolved internal contradictions hit them at implementation time, when fixes are expensive. This review surfaces them now.
 
-**The canonical has never been independently adversarially reviewed.** Other planning docs (implementation plan, UI plan, CI strategy, schema spec) all went through 2-3 reviewer adversarial passes during 2026-05-02. The canonical did not. Inconsistencies are likely lurking — both internal (between sections within the canonical) and external (vs the now-revised sibling docs).
+---
 
-## What to do when this PR is picked up
+## Three-Reviewer Protocol
 
-### Step 1 — internal consistency audit
+| Reviewer | Focus angle | Key sections |
+|---|---|---|
+| Lead Architect (this agent) | Internal consistency, cross-doc coherence | All sections, cross-reference with sibling docs |
+| Tech Lead | Scope/feasibility/coherence, implementation plan alignment | §2, §9, §10, §11, §16, impl plan |
+| Security Reviewer | Auth token design, PII boundaries, push notification security | §5.7, §13, §14 |
 
-Read the canonical end-to-end with a critical eye:
+Each reviewer works independently, then findings are consolidated. Contradictions between reviewer conclusions are resolved by the lead (this agent) with rationale noted.
 
-- Do §11 (missed-event cadence) and §9.2 (state machine) agree? The state machine references `pending_attendance` and `coordinator_no_show` — do the cadence transitions in §11 match those state names exactly?
-- Do §10.1 (RoutingPolicy) and §10.2 (pool-at-commit) round-robin descriptions agree? Schema spec §10 implies `tie_breaker: 'round_robin'` is the only v1 value but canonical §10.1 lists `'first_available'` too.
-- Is §2.3 internally consistent after the 2026-05-02 V4→V5 amendment? Same for §17.
-- §13 unified-token format — does it cover the missed-event disposition emails per §11.2? Are all the action-token purposes enumerated there?
-- §5.7 calendar event content (PII boundary) — does it agree with §12 reminder content? Is the volunteer's first/last name handling consistent across both?
+---
 
-### Step 2 — cross-doc consistency audit
+## Finding Tier Definitions
 
-Spawn 3 specialized reviewers in parallel (system-architect, tech-lead-reviewer, Backend-Engineer or Security-Reviewer for variety):
+**Critical (Tier 1)** — A contradiction, omission, or ambiguity that will cause implementation to go wrong or break a security/compliance requirement. Must be resolved before sub-phase B starts. Authorization checkpoint: STOP and surface to orchestrator before applying any Critical finding that would materially change v1 scope or contradict an already-merged sibling doc.
 
-- system-architect — checks the canonical's architectural claims against the implementation plan + UI plan + CI strategy
-- tech-lead-reviewer — scope, feasibility, coherence
-- Security-Reviewer (or Backend-Engineer) — second-look pass on §13 unified token format + §5.7 PII boundary + §14 push-notification system
+**Material (Tier 2)** — An inconsistency between sections, a term used inconsistently, a schema field referenced that doesn't match the schema spec, or a requirement that is underspecified in a way that will force re-work. Should be applied before this PR merges.
 
-Compare reviewer findings to what the implementation plan already addresses. Surface gaps where the canonical contradicts a sibling doc.
+**Minor (Tier 3)** — Wording ambiguity, style inconsistency, missing forward-reference, or editorial improvement. Surface to orchestrator; apply only with explicit direction.
 
-### Step 3 — apply findings
+---
 
-Same protocol used for the implementation plan + CI strategy:
-- Apply each finding as a surgical edit
-- Add change-log entry
-- Re-run a proofing audit if findings volume warrants
+## Execution Log Template
 
-### Step 4 — promote
+```
+### Finding F-NNN
+- Tier: [1 Critical / 2 Material / 3 Minor]
+- Section: §X.Y
+- Reviewer: [Lead / Tech Lead / Security]
+- Description: <what is wrong>
+- Evidence: <quote or line reference>
+- Proposed fix: <edit to apply>
+- Status: [OPEN / APPLIED / WAIVED]
+- Waiver rationale (if waived): <text>
+```
 
-Once stable, this PR's branch becomes the green-light "canonical is reviewed" milestone. Sub-phase B starts on top of a verified canonical.
+---
 
-## Acceptance criteria
+## Exit Criteria
 
-- [ ] No internal inconsistencies (every state name, term, schema field used in the canonical is consistent across sections)
+Before this PR is promoted from draft to ready-for-merge, ALL of the following must be true:
+
+- [ ] All Tier 1 (Critical) findings resolved (applied or waived with orchestrator sign-off)
+- [ ] All Tier 2 (Material) findings resolved (applied or waived with rationale)
+- [ ] Tier 3 (Minor) findings surfaced to orchestrator; disposition documented
+- [ ] No internal inconsistencies: every state name, term, schema field used in the canonical is consistent across sections
 - [ ] No contradictions vs `scheduling_implementation_plan.md`, `scheduling_ui_plan.md`, `scheduling_ci_strategy.md`, `scheduling_config_schema.md`
-- [ ] All Critical findings from reviewers either applied or explicitly waived with rationale
-- [ ] Change log entry added
-- [ ] Memory entry written confirming canonical is now reviewed
+- [ ] Change log entry added to canonical (`scheduling_design.md`)
+- [ ] `verify-before-commit` invoked before final commit batch
+- [ ] Memory entry written: `project_scheduling_canonical_review_complete_2026-05-02.md`
 
-## Why now (or before sub-phase B)
+---
 
-Sub-phase B's first tasks (Calendar_Watch_Listener, Calendar_Watch_Renewer) implement behaviors the canonical specifies. If the canonical has internal contradictions — e.g., reminder cadence in §12 disagrees with state machine in §9.2 — the engineer hits ambiguity at implementation time. A pre-sub-phase-B review surfaces these now, while it's cheap to fix.
+## Execution Log
+
+### Run 1 — 2026-05-02
+
+**Phase:** Full adversarial pass (Lead + Tech Lead + Security)
+
+*(Findings recorded below as they are identified)*
+
+---
+
+<!-- FINDINGS START -->
+
+<!-- FINDINGS END -->
+
+---
+
+## Findings Summary
+
+*(Populated at end of review pass)*
+
+| Tier | Count | Applied | Waived | Open |
+|---|---|---|---|---|
+| Critical (1) | — | — | — | — |
+| Material (2) | — | — | — | — |
+| Minor (3) | — | — | — | — |
+
+---
+
+## Why This Review Exists
+
+This PR's branch becomes the "canonical is reviewed" green-light milestone for sub-phase B. The tasks Calendar_Watch_Listener and Calendar_Watch_Renewer implement behaviors specified in the canonical. If the canonical has internal contradictions — e.g., reminder cadence in §12 disagrees with state machine in §9.2 — the engineer hits ambiguity at implementation time. A pre-sub-phase-B review surfaces these while it is cheap to fix.
 
 ## Links
 
-- Canonical: `scheduling/docs/scheduling_design.md` (local-only, untracked)
-- Sibling docs (committed via 2026-05-02 session): `scheduling_ui_plan.md`, `scheduling_ci_strategy.md`, `scheduling_implementation_plan.md`, `scheduling_config_schema.md`
-- 2026-05-02 session memory: `~/.claude/projects/.../project_scheduling_planning_2026-05-02.md`
+- Canonical: `/Users/chrismiller/Desktop/Working_Folder/scheduling/docs/scheduling_design.md`
+- Implementation plan: `/Users/chrismiller/Desktop/Working_Folder/scheduling/docs/scheduling_implementation_plan.md`
+- UI plan: `/Users/chrismiller/Desktop/Working_Folder/scheduling/docs/scheduling_ui_plan.md`
+- CI strategy: `/Users/chrismiller/Desktop/Working_Folder/scheduling/docs/scheduling_ci_strategy.md`
+- Config schema: `/Users/chrismiller/Desktop/Working_Folder/scheduling/docs/scheduling_config_schema.md`
+- PR: https://github.com/longhornrumble/picasso/pull/55
