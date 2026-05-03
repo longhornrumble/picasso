@@ -405,12 +405,27 @@ jobs:
       - name: Deploy to S3
         working-directory: ./Picasso
         run: |
+          # Hashed assets (iframe-main.js, iframe-main.css, fonts/...) are
+          # referenced from HTML with a build-bumped ?v=<hash> query string —
+          # a fresh deploy yields fresh URLs, so 1-year immutable is safe.
+          # Entry points (widget.js, iframe.html, *.html, go/index.html) have
+          # no version in their URL — bound them to 5 min so a future
+          # regression heals in minutes, not a year.
           aws s3 sync dist/production/ ${{ env.S3_BUCKET_PRODUCTION }} \
             --exclude "*.map" \
             --exclude "collateral/*" \
             --exclude "tenants/*" \
-            --cache-control "public, max-age=31536000" \
+            --exclude "widget.js" \
+            --exclude "iframe.html" \
+            --exclude "test-staging.html" \
+            --exclude "go/index.html" \
+            --cache-control "public, max-age=31536000, immutable" \
             --delete
+
+          for f in widget.js iframe.html test-staging.html go/index.html; do
+            aws s3 cp "dist/production/$f" "${{ env.S3_BUCKET_PRODUCTION }}$f" \
+              --cache-control "public, max-age=300, must-revalidate"
+          done
 
       - name: Verify protected files
         run: |
