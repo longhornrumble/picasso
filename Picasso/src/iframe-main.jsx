@@ -196,8 +196,15 @@ function notifyParentEvent(eventType, payload = {}) {
     console.warn(`[Analytics] Unknown event type: ${eventType}. Expected one of:`, ALL_EVENT_TYPES);
   }
 
-  // Check if running in iframe (embedded mode) or full-page mode
-  const isEmbedded = window.parent && window.parent !== window;
+  // Check if running in iframe (embedded mode) or full-page mode.
+  // NOTE: in full-page mode the React app still loads inside iframe.html, which is
+  // itself loaded as a child iframe of index.html. So `window.parent !== window` is
+  // TRUE even in full-page mode — but index.html has no widget-host.js listener,
+  // so postMessage events would be silently dropped. Detect ?mode=fullpage from the
+  // URL and force the local queue + flush path so analytics events reach the backend.
+  const urlParams = new URLSearchParams(window.location.search);
+  const isFullpageMode = urlParams.get('mode') === 'fullpage';
+  const isEmbedded = window.parent && window.parent !== window && !isFullpageMode;
 
   if (isEmbedded) {
     // EMBEDDED MODE: Send to parent via postMessage
