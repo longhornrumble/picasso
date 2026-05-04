@@ -40,3 +40,31 @@ module "tenant_config_staging" {
   count  = var.env == "staging" ? 1 : 0
   source = "./modules/s3-tenant-config-staging"
 }
+
+# Issue #5 batch 2a: dependent state for staging-account Lambdas. Each table
+# mirrors the schema of its prod-account legacy twin (audited 2026-05-04).
+# JWT secret value is injected post-apply via aws CLI — never enters state.
+module "ddb_tenant_registry_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/ddb-tenant-registry-staging"
+}
+
+module "ddb_recent_messages_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/ddb-recent-messages-staging"
+}
+
+module "ddb_audit_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/ddb-audit-staging"
+}
+
+module "ddb_conversation_summaries_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/ddb-conversation-summaries-staging"
+}
+
+module "secrets_jwt_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/secrets-jwt-staging"
+}
