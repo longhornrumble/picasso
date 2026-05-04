@@ -232,6 +232,16 @@ resource "aws_lambda_function_url" "this" {
   invoke_mode        = "RESPONSE_STREAM"
 }
 
+# Same Terraform gap as the Bedrock module — without this permission,
+# NONE-auth Function URLs return "Forbidden" to public invocations.
+resource "aws_lambda_permission" "url_invoke" {
+  statement_id           = "AllowPublicInvokeFunctionUrl"
+  action                 = "lambda:InvokeFunctionUrl"
+  function_name          = aws_lambda_function.this.function_name
+  principal              = "*"
+  function_url_auth_type = "NONE"
+}
+
 # ------------------------------------------------------------------
 # Outputs
 # ------------------------------------------------------------------
