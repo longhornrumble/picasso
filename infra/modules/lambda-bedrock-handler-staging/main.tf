@@ -202,26 +202,23 @@ resource "aws_lambda_function_url" "this" {
   }
 }
 
-# The AWS provider's aws_lambda_function_url resource auto-creates ONE
-# resource policy statement (FunctionURLAllowPublicAccess for
-# lambda:InvokeFunctionUrl). That alone produces 403 on actual URL
-# invocations — the URL frontend also needs lambda:InvokeFunction
-# permission scoped to URL-routed calls. AWS Console adds this second
-# statement automatically; Terraform's aws_lambda_function_url does not.
+# KNOWN GAP — Function URL needs TWO resource-policy statements:
+#   1. FunctionURLAllowPublicAccess (lambda:InvokeFunctionUrl) — auto-created by
+#      aws_lambda_function_url. This alone is INSUFFICIENT.
+#   2. FunctionURLAllowInvokeAction (lambda:InvokeFunction with condition
+#      Bool: lambda:InvokedViaFunctionUrl=true). MUST be added manually via
+#      AWS Console: Configuration → Function URL → Edit → Save.
 #
-# Without this resource, GET/POST against the Function URL returns 403
-# AccessDeniedException despite NONE auth.
-resource "aws_lambda_permission" "url_invoke_action" {
-  # SID intentionally distinct from the Console-added "FunctionURLAllowInvokeAction"
-  # statement that's already on the Lambda. Both grant the same permission;
-  # using a unique SID avoids ResourceConflictException on first apply.
-  # The Console-added duplicate can be removed manually once this is in place.
-  statement_id           = "TFFunctionURLAllowInvokeAction"
-  action                 = "lambda:InvokeFunction"
-  function_name          = aws_lambda_function.this.function_name
-  principal              = "*"
-  function_url_auth_type = "NONE"
-}
+# Why Terraform can't do this:
+#   - aws_lambda_permission's function_url_auth_type only works with action =
+#     lambda:InvokeFunctionUrl. AWS rejects combos with lambda:InvokeFunction.
+#   - The provider has no parameter for the lambda:InvokedViaFunctionUrl
+#     condition.
+#   - Removing the condition entirely would let any cross-account principal
+#     invoke this Lambda directly (over-broad).
+#
+# After creating a new Lambda from this module, do the Console save once.
+# Future terraform applies don't manage or remove the manual statement.
 
 # ------------------------------------------------------------------
 # Outputs
