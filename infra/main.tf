@@ -88,6 +88,14 @@ module "lambda_bedrock_handler_staging" {
   kb_arns = [
     "arn:aws:bedrock:us-east-1:614056832592:knowledge-base/0BQBWFYDMT",
   ]
+
+  # Cross-account KB access: AWS RAM doesn't support Bedrock KBs, so
+  # the staging Lambda assumes a prod-side role that has Retrieve.
+  # The role + its inline policy were hand-applied in prod (chris-admin)
+  # since prod is hand-managed until P0 Phase 2.
+  kb_retriever_role_arns = [
+    "arn:aws:iam::614056832592:role/picasso-kb-retriever-from-staging",
+  ]
 }
 
 # Issue #5 batch 2b: staging-account Master_Function. Placeholder code;
