@@ -101,14 +101,16 @@ data "aws_iam_policy_document" "exec" {
     ]
   }
 
+  # Narrowed from `anthropic.claude-*` to specifically the Haiku family
+  # used by the Bedrock streaming handler. v7 plan §"Decisions locked"
+  # specifies Claude 4.5 Haiku as default. InvokeModel (synchronous)
+  # removed — only Master_Function uses the synchronous variant for
+  # post-stream CTA selection.
   statement {
-    sid = "BedrockInvokeClaude"
-    actions = [
-      "bedrock:InvokeModel",
-      "bedrock:InvokeModelWithResponseStream",
-    ]
+    sid     = "BedrockInvokeClaudeHaiku"
+    actions = ["bedrock:InvokeModelWithResponseStream"]
     resources = [
-      "arn:aws:bedrock:${data.aws_region.current.name}::foundation-model/anthropic.claude-*",
+      "arn:aws:bedrock:${data.aws_region.current.name}::foundation-model/anthropic.claude-haiku-*",
       "arn:aws:bedrock:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:inference-profile/*",
     ]
   }
@@ -202,23 +204,39 @@ resource "aws_lambda_function_url" "this" {
   }
 }
 
-# KNOWN GAP — Function URL needs TWO resource-policy statements:
-#   1. FunctionURLAllowPublicAccess (lambda:InvokeFunctionUrl) — auto-created by
-#      aws_lambda_function_url. This alone is INSUFFICIENT.
-#   2. FunctionURLAllowInvokeAction (lambda:InvokeFunction with condition
-#      Bool: lambda:InvokedViaFunctionUrl=true). MUST be added manually via
-#      AWS Console: Configuration → Function URL → Edit → Save.
+# ──────────────────────────────────────────────────────────────────────
+# # MANUAL STEP REQUIRED — Function URL post-creation
+# ──────────────────────────────────────────────────────────────────────
+# After Terraform creates this Lambda + Function URL for the first time,
+# the URL will return HTTP 403 until the resource policy gets a SECOND
+# statement that AWS provider 5.x cannot create. Add it via Console once:
+#
+#   1. AWS Console → Lambda → ${this function} → Configuration tab
+#   2. Function URL → Edit
+#   3. (Make no changes) → Save
+#   4. Verify: aws lambda get-policy --function-name <name> | jq
+#      '.Statement[].Sid' should now show TWO sids:
+#        - "FunctionURLAllowPublicAccess"      (Terraform-created)
+#        - "FunctionURLAllowInvokeAction"      (Console-added; required)
+#   5. Smoke-test: curl <function-url> should return 200, not 403
 #
 # Why Terraform can't do this:
-#   - aws_lambda_permission's function_url_auth_type only works with action =
+#   • aws_lambda_permission's function_url_auth_type only works with action =
 #     lambda:InvokeFunctionUrl. AWS rejects combos with lambda:InvokeFunction.
-#   - The provider has no parameter for the lambda:InvokedViaFunctionUrl
+#   • The provider has no parameter for the lambda:InvokedViaFunctionUrl
 #     condition.
-#   - Removing the condition entirely would let any cross-account principal
+#   • Removing the condition entirely would let any cross-account principal
 #     invoke this Lambda directly (over-broad).
 #
-# After creating a new Lambda from this module, do the Console save once.
-# Future terraform applies don't manage or remove the manual statement.
+# Statement persists across future `terraform apply` runs because
+# aws_lambda_function_url doesn't manage individual policy statements.
+# However, if the Lambda is destroyed and recreated, the manual step
+# must be re-run.
+#
+# Tracking: HashiCorp/terraform-provider-aws upstream issue (TODO: file).
+# Architect-recommended verification: empirically test whether the
+# second statement is actually required (untested in isolation).
+# ──────────────────────────────────────────────────────────────────────
 
 # ------------------------------------------------------------------
 # Outputs
