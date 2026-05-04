@@ -45,9 +45,33 @@ resource "aws_s3_bucket_public_access_block" "tenant_config" {
   restrict_public_buckets = true
 }
 
-# Defense-in-depth: only the prod-account replication role writes here.
-# Denies s3:Put* from any principal in the staging account itself.
+# Cross-account replication needs the destination bucket to explicitly grant
+# the source-account replication role. Role ARN is deterministic — bucket
+# policies don't validate principal existence, so this can land before the
+# prod role is created.
+# Defense-in-depth: deny s3:Put* from any principal in the staging account
+# (only the prod replication role writes here).
 data "aws_iam_policy_document" "tenant_config" {
+  statement {
+    sid    = "AllowProdReplicationRole"
+    effect = "Allow"
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:aws:iam::${var.replication_source_account_id}:role/s3-replication-myrecruiter-picasso-to-staging"]
+    }
+    actions = [
+      "s3:ReplicateObject",
+      "s3:ReplicateDelete",
+      "s3:ReplicateTags",
+      "s3:GetBucketVersioning",
+      "s3:PutBucketVersioning",
+    ]
+    resources = [
+      aws_s3_bucket.tenant_config.arn,
+      "${aws_s3_bucket.tenant_config.arn}/*",
+    ]
+  }
+
   statement {
     sid    = "DenyPutsFromStagingAccount"
     effect = "Deny"
