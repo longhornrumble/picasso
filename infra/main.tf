@@ -31,3 +31,12 @@ module "session_summaries" {
   source = "./modules/ddb-session-summaries"
   env    = var.env
 }
+
+# Staging-only: cross-account replication target for prod tenant configs.
+# Bucket lives in the staging account; replication IS configured on the prod
+# source bucket (hand-applied with chris-admin until P0 Phase 2 brings prod
+# under Terraform). See infra/README.md and the v7 Issue #5 plan.
+module "tenant_config_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/s3-tenant-config-staging"
+}
