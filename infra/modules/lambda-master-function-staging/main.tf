@@ -232,7 +232,15 @@ resource "aws_lambda_function_url" "this" {
   invoke_mode        = "RESPONSE_STREAM"
 }
 
-# See note in lambda-bedrock-handler-staging — same situation here.
+# See note in lambda-bedrock-handler-staging — same fix needed here.
+resource "aws_lambda_permission" "url_invoke_action" {
+  # See Bedrock module — same SID-collision avoidance.
+  statement_id           = "TFFunctionURLAllowInvokeAction"
+  action                 = "lambda:InvokeFunction"
+  function_name          = aws_lambda_function.this.function_name
+  principal              = "*"
+  function_url_auth_type = "NONE"
+}
 
 # ------------------------------------------------------------------
 # Outputs

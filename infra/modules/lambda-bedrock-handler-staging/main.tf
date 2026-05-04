@@ -202,16 +202,26 @@ resource "aws_lambda_function_url" "this" {
   }
 }
 
-# NOTE: the AWS provider's aws_lambda_function_url resource auto-creates a
-# `FunctionURLAllowPublicAccess` resource policy statement on the Lambda
-# (provider 5.x behavior). No additional aws_lambda_permission is needed
-# here — adding one creates a duplicate that doesn't affect invoke behavior.
+# The AWS provider's aws_lambda_function_url resource auto-creates ONE
+# resource policy statement (FunctionURLAllowPublicAccess for
+# lambda:InvokeFunctionUrl). That alone produces 403 on actual URL
+# invocations — the URL frontend also needs lambda:InvokeFunction
+# permission scoped to URL-routed calls. AWS Console adds this second
+# statement automatically; Terraform's aws_lambda_function_url does not.
 #
-# Public HTTP access is currently blocked by an AWS account-level mechanism
-# we haven't been able to identify (returns 403 AccessDeniedException despite
-# the resource policy allowing *). Tracked separately. Lambda is invocable
-# directly via `aws lambda invoke` — Issue #5 PR A integration tests use
-# that path.
+# Without this resource, GET/POST against the Function URL returns 403
+# AccessDeniedException despite NONE auth.
+resource "aws_lambda_permission" "url_invoke_action" {
+  # SID intentionally distinct from the Console-added "FunctionURLAllowInvokeAction"
+  # statement that's already on the Lambda. Both grant the same permission;
+  # using a unique SID avoids ResourceConflictException on first apply.
+  # The Console-added duplicate can be removed manually once this is in place.
+  statement_id           = "TFFunctionURLAllowInvokeAction"
+  action                 = "lambda:InvokeFunction"
+  function_name          = aws_lambda_function.this.function_name
+  principal              = "*"
+  function_url_auth_type = "NONE"
+}
 
 # ------------------------------------------------------------------
 # Outputs
