@@ -212,7 +212,11 @@ resource "aws_lambda_function_url" "this" {
 # Without this resource, GET/POST against the Function URL returns 403
 # AccessDeniedException despite NONE auth.
 resource "aws_lambda_permission" "url_invoke_action" {
-  statement_id           = "FunctionURLAllowInvokeAction"
+  # SID intentionally distinct from the Console-added "FunctionURLAllowInvokeAction"
+  # statement that's already on the Lambda. Both grant the same permission;
+  # using a unique SID avoids ResourceConflictException on first apply.
+  # The Console-added duplicate can be removed manually once this is in place.
+  statement_id           = "TFFunctionURLAllowInvokeAction"
   action                 = "lambda:InvokeFunction"
   function_name          = aws_lambda_function.this.function_name
   principal              = "*"
