@@ -202,16 +202,16 @@ resource "aws_lambda_function_url" "this" {
   }
 }
 
-# AWS Console auto-creates this when you create a NONE-auth Function URL,
-# but Terraform's aws_lambda_function_url does NOT. Without it, public
-# invocations get "Forbidden" even though authorization_type is NONE.
-resource "aws_lambda_permission" "url_invoke" {
-  statement_id           = "AllowPublicInvokeFunctionUrl"
-  action                 = "lambda:InvokeFunctionUrl"
-  function_name          = aws_lambda_function.this.function_name
-  principal              = "*"
-  function_url_auth_type = "NONE"
-}
+# NOTE: the AWS provider's aws_lambda_function_url resource auto-creates a
+# `FunctionURLAllowPublicAccess` resource policy statement on the Lambda
+# (provider 5.x behavior). No additional aws_lambda_permission is needed
+# here — adding one creates a duplicate that doesn't affect invoke behavior.
+#
+# Public HTTP access is currently blocked by an AWS account-level mechanism
+# we haven't been able to identify (returns 403 AccessDeniedException despite
+# the resource policy allowing *). Tracked separately. Lambda is invocable
+# directly via `aws lambda invoke` — Issue #5 PR A integration tests use
+# that path.
 
 # ------------------------------------------------------------------
 # Outputs
