@@ -1,0 +1,10 @@
+# Terraform local state — actual state lives in S3 backends
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfplan
+
+# Sensitive — should be set in CI vars / SSO, not committed
+*.tfvars.local
+*.auto.tfvars

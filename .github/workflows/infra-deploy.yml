@@ -1,0 +1,72 @@
+name: Terraform Infrastructure (staging)
+
+# Triggered by changes to infra/ on the staging branch (apply) or any PR
+# touching infra/ (plan only). Production deploys are deferred to Phase 2 of
+# the P0 environment-foundation project — this workflow does NOT touch prod.
+on:
+  push:
+    branches: [staging]
+    paths:
+      - 'infra/**'
+      - '.github/workflows/infra-deploy.yml'
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - 'infra/**'
+      - '.github/workflows/infra-deploy.yml'
+
+permissions:
+  id-token: write    # OIDC token for assume-role
+  contents: read
+  pull-requests: write  # post plan output on PRs
+
+jobs:
+  terraform:
+    name: Terraform plan/apply (staging)
+    runs-on: ubuntu-latest
+    environment: staging
+    defaults:
+      run:
+        working-directory: infra
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.15.1
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Terraform fmt + validate
+        run: |
+          terraform fmt -check -recursive
+          terraform init -reconfigure -backend-config=backend/staging.tfbackend
+          terraform validate
+
+      - name: Terraform plan
+        if: github.event_name == 'pull_request'
+        id: plan
+        run: |
+          terraform plan -var-file=envs/staging.tfvars -no-color -out=plan.tfplan 2>&1 | tee /tmp/plan.txt
+
+      - name: Comment plan on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const plan = fs.readFileSync('/tmp/plan.txt', 'utf8');
+            const truncated = plan.length > 60000 ? plan.slice(-60000) + '\n... (truncated)' : plan;
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: '### Terraform plan (staging)\n```\n' + truncated + '\n```'
+            });
+
+      - name: Terraform apply
+        if: github.event_name == 'push' && github.ref == 'refs/heads/staging'
+        run: terraform apply -var-file=envs/staging.tfvars -auto-approve
