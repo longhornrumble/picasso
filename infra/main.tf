@@ -68,3 +68,47 @@ module "secrets_jwt_staging" {
   count  = var.env == "staging" ? 1 : 0
   source = "./modules/secrets-jwt-staging"
 }
+
+# Issue #5 batch 2b: staging-account Bedrock streaming handler.
+# Placeholder code; real handler ships via PR A (analytics_writer
+# integration) using `aws lambda update-function-code`.
+module "lambda_bedrock_handler_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/lambda-bedrock-handler-staging"
+
+  tenant_config_bucket_arn     = module.tenant_config_staging[0].bucket_arn
+  config_bucket_name           = module.tenant_config_staging[0].bucket_name
+  session_summaries_table_arn  = module.session_summaries.table_arn
+  session_summaries_table_name = module.session_summaries.table_name
+  tenant_registry_table_arn    = module.ddb_tenant_registry_staging[0].table_arn
+  tenant_registry_table_name   = module.ddb_tenant_registry_staging[0].table_name
+
+  # MYR test tenant KB — the only KB allowed for Issue #5 batch 2b.
+  # Add more tenants here as they're enrolled in staging coverage.
+  kb_arns = [
+    "arn:aws:bedrock:us-east-1:614056832592:knowledge-base/0BQBWFYDMT",
+  ]
+}
+
+# Issue #5 batch 2b: staging-account Master_Function. Placeholder code;
+# real handler ships via PR A2.
+module "lambda_master_function_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/lambda-master-function-staging"
+
+  tenant_config_bucket_arn          = module.tenant_config_staging[0].bucket_arn
+  config_bucket_name                = module.tenant_config_staging[0].bucket_name
+  jwt_secret_arn                    = module.secrets_jwt_staging[0].secret_arn
+  jwt_secret_name                   = module.secrets_jwt_staging[0].secret_name
+  session_summaries_table_arn       = module.session_summaries.table_arn
+  session_summaries_table_name      = module.session_summaries.table_name
+  tenant_registry_table_arn         = module.ddb_tenant_registry_staging[0].table_arn
+  tenant_registry_table_name        = module.ddb_tenant_registry_staging[0].table_name
+  audit_table_arn                   = module.ddb_audit_staging[0].table_arn
+  audit_table_name                  = module.ddb_audit_staging[0].table_name
+  recent_messages_table_arn         = module.ddb_recent_messages_staging[0].table_arn
+  recent_messages_table_name        = module.ddb_recent_messages_staging[0].table_name
+  conversation_summaries_table_arn  = module.ddb_conversation_summaries_staging[0].table_arn
+  conversation_summaries_table_name = module.ddb_conversation_summaries_staging[0].table_name
+  streaming_endpoint                = module.lambda_bedrock_handler_staging[0].function_url
+}
