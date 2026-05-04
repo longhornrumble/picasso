@@ -24,6 +24,12 @@ variable "kb_arns" {
   type        = list(string)
 }
 
+variable "kb_retriever_role_arns" {
+  description = "List of cross-account IAM role ARNs the Lambda is allowed to AssumeRole into for KB Retrieve. Bedrock KBs aren't RAM-shareable, so cross-account access requires the staging Lambda to assume a prod-side role that has Retrieve permission. PR A code wraps the Bedrock call with assume-role + cached creds."
+  type        = list(string)
+  default     = []
+}
+
 variable "config_bucket_name" {
   description = "Name of the staging tenant config S3 bucket (for env var)."
   type        = string
@@ -120,6 +126,19 @@ data "aws_iam_policy_document" "exec" {
     actions   = ["bedrock-agent-runtime:Retrieve"]
     resources = var.kb_arns
   }
+
+  # Cross-account KB access: AWS RAM doesn't support bedrock:KnowledgeBase
+  # (only bedrock:CustomModel). The staging Lambda must assume a role in
+  # the prod account that holds the Retrieve permission. Conditional —
+  # only added when caller passes role ARNs (e.g., for staging env).
+  dynamic "statement" {
+    for_each = length(var.kb_retriever_role_arns) > 0 ? [1] : []
+    content {
+      sid       = "AssumeKBRetrieverRole"
+      actions   = ["sts:AssumeRole"]
+      resources = var.kb_retriever_role_arns
+    }
+  }
 }
 
 resource "aws_iam_role_policy" "exec" {
@@ -170,6 +189,10 @@ resource "aws_lambda_function" "this" {
       SESSION_SUMMARIES_TABLE     = var.session_summaries_table_name
       TENANT_REGISTRY_TABLE       = var.tenant_registry_table_name
       USE_REGISTRY_FOR_RESOLUTION = "true"
+      # PR A code reads this and calls sts:AssumeRole before any KB
+      # Retrieve call. Empty in environments where Lambda + KB share
+      # an account (no assume-role needed).
+      KB_RETRIEVER_ROLE_ARN = length(var.kb_retriever_role_arns) > 0 ? var.kb_retriever_role_arns[0] : ""
     }
   }
 
