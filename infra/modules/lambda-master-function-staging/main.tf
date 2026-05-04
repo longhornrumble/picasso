@@ -107,10 +107,24 @@ data "aws_iam_policy_document" "exec" {
     ]
   }
 
+  # GetObject reads tenant configs by known path. ListBucket scoped to
+  # the tenants/ and mappings/ prefixes only — prevents enumerating all
+  # tenant keys. Code never lists the bucket root.
   statement {
-    sid       = "TenantConfigRead"
-    actions   = ["s3:GetObject", "s3:ListBucket"]
-    resources = [var.tenant_config_bucket_arn, "${var.tenant_config_bucket_arn}/*"]
+    sid       = "TenantConfigGet"
+    actions   = ["s3:GetObject"]
+    resources = ["${var.tenant_config_bucket_arn}/*"]
+  }
+
+  statement {
+    sid       = "TenantConfigList"
+    actions   = ["s3:ListBucket"]
+    resources = [var.tenant_config_bucket_arn]
+    condition {
+      test     = "StringLike"
+      variable = "s3:prefix"
+      values   = ["tenants/*", "mappings/*"]
+    }
   }
 
   statement {
@@ -119,8 +133,26 @@ data "aws_iam_policy_document" "exec" {
     resources = [var.jwt_secret_arn]
   }
 
+  # Audit table is append-only — writers may Put/Update; nobody should
+  # Delete or BatchWrite into it. Read access for dashboard queries.
   statement {
-    sid = "DynamoDBChatTables"
+    sid = "DynamoDBAuditAppendOnly"
+    actions = [
+      "dynamodb:GetItem",
+      "dynamodb:PutItem",
+      "dynamodb:UpdateItem",
+      "dynamodb:Query",
+    ]
+    resources = [
+      var.audit_table_arn,
+      "${var.audit_table_arn}/index/*",
+    ]
+  }
+
+  # Session and conversation tables — full CRUD needed for chat lifecycle
+  # (create on session start, update during, delete on cleanup).
+  statement {
+    sid = "DynamoDBSessionTables"
     actions = [
       "dynamodb:GetItem",
       "dynamodb:PutItem",
@@ -135,22 +167,23 @@ data "aws_iam_policy_document" "exec" {
       "${var.session_summaries_table_arn}/index/*",
       var.tenant_registry_table_arn,
       "${var.tenant_registry_table_arn}/index/*",
-      var.audit_table_arn,
-      "${var.audit_table_arn}/index/*",
       var.recent_messages_table_arn,
       var.conversation_summaries_table_arn,
       "${var.conversation_summaries_table_arn}/index/*",
     ]
   }
 
+  # Master_Function uses synchronous InvokeModel for V4 Action Selector
+  # (post-stream CTA selection — see v7 plan §"Decisions locked").
+  # Narrowed from `claude-*` to Haiku only.
   statement {
-    sid = "BedrockInvokeClaude"
+    sid = "BedrockInvokeClaudeHaiku"
     actions = [
       "bedrock:InvokeModel",
       "bedrock:InvokeModelWithResponseStream",
     ]
     resources = [
-      "arn:aws:bedrock:${data.aws_region.current.name}::foundation-model/anthropic.claude-*",
+      "arn:aws:bedrock:${data.aws_region.current.name}::foundation-model/anthropic.claude-haiku-*",
       "arn:aws:bedrock:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:inference-profile/*",
     ]
   }
@@ -232,9 +265,13 @@ resource "aws_lambda_function_url" "this" {
   invoke_mode        = "RESPONSE_STREAM"
 }
 
-# See lambda-bedrock-handler-staging for the full note. Same gap: Console
-# Save on the Function URL must run once after Lambda creation to add the
-# FunctionURLAllowInvokeAction resource policy statement.
+# ──────────────────────────────────────────────────────────────────────
+# # MANUAL STEP REQUIRED — see full note in lambda-bedrock-handler-staging
+# After creation, AWS Console → Lambda → ${this function} → Configuration
+# → Function URL → Edit → Save (no changes). Adds the missing
+# FunctionURLAllowInvokeAction policy statement that AWS provider 5.x
+# can't create. Verify both SIDs present on the Lambda's resource policy.
+# ──────────────────────────────────────────────────────────────────────
 
 # ------------------------------------------------------------------
 # Outputs

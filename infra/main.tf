@@ -112,3 +112,33 @@ module "lambda_master_function_staging" {
   conversation_summaries_table_name = module.ddb_conversation_summaries_staging[0].table_name
   streaming_endpoint                = module.lambda_bedrock_handler_staging[0].function_url
 }
+
+# JWT secret resource policy — restricts read to the Master_Function exec
+# role only. Defense-in-depth: the Lambda IAM policy already restricts
+# access, but PowerUserAccess principals in the staging account would
+# otherwise be able to read the signing key. Lives at root level (not in
+# the secrets module) to avoid a circular dep with the Lambda module.
+resource "aws_secretsmanager_secret_policy" "jwt_signing_key_staging" {
+  count      = var.env == "staging" ? 1 : 0
+  secret_arn = module.secrets_jwt_staging[0].secret_arn
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "AllowMasterFunctionRoleOnly"
+        Effect    = "Allow"
+        Principal = { AWS = module.lambda_master_function_staging[0].role_arn }
+        Action    = "secretsmanager:GetSecretValue"
+        Resource  = "*"
+      },
+      {
+        Sid          = "DenyAllOtherStagingPrincipals"
+        Effect       = "Deny"
+        NotPrincipal = { AWS = module.lambda_master_function_staging[0].role_arn }
+        Action       = "secretsmanager:GetSecretValue"
+        Resource     = "*"
+      },
+    ]
+  })
+}

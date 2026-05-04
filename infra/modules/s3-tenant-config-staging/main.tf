@@ -52,6 +52,11 @@ resource "aws_s3_bucket_public_access_block" "tenant_config" {
 # Defense-in-depth: deny s3:Put* from any principal in the staging account
 # (only the prod replication role writes here).
 data "aws_iam_policy_document" "tenant_config" {
+  # Cross-account replication role from prod (614056832592) writes
+  # replicated objects here. Scoped to object-level Replicate* actions
+  # only — bucket-level versioning/config control is NOT needed for
+  # replication to function and would let the prod role alter staging
+  # bucket configuration.
   statement {
     sid    = "AllowProdReplicationRole"
     effect = "Allow"
@@ -63,17 +68,15 @@ data "aws_iam_policy_document" "tenant_config" {
       "s3:ReplicateObject",
       "s3:ReplicateDelete",
       "s3:ReplicateTags",
-      "s3:GetBucketVersioning",
-      "s3:PutBucketVersioning",
     ]
-    resources = [
-      aws_s3_bucket.tenant_config.arn,
-      "${aws_s3_bucket.tenant_config.arn}/*",
-    ]
+    resources = ["${aws_s3_bucket.tenant_config.arn}/*"]
   }
 
+  # Defense-in-depth: any principal in the staging account is denied
+  # write/delete/tagging on the replicated tenant configs. Only the
+  # prod-account replication role above writes here.
   statement {
-    sid    = "DenyPutsFromStagingAccount"
+    sid    = "DenyMutationsFromStagingAccount"
     effect = "Deny"
     principals {
       type        = "AWS"
@@ -85,6 +88,8 @@ data "aws_iam_policy_document" "tenant_config" {
       "s3:PutObjectTagging",
       "s3:PutObjectVersionAcl",
       "s3:PutObjectVersionTagging",
+      "s3:DeleteObject",
+      "s3:DeleteObjectVersion",
     ]
     resources = ["${aws_s3_bucket.tenant_config.arn}/*"]
     condition {
