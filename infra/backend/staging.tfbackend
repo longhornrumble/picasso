@@ -1,0 +1,8 @@
+bucket       = "myrecruiter-tfstate-staging"
+key          = "terraform.tfstate"
+region       = "us-east-1"
+encrypt      = true
+use_lockfile = true
+# AWS credentials sourced from AWS_PROFILE env var (set this before running terraform).
+# Do NOT add a `profile = "..."` line here — it conflicts with Terraform's SSO handling.
+# Locking via S3 native (use_lockfile=true), not DynamoDB.
