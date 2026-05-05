@@ -292,3 +292,7 @@ output "role_arn" {
 output "function_url" {
   value = aws_lambda_function_url.this.function_url
 }
+
+output "log_group_name" {
+  value = aws_cloudwatch_log_group.lambda.name
+}
