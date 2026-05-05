@@ -119,6 +119,16 @@ module "lambda_master_function_staging" {
   conversation_summaries_table_arn  = module.ddb_conversation_summaries_staging[0].table_arn
   conversation_summaries_table_name = module.ddb_conversation_summaries_staging[0].table_name
   streaming_endpoint                = module.lambda_bedrock_handler_staging[0].function_url
+
+  # Mirrors the BSH module block above (lines 88-98). Same KB + same prod-side
+  # retriever role — Master_Function needs identical cross-account access for
+  # its HTTP-fallback chat path.
+  kb_arns = [
+    "arn:aws:bedrock:us-east-1:614056832592:knowledge-base/0BQBWFYDMT",
+  ]
+  kb_retriever_role_arns = [
+    "arn:aws:iam::614056832592:role/picasso-kb-retriever-from-staging",
+  ]
 }
 
 # Issue #5 PR A2-infra: ops alarms + SNS topic for Master_Function_Staging.
