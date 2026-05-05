@@ -49,12 +49,12 @@ resource "aws_cloudwatch_metric_alarm" "master_function_p99_duration" {
   alarm_description   = "Master_Function_Staging p99 duration exceeded 5s for 5 minutes — analytics writer or downstream DDB latency may be impacting chat responses."
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 1
-  threshold           = 5000  # milliseconds
+  threshold           = 5000 # milliseconds
   treat_missing_data  = "notBreaching"
 
-  metric_name = "Duration"
-  namespace   = "AWS/Lambda"
-  period      = 300  # 5 minutes
+  metric_name        = "Duration"
+  namespace          = "AWS/Lambda"
+  period             = 300 # 5 minutes
   extended_statistic = "p99"
 
   dimensions = {
@@ -77,9 +77,9 @@ resource "aws_cloudwatch_log_metric_filter" "kb_creds_init_failed" {
   pattern        = "kb_creds_init_failed"
 
   metric_transformation {
-    name      = "KbCredsInitFailed"
-    namespace = "Picasso/Master_Function_Staging"
-    value     = "1"
+    name          = "KbCredsInitFailed"
+    namespace     = "Picasso/Master_Function_Staging"
+    value         = "1"
     default_value = 0
   }
 }
@@ -111,9 +111,9 @@ resource "aws_cloudwatch_log_metric_filter" "analytics_write_failure" {
   pattern        = "analytics_write_failure"
 
   metric_transformation {
-    name      = "AnalyticsWriteFailure"
-    namespace = "Picasso/Master_Function_Staging"
-    value     = "1"
+    name          = "AnalyticsWriteFailure"
+    namespace     = "Picasso/Master_Function_Staging"
+    value         = "1"
     default_value = 0
   }
 }
