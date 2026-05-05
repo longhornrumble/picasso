@@ -176,6 +176,15 @@ data "aws_iam_policy_document" "exec" {
   # Master_Function uses synchronous InvokeModel for V4 Action Selector
   # (post-stream CTA selection — see v7 plan §"Decisions locked").
   # Narrowed from `claude-*` to Haiku only.
+  #
+  # Cross-region inference profile (Issue #5 INT1): MYR's tenant config uses
+  # claude-haiku-4-5 which AWS only hosts in us-east-2 — the request flows
+  # through the us-east-1 inference profile and AWS picks the target region
+  # transparently. The IAM principal needs explicit allow on the foundation-
+  # model ARN in EVERY target region. Region-wildcard on foundation-model
+  # ARNs is the standard pattern AWS recommends for inference profiles
+  # (https://docs.aws.amazon.com/bedrock/latest/userguide/cross-region-inference.html).
+  # Inference-profile ARN itself stays scoped to the source region.
   statement {
     sid = "BedrockInvokeClaudeHaiku"
     actions = [
@@ -183,7 +192,7 @@ data "aws_iam_policy_document" "exec" {
       "bedrock:InvokeModelWithResponseStream",
     ]
     resources = [
-      "arn:aws:bedrock:${data.aws_region.current.name}::foundation-model/anthropic.claude-haiku-*",
+      "arn:aws:bedrock:*::foundation-model/anthropic.claude-haiku-*",
       "arn:aws:bedrock:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:inference-profile/*",
     ]
   }
@@ -291,4 +300,8 @@ output "role_arn" {
 
 output "function_url" {
   value = aws_lambda_function_url.this.function_url
+}
+
+output "log_group_name" {
+  value = aws_cloudwatch_log_group.lambda.name
 }

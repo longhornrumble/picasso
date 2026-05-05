@@ -112,11 +112,19 @@ data "aws_iam_policy_document" "exec" {
   # specifies Claude 4.5 Haiku as default. InvokeModel (synchronous)
   # removed — only Master_Function uses the synchronous variant for
   # post-stream CTA selection.
+  # Cross-region inference profile (Issue #5 INT1): MYR's tenant config uses
+  # claude-haiku-4-5 which AWS only hosts in us-east-2 — requests flow through
+  # the us-east-1 inference profile and AWS routes to the target region. The
+  # IAM principal needs allow on the foundation-model ARN in every target
+  # region. Region-wildcard on foundation-model ARNs is the standard pattern
+  # AWS recommends for inference profiles
+  # (https://docs.aws.amazon.com/bedrock/latest/userguide/cross-region-inference.html).
+  # Inference-profile ARN itself stays scoped to the source region.
   statement {
     sid     = "BedrockInvokeClaudeHaiku"
     actions = ["bedrock:InvokeModelWithResponseStream"]
     resources = [
-      "arn:aws:bedrock:${data.aws_region.current.name}::foundation-model/anthropic.claude-haiku-*",
+      "arn:aws:bedrock:*::foundation-model/anthropic.claude-haiku-*",
       "arn:aws:bedrock:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:inference-profile/*",
     ]
   }

@@ -121,6 +121,23 @@ module "lambda_master_function_staging" {
   streaming_endpoint                = module.lambda_bedrock_handler_staging[0].function_url
 }
 
+# Issue #5 PR A2-infra: ops alarms + SNS topic for Master_Function_Staging.
+# - p99 duration > 5s (catches HTTP-fallback chat path latency regression
+#   from analytics writer's 2s boto3 timeout, per v7 plan PR A2 §item 4).
+# - kb_creds_init_failed signal (PR A finding B3 — alerts on cross-account
+#   credential init failure that would silently degrade KB Retrieve).
+# - analytics_write_failure signal (catches IAM/schema regressions in the
+#   analytics writer DDB path).
+# SNS subscriptions are intentionally OUT of Terraform — wire them via
+# Console (email/PagerDuty/Slack) since they involve confirmation flows.
+module "ops_alarms_master_function_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/ops-alarms-master-function-staging"
+
+  function_name  = module.lambda_master_function_staging[0].function_name
+  log_group_name = module.lambda_master_function_staging[0].log_group_name
+}
+
 # JWT secret resource policy — restricts read to the Master_Function exec
 # role only. Defense-in-depth: the Lambda IAM policy already restricts
 # access, but PowerUserAccess principals in the staging account would
