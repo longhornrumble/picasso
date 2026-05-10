@@ -237,11 +237,19 @@ resource "aws_secretsmanager_secret_policy" "clerk_secret_key_staging" {
         Resource  = "*"
       },
       {
-        Sid          = "DenyAllOtherStagingPrincipals"
-        Effect       = "Deny"
-        NotPrincipal = { AWS = module.lambda_analytics_dashboard_api_staging[0].role_arn }
-        Action       = "secretsmanager:GetSecretValue"
-        Resource     = "*"
+        # See note in jwt_signing_key_staging policy above — NotPrincipal
+        # with role ARN doesn't reliably exclude assumed-role sessions.
+        # aws:PrincipalArn normalizes the session ARN back to the role ARN.
+        Sid       = "DenyAllOtherStagingPrincipals"
+        Effect    = "Deny"
+        Principal = "*"
+        Action    = "secretsmanager:GetSecretValue"
+        Resource  = "*"
+        Condition = {
+          StringNotEquals = {
+            "aws:PrincipalArn" = module.lambda_analytics_dashboard_api_staging[0].role_arn
+          }
+        }
       },
     ]
   })
@@ -293,14 +301,24 @@ resource "aws_secretsmanager_secret_policy" "jwt_signing_key_staging" {
         Resource = "*"
       },
       {
-        Sid    = "DenyAllOtherStagingPrincipals"
-        Effect = "Deny"
-        NotPrincipal = { AWS = [
-          module.lambda_master_function_staging[0].role_arn,
-          module.lambda_analytics_dashboard_api_staging[0].role_arn,
-        ] }
-        Action   = "secretsmanager:GetSecretValue"
-        Resource = "*"
+        # NotPrincipal with a role ARN doesn't reliably exclude assumed-role
+        # sessions of that role — AWS evaluates literally and the session ARN
+        # (arn:aws:sts::ACCT:assumed-role/NAME/SESSION) doesn't string-match
+        # the role ARN. Use aws:PrincipalArn instead — that condition key
+        # normalizes assumed-role sessions back to the role ARN.
+        Sid       = "DenyAllOtherStagingPrincipals"
+        Effect    = "Deny"
+        Principal = "*"
+        Action    = "secretsmanager:GetSecretValue"
+        Resource  = "*"
+        Condition = {
+          StringNotEquals = {
+            "aws:PrincipalArn" = [
+              module.lambda_master_function_staging[0].role_arn,
+              module.lambda_analytics_dashboard_api_staging[0].role_arn,
+            ]
+          }
+        }
       },
     ]
   })
