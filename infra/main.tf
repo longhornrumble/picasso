@@ -64,6 +64,17 @@ module "ddb_conversation_summaries_staging" {
   source = "./modules/ddb-conversation-summaries-staging"
 }
 
+# Phase 4.1 (analytics-dashboard staging twin): session-events table — first
+# of six new tables backing the staging Analytics_Dashboard_API. Mirrors the
+# prod-account `picasso-session-events` schema: writer is Analytics_Event_
+# Processor (PK SESSION#{id} / SK STEP#{nnn}); reader is Analytics_Dashboard_
+# API which queries via the `tenant-date-index` GSI. TTL attribute set by
+# the writer; PITR enabled per the rest of the staging account convention.
+module "ddb_session_events_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/ddb-session-events-staging"
+}
+
 module "secrets_jwt_staging" {
   count  = var.env == "staging" ? 1 : 0
   source = "./modules/secrets-jwt-staging"
