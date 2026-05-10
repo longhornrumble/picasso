@@ -300,6 +300,12 @@ resource "aws_lambda_function" "this" {
       EMPLOYEE_REGISTRY_TABLE    = var.employee_registry_table_name
       AUDIT_TABLE_NAME           = var.audit_table_name
       USE_DYNAMO_CACHE           = "false"
+      # Plan Security F8: restrict test-send endpoints to recipients whose
+      # email domain is in this comma-list. Without it, an authenticated
+      # admin could trigger a test send to any address (including real
+      # customer emails) by hitting the dashboard's notification preview.
+      # Code default (unset) is no restriction; staging sets it explicitly.
+      TEST_SEND_ALLOWED_DOMAINS = "myrecruiter.ai,staging.myrecruiter.ai"
     }
   }
 
