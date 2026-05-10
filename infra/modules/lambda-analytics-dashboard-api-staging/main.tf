@@ -306,6 +306,12 @@ resource "aws_lambda_function" "this" {
       # customer emails) by hitting the dashboard's notification preview.
       # Code default (unset) is no restriction; staging sets it explicitly.
       TEST_SEND_ALLOWED_DOMAINS = "myrecruiter.ai,staging.myrecruiter.ai"
+      # Route outbound SES through the staging-owned identity. The domain
+      # `staging.myrecruiter.ai` was verified in SES on 2026-05-10 (TXT +
+      # 3 DKIM CNAMEs added at GoDaddy). Code default is notify@myrecruiter.ai
+      # (verified in prod SES); this override keeps prod identity out of
+      # staging traffic.
+      SES_SENDER_ADDRESS = "notify@staging.myrecruiter.ai"
     }
   }
 
