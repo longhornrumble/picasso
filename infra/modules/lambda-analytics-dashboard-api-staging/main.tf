@@ -340,13 +340,21 @@ resource "aws_lambda_function_url" "this" {
   }
 }
 
-# ──────────────────────────────────────────────────────────────────────
-# # MANUAL STEP REQUIRED — see full note in lambda-master-function-staging.
-# After creation, AWS Console → Lambda → ${function_name} → Configuration
-# → Function URL → Edit → Save (no changes). Adds the missing
-# FunctionURLAllowInvokeAction policy statement that AWS provider 5.x
-# can't create.
-# ──────────────────────────────────────────────────────────────────────
+# Resource policy granting public InvokeFunctionUrl. Without this, AWS
+# returns HTTP 403 AccessDeniedException at the URL boundary even though
+# the URL is configured AuthType=NONE — `NONE` only opts out of SigV4,
+# not the underlying invoke permission.
+#
+# (The legacy Issue #5 modules omit this and require a manual console
+# Edit+Save to add the same statement; provider 5.x DOES support it via
+# aws_lambda_permission with function_url_auth_type, so codify here.)
+resource "aws_lambda_permission" "function_url_invoke" {
+  statement_id           = "FunctionURLAllowPublicAccess"
+  action                 = "lambda:InvokeFunctionUrl"
+  function_name          = aws_lambda_function.this.function_name
+  principal              = "*"
+  function_url_auth_type = "NONE"
+}
 
 # ------------------------------------------------------------------
 # Outputs
