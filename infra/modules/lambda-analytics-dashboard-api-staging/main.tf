@@ -340,31 +340,38 @@ resource "aws_lambda_function_url" "this" {
   }
 }
 
-# Resource-policy statement that lets the URL boundary actually invoke the
-# function. Two statements are required for a public Function URL:
+# ──────────────────────────────────────────────────────────────────────
+# # MANUAL STEP REQUIRED (one-time, post-apply)
+# Two resource-policy statements are required for a public Function URL:
 #
 #   1. FunctionURLAllowPublicAccess — Action: lambda:InvokeFunctionUrl
-#      Auto-created by AWS when the Function URL is created with
-#      AuthType=NONE. Don't declare it here (would cause 409 conflict).
+#      Auto-created by AWS when the URL is created with AuthType=NONE.
 #
 #   2. FunctionURLAllowInvokeAction — Action: lambda:InvokeFunction
 #      Condition: lambda:InvokedViaFunctionUrl=true.
 #      AWS does NOT auto-create this. Without it, the URL boundary lets
-#      the request through, then AWS rejects at invoke time with HTTP 403
-#      AccessDeniedException because the principal can't InvokeFunction.
-#      The legacy Issue #5 modules' "MANUAL STEP REQUIRED" comment is
-#      about this statement — Edit+Save in the console adds it.
+#      the request through, then AWS rejects at invoke time with HTTP
+#      403 AccessDeniedException because principal `*` can't
+#      InvokeFunction. The terraform aws_lambda_permission resource
+#      cannot create this statement — function_url_auth_type only
+#      works with action=lambda:InvokeFunctionUrl, and the AWS
+#      add-permission API has no flag to set InvokedViaFunctionUrl=true
+#      for InvokeFunction. update-function-url-config does NOT trigger
+#      AWS to add it. This was verified empirically against the staging
+#      account 2026-05-10.
 #
-# Provider 5.x produces statement (2) when action="lambda:InvokeFunction"
-# and function_url_auth_type is set: function_url_auth_type triggers the
-# InvokedViaFunctionUrl=true condition.
-resource "aws_lambda_permission" "function_url_invoke_action" {
-  statement_id           = "FunctionURLAllowInvokeAction"
-  action                 = "lambda:InvokeFunction"
-  function_name          = aws_lambda_function.this.function_name
-  principal              = "*"
-  function_url_auth_type = "NONE"
-}
+# After this module first applies cleanly, do exactly once per function:
+#   AWS Console → Lambda → ${function_name} → Configuration →
+#   Function URL → Edit → Save (no changes).
+#
+# AWS's console-side logic adds statement (2). Verify with:
+#   aws lambda get-policy --function-name ${function_name} \
+#     --profile myrecruiter-staging | jq -r '.Policy | fromjson |
+#     .Statement[] | "\(.Sid): \(.Action)"'
+#
+# Should print BOTH FunctionURLAllowPublicAccess (InvokeFunctionUrl)
+# AND FunctionURLAllowInvokeAction (InvokeFunction).
+# ──────────────────────────────────────────────────────────────────────
 
 # ------------------------------------------------------------------
 # Outputs
