@@ -75,6 +75,36 @@ module "ddb_session_events_staging" {
   source = "./modules/ddb-session-events-staging"
 }
 
+# Phase 4.1 batch 2: remaining 5 DDB tables backing the staging-account
+# Analytics_Dashboard_API. Each mirrors the schema of its prod-account
+# legacy twin (sources cited per module). All are referenced by the new
+# Lambda module shipped in a follow-up PR.
+
+module "ddb_form_submissions_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/ddb-form-submissions-staging"
+}
+
+module "ddb_notification_events_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/ddb-notification-events-staging"
+}
+
+module "ddb_notification_sends_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/ddb-notification-sends-staging"
+}
+
+module "ddb_billing_events_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/ddb-billing-events-staging"
+}
+
+module "ddb_employee_registry_v2_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/ddb-employee-registry-v2-staging"
+}
+
 module "secrets_jwt_staging" {
   count  = var.env == "staging" ? 1 : 0
   source = "./modules/secrets-jwt-staging"
