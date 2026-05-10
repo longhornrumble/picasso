@@ -326,7 +326,11 @@ resource "aws_lambda_function_url" "this" {
 
   cors {
     allow_credentials = false
-    allow_methods     = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+    # OPTIONS (7 chars) excluded: Lambda Function URL CORS API enforces a
+    # 6-char-max-per-member constraint on allow_methods, and CORS preflight
+    # (OPTIONS) is handled implicitly by the Function URL — no need to list
+    # it here. Surfaced via apply failure on PR #81's first run.
+    allow_methods = ["GET", "POST", "PUT", "PATCH", "DELETE"]
     allow_origins = [
       "https://d2t5sxdcthprgd.cloudfront.net",
       "http://localhost:5173",
