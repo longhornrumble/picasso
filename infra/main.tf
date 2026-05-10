@@ -110,6 +110,15 @@ module "secrets_jwt_staging" {
   source = "./modules/secrets-jwt-staging"
 }
 
+# Phase 4.1: Clerk dev-project secret slot. Value is populated post-apply
+# via aws secretsmanager put-secret-value (out of Terraform state, same
+# pattern as JWT). The legacy plaintext sk_test_... in the prod-account
+# Analytics_Dashboard_API_Staging Lambda env var is the value to inject.
+module "secrets_clerk_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/secrets-clerk-staging"
+}
+
 # Issue #5 batch 2b: staging-account Bedrock streaming handler.
 # Placeholder code; real handler ships via PR A (analytics_writer
 # integration) using `aws lambda update-function-code`.
@@ -170,6 +179,72 @@ module "lambda_master_function_staging" {
   kb_retriever_role_arns = [
     "arn:aws:iam::614056832592:role/picasso-kb-retriever-from-staging",
   ]
+}
+
+# Phase 4.1: staging-account Analytics_Dashboard_API. Bundles IAM exec
+# role + CloudWatch log group + Lambda placeholder + Function URL
+# (AuthType NONE, BUFFERED). Real code ships via Phase 4.2 lambda repo
+# CI matrix entry. CLERK_SECRET_KEY is in Secrets Manager only — never
+# in env vars or tfstate (Plan Security F2).
+module "lambda_analytics_dashboard_api_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/lambda-analytics-dashboard-api-staging"
+
+  tenant_config_bucket_arn = module.tenant_config_staging[0].bucket_arn
+  config_bucket_name       = module.tenant_config_staging[0].bucket_name
+
+  jwt_secret_arn    = module.secrets_jwt_staging[0].secret_arn
+  jwt_secret_name   = module.secrets_jwt_staging[0].secret_name
+  clerk_secret_arn  = module.secrets_clerk_staging[0].secret_arn
+  clerk_secret_name = module.secrets_clerk_staging[0].secret_name
+
+  tenant_registry_table_arn      = module.ddb_tenant_registry_staging[0].table_arn
+  tenant_registry_table_name     = module.ddb_tenant_registry_staging[0].table_name
+  session_summaries_table_arn    = module.session_summaries.table_arn
+  session_summaries_table_name   = module.session_summaries.table_name
+  session_events_table_arn       = module.ddb_session_events_staging[0].table_arn
+  session_events_table_name      = module.ddb_session_events_staging[0].table_name
+  form_submissions_table_arn     = module.ddb_form_submissions_staging[0].table_arn
+  form_submissions_table_name    = module.ddb_form_submissions_staging[0].table_name
+  notification_events_table_arn  = module.ddb_notification_events_staging[0].table_arn
+  notification_events_table_name = module.ddb_notification_events_staging[0].table_name
+  notification_sends_table_arn   = module.ddb_notification_sends_staging[0].table_arn
+  notification_sends_table_name  = module.ddb_notification_sends_staging[0].table_name
+  billing_events_table_arn       = module.ddb_billing_events_staging[0].table_arn
+  billing_events_table_name      = module.ddb_billing_events_staging[0].table_name
+  employee_registry_table_arn    = module.ddb_employee_registry_v2_staging[0].table_arn
+  employee_registry_table_name   = module.ddb_employee_registry_v2_staging[0].table_name
+  audit_table_arn                = module.ddb_audit_staging[0].table_arn
+  audit_table_name               = module.ddb_audit_staging[0].table_name
+}
+
+# Clerk secret resource policy — restricts read to the ADA exec role
+# only. Lives at root level (mirrors JWT pattern) to avoid the same
+# circular-dep issue: secret policy needs the role ARN; the Lambda
+# module needs the secret ARN.
+resource "aws_secretsmanager_secret_policy" "clerk_secret_key_staging" {
+  count      = var.env == "staging" ? 1 : 0
+  secret_arn = module.secrets_clerk_staging[0].secret_arn
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "AllowAnalyticsDashboardAPIRoleOnly"
+        Effect    = "Allow"
+        Principal = { AWS = module.lambda_analytics_dashboard_api_staging[0].role_arn }
+        Action    = "secretsmanager:GetSecretValue"
+        Resource  = "*"
+      },
+      {
+        Sid          = "DenyAllOtherStagingPrincipals"
+        Effect       = "Deny"
+        NotPrincipal = { AWS = module.lambda_analytics_dashboard_api_staging[0].role_arn }
+        Action       = "secretsmanager:GetSecretValue"
+        Resource     = "*"
+      },
+    ]
+  })
 }
 
 # Issue #5 PR A2-infra: ops alarms + SNS topic for Master_Function_Staging.
