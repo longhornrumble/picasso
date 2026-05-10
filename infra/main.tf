@@ -112,8 +112,9 @@ module "secrets_jwt_staging" {
 
 # Phase 4.1: Clerk dev-project secret slot. Value is populated post-apply
 # via aws secretsmanager put-secret-value (out of Terraform state, same
-# pattern as JWT). The legacy plaintext sk_test_... in the prod-account
-# Analytics_Dashboard_API_Staging Lambda env var is the value to inject.
+# pattern as JWT). Value injected 2026-05-10 from the now-decommissioned
+# legacy Lambda's env var; rotate via Clerk console + put-secret-value
+# when the dev project's key is rotated.
 module "secrets_clerk_staging" {
   count  = var.env == "staging" ? 1 : 0
   source = "./modules/secrets-clerk-staging"
