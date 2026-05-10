@@ -340,17 +340,27 @@ resource "aws_lambda_function_url" "this" {
   }
 }
 
-# Resource policy granting public InvokeFunctionUrl. Without this, AWS
-# returns HTTP 403 AccessDeniedException at the URL boundary even though
-# the URL is configured AuthType=NONE — `NONE` only opts out of SigV4,
-# not the underlying invoke permission.
+# Resource-policy statement that lets the URL boundary actually invoke the
+# function. Two statements are required for a public Function URL:
 #
-# (The legacy Issue #5 modules omit this and require a manual console
-# Edit+Save to add the same statement; provider 5.x DOES support it via
-# aws_lambda_permission with function_url_auth_type, so codify here.)
-resource "aws_lambda_permission" "function_url_invoke" {
-  statement_id           = "FunctionURLAllowPublicAccess"
-  action                 = "lambda:InvokeFunctionUrl"
+#   1. FunctionURLAllowPublicAccess — Action: lambda:InvokeFunctionUrl
+#      Auto-created by AWS when the Function URL is created with
+#      AuthType=NONE. Don't declare it here (would cause 409 conflict).
+#
+#   2. FunctionURLAllowInvokeAction — Action: lambda:InvokeFunction
+#      Condition: lambda:InvokedViaFunctionUrl=true.
+#      AWS does NOT auto-create this. Without it, the URL boundary lets
+#      the request through, then AWS rejects at invoke time with HTTP 403
+#      AccessDeniedException because the principal can't InvokeFunction.
+#      The legacy Issue #5 modules' "MANUAL STEP REQUIRED" comment is
+#      about this statement — Edit+Save in the console adds it.
+#
+# Provider 5.x produces statement (2) when action="lambda:InvokeFunction"
+# and function_url_auth_type is set: function_url_auth_type triggers the
+# InvokedViaFunctionUrl=true condition.
+resource "aws_lambda_permission" "function_url_invoke_action" {
+  statement_id           = "FunctionURLAllowInvokeAction"
+  action                 = "lambda:InvokeFunction"
   function_name          = aws_lambda_function.this.function_name
   principal              = "*"
   function_url_auth_type = "NONE"
