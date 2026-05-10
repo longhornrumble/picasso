@@ -264,11 +264,17 @@ module "ops_alarms_master_function_staging" {
   log_group_name = module.lambda_master_function_staging[0].log_group_name
 }
 
-# JWT secret resource policy — restricts read to the Master_Function exec
-# role only. Defense-in-depth: the Lambda IAM policy already restricts
-# access, but PowerUserAccess principals in the staging account would
-# otherwise be able to read the signing key. Lives at root level (not in
-# the secrets module) to avoid a circular dep with the Lambda module.
+# JWT secret resource policy — restricts read to the Lambda exec roles
+# that legitimately validate Picasso-issued JWTs. Defense-in-depth: the
+# Lambda IAM policies already grant the read; this resource-side Deny
+# blocks PowerUserAccess principals in the staging account from reading
+# the signing key out-of-band. Lives at root level (not in the secrets
+# module) to avoid a circular dep with the Lambda modules.
+#
+# Both Master_Function_Staging (chat HTTP fallback) and
+# Analytics_Dashboard_API (dashboard self-signed admin tokens) need
+# read access. The original #81 policy only allowed MFS, which surfaced
+# as AccessDeniedException on ADA's self-signed JWT validation path.
 resource "aws_secretsmanager_secret_policy" "jwt_signing_key_staging" {
   count      = var.env == "staging" ? 1 : 0
   secret_arn = module.secrets_jwt_staging[0].secret_arn
@@ -277,18 +283,24 @@ resource "aws_secretsmanager_secret_policy" "jwt_signing_key_staging" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid       = "AllowMasterFunctionRoleOnly"
-        Effect    = "Allow"
-        Principal = { AWS = module.lambda_master_function_staging[0].role_arn }
-        Action    = "secretsmanager:GetSecretValue"
-        Resource  = "*"
+        Sid    = "AllowJWTValidatingLambdaRoles"
+        Effect = "Allow"
+        Principal = { AWS = [
+          module.lambda_master_function_staging[0].role_arn,
+          module.lambda_analytics_dashboard_api_staging[0].role_arn,
+        ] }
+        Action   = "secretsmanager:GetSecretValue"
+        Resource = "*"
       },
       {
-        Sid          = "DenyAllOtherStagingPrincipals"
-        Effect       = "Deny"
-        NotPrincipal = { AWS = module.lambda_master_function_staging[0].role_arn }
-        Action       = "secretsmanager:GetSecretValue"
-        Resource     = "*"
+        Sid    = "DenyAllOtherStagingPrincipals"
+        Effect = "Deny"
+        NotPrincipal = { AWS = [
+          module.lambda_master_function_staging[0].role_arn,
+          module.lambda_analytics_dashboard_api_staging[0].role_arn,
+        ] }
+        Action   = "secretsmanager:GetSecretValue"
+        Resource = "*"
       },
     ]
   })
