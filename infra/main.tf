@@ -333,3 +333,33 @@ resource "aws_secretsmanager_secret_policy" "jwt_signing_key_staging" {
     ]
   })
 }
+
+# ------------------------------------------------------------------
+# picasso-session-archiver — Event Source Mapping (Phase 2 audit row G)
+# ------------------------------------------------------------------
+# Imports the live ESM into Terraform state so future StartingPosition or
+# config changes flow via the IaC SOP rather than direct CLI. The Lambda
+# itself + its IAM + the DLQ are still hand-created — bringing them under
+# Terraform is follow-up scope. UUID below is the post-B9 fix recreate.
+import {
+  to = aws_lambda_event_source_mapping.picasso_session_archiver[0]
+  id = "9132fb62-9eb0-43cc-bb91-e15e75429752"
+}
+
+resource "aws_lambda_event_source_mapping" "picasso_session_archiver" {
+  count = var.env == "staging" ? 1 : 0
+
+  function_name                      = "picasso-session-archiver"
+  event_source_arn                   = module.session_summaries.stream_arn
+  starting_position                  = "TRIM_HORIZON"
+  batch_size                         = 100
+  maximum_retry_attempts             = 3
+  maximum_batching_window_in_seconds = 5
+  function_response_types            = ["ReportBatchItemFailures"]
+
+  destination_config {
+    on_failure {
+      destination_arn = "arn:aws:sqs:us-east-1:525409062831:picasso-session-archiver-dlq"
+    }
+  }
+}
