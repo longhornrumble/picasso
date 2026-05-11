@@ -180,6 +180,10 @@ module "lambda_master_function_staging" {
   kb_retriever_role_arns = [
     "arn:aws:iam::614056832592:role/picasso-kb-retriever-from-staging",
   ]
+
+  # Phase 2 MFS cleanup R5 set staging MFS log retention to 14d. Codify so
+  # `terraform apply` doesn't revert to the module default of 30.
+  log_retention_days = 14
 }
 
 # Phase 4.1: staging-account Analytics_Dashboard_API. Bundles IAM exec
@@ -217,6 +221,11 @@ module "lambda_analytics_dashboard_api_staging" {
   employee_registry_table_name   = module.ddb_employee_registry_v2_staging[0].table_name
   audit_table_arn                = module.ddb_audit_staging[0].table_arn
   audit_table_name               = module.ddb_audit_staging[0].table_name
+
+  # Tier-3 archive bucket is currently hand-created (Phase 2 of MFS cleanup).
+  # ARN inlined here rather than via module output until the bucket itself is
+  # Terraformed. Follow-up tracked in project memory.
+  archive_bucket_arn = "arn:aws:s3:::picasso-archive-${var.env}"
 }
 
 # Clerk secret resource policy — restricts read to the ADA exec role
