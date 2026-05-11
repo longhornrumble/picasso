@@ -118,6 +118,11 @@ variable "log_retention_days" {
   default     = 30
 }
 
+variable "archive_bucket_arn" {
+  description = "ARN of the Tier-3 archive S3 bucket (picasso-archive-staging). ADA reads from it via _fetch_archived_sessions when the requested date range extends past the 90d DDB TTL window."
+  type        = string
+}
+
 # ------------------------------------------------------------------
 # IAM role + minimum-scope inline policy (with explicit Denies on prod)
 # ------------------------------------------------------------------
@@ -223,6 +228,28 @@ data "aws_iam_policy_document" "exec" {
       var.audit_table_arn,
       "${var.audit_table_arn}/index/*",
     ]
+  }
+
+  # B5 audit: Tier-3 archive read path. Tightened from the hand-attached
+  # ada-archive-read policy to require the tenant-partition prefix shape
+  # — sessions/tenant=*/ — so any code bug that uses a flat legacy prefix
+  # (e.g. sessions/year=...) is IAM-denied. True per-tenant IAM (session
+  # policy per request) is Phase 6.
+  statement {
+    sid       = "ArchiveList"
+    actions   = ["s3:ListBucket"]
+    resources = [var.archive_bucket_arn]
+    condition {
+      test     = "StringLike"
+      variable = "s3:prefix"
+      values   = ["sessions/tenant=*", "sessions/tenant=*/"]
+    }
+  }
+
+  statement {
+    sid       = "ArchiveGet"
+    actions   = ["s3:GetObject"]
+    resources = ["${var.archive_bucket_arn}/sessions/tenant=*/*"]
   }
 
   # Defense-in-depth: never write to the prod tenant-config bucket even
