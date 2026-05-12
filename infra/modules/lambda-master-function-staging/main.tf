@@ -24,6 +24,12 @@ variable "jwt_secret_name" {
   type        = string
 }
 
+variable "cf_origin_secret_arn" {
+  description = "ARN of the CloudFront origin secret in Secrets Manager (used by lambda#101 CF origin header validator). Optional; when empty, no IAM grant is added and the feature flag REQUIRE_CF_ORIGIN_HEADER must remain false."
+  type        = string
+  default     = ""
+}
+
 variable "session_summaries_table_arn" {
   type = string
 }
@@ -178,6 +184,21 @@ data "aws_iam_policy_document" "exec" {
     sid       = "JwtSecretRead"
     actions   = ["secretsmanager:GetSecretValue"]
     resources = [var.jwt_secret_arn]
+  }
+
+  # CF origin secret — granted only when cf_origin_secret_arn is non-empty.
+  # The lambda#101 validator fails closed when the secret can't be read, so
+  # missing this grant is safe (flag must stay off). Audit blocker #2 from
+  # phase-completion-audit 2026-05-12: this grant must exist in IaC before
+  # the activation runbook flips REQUIRE_CF_ORIGIN_HEADER=true, otherwise
+  # all prod traffic 403s.
+  dynamic "statement" {
+    for_each = var.cf_origin_secret_arn != "" ? [1] : []
+    content {
+      sid       = "CfOriginSecretRead"
+      actions   = ["secretsmanager:GetSecretValue"]
+      resources = [var.cf_origin_secret_arn]
+    }
   }
 
   # Audit table is append-only — writers may Put/Update; nobody should
