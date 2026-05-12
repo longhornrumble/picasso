@@ -220,19 +220,34 @@ data "aws_iam_policy_document" "exec" {
     ]
   }
 
-  # Token blacklist — read/write for revocation, with TTL-driven cleanup.
-  # Failed-closed by conversation_handler.py if access denied; required for
-  # conversation memory operations to succeed (auth path verifies non-blacklist).
+  # Token blacklist — split into read + write statements per audit blocker
+  # 2026-05-12 (Phase 4 cumulative). BatchWriteItem grant was the largest
+  # concern: any caller that obtained write access could mass-blacklist
+  # tokens in a single API call (effective DoS). Splitting also lets a
+  # future tightening pin Read to "any reader" and Write to specific
+  # admin paths without re-granting both.
+  #
+  # Active paths today: is_token_blacklisted (GetItem) and
+  # add_token_to_blacklist (PutItem). Scan/Query were unused-by-active-code
+  # and so were dropped; the dormant revoke_tenant_tokens and
+  # cleanup_expired_blacklist_entries functions need a separate Scan grant
+  # added at the time they're wired into an admin API (don't pre-grant).
   statement {
-    sid = "DynamoDBTokenBlacklist"
+    sid = "DynamoDBTokenBlacklistRead"
     actions = [
       "dynamodb:GetItem",
+      "dynamodb:DescribeTable",
+    ]
+    resources = [
+      var.token_blacklist_table_arn,
+    ]
+  }
+
+  statement {
+    sid = "DynamoDBTokenBlacklistWrite"
+    actions = [
       "dynamodb:PutItem",
       "dynamodb:UpdateItem",
-      "dynamodb:Query",
-      "dynamodb:BatchGetItem",
-      "dynamodb:BatchWriteItem",
-      "dynamodb:DescribeTable",
     ]
     resources = [
       var.token_blacklist_table_arn,
