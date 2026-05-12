@@ -64,9 +64,25 @@ variable "conversation_summaries_table_name" {
   type = string
 }
 
+variable "token_blacklist_table_arn" {
+  description = "ARN of the staging-account token blacklist table."
+  type        = string
+}
+
+variable "token_blacklist_table_name" {
+  description = "Name of the token blacklist table (for env var)."
+  type        = string
+}
+
 variable "streaming_endpoint" {
   description = "Function URL of the staging Bedrock streaming handler."
   type        = string
+}
+
+variable "bedrock_model_id" {
+  description = "Bedrock model ID used by intent_router for direct InvokeModel calls (e.g. V4 Action Selector)."
+  type        = string
+  default     = "global.anthropic.claude-haiku-4-5-20251001-v1:0"
 }
 
 variable "kb_arns" {
@@ -184,6 +200,25 @@ data "aws_iam_policy_document" "exec" {
     ]
   }
 
+  # Token blacklist — read/write for revocation, with TTL-driven cleanup.
+  # Failed-closed by conversation_handler.py if access denied; required for
+  # conversation memory operations to succeed (auth path verifies non-blacklist).
+  statement {
+    sid = "DynamoDBTokenBlacklist"
+    actions = [
+      "dynamodb:GetItem",
+      "dynamodb:PutItem",
+      "dynamodb:UpdateItem",
+      "dynamodb:Query",
+      "dynamodb:BatchGetItem",
+      "dynamodb:BatchWriteItem",
+      "dynamodb:DescribeTable",
+    ]
+    resources = [
+      var.token_blacklist_table_arn,
+    ]
+  }
+
   statement {
     sid       = "BedrockKBRetrieve"
     actions   = ["bedrock-agent-runtime:Retrieve"]
@@ -277,6 +312,8 @@ resource "aws_lambda_function" "this" {
       MESSAGES_TABLE_NAME         = var.recent_messages_table_name
       TENANT_REGISTRY_TABLE       = var.tenant_registry_table_name
       AUDIT_TABLE_NAME            = var.audit_table_name
+      BLACKLIST_TABLE_NAME        = var.token_blacklist_table_name
+      BEDROCK_MODEL_ID            = var.bedrock_model_id
       STREAMING_ENDPOINT          = var.streaming_endpoint
       JWT_EXPIRY_MINUTES          = "30"
       MONITORING_ENABLED          = "true"
