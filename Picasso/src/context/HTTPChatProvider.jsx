@@ -494,8 +494,13 @@ export default function HTTPChatProvider({ children }) {
         original_user_input: userInput,
         // PHASE 1B: Include session context for form tracking (with suspended forms)
         session_context: enhancedSessionContext,
-        // Include CTA metadata for explicit routing
-        ...metadata
+        // CTA / action-chip routing metadata. Wire-shape mirrors the
+        // streaming path's `routing_metadata` key (StreamingChatProvider:626)
+        // so MFS's 3-tier explicit routing reads it the same way BSH does.
+        // Pre-fix this was spread (`...metadata`) which put keys at top level
+        // where nothing on the server reads them — action-chip clicks fell
+        // through to intent_router instead of routing to the configured branch.
+        routing_metadata: metadata || {}
       };
       
       // Include state token if available (matching original)
@@ -826,13 +831,19 @@ export default function HTTPChatProvider({ children }) {
   
   /**
    * Add a message (for action chips and user input)
+   *
+   * Action-chip clicks invoke this with `message.metadata` carrying routing
+   * fields (action_chip_triggered, target_branch, action_chip_id). sendMessage
+   * places those under body.routing_metadata so both BSH (streaming) and MFS
+   * (HTTP fallback) read them the same way. Pre-fix this was dropped — only
+   * content was passed to sendMessage — so action chips with target_branch
+   * fell through to intent_router instead of the form path.
    */
   const addMessage = useCallback(async (message) => {
     console.log('🟡 HTTPChatProvider.addMessage called with:', message);
-    // If it's a user message with just content, send it
     if (message.role === 'user' && message.content) {
-      console.log('🟡 Calling sendMessage with content:', message.content);
-      await sendMessage(message.content);
+      console.log('🟡 Calling sendMessage with content:', message.content, 'metadata:', message.metadata);
+      await sendMessage(message.content, message.metadata || {});
     } else {
       console.log('🔴 Not a user message or no content:', message);
     }
