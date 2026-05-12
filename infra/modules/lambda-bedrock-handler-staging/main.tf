@@ -24,6 +24,12 @@ variable "kb_arns" {
   type        = list(string)
 }
 
+variable "bedrock_model_id" {
+  description = "Default Bedrock model ID. BSH index.js fail-loads at module init if this env var is missing — see Phase 4 EC-P4-2 (single point of update for model bumps)."
+  type        = string
+  default     = "global.anthropic.claude-haiku-4-5-20251001-v1:0"
+}
+
 variable "kb_retriever_role_arns" {
   description = "List of cross-account IAM role ARNs the Lambda is allowed to AssumeRole into for KB Retrieve. Bedrock KBs aren't RAM-shareable, so cross-account access requires the staging Lambda to assume a prod-side role that has Retrieve permission. PR A code wraps the Bedrock call with assume-role + cached creds."
   type        = list(string)
@@ -197,6 +203,10 @@ resource "aws_lambda_function" "this" {
       SESSION_SUMMARIES_TABLE     = var.session_summaries_table_name
       TENANT_REGISTRY_TABLE       = var.tenant_registry_table_name
       USE_REGISTRY_FOR_RESOLUTION = "true"
+      # index.js fail-loads at module init if missing; capture in IaC so
+      # routine terraform applies don't strip the var (drift discovered
+      # 2026-05-12 during MFS blacklist IAM split PR plan review).
+      BEDROCK_MODEL_ID = var.bedrock_model_id
       # PR A code reads this and calls sts:AssumeRole before any KB
       # Retrieve call. Empty in environments where Lambda + KB share
       # an account (no assume-role needed).
