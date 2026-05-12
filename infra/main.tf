@@ -105,6 +105,12 @@ module "ddb_employee_registry_v2_staging" {
   source = "./modules/ddb-employee-registry-v2-staging"
 }
 
+module "ddb_token_blacklist_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/ddb-token-blacklist"
+  env    = var.env
+}
+
 module "secrets_jwt_staging" {
   count  = var.env == "staging" ? 1 : 0
   source = "./modules/secrets-jwt-staging"
@@ -169,6 +175,8 @@ module "lambda_master_function_staging" {
   recent_messages_table_name        = module.ddb_recent_messages_staging[0].table_name
   conversation_summaries_table_arn  = module.ddb_conversation_summaries_staging[0].table_arn
   conversation_summaries_table_name = module.ddb_conversation_summaries_staging[0].table_name
+  token_blacklist_table_arn         = module.ddb_token_blacklist_staging[0].table_arn
+  token_blacklist_table_name        = module.ddb_token_blacklist_staging[0].table_name
   streaming_endpoint                = module.lambda_bedrock_handler_staging[0].function_url
 
   # Mirrors the BSH module block above (lines 88-98). Same KB + same prod-side
