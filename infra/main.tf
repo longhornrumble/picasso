@@ -177,6 +177,10 @@ module "lambda_master_function_staging" {
   conversation_summaries_table_name = module.ddb_conversation_summaries_staging[0].table_name
   token_blacklist_table_arn         = module.ddb_token_blacklist_staging[0].table_arn
   token_blacklist_table_name        = module.ddb_token_blacklist_staging[0].table_name
+  form_submissions_table_arn        = module.ddb_form_submissions_staging[0].table_arn
+  form_submissions_table_name       = module.ddb_form_submissions_staging[0].table_name
+  notification_sends_table_arn      = module.ddb_notification_sends_staging[0].table_arn
+  notification_sends_table_name     = module.ddb_notification_sends_staging[0].table_name
   streaming_endpoint                = module.lambda_bedrock_handler_staging[0].function_url
 
   # Mirrors the BSH module block above (lines 88-98). Same KB + same prod-side
