@@ -74,6 +74,26 @@ variable "token_blacklist_table_name" {
   type        = string
 }
 
+variable "form_submissions_table_arn" {
+  description = "ARN of the staging-account form submissions table."
+  type        = string
+}
+
+variable "form_submissions_table_name" {
+  description = "Name of the form submissions table (for env var FORM_SUBMISSIONS_TABLE)."
+  type        = string
+}
+
+variable "notification_sends_table_arn" {
+  description = "ARN of the staging-account notification-sends table (logs of email/SMS delivery results)."
+  type        = string
+}
+
+variable "notification_sends_table_name" {
+  description = "Name of the notification-sends table (for env var NOTIFICATION_SENDS_TABLE)."
+  type        = string
+}
+
 variable "streaming_endpoint" {
   description = "Function URL of the staging Bedrock streaming handler."
   type        = string
@@ -219,6 +239,27 @@ data "aws_iam_policy_document" "exec" {
     ]
   }
 
+  # Form submissions + notification-sends — writes happen during the
+  # forms HTTP fallback path (handle_chat → FormHandler when form_mode=True,
+  # or direct ?action=form_submission). form_handler.py is env-var-driven
+  # for these table names (see FORM_SUBMISSIONS_TABLE + NOTIFICATION_SENDS_TABLE
+  # env vars below).
+  statement {
+    sid = "DynamoDBFormSubmissions"
+    actions = [
+      "dynamodb:GetItem",
+      "dynamodb:PutItem",
+      "dynamodb:UpdateItem",
+      "dynamodb:Query",
+      "dynamodb:DescribeTable",
+    ]
+    resources = [
+      var.form_submissions_table_arn,
+      "${var.form_submissions_table_arn}/index/*",
+      var.notification_sends_table_arn,
+    ]
+  }
+
   statement {
     sid       = "BedrockKBRetrieve"
     actions   = ["bedrock-agent-runtime:Retrieve"]
@@ -313,6 +354,8 @@ resource "aws_lambda_function" "this" {
       TENANT_REGISTRY_TABLE       = var.tenant_registry_table_name
       AUDIT_TABLE_NAME            = var.audit_table_name
       BLACKLIST_TABLE_NAME        = var.token_blacklist_table_name
+      FORM_SUBMISSIONS_TABLE      = var.form_submissions_table_name
+      NOTIFICATION_SENDS_TABLE    = var.notification_sends_table_name
       BEDROCK_MODEL_ID            = var.bedrock_model_id
       STREAMING_ENDPOINT          = var.streaming_endpoint
       JWT_EXPIRY_MINUTES          = "30"
