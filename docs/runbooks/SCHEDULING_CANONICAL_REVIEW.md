@@ -104,7 +104,7 @@ Before this PR is promoted from draft to ready-for-merge, ALL of the following m
 - Description: The canonical consistently uses `AppointmentType.cancellationWindowHours` (camelCase) as the field name, but the config schema spec uses `cancellation_window_hours` (snake_case). These differ across docs and will create confusion at implementation time. One must be the authoritative name.
 - Evidence: Canonical §3: `"AppointmentType.cancellationWindowHours"`. Canonical §9.4: `"Operator-tightenable per AppointmentType.cancellationWindowHours"`. Config schema §5 (`appointmentTypeSchema`): `cancellation_window_hours: z.number()...`. All other schema fields in `appointmentTypeSchema` use snake_case (e.g., `duration_minutes`, `buffer_before_minutes`, `location_mode`, `routing_policy_id`).
 - Proposed fix: The config schema's snake_case convention is correct and consistent with all other fields in `appointmentTypeSchema`. Update the canonical's four references from `cancellationWindowHours` to `cancellation_window_hours`. Canonical references to fix: §3, §9.4 (twice), §13.6, §18 Q#3.
-- Status: OPEN
+- Status: APPLIED 2026-05-13 (5 canonical references updated: §3, §9.4 ×2, §13.6, §18 Q#3; Appendix A lines 1062 and 1326 are historical artifact — intentionally left)
 
 ---
 
