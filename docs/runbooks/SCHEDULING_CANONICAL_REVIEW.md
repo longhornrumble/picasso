@@ -95,7 +95,7 @@ Before this PR is promoted from draft to ready-for-merge, ALL of the following m
 - Description: Task E9 reconciliation scan says it "finds bookings whose `event_end + 30min` is past but lack `pending_attendance` transition." The canonical says `event_end + 35min` (30-minute attendance-check grace window plus a 5-minute buffer) in both §9.2 and §5.2 item 5.
 - Evidence: Impl plan E9 line: `"finds bookings whose event_end + 30min is past"`. Canonical §9.2: `"event_end + 35min is past (i.e., the 30-minute attendance-check window has elapsed plus a 5-minute buffer)"`. Canonical §5.2 item 5: same `"event_end + 35min"` language.
 - Proposed fix: In impl plan E9, change `event_end + 30min` → `event_end + 35min` to match the canonical.
-- Status: OPEN
+- Status: APPLIED 2026-05-13
 
 ### Finding F-M02
 - Tier: 2 Material
