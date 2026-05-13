@@ -113,7 +113,18 @@ function corsHeaders(event, extras = {}) {
 module.exports = { corsHeaders, pickOrigin, ALLOWED_ORIGINS };
 ```
 
-**Migration:** replace all 16 occurrences of inline `'Access-Control-Allow-Origin': '*'` and adjacent CORS headers in `index.js` with `...corsHeaders(event)`. Each callsite must have `event` in scope; spot-check the 16 sites — most are inside handler functions that receive `event` directly, a few are inside helper functions and need `event` passed through.
+**Migration:** replace all 16 occurrences of inline `'Access-Control-Allow-Origin': '*'` and adjacent CORS headers in `index.js` with `...corsHeaders(event)`. **All 16 sites are inside one of 4 handler functions** (verified 2026-05-13):
+
+| Site lines | Containing function | `event` in scope? |
+|---|---|---|
+| 101, 120, 153, 165, 183, 194 | `handleAnalyticsEvent(event)` (line 91) | ✅ |
+| 221, 234, 255, 278 | `handlePromptPreview(event)` (line 205) | ✅ |
+| (none in this range; streamingHandler starts at 291) | `streamingHandler(event, responseStream, context)` | ✅ |
+| 812, 856, 919, 935, 1142, 1162 | `bufferedHandler(event, context)` (line 787) | ✅ |
+
+No new function signatures required. Event threading is a non-issue.
+
+**Maintenance trap callout:** the current BSH JS code emits **zero** `Access-Control-Allow-Credentials` headers — `AllowCredentials: true` is set only at the Lambda URL CORS layer. After D3.A, `corsHeaders(event)` adds `'Access-Control-Allow-Credentials': 'true'` to every response. Future maintainers must keep these two layers in sync: disabling `AllowCredentials` on the URL config without removing it from the JS helper (or vice versa) produces a confusing split-brain. The helper should carry an inline comment documenting this coupling.
 
 **Why mirror MFS allowlist exactly:** the two Lambdas serve traffic from the same widget origin set. Drift between MFS and BSH allowlists is a latent class of bug; the literal duplication here is intentional. If/when an allowlist change becomes necessary, it changes in both places in the same PR.
 
@@ -141,7 +152,7 @@ aws lambda update-function-url-config \
 
 Note: localhost origins are intentionally omitted from the URL config — the Lambda URL CORS layer is a coarse gatekeeper; dev workflows that need localhost go through the JS helper (which handles localhost) after the URL config admits the request. Since the URL config rejects on origin mismatch BEFORE the Lambda runs, localhost dev calls would be blocked at the edge. **Decision:** include localhost in the URL config too, matching the helper.
 
-Final origin list for the URL config:
+Final origin list for the **staging** URL config:
 ```
 http://localhost:3000
 http://localhost:5173
@@ -151,6 +162,15 @@ https://staging.chat.myrecruiter.ai
 https://picassocode.s3.amazonaws.com
 https://picassostaging.s3.amazonaws.com
 ```
+
+**⚠ Ticket 3 author note — prod URL config MUST NOT include localhost:**
+
+When Ticket 3 tightens the prod-account `Bedrock_Streaming_Handler` Lambda URL CORS config, the origin list is:
+```
+https://chat.myrecruiter.ai
+https://picassocode.s3.amazonaws.com
+```
+Localhost origins are intentionally omitted from prod — a localhost origin from a dev machine should never be admitted by a production resource. Do not copy-paste the staging list to prod. Staging includes localhost for developer workflows; prod does not.
 
 ### 3.3 D3.C — MFS default-origin fix
 
@@ -179,6 +199,17 @@ The two functions share `_CORS_ALLOWED_ORIGINS_DEFAULT` but their reflection log
 - **Prod `Bedrock_Streaming_Handler` Lambda URL CORS:** prod-account resource. Files as separate plan with operator written authorization.
 - **Tenant config schema additions (`cors.allowed_origins`):** D1 shows no tenant needs this. Original D3.1/D3.2/D3.3/D3.6 are obviated. If a future tenant embeds the widget cross-origin (e.g., custom subdomain pointing at the widget JS bundle directly), revisit then.
 - **Removing dead tenant-extras merge in `validate_cors_origin`:** see D3.C — deferred.
+
+### 3.6 D3.F — Re-surface triggers for the collapsed scope
+
+The plan's D3.1-D3.6 (per-tenant CORS schema + UI + config manager + per-tenant population) was collapsed based on D1's finding that no tenant currently embeds the widget cross-origin. **That collapse must un-collapse if any of these triggers fire:**
+
+1. **Any new tenant config gains an `embed_domain` field** (whether via config-builder UI, direct S3 edit, or schema extension). The presence of that field signals an embed pattern that bypasses `chat.myrecruiter.ai`.
+2. **Any new Origin appears in prod CORS logs** that doesn't match `https://chat.myrecruiter.ai` or `https://staging.chat.myrecruiter.ai`. Run the D1 query monthly post-cutover; an unexpected origin is the signal to re-introduce per-tenant infra.
+3. **A tenant explicitly requests** to host their own copy of `widget.js` on their own subdomain. The hosted-widget architectural assumption breaks at that point.
+4. **The `validate_cors_origin` tenant-extras code path activates** (i.e., a tenant config gains a `cors.allowed_origins` field). Today that code is dead; if it goes live without a corresponding UI/schema/auth review, the static allowlist can be bypassed silently. **Mitigation:** monitor S3 config writes for the `cors.` key prefix; alert on first occurrence.
+
+**Open question (deferred):** the 3 tenants currently listed as TBD for embed domain in `ORIGIN_DISCOVERY_2026-05-13.md` §1.5 — ATL642715, FOS402334, NAT001622 — were not independently verified against their actual embed sites this phase. The D1 log evidence (zero non-myrecruiter origins) suggests they all use the canonical hosted widget, but the architectural inference is one piece of evidence, not a per-tenant confirmation. A lightweight follow-up (visit each tenant's site, view-source the embed snippet) closes this gap if anyone wants stronger evidence than D1's log silence.
 
 ---
 
