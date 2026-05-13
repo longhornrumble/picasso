@@ -396,6 +396,14 @@ resource "aws_lambda_function" "this" {
       STREAMING_ENDPOINT          = var.streaming_endpoint
       JWT_EXPIRY_MINUTES          = "30"
       MONITORING_ENABLED          = "true"
+      # CF origin secret NAME. Lambda code's default (lambda_function.py:94)
+      # is the same string; pinning here removes the silent-default coupling
+      # so any future rename is caught at terraform plan time, not at runtime.
+      CF_ORIGIN_SECRET_NAME = "picasso/mfs/cf-origin-secret"
+      # Activates the lambda#101 validator. Set live via aws-cli during the
+      # 2026-05-13 activation runbook; codified here so that path is no
+      # longer IaC drift. Rollback = remove this line + plan/apply.
+      REQUIRE_CF_ORIGIN_HEADER = "true"
       # Python bedrock_handler.py reads this and calls sts:AssumeRole before
       # any KB Retrieve call. Empty in environments where Lambda + KB share
       # an account (no assume-role needed).
