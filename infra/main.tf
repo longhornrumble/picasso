@@ -183,6 +183,12 @@ module "lambda_master_function_staging" {
   notification_sends_table_name     = module.ddb_notification_sends_staging[0].table_name
   streaming_endpoint                = module.lambda_bedrock_handler_staging[0].function_url
 
+  # CloudFront origin secret ARN. Activates the conditional CfOriginSecretRead
+  # grant in the module (no-op when empty). The Lambda's REQUIRE_CF_ORIGIN_HEADER
+  # flag stays off until CF is also configured to inject the matching header —
+  # see the activation runbook in project_mfs_phase4_complete_handoff_2026-05-12.
+  cf_origin_secret_arn = "arn:aws:secretsmanager:us-east-1:525409062831:secret:picasso/mfs/cf-origin-secret-ZU7vTU"
+
   # Mirrors the BSH module block above (lines 88-98). Same KB + same prod-side
   # retriever role — Master_Function needs identical cross-account access for
   # its HTTP-fallback chat path.
