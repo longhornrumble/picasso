@@ -160,7 +160,40 @@ may include the Origin header if BSH logs the full event.
 
 ## 8. Caveats and blockers
 
-*Populated during query run.*
+### 8.1 Prod-account Lambda topology (verified 2026-05-13)
+
+The prod account (`614056832592`) has THREE relevant log groups for Master_Function, not one:
+
+| Log group | Lambda exists? | Stored bytes | Last event | Notes |
+|---|---|---|---|---|
+| `/aws/lambda/Master_Function` | YES (active) | 853 | 2026-05-13 | The actual production Lambda. Code in `lambda-repo/`. |
+| `/aws/lambda/Master_Function_Staging` | YES (active) | 625 KB | 2026-05-12 | Despite `_Staging` suffix, lives in prod account. Cleanup-phase test target. |
+| `/aws/lambda/Master_Function_v2` | **NO** (deleted) | 22 MB | (historical) | Lambda function NOT FOUND. Log group retained from deleted function. |
+| `/aws/lambda/Master_Function_Dev` | (unverified) | 0 | — | Empty, ignored. |
+| `/aws/lambda/Master_Function_Streaming` | (unverified) | 0 | — | Empty, ignored. |
+
+**Resolution of prior agent's `Master_Function_v2` claim:** the log group exists with 22 MB
+of historical data, but the underlying Lambda function has been deleted (`ResourceNotFoundException`
+on `get-function`). The 1793 origin hits the prior agent reported likely came from this group's
+historical retention. We will query it for completeness but treat its origins as **historical
+production traffic** (still useful for allowlist derivation).
+
+**Adjusted LG-1 plan:** query both `/aws/lambda/Master_Function` (current prod) AND
+`/aws/lambda/Master_Function_v2` (historical prod). The original `/aws/lambda/Master_Function_Staging`
+in the prod account is treated as LG-1c (lower priority — used for cleanup-phase tests, not real
+customer traffic).
+
+### 8.2 BSH log groups (verified 2026-05-13)
+
+Prod account has two BSH log groups, both active:
+
+| Log group | Stored bytes | Last event |
+|---|---|---|
+| `/aws/lambda/Bedrock_Streaming_Handler` | 500 KB | (verified active) |
+| `/aws/lambda/Bedrock_Streaming_Handler_Staging` | 11.8 MB | 2026-05-13 |
+
+The `_Staging`-suffixed group in the prod account is the high-volume one — that matches the
+"despite `_Staging` suffix, this is the prod Lambda" pattern from MFS. Will query both.
 
 ---
 
