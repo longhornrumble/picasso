@@ -85,14 +85,23 @@ may include the Origin header if BSH logs the full event.
 
 ## 2. Log volume check (Step 1)
 
-*Results populated during query run.*
+Verified 2026-05-13. Volume = `count(*)` over the 7-day window.
 
 | Log group | Account | Record count (7d) | Verdict |
 |---|---|---|---|
-| LG-1 `/aws/lambda/Master_Function_Staging` | prod | — | — |
-| LG-2 `/aws/lambda/Bedrock_Streaming_Handler_Staging` | prod | — | — |
-| LG-3 `/aws/lambda/Master_Function_Staging` | staging | — | — |
-| LG-4 `/aws/lambda/Bedrock_Streaming_Handler_Staging` | staging | — | — |
+| LG-1a `/aws/lambda/Master_Function_v2` | prod | **275,806** | PRIMARY — active prod log group (see §8.1) |
+| LG-1b `/aws/lambda/Master_Function_Staging` | prod | 7,229 | secondary — prod-account `_Staging` Lambda |
+| LG-1c `/aws/lambda/Master_Function` | prod | 12 | minimal — log-group routed elsewhere |
+| LG-2a `/aws/lambda/Bedrock_Streaming_Handler_Staging` | prod | 773 | prod-account `_Staging`-suffixed BSH |
+| LG-2b `/aws/lambda/Bedrock_Streaming_Handler` | prod | 6,480 | prod BSH (no suffix) |
+| LG-3 `/aws/lambda/Master_Function_Staging` | staging | 39,561 | staging MFS |
+| LG-4 `/aws/lambda/Bedrock_Streaming_Handler_Staging` | staging | 296 | staging BSH |
+
+**Critical topology finding:** the prod `Master_Function` Lambda has `LoggingConfig.LogGroup =
+/aws/lambda/Master_Function_v2`. The log group named `Master_Function_v2` is therefore the
+**actual production log group**, despite the misleading `_v2` suffix and the absence of any
+Lambda function named `Master_Function_v2`. All Master_Function CORS events from real customer
+traffic land in LG-1a.
 
 ---
 
