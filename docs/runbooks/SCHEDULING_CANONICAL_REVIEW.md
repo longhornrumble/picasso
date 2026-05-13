@@ -1,6 +1,6 @@
 # Scheduling Canonical Design — Adversarial Review Protocol
 
-**Status:** REVIEW COMPLETE — pending PR #55 promotion to ready  
+**Status:** COMPLETE — PR #55 ready-for-merge (promoted 2026-05-13)  
 **Branch:** docs/scheduling-canonical-adversarial-review  
 **Target doc:** `scheduling/docs/scheduling_design.md` (1556 lines)  
 **Session date:** 2026-05-02 (reviewed 2026-05-13)  
@@ -58,14 +58,15 @@ Each reviewer works independently, then findings are consolidated. Contradiction
 
 Before this PR is promoted from draft to ready-for-merge, ALL of the following must be true:
 
-- [ ] All Tier 1 (Critical) findings resolved (applied or waived with orchestrator sign-off)
-- [ ] All Tier 2 (Material) findings resolved (applied or waived with rationale)
-- [ ] Tier 3 (Minor) findings surfaced to orchestrator; disposition documented
-- [ ] No internal inconsistencies: every state name, term, schema field used in the canonical is consistent across sections
-- [ ] No contradictions vs `scheduling_implementation_plan.md`, `scheduling_ui_plan.md`, `scheduling_ci_strategy.md`, `scheduling_config_schema.md`
-- [ ] Change log entry added to canonical (`scheduling_design.md`)
-- [ ] `verify-before-commit` invoked before final commit batch
-- [ ] Memory entry written: `project_scheduling_canonical_review_complete_2026-05-02.md`
+- [x] All Tier 1 (Critical) findings resolved (0 found)
+- [x] All Tier 2 (Material) findings resolved (2 applied: F-M01, F-M02)
+- [x] Tier 3 (Minor) findings surfaced to orchestrator (6 surfaced: F-m01–F-m06; see findings section)
+- [x] No internal inconsistencies: state names, terms, schema fields consistent across canonical sections (proofing pass confirmed 2026-05-13)
+- [x] No contradictions vs `scheduling_implementation_plan.md`, `scheduling_ui_plan.md`, `scheduling_ci_strategy.md`, `scheduling_config_schema.md` (Minor stale cross-references noted but surfaced — not implementation-breaking)
+- [x] Change log entry added to canonical (`scheduling_design.md` line 973)
+- [x] `verify-before-commit` invoked before each commit batch
+- [x] Memory entry written: `project_scheduling_canonical_review_complete_2026-05-13.md`
+- [x] PR #55 promoted from draft to ready-for-merge (2026-05-13)
 
 ---
 
