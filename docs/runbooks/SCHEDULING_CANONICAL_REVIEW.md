@@ -1,9 +1,9 @@
 # Scheduling Canonical Design — Adversarial Review Protocol
 
-**Status:** IN PROGRESS  
+**Status:** REVIEW COMPLETE — pending PR #55 promotion to ready  
 **Branch:** docs/scheduling-canonical-adversarial-review  
 **Target doc:** `scheduling/docs/scheduling_design.md` (1556 lines)  
-**Session date:** 2026-05-02  
+**Session date:** 2026-05-02 (reviewed 2026-05-13)  
 **Lead reviewer:** Architect agent
 
 ---
@@ -117,7 +117,7 @@ Before this PR is promoted from draft to ready-for-merge, ALL of the following m
 - Description: Impl plan refers to "canonical §3.1" for Zoom Server-to-Server OAuth. §3 of the canonical is "v1 Scope" and has no subsection 3.1. The correct canonical section for Zoom is §6.2 (Conferencing).
 - Evidence: C entry preconditions: `"Zoom Server-to-Server OAuth credentials provisioned per-tenant in Secrets Manager (operational item from canonical §3.1)"`. C scope boundary: `"Zoom/Meet provisioning per §3.1"`. C8: `"Zoom Server-to-Server OAuth for Zoom per §3.1"`.
 - Proposed fix: Replace `§3.1` → `§6.2` in the three impl plan locations that reference Zoom via §3.1.
-- Status: OPEN
+- Status: SURFACED TO ORCHESTRATOR 2026-05-13 (stale cross-reference in impl plan; orchestrator to direct application)
 
 ### Finding F-m02
 - Tier: 3 Minor
@@ -126,7 +126,7 @@ Before this PR is promoted from draft to ready-for-merge, ALL of the following m
 - Description: Impl plan refers to "canonical §4.3" for the concrete AvailabilitySource decision. §4 of the canonical is "Acceptance Criteria" and has no subsection 4.3. The correct canonical section is §5.3 (Concrete-First AvailabilitySource).
 - Evidence: C scope boundary: `"AvailabilitySource interface is concrete-first (canonical §4.3)"`. C anti-drift: `"Building a generic AvailabilitySource interface before v2 has a second consumer is drift (canonical §4.3)"`.
 - Proposed fix: Replace `§4.3` → `§5.3` in the two impl plan locations.
-- Status: OPEN
+- Status: SURFACED TO ORCHESTRATOR 2026-05-13
 
 ### Finding F-m03
 - Tier: 3 Minor
@@ -135,7 +135,7 @@ Before this PR is promoted from draft to ready-for-merge, ALL of the following m
 - Description: Impl plan refers to "canonical §4.4" for double-booking defense. §4 has no subsection 4.4. Correct reference is §5.4 (Layered Double-Booking Defense).
 - Evidence: C scope boundary: `"double-booking defense (§4.4)"`.
 - Proposed fix: Replace `§4.4` → `§5.4`.
-- Status: OPEN
+- Status: SURFACED TO ORCHESTRATOR 2026-05-13
 
 ### Finding F-m04
 - Tier: 3 Minor
@@ -144,7 +144,7 @@ Before this PR is promoted from draft to ready-for-merge, ALL of the following m
 - Description: Impl plan refers to "canonical §4.5" for failure modes. §4 has no subsection 4.5. Correct reference is §5.5 (Failure Modes and Error-Handling).
 - Evidence: B6: `"(§4.5 row 4)"`. C8: `"Compensating transactions per §4.5"`. C testing: `"all §4.5 failure modes"`. F8: `"covers all §4.5 failure modes"`.
 - Proposed fix: Replace `§4.5` → `§5.5` in all four locations.
-- Status: OPEN
+- Status: SURFACED TO ORCHESTRATOR 2026-05-13
 
 ### Finding F-m05
 - Tier: 3 Minor
@@ -153,7 +153,7 @@ Before this PR is promoted from draft to ready-for-merge, ALL of the following m
 - Description: E11 says "Microsoft 365 deferred per `scheduling_design.md` §11". §11 of the canonical is "Missed-Event Re-Engagement" — entirely wrong section. Microsoft 365 deferral is stated in §2.2 (Non-Goals) and §6.1 (Calendar integration surface).
 - Evidence: E11: `"per-staff OAuth flow for Google Calendar (Microsoft 365 deferred per scheduling_design.md §11)"`.
 - Proposed fix: Replace the citation. Either `per §2.2 Non-Goals` or `per §6.1`.
-- Status: OPEN
+- Status: SURFACED TO ORCHESTRATOR 2026-05-13
 
 ### Finding F-m06
 - Tier: 3 Minor
@@ -162,7 +162,7 @@ Before this PR is promoted from draft to ready-for-merge, ALL of the following m
 - Description: UI plan body text line 505 says "A8c gains a second GSI requirement: `(tenantId#assigned_staff_id, start_at)`". But the UI plan's own changelog (reconciliation pass row below it) says "A8c second GSI removed." The impl plan A8c correctly omits this GSI. The stale body text creates a contradiction within the UI plan itself.
 - Evidence: UI plan line 505: `"A8c — gains a second GSI requirement: (tenantId#assigned_staff_id, start_at)"`. UI plan changelog: `"A8c second GSI removed"`. Impl plan A8c: explicitly notes `"Round-robin requires no GSI ... reconciled away 2026-05-02"`.
 - Proposed fix: Remove the line 505 bullet from the UI plan that references the `(tenantId#assigned_staff_id, start_at)` GSI.
-- Status: OPEN
+- Status: SURFACED TO ORCHESTRATOR 2026-05-13
 
 <!-- FINDINGS END -->
 
@@ -170,12 +170,12 @@ Before this PR is promoted from draft to ready-for-merge, ALL of the following m
 
 ## Findings Summary
 
-*(Populated after all findings applied)*
+*(Updated 2026-05-13 — Run 1 complete)*
 
-| Tier | Count | Applied | Waived | Open |
+| Tier | Count | Applied | Waived | Surfaced-to-Orchestrator |
 |---|---|---|---|---|
 | Critical (1) | 0 | 0 | 0 | 0 |
-| Material (2) | 2 | 0 | 0 | 2 |
+| Material (2) | 2 | 2 | 0 | 0 |
 | Minor (3) | 6 | 0 | 0 | 6 |
 
 ---
