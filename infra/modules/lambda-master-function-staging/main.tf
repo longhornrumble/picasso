@@ -28,6 +28,14 @@ variable "cf_origin_secret_arn" {
   description = "ARN of the CloudFront origin secret in Secrets Manager (used by lambda#101 CF origin header validator). Optional; when empty, no IAM grant is added and the feature flag REQUIRE_CF_ORIGIN_HEADER must remain false."
   type        = string
   default     = ""
+
+  # Catch typos / wrong-region / wrong-account ARNs at plan time, not at
+  # runtime. Empty string is allowed (feature off). When set, must be a
+  # Secrets Manager ARN in the same account+region as the Lambda.
+  validation {
+    condition     = var.cf_origin_secret_arn == "" || can(regex("^arn:aws:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:", var.cf_origin_secret_arn))
+    error_message = "cf_origin_secret_arn must be empty or a valid Secrets Manager ARN (arn:aws:secretsmanager:<region>:<account>:secret:<name>-<suffix>)."
+  }
 }
 
 variable "session_summaries_table_arn" {
