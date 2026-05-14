@@ -298,12 +298,63 @@ resource "aws_iam_role_policy" "exec" {
 }
 
 # ------------------------------------------------------------------
-# Log group (explicit, with retention)
+# Log group (explicit, with retention) + KMS-encrypted at rest
 # ------------------------------------------------------------------
+# Phase C.2 audit-of-audit closure (row 27 / F10). BSH logs include session
+# IDs, tenant hashes, and post-Phase-D will include URL fragments from
+# browser page-view events that may contain PII. KMS scopes encrypted-read
+# access to principals with kms:Decrypt + this key's policy.
+
+data "aws_iam_policy_document" "logs_kms" {
+  statement {
+    sid     = "EnableRootAccount"
+    actions = ["kms:*"]
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"]
+    }
+    resources = ["*"]
+  }
+  statement {
+    sid = "AllowCloudWatchLogs"
+    actions = [
+      "kms:Encrypt",
+      "kms:Decrypt",
+      "kms:ReEncrypt*",
+      "kms:GenerateDataKey*",
+      "kms:DescribeKey",
+    ]
+    principals {
+      type        = "Service"
+      identifiers = ["logs.${data.aws_region.current.name}.amazonaws.com"]
+    }
+    resources = ["*"]
+    condition {
+      test     = "ArnEquals"
+      variable = "kms:EncryptionContext:aws:logs:arn"
+      values = [
+        "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/${var.function_name}",
+      ]
+    }
+  }
+}
+
+resource "aws_kms_key" "logs" {
+  description             = "CMK for ${var.function_name} CloudWatch Logs (Phase C.2)"
+  enable_key_rotation     = true
+  deletion_window_in_days = 7
+  policy                  = data.aws_iam_policy_document.logs_kms.json
+}
+
+resource "aws_kms_alias" "logs" {
+  name          = "alias/${var.function_name}-logs"
+  target_key_id = aws_kms_key.logs.key_id
+}
 
 resource "aws_cloudwatch_log_group" "lambda" {
   name              = "/aws/lambda/${var.function_name}"
   retention_in_days = var.log_retention_days
+  kms_key_id        = aws_kms_key.logs.arn
 }
 
 # ------------------------------------------------------------------

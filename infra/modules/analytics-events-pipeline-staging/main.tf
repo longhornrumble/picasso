@@ -57,9 +57,10 @@ variable "log_retention_days" {
 # ------------------------------------------------------------------
 #
 # Queue config mirrors prod (`picasso-analytics-events` in 614056832592):
-# visibility_timeout 300s (5× the Lambda timeout of 60s), retention 1d, redrive
-# at 3 receives. DLQ retention is the standard 14d so failed messages are
-# inspectable long after the source queue ages them out.
+# visibility_timeout 300s (matches prod queue; AWS recommends ≥6× the Lambda
+# timeout of 60s for safety, which would be 360s — kept at 300s for parity
+# with prod). Retention 1d, redrive at 3 receives. DLQ retention is 14d so
+# failed messages are inspectable long after the source queue ages them out.
 
 resource "aws_sqs_queue" "dlq" {
   name                       = "picasso-analytics-events-staging-dlq"
@@ -70,6 +71,21 @@ resource "aws_sqs_queue" "dlq" {
   tags = {
     Name = "picasso-analytics-events-staging-dlq"
   }
+}
+
+# Phase C.2 audit closure (code-reviewer Gap 2): byQueue redrive permission.
+# Default is allowAll; without this, any account queue could nominate this
+# DLQ as its dead-letter target, polluting the failed-message inspection
+# surface. Lock to only our main events queue.
+# Separate resource (not inline on aws_sqs_queue.dlq) to break the circular
+# dep: events.redrive_policy → dlq.arn AND dlq.redrive_allow_policy → events.arn.
+resource "aws_sqs_queue_redrive_allow_policy" "dlq" {
+  queue_url = aws_sqs_queue.dlq.url
+
+  redrive_allow_policy = jsonencode({
+    redrivePermission = "byQueue"
+    sourceQueueArns   = [aws_sqs_queue.events.arn]
+  })
 }
 
 resource "aws_sqs_queue" "events" {
@@ -109,6 +125,8 @@ resource "aws_sqs_queue_policy" "events" {
         # identity policies. AWS evaluates `sqs:SendMessage` for BOTH the
         # SendMessage and SendMessageBatch API operations, so this Allow
         # covers both call patterns from BSH index.js (lines 135, 143, 174).
+        # Per AWS SQS API Reference, "Actions defined by Amazon SQS":
+        # https://docs.aws.amazon.com/service-authorization/latest/reference/list_amazonsqs.html
         Sid       = "AllowBSHSend"
         Effect    = "Allow"
         Principal = { AWS = var.bsh_role_arn }
@@ -129,11 +147,21 @@ resource "aws_sqs_queue_policy" "events" {
         # above; denies all others. SendMessageBatch omitted per the
         # action-name constraint above; sqs:SendMessage denial covers
         # both single and batch SDK calls.
+        # Phase C.2 audit closure (rows 17+18): SetQueueAttributes blocks
+        # redrive-target tampering / SSE disable; DeleteQueue blocks pipeline
+        # destruction. PurgeQueue blocks bulk in-flight clear.
         Sid       = "DenyAllOtherStagingPrincipals"
         Effect    = "Deny"
         Principal = "*"
-        Action    = ["sqs:SendMessage", "sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:PurgeQueue"]
-        Resource  = aws_sqs_queue.events.arn
+        Action = [
+          "sqs:SendMessage",
+          "sqs:ReceiveMessage",
+          "sqs:DeleteMessage",
+          "sqs:PurgeQueue",
+          "sqs:SetQueueAttributes",
+          "sqs:DeleteQueue",
+        ]
+        Resource = aws_sqs_queue.events.arn
         Condition = {
           StringNotEquals = {
             "aws:PrincipalArn" = [var.bsh_role_arn, aws_iam_role.exec.arn]
@@ -162,11 +190,23 @@ resource "aws_sqs_queue_policy" "dlq" {
         Resource  = aws_sqs_queue.dlq.arn
       },
       {
+        # Phase C.2 audit closure (Item 2b + 3b): SendMessage in the Deny
+        # set prevents insider injection of fake "failed" messages; SQS
+        # service-internal redrive from the main queue doesn't traverse
+        # IAM (it's authorized by RedrivePolicy), so this Deny is safe.
+        # SetQueueAttributes/DeleteQueue prevent DLQ tampering.
         Sid       = "DenyAllOtherStagingPrincipals"
         Effect    = "Deny"
         Principal = "*"
-        Action    = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:PurgeQueue"]
-        Resource  = aws_sqs_queue.dlq.arn
+        Action = [
+          "sqs:SendMessage",
+          "sqs:ReceiveMessage",
+          "sqs:DeleteMessage",
+          "sqs:PurgeQueue",
+          "sqs:SetQueueAttributes",
+          "sqs:DeleteQueue",
+        ]
+        Resource = aws_sqs_queue.dlq.arn
         Condition = {
           StringNotEquals = {
             "aws:PrincipalArn" = aws_iam_role.exec.arn
@@ -227,6 +267,101 @@ resource "aws_s3_bucket_lifecycle_configuration" "analytics" {
       days = 30
     }
   }
+}
+
+# Phase C.2 audit closure (row 23 / F5): bucket policy restricting Put/Delete
+# to the processor role only. Without this, any staging-account principal
+# with `s3:PutObject` on `picasso-analytics-staging/analytics/*` could inject
+# fabricated event records, which Analytics_Dashboard_API would then read as
+# legitimate. Defense-in-depth on top of the IAM-default-deny posture.
+resource "aws_s3_bucket_policy" "analytics" {
+  bucket = aws_s3_bucket.analytics.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "AllowProcessorWrite"
+        Effect    = "Allow"
+        Principal = { AWS = aws_iam_role.exec.arn }
+        Action    = ["s3:PutObject"]
+        Resource  = "${aws_s3_bucket.analytics.arn}/analytics/*"
+      },
+      {
+        Sid       = "DenyAllOtherWrites"
+        Effect    = "Deny"
+        Principal = "*"
+        Action    = ["s3:PutObject", "s3:DeleteObject"]
+        Resource  = "${aws_s3_bucket.analytics.arn}/*"
+        Condition = {
+          StringNotEquals = {
+            "aws:PrincipalArn" = aws_iam_role.exec.arn
+          }
+        }
+      }
+    ]
+  })
+}
+
+# ------------------------------------------------------------------
+# KMS: customer-managed key for CloudWatch Logs encryption-at-rest
+# ------------------------------------------------------------------
+#
+# Phase C.2 audit closure (row 27 / F10). Processor logs include session IDs,
+# tenant IDs, event types, and (post-Phase-D) URL fragments from page-view
+# events that may contain PII. SSE-S3 default uses AWS-managed keys with no
+# per-customer rotation or key-policy control. Customer-managed KMS scopes
+# the encryption context to this specific log group ARN — even a principal
+# with logs:GetLogEvents needs kms:Decrypt on this key, which only the
+# CloudWatch Logs service can use under the ArnEquals condition below.
+
+data "aws_iam_policy_document" "logs_kms" {
+  statement {
+    sid     = "EnableRootAccount"
+    actions = ["kms:*"]
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"]
+    }
+    resources = ["*"]
+  }
+  statement {
+    sid = "AllowCloudWatchLogs"
+    actions = [
+      "kms:Encrypt",
+      "kms:Decrypt",
+      "kms:ReEncrypt*",
+      "kms:GenerateDataKey*",
+      "kms:DescribeKey",
+    ]
+    principals {
+      type        = "Service"
+      identifiers = ["logs.${data.aws_region.current.name}.amazonaws.com"]
+    }
+    resources = ["*"]
+    # Scope to ONLY this log group's encryption context. Without this
+    # condition, the key could be used by any log group in the account that
+    # the CloudWatch Logs service principal can reach.
+    condition {
+      test     = "ArnEquals"
+      variable = "kms:EncryptionContext:aws:logs:arn"
+      values = [
+        "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/Analytics_Event_Processor",
+      ]
+    }
+  }
+}
+
+resource "aws_kms_key" "logs" {
+  description             = "CMK for Analytics_Event_Processor CloudWatch Logs (Phase C.2)"
+  enable_key_rotation     = true
+  deletion_window_in_days = 7
+  policy                  = data.aws_iam_policy_document.logs_kms.json
+}
+
+resource "aws_kms_alias" "logs" {
+  name          = "alias/analytics-event-processor-logs-staging"
+  target_key_id = aws_kms_key.logs.key_id
 }
 
 # ------------------------------------------------------------------
@@ -291,21 +426,14 @@ data "aws_iam_policy_document" "exec" {
 
   # Tenant_hash → tenant_id decode reads from the tenant-config bucket's
   # mappings/ prefix. Processor caches in memory across warm invocations.
+  # S3MappingsList intentionally OMITTED — the handler never calls
+  # s3.list_objects_v2 (verified lambda_function.py:69-104), only
+  # s3.get_object on specific {tenant_hash}.json keys. Removed in Phase C.2
+  # audit-of-audit closure (row 33).
   statement {
     sid       = "S3MappingsRead"
     actions   = ["s3:GetObject"]
     resources = ["${var.tenant_config_bucket_arn}/mappings/*"]
-  }
-
-  statement {
-    sid       = "S3MappingsList"
-    actions   = ["s3:ListBucket"]
-    resources = [var.tenant_config_bucket_arn]
-    condition {
-      test     = "StringLike"
-      variable = "s3:prefix"
-      values   = ["mappings/*"]
-    }
   }
 
   statement {
@@ -323,6 +451,17 @@ data "aws_iam_policy_document" "exec" {
     resources = ["arn:aws:s3:::myrecruiter-picasso/*"]
   }
 
+  # Phase C.2 audit-of-audit closure (row 24 / F6): extend the prod-S3 Deny
+  # to cover the prod analytics bucket too. The processor has no Allow on
+  # picasso-analytics (the prod-account bucket), so cross-account default
+  # would block this anyway; this is belt-and-braces defense-in-depth.
+  statement {
+    sid       = "DenyProdAnalyticsBucketWrites"
+    effect    = "Deny"
+    actions   = ["s3:PutObject", "s3:DeleteObject"]
+    resources = ["arn:aws:s3:::picasso-analytics/*"]
+  }
+
   # Defense-in-depth: never touch any DynamoDB table in the prod account
   # even if an allow rule resolves a cross-account ARN by mistake. Account
   # boundary is the primary control; this is belt-and-braces.
@@ -331,6 +470,17 @@ data "aws_iam_policy_document" "exec" {
     effect    = "Deny"
     actions   = ["dynamodb:*"]
     resources = ["arn:aws:dynamodb:*:614056832592:*"]
+  }
+
+  # Phase C.2 audit-of-audit closure (row 24 / F6): extend the prod Deny to
+  # SQS. The processor has no Allow on cross-account SQS, but the prior
+  # audit recommended completing the defense-in-depth pattern across all
+  # prod-account resources mentioned in the data flows.
+  statement {
+    sid       = "DenyAllProdSqs"
+    effect    = "Deny"
+    actions   = ["sqs:*"]
+    resources = ["arn:aws:sqs:*:614056832592:*"]
   }
 }
 
@@ -347,6 +497,10 @@ resource "aws_iam_role_policy" "exec" {
 resource "aws_cloudwatch_log_group" "lambda" {
   name              = "/aws/lambda/Analytics_Event_Processor"
   retention_in_days = var.log_retention_days
+  # Phase C.2 audit-of-audit closure (row 27 / F10). KMS-encrypted at rest.
+  # The KMS key's policy scopes use to this exact log-group ARN, so a
+  # logs:GetLogEvents grant alone is insufficient — kms:Decrypt is required.
+  kms_key_id = aws_kms_key.logs.arn
 }
 
 # ------------------------------------------------------------------
@@ -372,9 +526,8 @@ resource "aws_lambda_function" "processor" {
   filename         = data.archive_file.placeholder.output_path
   source_code_hash = data.archive_file.placeholder.output_base64sha256
 
-  ephemeral_storage {
-    size = 512
-  }
+  # ephemeral_storage block intentionally omitted — handler has no
+  # disk I/O. Lambda default of 512MB applies. Phase C.2 cleanup (row 35).
 
   environment {
     variables = {
