@@ -103,10 +103,16 @@ resource "aws_sqs_queue_policy" "events" {
     Version = "2012-10-17"
     Statement = [
       {
+        # SQS resource policies only accept `sqs:SendMessage` as the
+        # ActionName; `sqs:SendMessageBatch` is rejected by SetQueueAttributes
+        # with InvalidParameterValue even though it's a valid IAM action in
+        # identity policies. AWS evaluates `sqs:SendMessage` for BOTH the
+        # SendMessage and SendMessageBatch API operations, so this Allow
+        # covers both call patterns from BSH index.js (lines 135, 143, 174).
         Sid       = "AllowBSHSend"
         Effect    = "Allow"
         Principal = { AWS = var.bsh_role_arn }
-        Action    = ["sqs:SendMessage", "sqs:SendMessageBatch"]
+        Action    = "sqs:SendMessage"
         Resource  = aws_sqs_queue.events.arn
       },
       {
@@ -120,11 +126,13 @@ resource "aws_sqs_queue_policy" "events" {
         # Same pattern as infra/main.tf:307-321 — NotPrincipal doesn't
         # reliably exclude assumed-role sessions; aws:PrincipalArn
         # normalizes back to the role ARN. Permits legitimate principals
-        # above; denies all others.
+        # above; denies all others. SendMessageBatch omitted per the
+        # action-name constraint above; sqs:SendMessage denial covers
+        # both single and batch SDK calls.
         Sid       = "DenyAllOtherStagingPrincipals"
         Effect    = "Deny"
         Principal = "*"
-        Action    = ["sqs:SendMessage", "sqs:SendMessageBatch", "sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:PurgeQueue"]
+        Action    = ["sqs:SendMessage", "sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:PurgeQueue"]
         Resource  = aws_sqs_queue.events.arn
         Condition = {
           StringNotEquals = {
