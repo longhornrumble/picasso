@@ -308,6 +308,11 @@ module "analytics_events_pipeline_staging" {
   session_summaries_table_name = module.session_summaries.table_name
   tenant_config_bucket_arn     = module.tenant_config_staging[0].bucket_arn
   tenant_config_bucket_name    = module.tenant_config_staging[0].bucket_name
+
+  # Phase C audit F1 closure: SQS queue policy needs the BSH role ARN to
+  # scope the Allow statement. Module gates the queue policy on this being
+  # the legitimate sender — no other staging-account principal may send.
+  bsh_role_arn = module.lambda_bedrock_handler_staging[0].role_arn
 }
 
 # Clerk secret resource policy — restricts read to the ADA exec role
