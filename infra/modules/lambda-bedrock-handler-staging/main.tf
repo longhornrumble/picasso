@@ -121,6 +121,18 @@ variable "sms_usage_table_name" {
   default     = ""
 }
 
+variable "analytics_queue_arn" {
+  description = "ARN of picasso-analytics-events-staging SQS queue (Phase C). Optional; when empty, the conditional SqsAnalyticsSend IAM Sid is omitted AND ANALYTICS_QUEUE_URL env var is not set — BSH handleAnalyticsEvent then returns {status:'noop'} per index.js:100-106. Wired from module.analytics_events_pipeline_staging[0].queue_arn."
+  type        = string
+  default     = ""
+}
+
+variable "analytics_queue_url" {
+  description = "URL of picasso-analytics-events-staging (for ANALYTICS_QUEUE_URL env var). Must correspond to analytics_queue_arn — if you change one, change both. When empty, no env var is set."
+  type        = string
+  default     = ""
+}
+
 # ------------------------------------------------------------------
 # IAM role + minimum-scope inline policy
 # ------------------------------------------------------------------
@@ -264,6 +276,19 @@ data "aws_iam_policy_document" "exec" {
       ]
     }
   }
+
+  # Phase C analytics-events pipeline send grant. Conditional on the queue ARN
+  # being passed (when empty, BSH's handleAnalyticsEvent no-ops per index.js:66-106
+  # so no IAM grant is required). SendMessage + SendMessageBatch cover both
+  # single-event and batched send sites in index.js (lines 135, 143, 174).
+  dynamic "statement" {
+    for_each = var.analytics_queue_arn != "" ? [1] : []
+    content {
+      sid       = "SqsAnalyticsSend"
+      actions   = ["sqs:SendMessage", "sqs:SendMessageBatch"]
+      resources = [var.analytics_queue_arn]
+    }
+  }
 }
 
 resource "aws_iam_role_policy" "exec" {
@@ -336,6 +361,13 @@ resource "aws_lambda_function" "this" {
       var.cf_origin_secret_arn != "" ? {
         CF_ORIGIN_SECRET_NAME    = var.cf_origin_secret_name
         REQUIRE_CF_ORIGIN_HEADER = "true"
+      } : {},
+      # Phase C: when the analytics-events pipeline is wired, BSH's
+      # handleAnalyticsEvent reads ANALYTICS_QUEUE_URL and sends to SQS.
+      # When empty (e.g., dev environments not yet provisioned), the
+      # handler returns {status:"noop"} per index.js:100-106.
+      var.analytics_queue_url != "" ? {
+        ANALYTICS_QUEUE_URL = var.analytics_queue_url
       } : {}
     )
   }
