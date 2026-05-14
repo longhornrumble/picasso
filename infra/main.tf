@@ -185,6 +185,13 @@ module "lambda_bedrock_handler_staging" {
   analytics_queue_arn = module.analytics_events_pipeline_staging[0].queue_arn
   analytics_queue_url = module.analytics_events_pipeline_staging[0].queue_url
 
+  # Phase B SMS twin. Wiring SMS_SENDER_FUNCTION flips form_handler.js
+  # from invoking the bare `SMS_Sender` default (resolves to nothing in
+  # staging account today) to the explicit staging-account ARN. IAM Sid
+  # InvokeSmsSender is rendered conditionally on the ARN being non-empty.
+  sms_sender_function_arn  = module.lambda_sms_twin_staging[0].sms_sender_function_arn
+  sms_sender_function_name = module.lambda_sms_twin_staging[0].sms_sender_function_name
+
   # MYR test tenant KB — the only KB allowed for Issue #5 batch 2b.
   # Add more tenants here as they're enrolled in staging coverage.
   kb_arns = [
@@ -313,6 +320,26 @@ module "analytics_events_pipeline_staging" {
   # scope the Allow statement. Module gates the queue policy on this being
   # the legitimate sender — no other staging-account principal may send.
   bsh_role_arn = module.lambda_bedrock_handler_staging[0].role_arn
+}
+
+# Phase B (BSH staging-twin): SMS_Sender + SMS_Webhook_Handler twin.
+# Provisions both Lambdas + their IAM + KMS-encrypted log groups +
+# picasso/telnyx-staging secret (placeholder values; operator populates
+# real API key + public key post-Telnyx-account-procurement via
+# `aws secretsmanager update-secret`). Real Lambda code deploys via
+# lambda-repo CI matrix (parallel PR).
+module "lambda_sms_twin_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/lambda-sms-twin-staging"
+
+  notification_sends_table_arn   = module.ddb_notification_sends_staging[0].table_arn
+  notification_sends_table_name  = module.ddb_notification_sends_staging[0].table_name
+  notification_events_table_arn  = module.ddb_notification_events_staging[0].table_arn
+  notification_events_table_name = module.ddb_notification_events_staging[0].table_name
+  sms_consent_table_arn          = module.picasso_form_tables.sms_consent_table_arn
+  sms_consent_table_name         = module.picasso_form_tables.sms_consent_table_name
+  sms_usage_table_arn            = module.picasso_form_tables.sms_usage_table_arn
+  sms_usage_table_name           = module.picasso_form_tables.sms_usage_table_name
 }
 
 # Clerk secret resource policy — restricts read to the ADA exec role
