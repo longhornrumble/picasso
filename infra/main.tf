@@ -180,6 +180,11 @@ module "lambda_bedrock_handler_staging" {
   sms_usage_table_arn           = module.picasso_form_tables.sms_usage_table_arn
   sms_usage_table_name          = module.picasso_form_tables.sms_usage_table_name
 
+  # Phase C analytics-events pipeline. Wiring the queue URL flips BSH's
+  # handleAnalyticsEvent from no-op to live SQS send (index.js:66-106).
+  analytics_queue_arn = module.analytics_events_pipeline_staging[0].queue_arn
+  analytics_queue_url = module.analytics_events_pipeline_staging[0].queue_url
+
   # MYR test tenant KB — the only KB allowed for Issue #5 batch 2b.
   # Add more tenants here as they're enrolled in staging coverage.
   kb_arns = [
@@ -284,6 +289,25 @@ module "lambda_analytics_dashboard_api_staging" {
   # ARN inlined here rather than via module output until the bucket itself is
   # Terraformed. Follow-up tracked in project memory.
   archive_bucket_arn = "arn:aws:s3:::picasso-archive-${var.env}"
+}
+
+# Phase C (BSH staging-twin): analytics-events pipeline.
+# Path 2 of the analytics architecture — browser POSTs to BSH `?action=analytics`
+# get batched to SQS, processed into S3 (raw NDJSON archive, 30d expiry) +
+# picasso-session-events-staging (per-event DDB rows). Path 1 (server-side direct
+# write to session-summaries via analytics_writer.js/py) is unchanged.
+# Athena + Aggregator are intentionally NOT twinned — those are dead/dormant
+# in prod (zero invocations 5d; picasso-dashboard-aggregates empty); separate
+# project_cleanup_prod_analytics_legacy.md tracks removal.
+module "analytics_events_pipeline_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/analytics-events-pipeline-staging"
+
+  session_events_table_arn     = module.ddb_session_events_staging[0].table_arn
+  session_events_table_name    = module.ddb_session_events_staging[0].table_name
+  session_summaries_table_name = module.session_summaries.table_name
+  tenant_config_bucket_arn     = module.tenant_config_staging[0].bucket_arn
+  tenant_config_bucket_name    = module.tenant_config_staging[0].bucket_name
 }
 
 # Clerk secret resource policy — restricts read to the ADA exec role
