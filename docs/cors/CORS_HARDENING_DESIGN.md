@@ -126,6 +126,8 @@ No new function signatures required. Event threading is a non-issue.
 
 **Maintenance trap callout:** the current BSH JS code emits **zero** `Access-Control-Allow-Credentials` headers — `AllowCredentials: true` is set only at the Lambda URL CORS layer. After D3.A, `corsHeaders(event)` adds `'Access-Control-Allow-Credentials': 'true'` to every response. Future maintainers must keep these two layers in sync: disabling `AllowCredentials` on the URL config without removing it from the JS helper (or vice versa) produces a confusing split-brain. The helper should carry an inline comment documenting this coupling.
 
+**streamifyResponse asymmetry — discovered during Ticket 1 §4.1 verification, 2026-05-14:** the BSH handler is exported as `streamifyResponse(streamingHandler)` ([`Bedrock_Streaming_Handler_Staging/index.js:1170`](../../Lambdas/lambda/Bedrock_Streaming_Handler_Staging/index.js#L1170)). Under that wrapper, AWS silently drops the `headers` field of any `{statusCode, headers, body}` return value from the streaming handler — the **Lambda URL CORS config is the active CORS gatekeeper for streaming responses**, not the JS helper. The 16 `corsHeaders(event)` calls live in the `bufferedHandler` fallback path (local invocation / non-streaming runtime) and provide source-code hygiene + unit-test coverage, but they are NOT the production enforcement point. Practical implication: the URL config must be exact and complete — there is no application-layer fallback for the streaming path. This was not anticipated when D3.A was scoped; the helper still earns its keep in the buffered path but the URL config is load-bearing.
+
 **Why mirror MFS allowlist exactly:** the two Lambdas serve traffic from the same widget origin set. Drift between MFS and BSH allowlists is a latent class of bug; the literal duplication here is intentional. If/when an allowlist change becomes necessary, it changes in both places in the same PR.
 
 ### 3.2 D3.B — BSH staging Lambda URL CORS config tightening
@@ -138,9 +140,12 @@ aws lambda update-function-url-config \
   --profile myrecruiter-staging \
   --cors '{
     "AllowCredentials": true,
-    "AllowHeaders": ["Content-Type", "Authorization", "X-Requested-With"],
-    "AllowMethods": ["GET", "POST", "OPTIONS"],
+    "AllowHeaders": ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
+    "AllowMethods": ["GET", "POST"],
     "AllowOrigins": [
+      "http://localhost:3000",
+      "http://localhost:5173",
+      "http://localhost:8000",
       "https://chat.myrecruiter.ai",
       "https://staging.chat.myrecruiter.ai",
       "https://picassocode.s3.amazonaws.com",
@@ -149,6 +154,12 @@ aws lambda update-function-url-config \
     "ExposeHeaders": []
   }'
 ```
+
+**⚠ Two non-obvious constraints surfaced during Ticket 1 implementation** (Phase D3 execution, 2026-05-14):
+
+1. **`OPTIONS` is NOT in `AllowMethods`.** AWS Lambda URL CORS API rejects method strings >6 characters (`OPTIONS` is 7) with `ValidationException`. The Lambda Function URL CORS layer auto-handles preflight `OPTIONS` regardless of whether it appears in `AllowMethods`. Listing `OPTIONS` explicitly will cause the `update-function-url-config` call to fail.
+
+2. **`Accept` MUST be in `AllowHeaders`.** The widget sends `Accept: text/event-stream, application/x-ndjson, application/json` on streaming requests ([`Picasso/src/context/StreamingChatProvider.jsx:680`](../../Picasso/src/context/StreamingChatProvider.jsx)). When `Accept` has a comma-separated media-type-list value, some browsers include `Accept` in preflight `Access-Control-Request-Headers`, and the URL CORS config must list it or the preflight fails (verified: preflight returns 200 with zero CORS headers when `accept` is in Request-Headers and not in AllowHeaders). An initial version of this design omitted `Accept` — fixed in audit followup [lambda#110](https://github.com/longhornrumble/lambda/pull/110).
 
 Note: localhost origins are intentionally omitted from the URL config — the Lambda URL CORS layer is a coarse gatekeeper; dev workflows that need localhost go through the JS helper (which handles localhost) after the URL config admits the request. Since the URL config rejects on origin mismatch BEFORE the Lambda runs, localhost dev calls would be blocked at the edge. **Decision:** include localhost in the URL config too, matching the helper.
 
@@ -247,7 +258,9 @@ curl -is "$MFS_URL/health" | grep -i "access-control-allow-origin"
 
 ### 4.3 Real-traffic CloudWatch monitoring (post-deploy)
 
-Re-run Phase D1 queries against `/aws/lambda/Master_Function_v2` and `/aws/lambda/Bedrock_Streaming_Handler_Staging` (staging) for a 24-hour window post-deploy. Expect:
+**Scope: prod cutover only (Ticket 3), NOT staging.** Per `feedback_staging_soak_theater.md`, staging has no real traffic — a 24-hour CloudWatch window in staging will show zero allowed-origin events and provide no signal. Staging validation uses §4.1 synthetic curl tests exclusively. The 24-hour monitoring requirement below applies when Ticket 3 cuts over the prod-account `Bedrock_Streaming_Handler` Lambda URL + API Gateway `kgvc8xnewf`.
+
+Re-run Phase D1 queries against `/aws/lambda/Master_Function_v2` and `/aws/lambda/Bedrock_Streaming_Handler` (prod) for a 24-hour window post-deploy. Expect:
 - Allowed origins continue at baseline volume (within ±10%)
 - No new `CORS: Origin ... not in allowed list` warnings spike (would indicate a legitimate caller broke)
 - BSH starts emitting CORS log lines (helper logs reflected origin) — establishes the BSH observability gap noted in D1 §8.3 is closed
@@ -267,10 +280,8 @@ Single PR on `lambda` repo, deploying to staging-account `Bedrock_Streaming_Hand
 - Tests: unit test the helper for each origin class (allowed, localhost, unknown, missing); integration test against deployed staging Lambda URL via curl
 - Rollback: re-deploy prior bundle + restore wildcard URL config
 
-**Ticket 2 — MFS default-origin fix (1 small PR on `lambda`, deploys to MFS staging)**
-- Change `add_cors_headers()` default from `_CORS_ALLOWED_ORIGINS_DEFAULT[0]` to `'https://chat.myrecruiter.ai'`
-- Test: add a no-Origin-header case to the existing MFS test suite
-- Trivial — could fold into Ticket 1 if same PR is desired, but keeping separate isolates blast radius
+**Ticket 2 — MFS default-origin fix — ✅ SHIPPED PRE-DESIGN-DOC**
+- Shipped as [lambda#108](https://github.com/longhornrumble/lambda/pull/108) on 2026-05-13 (`597328c`). An adversarial audit caught the `_CORS_ALLOWED_ORIGINS_DEFAULT[0]` = `http://localhost:8000` fallback before this design doc landed and the fix was expedited as "Ticket 0." No separate Ticket 2 work is needed.
 
 **Ticket 3 — Prod-account cutover (separate plan, gated on operator written authorization)**
 - API GW `kgvc8xnewf` CORS config tightening
