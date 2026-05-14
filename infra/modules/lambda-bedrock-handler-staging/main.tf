@@ -133,6 +133,18 @@ variable "analytics_queue_url" {
   default     = ""
 }
 
+variable "sms_sender_function_arn" {
+  description = "ARN of the staging-account SMS_Sender Lambda (Phase B). Optional; when empty, no InvokeSmsSender IAM Sid is rendered and no SMS_SENDER_FUNCTION env var is set — form_handler.js falls back to its `SMS_Sender` default which fails to resolve in staging today. Wired from module.lambda_sms_twin_staging[0].sms_sender_function_arn."
+  type        = string
+  default     = ""
+}
+
+variable "sms_sender_function_name" {
+  description = "Name of the staging-account SMS_Sender Lambda (for SMS_SENDER_FUNCTION env var). Must correspond to sms_sender_function_arn — if you change one, change both. When empty, no env var is set."
+  type        = string
+  default     = ""
+}
+
 # ------------------------------------------------------------------
 # IAM role + minimum-scope inline policy
 # ------------------------------------------------------------------
@@ -289,6 +301,19 @@ data "aws_iam_policy_document" "exec" {
       resources = [var.analytics_queue_arn]
     }
   }
+
+  # Phase B SMS_Sender invoke grant. form_handler.js:352,845 calls
+  # lambda:InvokeFunction on the value of SMS_SENDER_FUNCTION env var.
+  # Conditional on the ARN being passed; bare-name resolution to the
+  # staging-account SMS_Sender requires this grant.
+  dynamic "statement" {
+    for_each = var.sms_sender_function_arn != "" ? [1] : []
+    content {
+      sid       = "InvokeSmsSender"
+      actions   = ["lambda:InvokeFunction"]
+      resources = [var.sms_sender_function_arn]
+    }
+  }
 }
 
 resource "aws_iam_role_policy" "exec" {
@@ -419,6 +444,13 @@ resource "aws_lambda_function" "this" {
       # handler returns {status:"noop"} per index.js:100-106.
       var.analytics_queue_url != "" ? {
         ANALYTICS_QUEUE_URL = var.analytics_queue_url
+      } : {},
+      # Phase B: when the SMS twin is wired, BSH form_handler.js invokes
+      # this Lambda for SMS sends. When empty, form_handler falls back to
+      # its `SMS_Sender` default which fails to resolve in staging today
+      # (no same-account SMS_Sender Lambda).
+      var.sms_sender_function_name != "" ? {
+        SMS_SENDER_FUNCTION = var.sms_sender_function_name
       } : {}
     )
   }
