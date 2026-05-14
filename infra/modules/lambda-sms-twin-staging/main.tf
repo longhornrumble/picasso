@@ -106,12 +106,25 @@ resource "aws_secretsmanager_secret_version" "telnyx_staging_placeholder" {
   }
 }
 
-# Defense-in-depth secret resource policy: only the two SMS Lambda roles can
-# READ the secret value; everyone else explicitly denied for GetSecretValue.
-# Describe/PutSecretValue/UpdateSecret remain governed by IAM identity policy
-# so admins (SSO + Terraform deploy role) can populate the secret post-Telnyx-
-# procurement via `aws secretsmanager put-secret-value`. Mirrors the BSH
-# CF-origin secret pattern (Phase C.2 row 21).
+# Defense-in-depth secret resource policy: only the two SMS Lambda roles +
+# the Terraform deploy role can READ the secret value; everyone else
+# explicitly denied for GetSecretValue. Deploy role needs read access because
+# Terraform refreshes `aws_secretsmanager_secret_version` state by calling
+# GetSecretValue on every plan/apply — without it, plans fail with explicit-
+# deny. Admin SSO + Console users do NOT have read; populate via
+# `aws secretsmanager put-secret-value` (PutSecretValue isn't gated here).
+locals {
+  # Hardcoded deploy role ARN per AWS account; matches the GitHub Environment
+  # `staging`'s AWS_DEPLOY_ROLE_ARN var. Not a secret, doesn't rotate.
+  deploy_role_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/GitHubActionsDeployRole"
+
+  telnyx_secret_readers = [
+    aws_iam_role.sms_sender.arn,
+    aws_iam_role.sms_webhook_handler.arn,
+    local.deploy_role_arn,
+  ]
+}
+
 resource "aws_secretsmanager_secret_policy" "telnyx_staging" {
   secret_arn = aws_secretsmanager_secret.telnyx_staging.arn
 
@@ -119,9 +132,9 @@ resource "aws_secretsmanager_secret_policy" "telnyx_staging" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid       = "AllowSmsLambdaRolesOnly"
+        Sid       = "AllowSmsLambdaRolesAndDeployRoleRead"
         Effect    = "Allow"
-        Principal = { AWS = [aws_iam_role.sms_sender.arn, aws_iam_role.sms_webhook_handler.arn] }
+        Principal = { AWS = local.telnyx_secret_readers }
         Action    = "secretsmanager:GetSecretValue"
         Resource  = "*"
       },
@@ -133,7 +146,7 @@ resource "aws_secretsmanager_secret_policy" "telnyx_staging" {
         Resource  = "*"
         Condition = {
           StringNotEquals = {
-            "aws:PrincipalArn" = [aws_iam_role.sms_sender.arn, aws_iam_role.sms_webhook_handler.arn]
+            "aws:PrincipalArn" = local.telnyx_secret_readers
           }
         }
       }
