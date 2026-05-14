@@ -41,6 +41,11 @@ variable "tenant_config_bucket_name" {
   type        = string
 }
 
+variable "bsh_role_arn" {
+  description = "ARN of the BSH Lambda execution role. Required for the SQS queue resource policy (audit F1 closure). Wired from module.lambda_bedrock_handler_staging[0].role_arn."
+  type        = string
+}
+
 variable "log_retention_days" {
   description = "CloudWatch log retention for the processor Lambda."
   type        = number
@@ -81,6 +86,87 @@ resource "aws_sqs_queue" "events" {
   tags = {
     Name = "picasso-analytics-events-staging"
   }
+}
+
+# Phase C audit F1 closure: SQS resource policy. Without this, any
+# staging-account IAM principal with `sqs:SendMessage` in their identity
+# policy could enqueue arbitrary payloads, bypassing BSH's CF-origin guard.
+# Mirrors the JWT/Clerk secret-policy pattern in infra/main.tf — allow ONLY
+# the legitimate principal and deny everyone else via aws:PrincipalArn.
+# `aws:SourceArn` would be the cleaner condition for service-linked
+# invocations, but Lambda direct SDK calls don't populate it; PrincipalArn
+# Deny is the correct lever for "lock to one IAM role."
+resource "aws_sqs_queue_policy" "events" {
+  queue_url = aws_sqs_queue.events.url
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "AllowBSHSend"
+        Effect    = "Allow"
+        Principal = { AWS = var.bsh_role_arn }
+        Action    = ["sqs:SendMessage", "sqs:SendMessageBatch"]
+        Resource  = aws_sqs_queue.events.arn
+      },
+      {
+        Sid       = "AllowProcessorReceive"
+        Effect    = "Allow"
+        Principal = { AWS = aws_iam_role.exec.arn }
+        Action    = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes", "sqs:ChangeMessageVisibility"]
+        Resource  = aws_sqs_queue.events.arn
+      },
+      {
+        # Same pattern as infra/main.tf:307-321 — NotPrincipal doesn't
+        # reliably exclude assumed-role sessions; aws:PrincipalArn
+        # normalizes back to the role ARN. Permits legitimate principals
+        # above; denies all others.
+        Sid       = "DenyAllOtherStagingPrincipals"
+        Effect    = "Deny"
+        Principal = "*"
+        Action    = ["sqs:SendMessage", "sqs:SendMessageBatch", "sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:PurgeQueue"]
+        Resource  = aws_sqs_queue.events.arn
+        Condition = {
+          StringNotEquals = {
+            "aws:PrincipalArn" = [var.bsh_role_arn, aws_iam_role.exec.arn]
+          }
+        }
+      }
+    ]
+  })
+}
+
+# Phase C audit F7 closure: DLQ resource policy. Without it, any staging
+# principal could drain failed messages (which may contain browser-side
+# PII in URL fragments). Only the processor role (for inspection) and the
+# main queue redrive can reach the DLQ.
+resource "aws_sqs_queue_policy" "dlq" {
+  queue_url = aws_sqs_queue.dlq.url
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "AllowProcessorInspect"
+        Effect    = "Allow"
+        Principal = { AWS = aws_iam_role.exec.arn }
+        Action    = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes"]
+        Resource  = aws_sqs_queue.dlq.arn
+      },
+      {
+        Sid       = "DenyAllOtherStagingPrincipals"
+        Effect    = "Deny"
+        Principal = "*"
+        Action    = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:PurgeQueue"]
+        Resource  = aws_sqs_queue.dlq.arn
+        Condition = {
+          StringNotEquals = {
+            "aws:PrincipalArn" = aws_iam_role.exec.arn
+          }
+        }
+      }
+    ]
+  })
 }
 
 # ------------------------------------------------------------------
@@ -181,6 +267,10 @@ data "aws_iam_policy_document" "exec" {
       "sqs:ReceiveMessage",
       "sqs:DeleteMessage",
       "sqs:GetQueueAttributes",
+      # Required by Lambda ESM under ReportBatchItemFailures to extend
+      # visibility timeout while processing partial-batch retries.
+      # Per AWS Lambda-with-SQS docs (audit code-reviewer Gap 1).
+      "sqs:ChangeMessageVisibility",
     ]
     resources = [aws_sqs_queue.events.arn]
   }
