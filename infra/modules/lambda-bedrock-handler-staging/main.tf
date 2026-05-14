@@ -307,37 +307,37 @@ resource "aws_lambda_function" "this" {
   source_code_hash = data.archive_file.placeholder.output_base64sha256
 
   environment {
-    variables = {
-      ENVIRONMENT                 = "staging"
-      CONFIG_BUCKET               = var.config_bucket_name
-      S3_CONFIG_BUCKET            = var.config_bucket_name
-      SESSION_SUMMARIES_TABLE     = var.session_summaries_table_name
-      TENANT_REGISTRY_TABLE       = var.tenant_registry_table_name
-      USE_REGISTRY_FOR_RESOLUTION = "true"
-      # index.js fail-loads at module init if missing; capture in IaC so
-      # routine terraform applies don't strip the var (drift discovered
-      # 2026-05-12 during MFS blacklist IAM split PR plan review).
-      BEDROCK_MODEL_ID = var.bedrock_model_id
-      # PR A code reads this and calls sts:AssumeRole before any KB
-      # Retrieve call. Empty in environments where Lambda + KB share
-      # an account (no assume-role needed).
-      KB_RETRIEVER_ROLE_ARN = length(var.kb_retriever_role_arns) > 0 ? var.kb_retriever_role_arns[0] : ""
+    # CF-origin env vars are merged in only when cf_origin_secret_arn is non-empty —
+    # matches the variable description contract ("when empty, no env var is set").
+    # Phase A.2 audit row #1 closed: previously both keys were unconditionally
+    # rendered, producing "" values when callers omitted the inputs.
+    variables = merge(
+      {
+        ENVIRONMENT                 = "staging"
+        CONFIG_BUCKET               = var.config_bucket_name
+        S3_CONFIG_BUCKET            = var.config_bucket_name
+        SESSION_SUMMARIES_TABLE     = var.session_summaries_table_name
+        TENANT_REGISTRY_TABLE       = var.tenant_registry_table_name
+        USE_REGISTRY_FOR_RESOLUTION = "true"
+        # index.js fail-loads at module init if missing; capture in IaC so
+        # routine terraform applies don't strip the var.
+        BEDROCK_MODEL_ID = var.bedrock_model_id
+        # PR A code reads this and calls sts:AssumeRole before any KB
+        # Retrieve call. Empty in environments where Lambda + KB share
+        # an account (no assume-role needed).
+        KB_RETRIEVER_ROLE_ARN = length(var.kb_retriever_role_arns) > 0 ? var.kb_retriever_role_arns[0] : ""
 
-      # Phase 1 v3 enforcement-on: CF-origin-header validator state. Both
-      # vars are conditional on cf_origin_secret_arn being non-empty so the
-      # module's documented contract (line 61: "when empty, REQUIRE_CF_ORIGIN_HEADER
-      # must remain false") is enforced by the module itself. Phase A.1
-      # audit rows #3 + #6 + #7 hardened this from hardcoded literals.
-      CF_ORIGIN_SECRET_NAME    = var.cf_origin_secret_name
-      REQUIRE_CF_ORIGIN_HEADER = var.cf_origin_secret_arn != "" ? "true" : "false"
-
-      # Phase A: form-handler twin tables wired. Lazy/conditional reads in
-      # form_handler.js fall back to wrong defaults if these are unset.
-      FORM_SUBMISSIONS_TABLE   = var.form_submissions_table_name
-      NOTIFICATION_SENDS_TABLE = var.notification_sends_table_name
-      SMS_CONSENT_TABLE        = var.sms_consent_table_name
-      SMS_USAGE_TABLE          = var.sms_usage_table_name
-    }
+        # Phase A: form-handler twin tables wired.
+        FORM_SUBMISSIONS_TABLE   = var.form_submissions_table_name
+        NOTIFICATION_SENDS_TABLE = var.notification_sends_table_name
+        SMS_CONSENT_TABLE        = var.sms_consent_table_name
+        SMS_USAGE_TABLE          = var.sms_usage_table_name
+      },
+      var.cf_origin_secret_arn != "" ? {
+        CF_ORIGIN_SECRET_NAME    = var.cf_origin_secret_name
+        REQUIRE_CF_ORIGIN_HEADER = "true"
+      } : {}
+    )
   }
 
   tracing_config {
