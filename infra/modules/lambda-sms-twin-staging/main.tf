@@ -107,8 +107,11 @@ resource "aws_secretsmanager_secret_version" "telnyx_staging_placeholder" {
 }
 
 # Defense-in-depth secret resource policy: only the two SMS Lambda roles can
-# read; everyone else explicitly denied. Mirrors the BSH CF-origin secret
-# pattern (Phase C.2 row 21).
+# READ the secret value; everyone else explicitly denied for GetSecretValue.
+# Describe/PutSecretValue/UpdateSecret remain governed by IAM identity policy
+# so admins (SSO + Terraform deploy role) can populate the secret post-Telnyx-
+# procurement via `aws secretsmanager put-secret-value`. Mirrors the BSH
+# CF-origin secret pattern (Phase C.2 row 21).
 resource "aws_secretsmanager_secret_policy" "telnyx_staging" {
   secret_arn = aws_secretsmanager_secret.telnyx_staging.arn
 
@@ -119,14 +122,14 @@ resource "aws_secretsmanager_secret_policy" "telnyx_staging" {
         Sid       = "AllowSmsLambdaRolesOnly"
         Effect    = "Allow"
         Principal = { AWS = [aws_iam_role.sms_sender.arn, aws_iam_role.sms_webhook_handler.arn] }
-        Action    = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
+        Action    = "secretsmanager:GetSecretValue"
         Resource  = "*"
       },
       {
-        Sid       = "DenyAllOtherStagingPrincipals"
+        Sid       = "DenyAllOtherStagingPrincipalsRead"
         Effect    = "Deny"
         Principal = "*"
-        Action    = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
+        Action    = "secretsmanager:GetSecretValue"
         Resource  = "*"
         Condition = {
           StringNotEquals = {
