@@ -380,6 +380,56 @@ module "ops_alarms_master_function_staging" {
 # Analytics_Dashboard_API (dashboard self-signed admin tokens) need
 # read access. The original #81 policy only allowed MFS, which surfaced
 # as AccessDeniedException on ADA's self-signed JWT validation path.
+# Phase C.2 audit-of-audit closure (row 21 / F3): BSH CF-origin secret
+# resource policy. The IAM identity policy on the BSH role already grants
+# read; this resource-side Deny blocks any other staging-account principal
+# (admin SSO, contractor, broadly-permissioned service role) from reading
+# the secret out-of-band. Reading the secret would give an attacker the
+# CF-origin-header bypass token, allowing direct Function URL hits that
+# bypass CloudFront WAF/rate-limiting.
+#
+# The secret was hand-created in Phase 1 v3 (not a module output) — data
+# source resolves the current rotation suffix (`-*`) so the policy follows
+# rotations automatically. IAM grant in the BSH module uses the wildcard
+# ARN; this resource-side policy needs the concrete ARN.
+data "aws_secretsmanager_secret" "bsh_cf_origin_staging" {
+  count = var.env == "staging" ? 1 : 0
+  name  = "picasso/bsh/cf-origin-secret"
+}
+
+resource "aws_secretsmanager_secret_policy" "bsh_cf_origin_staging" {
+  count      = var.env == "staging" ? 1 : 0
+  secret_arn = data.aws_secretsmanager_secret.bsh_cf_origin_staging[0].arn
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "AllowBSHLambdaRoleOnly"
+        Effect    = "Allow"
+        Principal = { AWS = module.lambda_bedrock_handler_staging[0].role_arn }
+        Action    = "secretsmanager:GetSecretValue"
+        Resource  = "*"
+      },
+      {
+        # Same NotPrincipal-via-aws:PrincipalArn pattern as the JWT/Clerk
+        # secret policies below. Normalizes assumed-role sessions back to
+        # the role ARN. Permits BSH; denies all others including admin SSO.
+        Sid       = "DenyAllOtherStagingPrincipals"
+        Effect    = "Deny"
+        Principal = "*"
+        Action    = "secretsmanager:GetSecretValue"
+        Resource  = "*"
+        Condition = {
+          StringNotEquals = {
+            "aws:PrincipalArn" = module.lambda_bedrock_handler_staging[0].role_arn
+          }
+        }
+      },
+    ]
+  })
+}
+
 resource "aws_secretsmanager_secret_policy" "jwt_signing_key_staging" {
   count      = var.env == "staging" ? 1 : 0
   secret_arn = module.secrets_jwt_staging[0].secret_arn
