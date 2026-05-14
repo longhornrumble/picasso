@@ -86,12 +86,20 @@ output "sms_consent_table_name" {
   value = aws_dynamodb_table.sms_consent.name
 }
 
+output "sms_consent_table_id" {
+  value = aws_dynamodb_table.sms_consent.id
+}
+
 output "sms_consent_table_arn" {
   value = aws_dynamodb_table.sms_consent.arn
 }
 
 output "sms_usage_table_name" {
   value = aws_dynamodb_table.sms_usage.name
+}
+
+output "sms_usage_table_id" {
+  value = aws_dynamodb_table.sms_usage.id
 }
 
 output "sms_usage_table_arn" {

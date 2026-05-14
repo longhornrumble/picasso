@@ -36,10 +36,19 @@ module "session_summaries" {
 # (`project_staging_twin_resource_provisioning_backlog.md`). Provisions the 2
 # tables BSH form_handler.js references that didn't yet exist in either env:
 # `picasso-sms-consent-{env}` and `picasso-sms-usage-{env}`. The other 2
-# tables it references (`picasso-form-submissions-staging`,
-# `picasso-notification-sends-staging`) are already managed under the
-# `ddb_form_submissions_staging` + `ddb_notification_sends_staging` modules
-# below — Phase A intentionally does NOT redeclare them.
+# tables (`picasso-form-submissions-staging`, `picasso-notification-sends-staging`)
+# are already managed by `ddb_form_submissions_staging` (lines 91-94) +
+# `ddb_notification_sends_staging` (lines 101-104) below — Phase A intentionally
+# does NOT redeclare them.
+#
+# DEVIATION FROM PATTERN (Phase A.1 audit row #5): this module has no
+# `count = var.env == "staging" ? 1 : 0` guard, unlike every other staging-specific
+# module below. Intentional — BSH form_handler.js needs these tables in every
+# environment that runs the Lambda (dev for iteration, staging for live traffic
+# pre-Phase-D, prod after promotion). Tables are PAY_PER_REQUEST so cost-zero
+# when idle. If someone runs a prod apply, `picasso-sms-consent-prod` +
+# `picasso-sms-usage-prod` would be created — that is the correct behavior for
+# prod promotion, NOT an accident.
 module "picasso_form_tables" {
   source = "./modules/picasso-form-tables"
   env    = var.env
@@ -156,7 +165,8 @@ module "lambda_bedrock_handler_staging" {
   # Phase 1 v3 enforcement-on (PR #5 + #6): CF-origin-header validator
   # secret ARN. Wildcard `-*` matches any AWS-generated 6-char suffix so
   # secret rotation (which creates a new ARN suffix) doesn't break IAM.
-  cf_origin_secret_arn = "arn:aws:secretsmanager:us-east-1:525409062831:secret:picasso/bsh/cf-origin-secret-*"
+  cf_origin_secret_arn  = "arn:aws:secretsmanager:us-east-1:525409062831:secret:picasso/bsh/cf-origin-secret-*"
+  cf_origin_secret_name = "picasso/bsh/cf-origin-secret"
 
   # Phase A staging-twin form tables. The 2 existing tables (form_submissions,
   # notification_sends) come from the Phase 4 modules; the 2 new tables

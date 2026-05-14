@@ -58,13 +58,19 @@ variable "log_retention_days" {
 }
 
 variable "cf_origin_secret_arn" {
-  description = "ARN of the CloudFront origin secret in Secrets Manager (used by Phase 1 v3 CF-origin-header validator in BSH). Optional; when empty, no IAM grant is added and REQUIRE_CF_ORIGIN_HEADER must remain false. Mirrors the MFS module pattern."
+  description = "ARN of the CloudFront origin secret in Secrets Manager (used by Phase 1 v3 CF-origin-header validator in BSH). Optional; when empty, the conditional CfOriginSecretRead IAM Sid is omitted AND REQUIRE_CF_ORIGIN_HEADER env var is set to 'false' automatically. Mirrors the MFS module pattern. Wildcard suffix (`-*`) is accepted to tolerate Secrets Manager rotation; the wildcard widens scope to any future-named secret with this prefix, accepted as residual risk for staging-account use."
   type        = string
   default     = ""
   validation {
     condition     = var.cf_origin_secret_arn == "" || can(regex("^arn:aws:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:", var.cf_origin_secret_arn))
     error_message = "cf_origin_secret_arn must be empty or a valid Secrets Manager ARN."
   }
+}
+
+variable "cf_origin_secret_name" {
+  description = "Name of the CloudFront origin secret (used by validator to look up the secret via SecretsManager GetSecretValue at runtime). Must correspond to cf_origin_secret_arn — if you change one, change both. When empty, no env var is set."
+  type        = string
+  default     = ""
 }
 
 variable "form_submissions_table_arn" {
@@ -226,11 +232,17 @@ data "aws_iam_policy_document" "exec" {
     }
   }
 
-  # Form-handler table access — granted only when caller passes all 4 ARNs.
-  # Phase A captured this Sid in Terraform; the live IAM grant was
-  # hand-applied via aws CLI on 2026-05-14 and matches Resource-for-Resource.
+  # Form-handler table access — granted only when caller passes ALL 4 ARNs.
+  # Conjunction guard prevents a partial-input call from rendering empty-string
+  # Resources (AWS rejects as MalformedPolicyDocument). Phase A.1 audit row #4
+  # hardened this from a single-variable guard to all-4.
   dynamic "statement" {
-    for_each = var.form_submissions_table_arn != "" ? [1] : []
+    for_each = (
+      var.form_submissions_table_arn != "" &&
+      var.notification_sends_table_arn != "" &&
+      var.sms_consent_table_arn != "" &&
+      var.sms_usage_table_arn != ""
+    ) ? [1] : []
     content {
       sid = "StagingFormTablesAccess"
       actions = [
@@ -239,6 +251,9 @@ data "aws_iam_policy_document" "exec" {
         "dynamodb:UpdateItem",
         "dynamodb:Query",
       ]
+      # 6 ARNs total: 4 base tables + GSI paths for the 2 tables that have GSIs
+      # (form_submissions: FormType/Status; sms_consent: phone-lookup).
+      # notification_sends + sms_usage have no GSIs; /index/* intentionally omitted.
       resources = [
         var.form_submissions_table_arn,
         "${var.form_submissions_table_arn}/index/*",
@@ -308,12 +323,13 @@ resource "aws_lambda_function" "this" {
       # an account (no assume-role needed).
       KB_RETRIEVER_ROLE_ARN = length(var.kb_retriever_role_arns) > 0 ? var.kb_retriever_role_arns[0] : ""
 
-      # Phase 1 v3 enforcement-on: CF-origin-header validator state. These
-      # capture the Phase 1 v3 hand-applied env vars (PR #5 + flag-flip at
-      # PR #6). Without these, BSH would 503 every request once the validator
-      # is wired (REQUIRE_CF_ORIGIN_HEADER=true means missing/wrong header → 403).
-      CF_ORIGIN_SECRET_NAME    = "picasso/bsh/cf-origin-secret"
-      REQUIRE_CF_ORIGIN_HEADER = "true"
+      # Phase 1 v3 enforcement-on: CF-origin-header validator state. Both
+      # vars are conditional on cf_origin_secret_arn being non-empty so the
+      # module's documented contract (line 61: "when empty, REQUIRE_CF_ORIGIN_HEADER
+      # must remain false") is enforced by the module itself. Phase A.1
+      # audit rows #3 + #6 + #7 hardened this from hardcoded literals.
+      CF_ORIGIN_SECRET_NAME    = var.cf_origin_secret_name
+      REQUIRE_CF_ORIGIN_HEADER = var.cf_origin_secret_arn != "" ? "true" : "false"
 
       # Phase A: form-handler twin tables wired. Lazy/conditional reads in
       # form_handler.js fall back to wrong defaults if these are unset.
@@ -362,8 +378,12 @@ resource "aws_lambda_function_url" "this" {
       "https://picassocode.s3.amazonaws.com",
       "https://picassostaging.s3.amazonaws.com",
     ]
-    allow_methods     = ["GET", "POST"]
-    allow_headers     = ["accept", "authorization", "content-type", "x-requested-with"]
+    allow_methods = ["GET", "POST"]
+    # `x-picasso-cf-origin` is CloudFront-injected to the Lambda (not browser-set),
+    # so CORS preflight doesn't strictly need it for prod traffic. Added per Phase
+    # A.1 audit row #6 to support browser-direct Function URL testing pre-Phase-D
+    # cutover.
+    allow_headers     = ["accept", "authorization", "content-type", "x-picasso-cf-origin", "x-requested-with"]
     allow_credentials = true
   }
 }
@@ -397,9 +417,11 @@ resource "aws_lambda_function_url" "this" {
 # However, if the Lambda is destroyed and recreated, the manual step
 # must be re-run.
 #
-# Tracking: HashiCorp/terraform-provider-aws upstream issue (TODO: file).
-# Architect-recommended verification: empirically test whether the
-# second statement is actually required (untested in isolation).
+# Tracking: empirically test whether the second statement is actually required
+# (untested in isolation). If the manual step is unnecessary in practice, drop
+# the comment block entirely. No upstream issue filed — this is a
+# Lambda Function URL + cross-account-invoke quirk specific to AWS account
+# topology, not a Terraform-provider bug.
 # ──────────────────────────────────────────────────────────────────────
 
 # ------------------------------------------------------------------
