@@ -100,17 +100,21 @@ function pickOrigin(event) {
   return DEFAULT_ORIGIN;
 }
 
+// Extras are spread FIRST so security-critical CORS keys cannot be
+// overridden by callers. extras can add supplemental headers
+// (Content-Type, X-Accel-Buffering, etc.) but never clobber Origin/
+// Methods/Headers/Credentials.
 function corsHeaders(event, extras = {}) {
   return {
+    ...extras,
     'Access-Control-Allow-Origin': pickOrigin(event),
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, Accept',
     'Access-Control-Allow-Credentials': 'true',
-    ...extras,
   };
 }
 
-module.exports = { corsHeaders, pickOrigin, ALLOWED_ORIGINS };
+module.exports = { corsHeaders, pickOrigin, ALLOWED_ORIGINS, DEFAULT_ORIGIN };
 ```
 
 **Migration:** replace all 16 occurrences of inline `'Access-Control-Allow-Origin': '*'` and adjacent CORS headers in `index.js` with `...corsHeaders(event)`. **All 16 sites are inside one of 4 handler functions** (verified 2026-05-13):
