@@ -57,6 +57,64 @@ variable "log_retention_days" {
   default     = 30
 }
 
+variable "cf_origin_secret_arn" {
+  description = "ARN of the CloudFront origin secret in Secrets Manager (used by Phase 1 v3 CF-origin-header validator in BSH). Optional; when empty, no IAM grant is added and REQUIRE_CF_ORIGIN_HEADER must remain false. Mirrors the MFS module pattern."
+  type        = string
+  default     = ""
+  validation {
+    condition     = var.cf_origin_secret_arn == "" || can(regex("^arn:aws:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:", var.cf_origin_secret_arn))
+    error_message = "cf_origin_secret_arn must be empty or a valid Secrets Manager ARN."
+  }
+}
+
+variable "form_submissions_table_arn" {
+  description = "ARN of picasso-form-submissions-staging (BSH form_handler.js writes submissions here)."
+  type        = string
+  default     = ""
+}
+
+variable "form_submissions_table_name" {
+  description = "Name of the form submissions table (env var FORM_SUBMISSIONS_TABLE)."
+  type        = string
+  default     = ""
+}
+
+variable "notification_sends_table_arn" {
+  description = "ARN of picasso-notification-sends-staging (BSH form_handler.js writes notification delivery log)."
+  type        = string
+  default     = ""
+}
+
+variable "notification_sends_table_name" {
+  description = "Name of the notification-sends table (env var NOTIFICATION_SENDS_TABLE)."
+  type        = string
+  default     = ""
+}
+
+variable "sms_consent_table_arn" {
+  description = "ARN of picasso-sms-consent-staging (BSH form_handler.js writes SMS opt-in records)."
+  type        = string
+  default     = ""
+}
+
+variable "sms_consent_table_name" {
+  description = "Name of the SMS consent table (env var SMS_CONSENT_TABLE)."
+  type        = string
+  default     = ""
+}
+
+variable "sms_usage_table_arn" {
+  description = "ARN of picasso-sms-usage-staging (BSH form_handler.js increments monthly SMS counter)."
+  type        = string
+  default     = ""
+}
+
+variable "sms_usage_table_name" {
+  description = "Name of the SMS usage table (env var SMS_USAGE_TABLE)."
+  type        = string
+  default     = ""
+}
+
 # ------------------------------------------------------------------
 # IAM role + minimum-scope inline policy
 # ------------------------------------------------------------------
@@ -153,6 +211,44 @@ data "aws_iam_policy_document" "exec" {
       resources = var.kb_retriever_role_arns
     }
   }
+
+  # CF origin secret — granted only when cf_origin_secret_arn is non-empty.
+  # Phase 1 v3 hand-applied this Sid via aws CLI (PR #5); module captures it
+  # so future terraform applies don't strip it. The Lambda's
+  # REQUIRE_CF_ORIGIN_HEADER flag is set to "true" below when this ARN
+  # is non-empty, per the Phase 1 v3 enforcement-on state.
+  dynamic "statement" {
+    for_each = var.cf_origin_secret_arn != "" ? [1] : []
+    content {
+      sid       = "CfOriginSecretRead"
+      actions   = ["secretsmanager:GetSecretValue"]
+      resources = [var.cf_origin_secret_arn]
+    }
+  }
+
+  # Form-handler table access — granted only when caller passes all 4 ARNs.
+  # Phase A captured this Sid in Terraform; the live IAM grant was
+  # hand-applied via aws CLI on 2026-05-14 and matches Resource-for-Resource.
+  dynamic "statement" {
+    for_each = var.form_submissions_table_arn != "" ? [1] : []
+    content {
+      sid = "StagingFormTablesAccess"
+      actions = [
+        "dynamodb:GetItem",
+        "dynamodb:PutItem",
+        "dynamodb:UpdateItem",
+        "dynamodb:Query",
+      ]
+      resources = [
+        var.form_submissions_table_arn,
+        "${var.form_submissions_table_arn}/index/*",
+        var.notification_sends_table_arn,
+        var.sms_consent_table_arn,
+        "${var.sms_consent_table_arn}/index/*",
+        var.sms_usage_table_arn,
+      ]
+    }
+  }
 }
 
 resource "aws_iam_role_policy" "exec" {
@@ -211,6 +307,20 @@ resource "aws_lambda_function" "this" {
       # Retrieve call. Empty in environments where Lambda + KB share
       # an account (no assume-role needed).
       KB_RETRIEVER_ROLE_ARN = length(var.kb_retriever_role_arns) > 0 ? var.kb_retriever_role_arns[0] : ""
+
+      # Phase 1 v3 enforcement-on: CF-origin-header validator state. These
+      # capture the Phase 1 v3 hand-applied env vars (PR #5 + flag-flip at
+      # PR #6). Without these, BSH would 503 every request once the validator
+      # is wired (REQUIRE_CF_ORIGIN_HEADER=true means missing/wrong header → 403).
+      CF_ORIGIN_SECRET_NAME    = "picasso/bsh/cf-origin-secret"
+      REQUIRE_CF_ORIGIN_HEADER = "true"
+
+      # Phase A: form-handler twin tables wired. Lazy/conditional reads in
+      # form_handler.js fall back to wrong defaults if these are unset.
+      FORM_SUBMISSIONS_TABLE   = var.form_submissions_table_name
+      NOTIFICATION_SENDS_TABLE = var.notification_sends_table_name
+      SMS_CONSENT_TABLE        = var.sms_consent_table_name
+      SMS_USAGE_TABLE          = var.sms_usage_table_name
     }
   }
 
@@ -237,10 +347,23 @@ resource "aws_lambda_function_url" "this" {
   authorization_type = "NONE"
   invoke_mode        = "RESPONSE_STREAM"
 
+  # CORS matches the live Lambda's narrowed values (pre-Terraform hand
+  # config). Widget origins + REST methods + browser-standard headers.
+  # Do NOT broaden to wildcards without reviewing
+  # `feedback_uniform_env_rules`; the narrow set is the operational
+  # baseline shipped before Terraform-management of this Lambda existed.
   cors {
-    allow_origins     = ["*"]
-    allow_methods     = ["*"]
-    allow_headers     = ["*"]
+    allow_origins = [
+      "http://localhost:3000",
+      "http://localhost:5173",
+      "http://localhost:8000",
+      "https://chat.myrecruiter.ai",
+      "https://staging.chat.myrecruiter.ai",
+      "https://picassocode.s3.amazonaws.com",
+      "https://picassostaging.s3.amazonaws.com",
+    ]
+    allow_methods     = ["GET", "POST"]
+    allow_headers     = ["accept", "authorization", "content-type", "x-requested-with"]
     allow_credentials = true
   }
 }

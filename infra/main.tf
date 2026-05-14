@@ -32,6 +32,19 @@ module "session_summaries" {
   env    = var.env
 }
 
+# BSH form_handler twin tables — Phase A of the staging-twin sequencing
+# (`project_staging_twin_resource_provisioning_backlog.md`). Provisions the 2
+# tables BSH form_handler.js references that didn't yet exist in either env:
+# `picasso-sms-consent-{env}` and `picasso-sms-usage-{env}`. The other 2
+# tables it references (`picasso-form-submissions-staging`,
+# `picasso-notification-sends-staging`) are already managed under the
+# `ddb_form_submissions_staging` + `ddb_notification_sends_staging` modules
+# below — Phase A intentionally does NOT redeclare them.
+module "picasso_form_tables" {
+  source = "./modules/picasso-form-tables"
+  env    = var.env
+}
+
 # Staging-only: cross-account replication target for prod tenant configs.
 # Bucket lives in the staging account; replication IS configured on the prod
 # source bucket (hand-applied with chris-admin until P0 Phase 2 brings prod
@@ -139,6 +152,23 @@ module "lambda_bedrock_handler_staging" {
   session_summaries_table_name = module.session_summaries.table_name
   tenant_registry_table_arn    = module.ddb_tenant_registry_staging[0].table_arn
   tenant_registry_table_name   = module.ddb_tenant_registry_staging[0].table_name
+
+  # Phase 1 v3 enforcement-on (PR #5 + #6): CF-origin-header validator
+  # secret ARN. Wildcard `-*` matches any AWS-generated 6-char suffix so
+  # secret rotation (which creates a new ARN suffix) doesn't break IAM.
+  cf_origin_secret_arn = "arn:aws:secretsmanager:us-east-1:525409062831:secret:picasso/bsh/cf-origin-secret-*"
+
+  # Phase A staging-twin form tables. The 2 existing tables (form_submissions,
+  # notification_sends) come from the Phase 4 modules; the 2 new tables
+  # (sms_consent, sms_usage) come from the picasso_form_tables module above.
+  form_submissions_table_arn    = module.ddb_form_submissions_staging[0].table_arn
+  form_submissions_table_name   = module.ddb_form_submissions_staging[0].table_name
+  notification_sends_table_arn  = module.ddb_notification_sends_staging[0].table_arn
+  notification_sends_table_name = module.ddb_notification_sends_staging[0].table_name
+  sms_consent_table_arn         = module.picasso_form_tables.sms_consent_table_arn
+  sms_consent_table_name        = module.picasso_form_tables.sms_consent_table_name
+  sms_usage_table_arn           = module.picasso_form_tables.sms_usage_table_arn
+  sms_usage_table_name          = module.picasso_form_tables.sms_usage_table_name
 
   # MYR test tenant KB — the only KB allowed for Issue #5 batch 2b.
   # Add more tenants here as they're enrolled in staging coverage.
