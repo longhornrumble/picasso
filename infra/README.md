@@ -2,6 +2,19 @@
 
 Single Terraform root module describing MyRecruiter's AWS infrastructure. Same modules deploy to `staging` and `dev` AWS accounts — `prod` deferred to Phase 2 of P0.
 
+## 🚨 CRITICAL: Always work from the `staging` branch for staging infra
+
+The `staging` long-lived branch is intentionally many commits ahead of `main`. Per `feedback_staging_promotion_path`, staging→main is a deliberate milestone PR, not a continuous merge.
+
+**Operational guardrails:**
+
+1. **Work from `staging` branch for any change touching `infra/` against the staging account.** Feature branches MUST branch from `origin/staging`, not `main`.
+2. **Never run `terraform apply -var-file=envs/staging.tfvars` from `main`.** Main's `infra/main.tf` is severely behind staging's — `terraform plan` from main shows 44+ destroys against the staging account (would wipe BSH, MFS, Analytics Lambdas, secrets, S3 buckets). The "destroys" are not orphans — they're staging-branch-managed resources main has not yet absorbed.
+3. **If you accidentally land on `main` and see a many-destroy plan:** STOP. Do not apply. Do not use `-target` to "work around" it. Switch to a branch off `origin/staging`. The `-target` escape hatch is for true Terraform-blessed exceptions, not for masking branch-state confusion.
+4. **CI auto-applies on push to `staging`** (`.github/workflows/infra-deploy.yml`). PRs to staging show plan as a comment. Verify the plan is the expected delta BEFORE merging.
+
+This was learned the hard way during BSH staging-twin Phase A (2026-05-14): the "44 orphan resources" framing was a misdiagnosis caused by working from `main`. Documented in `feedback_pre_flight_check_staging_branch.md` + `feedback_misdiagnosis_halt_escalate.md`.
+
 ## Layout
 
 - `main.tf` — provider config, backend declaration

@@ -24,6 +24,12 @@ variable "kb_arns" {
   type        = list(string)
 }
 
+variable "bedrock_model_id" {
+  description = "Default Bedrock model ID. BSH index.js fail-loads at module init if this env var is missing — see Phase 4 EC-P4-2 (single point of update for model bumps)."
+  type        = string
+  default     = "global.anthropic.claude-haiku-4-5-20251001-v1:0"
+}
+
 variable "kb_retriever_role_arns" {
   description = "List of cross-account IAM role ARNs the Lambda is allowed to AssumeRole into for KB Retrieve. Bedrock KBs aren't RAM-shareable, so cross-account access requires the staging Lambda to assume a prod-side role that has Retrieve permission. PR A code wraps the Bedrock call with assume-role + cached creds."
   type        = list(string)
@@ -49,6 +55,94 @@ variable "log_retention_days" {
   description = "CloudWatch log retention in days."
   type        = number
   default     = 30
+}
+
+variable "cf_origin_secret_arn" {
+  description = "ARN of the CloudFront origin secret in Secrets Manager (used by Phase 1 v3 CF-origin-header validator in BSH). Optional; when empty, the conditional CfOriginSecretRead IAM Sid is omitted AND REQUIRE_CF_ORIGIN_HEADER env var is set to 'false' automatically. Mirrors the MFS module pattern. Wildcard suffix (`-*`) is accepted to tolerate Secrets Manager rotation; the wildcard widens scope to any future-named secret with this prefix, accepted as residual risk for staging-account use."
+  type        = string
+  default     = ""
+  validation {
+    condition     = var.cf_origin_secret_arn == "" || can(regex("^arn:aws:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:", var.cf_origin_secret_arn))
+    error_message = "cf_origin_secret_arn must be empty or a valid Secrets Manager ARN."
+  }
+}
+
+variable "cf_origin_secret_name" {
+  description = "Name of the CloudFront origin secret (used by validator to look up the secret via SecretsManager GetSecretValue at runtime). Must correspond to cf_origin_secret_arn — if you change one, change both. When empty, no env var is set."
+  type        = string
+  default     = ""
+}
+
+variable "form_submissions_table_arn" {
+  description = "ARN of picasso-form-submissions-staging (BSH form_handler.js writes submissions here)."
+  type        = string
+  default     = ""
+}
+
+variable "form_submissions_table_name" {
+  description = "Name of the form submissions table (env var FORM_SUBMISSIONS_TABLE)."
+  type        = string
+  default     = ""
+}
+
+variable "notification_sends_table_arn" {
+  description = "ARN of picasso-notification-sends-staging (BSH form_handler.js writes notification delivery log)."
+  type        = string
+  default     = ""
+}
+
+variable "notification_sends_table_name" {
+  description = "Name of the notification-sends table (env var NOTIFICATION_SENDS_TABLE)."
+  type        = string
+  default     = ""
+}
+
+variable "sms_consent_table_arn" {
+  description = "ARN of picasso-sms-consent-staging (BSH form_handler.js writes SMS opt-in records)."
+  type        = string
+  default     = ""
+}
+
+variable "sms_consent_table_name" {
+  description = "Name of the SMS consent table (env var SMS_CONSENT_TABLE)."
+  type        = string
+  default     = ""
+}
+
+variable "sms_usage_table_arn" {
+  description = "ARN of picasso-sms-usage-staging (BSH form_handler.js increments monthly SMS counter)."
+  type        = string
+  default     = ""
+}
+
+variable "sms_usage_table_name" {
+  description = "Name of the SMS usage table (env var SMS_USAGE_TABLE)."
+  type        = string
+  default     = ""
+}
+
+variable "analytics_queue_arn" {
+  description = "ARN of picasso-analytics-events-staging SQS queue (Phase C). Optional; when empty, the conditional SqsAnalyticsSend IAM Sid is omitted AND ANALYTICS_QUEUE_URL env var is not set — BSH handleAnalyticsEvent then returns {status:'noop'} per index.js:100-106. Wired from module.analytics_events_pipeline_staging[0].queue_arn."
+  type        = string
+  default     = ""
+}
+
+variable "analytics_queue_url" {
+  description = "URL of picasso-analytics-events-staging (for ANALYTICS_QUEUE_URL env var). Must correspond to analytics_queue_arn — if you change one, change both. When empty, no env var is set."
+  type        = string
+  default     = ""
+}
+
+variable "sms_sender_function_arn" {
+  description = "ARN of the staging-account SMS_Sender Lambda (Phase B). Optional; when empty, no InvokeSmsSender IAM Sid is rendered and no SMS_SENDER_FUNCTION env var is set — form_handler.js falls back to its `SMS_Sender` default which fails to resolve in staging today. Wired from module.lambda_sms_twin_staging[0].sms_sender_function_arn."
+  type        = string
+  default     = ""
+}
+
+variable "sms_sender_function_name" {
+  description = "Name of the staging-account SMS_Sender Lambda (for SMS_SENDER_FUNCTION env var). Must correspond to sms_sender_function_arn — if you change one, change both. When empty, no env var is set."
+  type        = string
+  default     = ""
 }
 
 # ------------------------------------------------------------------
@@ -147,6 +241,79 @@ data "aws_iam_policy_document" "exec" {
       resources = var.kb_retriever_role_arns
     }
   }
+
+  # CF origin secret — granted only when cf_origin_secret_arn is non-empty.
+  # Phase 1 v3 hand-applied this Sid via aws CLI (PR #5); module captures it
+  # so future terraform applies don't strip it. The Lambda's
+  # REQUIRE_CF_ORIGIN_HEADER flag is set to "true" below when this ARN
+  # is non-empty, per the Phase 1 v3 enforcement-on state.
+  dynamic "statement" {
+    for_each = var.cf_origin_secret_arn != "" ? [1] : []
+    content {
+      sid       = "CfOriginSecretRead"
+      actions   = ["secretsmanager:GetSecretValue"]
+      resources = [var.cf_origin_secret_arn]
+    }
+  }
+
+  # Form-handler table access — granted only when caller passes ALL 4 ARNs.
+  # Conjunction guard prevents a partial-input call from rendering empty-string
+  # Resources (AWS rejects as MalformedPolicyDocument). Phase A.1 audit row #4
+  # hardened this from a single-variable guard to all-4.
+  dynamic "statement" {
+    for_each = (
+      var.form_submissions_table_arn != "" &&
+      var.notification_sends_table_arn != "" &&
+      var.sms_consent_table_arn != "" &&
+      var.sms_usage_table_arn != ""
+    ) ? [1] : []
+    content {
+      sid = "StagingFormTablesAccess"
+      actions = [
+        "dynamodb:GetItem",
+        "dynamodb:PutItem",
+        "dynamodb:UpdateItem",
+        "dynamodb:Query",
+      ]
+      # 6 ARNs total: 4 base tables + GSI paths for the 2 tables that have GSIs
+      # (form_submissions: FormType/Status; sms_consent: phone-lookup).
+      # notification_sends + sms_usage have no GSIs; /index/* intentionally omitted.
+      resources = [
+        var.form_submissions_table_arn,
+        "${var.form_submissions_table_arn}/index/*",
+        var.notification_sends_table_arn,
+        var.sms_consent_table_arn,
+        "${var.sms_consent_table_arn}/index/*",
+        var.sms_usage_table_arn,
+      ]
+    }
+  }
+
+  # Phase C analytics-events pipeline send grant. Conditional on the queue ARN
+  # being passed (when empty, BSH's handleAnalyticsEvent no-ops per index.js:66-106
+  # so no IAM grant is required). SendMessage + SendMessageBatch cover both
+  # single-event and batched send sites in index.js (lines 135, 143, 174).
+  dynamic "statement" {
+    for_each = var.analytics_queue_arn != "" ? [1] : []
+    content {
+      sid       = "SqsAnalyticsSend"
+      actions   = ["sqs:SendMessage", "sqs:SendMessageBatch"]
+      resources = [var.analytics_queue_arn]
+    }
+  }
+
+  # Phase B SMS_Sender invoke grant. form_handler.js:352,845 calls
+  # lambda:InvokeFunction on the value of SMS_SENDER_FUNCTION env var.
+  # Conditional on the ARN being passed; bare-name resolution to the
+  # staging-account SMS_Sender requires this grant.
+  dynamic "statement" {
+    for_each = var.sms_sender_function_arn != "" ? [1] : []
+    content {
+      sid       = "InvokeSmsSender"
+      actions   = ["lambda:InvokeFunction"]
+      resources = [var.sms_sender_function_arn]
+    }
+  }
 }
 
 resource "aws_iam_role_policy" "exec" {
@@ -156,12 +323,63 @@ resource "aws_iam_role_policy" "exec" {
 }
 
 # ------------------------------------------------------------------
-# Log group (explicit, with retention)
+# Log group (explicit, with retention) + KMS-encrypted at rest
 # ------------------------------------------------------------------
+# Phase C.2 audit-of-audit closure (row 27 / F10). BSH logs include session
+# IDs, tenant hashes, and post-Phase-D will include URL fragments from
+# browser page-view events that may contain PII. KMS scopes encrypted-read
+# access to principals with kms:Decrypt + this key's policy.
+
+data "aws_iam_policy_document" "logs_kms" {
+  statement {
+    sid     = "EnableRootAccount"
+    actions = ["kms:*"]
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"]
+    }
+    resources = ["*"]
+  }
+  statement {
+    sid = "AllowCloudWatchLogs"
+    actions = [
+      "kms:Encrypt",
+      "kms:Decrypt",
+      "kms:ReEncrypt*",
+      "kms:GenerateDataKey*",
+      "kms:DescribeKey",
+    ]
+    principals {
+      type        = "Service"
+      identifiers = ["logs.${data.aws_region.current.name}.amazonaws.com"]
+    }
+    resources = ["*"]
+    condition {
+      test     = "ArnEquals"
+      variable = "kms:EncryptionContext:aws:logs:arn"
+      values = [
+        "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/${var.function_name}",
+      ]
+    }
+  }
+}
+
+resource "aws_kms_key" "logs" {
+  description             = "CMK for ${var.function_name} CloudWatch Logs (Phase C.2)"
+  enable_key_rotation     = true
+  deletion_window_in_days = 7
+  policy                  = data.aws_iam_policy_document.logs_kms.json
+}
+
+resource "aws_kms_alias" "logs" {
+  name          = "alias/${var.function_name}-logs"
+  target_key_id = aws_kms_key.logs.key_id
+}
 
 resource "aws_cloudwatch_log_group" "lambda" {
   name              = "/aws/lambda/${var.function_name}"
   retention_in_days = var.log_retention_days
+  kms_key_id        = aws_kms_key.logs.arn
 }
 
 # ------------------------------------------------------------------
@@ -190,18 +408,51 @@ resource "aws_lambda_function" "this" {
   source_code_hash = data.archive_file.placeholder.output_base64sha256
 
   environment {
-    variables = {
-      ENVIRONMENT                 = "staging"
-      CONFIG_BUCKET               = var.config_bucket_name
-      S3_CONFIG_BUCKET            = var.config_bucket_name
-      SESSION_SUMMARIES_TABLE     = var.session_summaries_table_name
-      TENANT_REGISTRY_TABLE       = var.tenant_registry_table_name
-      USE_REGISTRY_FOR_RESOLUTION = "true"
-      # PR A code reads this and calls sts:AssumeRole before any KB
-      # Retrieve call. Empty in environments where Lambda + KB share
-      # an account (no assume-role needed).
-      KB_RETRIEVER_ROLE_ARN = length(var.kb_retriever_role_arns) > 0 ? var.kb_retriever_role_arns[0] : ""
-    }
+    # CF-origin env vars are merged in only when cf_origin_secret_arn is non-empty —
+    # matches the variable description contract ("when empty, no env var is set").
+    # Phase A.2 audit row #1 closed: previously both keys were unconditionally
+    # rendered, producing "" values when callers omitted the inputs.
+    variables = merge(
+      {
+        ENVIRONMENT                 = "staging"
+        CONFIG_BUCKET               = var.config_bucket_name
+        S3_CONFIG_BUCKET            = var.config_bucket_name
+        SESSION_SUMMARIES_TABLE     = var.session_summaries_table_name
+        TENANT_REGISTRY_TABLE       = var.tenant_registry_table_name
+        USE_REGISTRY_FOR_RESOLUTION = "true"
+        # index.js fail-loads at module init if missing; capture in IaC so
+        # routine terraform applies don't strip the var.
+        BEDROCK_MODEL_ID = var.bedrock_model_id
+        # PR A code reads this and calls sts:AssumeRole before any KB
+        # Retrieve call. Empty in environments where Lambda + KB share
+        # an account (no assume-role needed).
+        KB_RETRIEVER_ROLE_ARN = length(var.kb_retriever_role_arns) > 0 ? var.kb_retriever_role_arns[0] : ""
+
+        # Phase A: form-handler twin tables wired.
+        FORM_SUBMISSIONS_TABLE   = var.form_submissions_table_name
+        NOTIFICATION_SENDS_TABLE = var.notification_sends_table_name
+        SMS_CONSENT_TABLE        = var.sms_consent_table_name
+        SMS_USAGE_TABLE          = var.sms_usage_table_name
+      },
+      var.cf_origin_secret_arn != "" ? {
+        CF_ORIGIN_SECRET_NAME    = var.cf_origin_secret_name
+        REQUIRE_CF_ORIGIN_HEADER = "true"
+      } : {},
+      # Phase C: when the analytics-events pipeline is wired, BSH's
+      # handleAnalyticsEvent reads ANALYTICS_QUEUE_URL and sends to SQS.
+      # When empty (e.g., dev environments not yet provisioned), the
+      # handler returns {status:"noop"} per index.js:100-106.
+      var.analytics_queue_url != "" ? {
+        ANALYTICS_QUEUE_URL = var.analytics_queue_url
+      } : {},
+      # Phase B: when the SMS twin is wired, BSH form_handler.js invokes
+      # this Lambda for SMS sends. When empty, form_handler falls back to
+      # its `SMS_Sender` default which fails to resolve in staging today
+      # (no same-account SMS_Sender Lambda).
+      var.sms_sender_function_name != "" ? {
+        SMS_SENDER_FUNCTION = var.sms_sender_function_name
+      } : {}
+    )
   }
 
   tracing_config {
@@ -227,10 +478,27 @@ resource "aws_lambda_function_url" "this" {
   authorization_type = "NONE"
   invoke_mode        = "RESPONSE_STREAM"
 
+  # CORS matches the live Lambda's narrowed values (pre-Terraform hand
+  # config). Widget origins + REST methods + browser-standard headers.
+  # Do NOT broaden to wildcards without reviewing
+  # `feedback_uniform_env_rules`; the narrow set is the operational
+  # baseline shipped before Terraform-management of this Lambda existed.
   cors {
-    allow_origins     = ["*"]
-    allow_methods     = ["*"]
-    allow_headers     = ["*"]
+    allow_origins = [
+      "http://localhost:3000",
+      "http://localhost:5173",
+      "http://localhost:8000",
+      "https://chat.myrecruiter.ai",
+      "https://staging.chat.myrecruiter.ai",
+      "https://picassocode.s3.amazonaws.com",
+      "https://picassostaging.s3.amazonaws.com",
+    ]
+    allow_methods = ["GET", "POST"]
+    # `x-picasso-cf-origin` is CloudFront-injected to the Lambda (not browser-set),
+    # so CORS preflight doesn't strictly need it for prod traffic. Added per Phase
+    # A.1 audit row #6 to support browser-direct Function URL testing pre-Phase-D
+    # cutover.
+    allow_headers     = ["accept", "authorization", "content-type", "x-picasso-cf-origin", "x-requested-with"]
     allow_credentials = true
   }
 }
@@ -264,9 +532,11 @@ resource "aws_lambda_function_url" "this" {
 # However, if the Lambda is destroyed and recreated, the manual step
 # must be re-run.
 #
-# Tracking: HashiCorp/terraform-provider-aws upstream issue (TODO: file).
-# Architect-recommended verification: empirically test whether the
-# second statement is actually required (untested in isolation).
+# Tracking: empirically test whether the second statement is actually required
+# (untested in isolation). If the manual step is unnecessary in practice, drop
+# the comment block entirely. No upstream issue filed — this is a
+# Lambda Function URL + cross-account-invoke quirk specific to AWS account
+# topology, not a Terraform-provider bug.
 # ──────────────────────────────────────────────────────────────────────
 
 # ------------------------------------------------------------------

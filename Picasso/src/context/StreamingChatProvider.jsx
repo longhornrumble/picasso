@@ -553,12 +553,14 @@ export default function StreamingChatProvider({ children }) {
       return updated;
     });
 
-    // Emit MESSAGE_SENT analytics event
-    emitAnalyticsEvent(MESSAGE_SENT, {
-      content_preview: userInput.substring(0, 500),
-      content_length: userInput.length,
-      step_number: stepNumber
-    });
+    // MESSAGE_SENT: emitted in production only. Staging uses server-side analytics writer (Issue #5 PR A).
+    if (!__IS_STAGING__) {
+      emitAnalyticsEvent(MESSAGE_SENT, {
+        content_preview: userInput.substring(0, 500),
+        content_length: userInput.length,
+        step_number: stepNumber
+      });
+    }
 
     setIsTyping(true);
     setError(null);
@@ -746,14 +748,16 @@ export default function StreamingChatProvider({ children }) {
           const totalTime = Date.now() - startTime;
           logger.info(`Streaming completed in ${totalTime}ms (first chunk: ${firstChunkTime}ms)`);
 
-          // Emit MESSAGE_RECEIVED analytics event
+          // MESSAGE_RECEIVED: emitted in production only. Staging uses server-side analytics writer (Issue #5 PR A).
           // Use firstChunkTime (TTFB) for response_time_ms - this is when user sees first character
-          emitAnalyticsEvent(MESSAGE_RECEIVED, {
-            content_preview: fullText.substring(0, 500),
-            content_length: fullText.length,
-            response_time_ms: firstChunkTime || totalTime,  // TTFB, fallback to total if no chunks
-            step_number: stepNumber
-          });
+          if (!__IS_STAGING__) {
+            emitAnalyticsEvent(MESSAGE_RECEIVED, {
+              content_preview: fullText.substring(0, 500),
+              content_length: fullText.length,
+              response_time_ms: firstChunkTime || totalTime,  // TTFB, fallback to total if no chunks
+              step_number: stepNumber
+            });
+          }
 
           // Debug: Check if pendingCtasRef and pendingShowcaseCardRef survived until onDone
           console.log('[StreamingChatProvider] onDone called, pending refs state:', {

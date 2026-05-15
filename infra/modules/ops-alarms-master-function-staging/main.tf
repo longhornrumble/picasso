@@ -135,6 +135,52 @@ resource "aws_cloudwatch_metric_alarm" "analytics_write_failure" {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Alarm 4: cf_origin_rejection — direct Function URL hits that fail CF origin
+# header validation. Phase-completion-audit 2026-05-13 blocker #3: the CF
+# header validator (lambda#101) was activated 2026-05-13 with REQUIRE_CF_ORIGIN_HEADER=true
+# but had no observability surface — drift between Secrets Manager and CF
+# custom header, or a CF distribution config that loses the CustomHeaders
+# block, would silently 403 all CF-routed staging traffic. A spike here is
+# the canonical drift/bypass-attempt signal.
+#
+# Threshold: > 5 in 5min matches the analytics_write_failure pattern. Real
+# staging traffic should see ZERO 403s from this validator; occasional
+# direct-URL curl tests by an operator are tolerable below threshold.
+# ─────────────────────────────────────────────────────────────────────────────
+resource "aws_cloudwatch_log_metric_filter" "cf_origin_rejection" {
+  name           = "cf_origin_rejection"
+  log_group_name = var.log_group_name
+  # Matches the WARNING line emitted by validate_cf_origin_header path in
+  # lambda_function.py: "SECURITY: rejected request with invalid CF origin
+  # header — <reason>". The leading "SECURITY:" tag is specific to this
+  # validator path (analytics writer / KB creds use different prefixes).
+  pattern = "\"SECURITY: rejected request with invalid CF origin header\""
+
+  metric_transformation {
+    name          = "CfOriginRejection"
+    namespace     = "Picasso/Master_Function_Staging"
+    value         = "1"
+    default_value = 0
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "cf_origin_rejection" {
+  alarm_name          = "${var.function_name}-cf-origin-rejection"
+  alarm_description   = "Master_Function_Staging rejected >5 requests in 5min for missing/invalid CF origin header. Likely drift between Secrets Manager value and CloudFront CustomHeader, OR a script hitting the Function URL directly (e.g. scripts/issue5_soak/soak.py). See rotation SOP in project_mfs_cf_header_hardening_2026-05-13.md."
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  threshold           = 5
+  treat_missing_data  = "notBreaching"
+
+  metric_name = "CfOriginRejection"
+  namespace   = "Picasso/Master_Function_Staging"
+  period      = 300
+  statistic   = "Sum"
+
+  alarm_actions = [aws_sns_topic.ops_alerts.arn]
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
 output "topic_arn" {
   value = aws_sns_topic.ops_alerts.arn
 }
