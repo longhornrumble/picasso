@@ -428,13 +428,15 @@ export const FormModeProvider = ({ children }) => {
         ? Math.round((Date.now() - formMetadata.startedAt) / 1000)
         : 0;
 
-      // Analytics: Emit FORM_COMPLETED event
-      emitFormEvent(FORM_COMPLETED, {
-        form_id: currentFormId,
-        form_label: formConfig.title || currentFormId,
-        duration_seconds: durationSeconds,
-        fields_completed: formConfig.fields.length
-      });
+      // FORM_COMPLETED: emitted in production only. Staging uses server-side analytics writer (Issue #5 PR A2).
+      if (!__IS_STAGING__) {
+        emitFormEvent(FORM_COMPLETED, {
+          form_id: currentFormId,
+          form_label: formConfig.title || currentFormId,
+          duration_seconds: durationSeconds,
+          fields_completed: formConfig.fields.length
+        });
+      }
 
       // Reset form started tracking to prevent FORM_ABANDONED from firing after completion
       formStartedEmittedRef.current = false;

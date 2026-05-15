@@ -425,12 +425,14 @@ export default function HTTPChatProvider({ children }) {
       return updated;
     });
 
-    // Emit MESSAGE_SENT analytics event
-    emitAnalyticsEvent(MESSAGE_SENT, {
-      content_preview: userInput.substring(0, 500),
-      content_length: userInput.length,
-      step_number: stepNumber
-    });
+    // MESSAGE_SENT: emitted in production only. Staging uses server-side analytics writer (Issue #5 PR A2).
+    if (!__IS_STAGING__) {
+      emitAnalyticsEvent(MESSAGE_SENT, {
+        content_preview: userInput.substring(0, 500),
+        content_length: userInput.length,
+        step_number: stepNumber
+      });
+    }
 
     setIsTyping(true);
     setError(null);
@@ -542,13 +544,15 @@ export default function HTTPChatProvider({ children }) {
       // Extract content early for analytics (before processing)
       const rawContent = response.content || response.message || response.response || '';
 
-      // Emit MESSAGE_RECEIVED analytics event
-      emitAnalyticsEvent(MESSAGE_RECEIVED, {
-        content_preview: (typeof rawContent === 'string' ? rawContent : JSON.stringify(rawContent)).substring(0, 500),
-        content_length: typeof rawContent === 'string' ? rawContent.length : JSON.stringify(rawContent).length,
-        response_time_ms: responseTime,
-        step_number: stepNumber
-      });
+      // MESSAGE_RECEIVED: emitted in production only. Staging uses server-side analytics writer (Issue #5 PR A2).
+      if (!__IS_STAGING__) {
+        emitAnalyticsEvent(MESSAGE_RECEIVED, {
+          content_preview: (typeof rawContent === 'string' ? rawContent : JSON.stringify(rawContent)).substring(0, 500),
+          content_length: typeof rawContent === 'string' ? rawContent.length : JSON.stringify(rawContent).length,
+          response_time_ms: responseTime,
+          step_number: stepNumber
+        });
+      }
       console.log('🟣🟣🟣 Raw response from Lambda:', response);
       console.log('🟣 Response keys:', Object.keys(response));
       console.log('🟣 response.ctaButtons:', response.ctaButtons);

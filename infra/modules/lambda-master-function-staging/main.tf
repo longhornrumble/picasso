@@ -24,6 +24,20 @@ variable "jwt_secret_name" {
   type        = string
 }
 
+variable "cf_origin_secret_arn" {
+  description = "ARN of the CloudFront origin secret in Secrets Manager (used by lambda#101 CF origin header validator). Optional; when empty, no IAM grant is added and the feature flag REQUIRE_CF_ORIGIN_HEADER must remain false."
+  type        = string
+  default     = ""
+
+  # Catch typos / wrong-region / wrong-account ARNs at plan time, not at
+  # runtime. Empty string is allowed (feature off). When set, must be a
+  # Secrets Manager ARN in the same account+region as the Lambda.
+  validation {
+    condition     = var.cf_origin_secret_arn == "" || can(regex("^arn:aws:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:", var.cf_origin_secret_arn))
+    error_message = "cf_origin_secret_arn must be empty or a valid Secrets Manager ARN (arn:aws:secretsmanager:<region>:<account>:secret:<name>-<suffix>)."
+  }
+}
+
 variable "session_summaries_table_arn" {
   type = string
 }
@@ -64,9 +78,56 @@ variable "conversation_summaries_table_name" {
   type = string
 }
 
+variable "token_blacklist_table_arn" {
+  description = "ARN of the staging-account token blacklist table."
+  type        = string
+}
+
+variable "token_blacklist_table_name" {
+  description = "Name of the token blacklist table (for env var)."
+  type        = string
+}
+
+variable "form_submissions_table_arn" {
+  description = "ARN of the staging-account form submissions table."
+  type        = string
+}
+
+variable "form_submissions_table_name" {
+  description = "Name of the form submissions table (for env var FORM_SUBMISSIONS_TABLE)."
+  type        = string
+}
+
+variable "notification_sends_table_arn" {
+  description = "ARN of the staging-account notification-sends table (logs of email/SMS delivery results)."
+  type        = string
+}
+
+variable "notification_sends_table_name" {
+  description = "Name of the notification-sends table (for env var NOTIFICATION_SENDS_TABLE)."
+  type        = string
+}
+
 variable "streaming_endpoint" {
   description = "Function URL of the staging Bedrock streaming handler."
   type        = string
+}
+
+variable "bedrock_model_id" {
+  description = "Bedrock model ID used by intent_router for direct InvokeModel calls (e.g. V4 Action Selector)."
+  type        = string
+  default     = "global.anthropic.claude-haiku-4-5-20251001-v1:0"
+}
+
+variable "kb_arns" {
+  description = "List of Bedrock Knowledge Base ARNs the Lambda is allowed to Retrieve from. For Issue #5, MYR's KB only."
+  type        = list(string)
+}
+
+variable "kb_retriever_role_arns" {
+  description = "List of cross-account IAM role ARNs the Lambda is allowed to AssumeRole into for KB Retrieve. Bedrock KBs aren't RAM-shareable, so cross-account access requires the staging Lambda to assume a prod-side role that has Retrieve permission. Python bedrock_handler.py wraps the Bedrock call with assume-role + cached creds."
+  type        = list(string)
+  default     = []
 }
 
 variable "log_retention_days" {
@@ -133,6 +194,21 @@ data "aws_iam_policy_document" "exec" {
     resources = [var.jwt_secret_arn]
   }
 
+  # CF origin secret — granted only when cf_origin_secret_arn is non-empty.
+  # The lambda#101 validator fails closed when the secret can't be read, so
+  # missing this grant is safe (flag must stay off). Audit blocker #2 from
+  # phase-completion-audit 2026-05-12: this grant must exist in IaC before
+  # the activation runbook flips REQUIRE_CF_ORIGIN_HEADER=true, otherwise
+  # all prod traffic 403s.
+  dynamic "statement" {
+    for_each = var.cf_origin_secret_arn != "" ? [1] : []
+    content {
+      sid       = "CfOriginSecretRead"
+      actions   = ["secretsmanager:GetSecretValue"]
+      resources = [var.cf_origin_secret_arn]
+    }
+  }
+
   # Audit table is append-only — writers may Put/Update; nobody should
   # Delete or BatchWrite into it. Read access for dashboard queries.
   statement {
@@ -171,6 +247,80 @@ data "aws_iam_policy_document" "exec" {
       var.conversation_summaries_table_arn,
       "${var.conversation_summaries_table_arn}/index/*",
     ]
+  }
+
+  # Token blacklist — split into read + write statements per audit blocker
+  # 2026-05-12 (Phase 4 cumulative). BatchWriteItem grant was the largest
+  # concern: any caller that obtained write access could mass-blacklist
+  # tokens in a single API call (effective DoS). Splitting also lets a
+  # future tightening pin Read to "any reader" and Write to specific
+  # admin paths without re-granting both.
+  #
+  # Active paths today: is_token_blacklisted (GetItem) and
+  # add_token_to_blacklist (PutItem). Scan/Query were unused-by-active-code
+  # and so were dropped; the dormant revoke_tenant_tokens and
+  # cleanup_expired_blacklist_entries functions need a separate Scan grant
+  # added at the time they're wired into an admin API (don't pre-grant).
+  statement {
+    sid = "DynamoDBTokenBlacklistRead"
+    actions = [
+      "dynamodb:GetItem",
+      "dynamodb:DescribeTable",
+    ]
+    resources = [
+      var.token_blacklist_table_arn,
+    ]
+  }
+
+  statement {
+    sid = "DynamoDBTokenBlacklistWrite"
+    actions = [
+      "dynamodb:PutItem",
+      "dynamodb:UpdateItem",
+    ]
+    resources = [
+      var.token_blacklist_table_arn,
+    ]
+  }
+
+  # Form submissions + notification-sends — writes happen during the
+  # forms HTTP fallback path (handle_chat → FormHandler when form_mode=True,
+  # or direct ?action=form_submission). form_handler.py is env-var-driven
+  # for these table names (see FORM_SUBMISSIONS_TABLE + NOTIFICATION_SENDS_TABLE
+  # env vars below).
+  statement {
+    sid = "DynamoDBFormSubmissions"
+    actions = [
+      "dynamodb:GetItem",
+      "dynamodb:PutItem",
+      "dynamodb:UpdateItem",
+      "dynamodb:Query",
+      "dynamodb:DescribeTable",
+    ]
+    resources = [
+      var.form_submissions_table_arn,
+      "${var.form_submissions_table_arn}/index/*",
+      var.notification_sends_table_arn,
+    ]
+  }
+
+  statement {
+    sid       = "BedrockKBRetrieve"
+    actions   = ["bedrock-agent-runtime:Retrieve"]
+    resources = var.kb_arns
+  }
+
+  # Cross-account KB access: AWS RAM doesn't support bedrock:KnowledgeBase
+  # (only bedrock:CustomModel). The staging Lambda must assume a role in
+  # the prod account that holds the Retrieve permission. Conditional —
+  # only added when caller passes role ARNs (e.g., for staging env).
+  dynamic "statement" {
+    for_each = length(var.kb_retriever_role_arns) > 0 ? [1] : []
+    content {
+      sid       = "AssumeKBRetrieverRole"
+      actions   = ["sts:AssumeRole"]
+      resources = var.kb_retriever_role_arns
+    }
   }
 
   # Master_Function uses synchronous InvokeModel for V4 Action Selector
@@ -247,9 +397,25 @@ resource "aws_lambda_function" "this" {
       MESSAGES_TABLE_NAME         = var.recent_messages_table_name
       TENANT_REGISTRY_TABLE       = var.tenant_registry_table_name
       AUDIT_TABLE_NAME            = var.audit_table_name
+      BLACKLIST_TABLE_NAME        = var.token_blacklist_table_name
+      FORM_SUBMISSIONS_TABLE      = var.form_submissions_table_name
+      NOTIFICATION_SENDS_TABLE    = var.notification_sends_table_name
+      BEDROCK_MODEL_ID            = var.bedrock_model_id
       STREAMING_ENDPOINT          = var.streaming_endpoint
       JWT_EXPIRY_MINUTES          = "30"
       MONITORING_ENABLED          = "true"
+      # CF origin secret NAME. Lambda code's default (lambda_function.py:94)
+      # is the same string; pinning here removes the silent-default coupling
+      # so any future rename is caught at terraform plan time, not at runtime.
+      CF_ORIGIN_SECRET_NAME = "picasso/mfs/cf-origin-secret"
+      # Activates the lambda#101 validator. Set live via aws-cli during the
+      # 2026-05-13 activation runbook; codified here so that path is no
+      # longer IaC drift. Rollback = remove this line + plan/apply.
+      REQUIRE_CF_ORIGIN_HEADER = "true"
+      # Python bedrock_handler.py reads this and calls sts:AssumeRole before
+      # any KB Retrieve call. Empty in environments where Lambda + KB share
+      # an account (no assume-role needed).
+      KB_RETRIEVER_ROLE_ARN = length(var.kb_retriever_role_arns) > 0 ? var.kb_retriever_role_arns[0] : ""
     }
   }
 
