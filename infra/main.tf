@@ -402,6 +402,26 @@ module "ops_alarms_master_function_staging" {
   log_group_name = module.lambda_master_function_staging[0].log_group_name
 }
 
+# ──────────────────────────────────────────────────────────────────────
+# Q5: staging widget edge migration (prod acct 614056832592 → staging
+# 525409062831). Plan: ~/.claude/plans/glistening-strolling-oasis.md.
+# Phase D moved the staging COMPUTE (MFS+BSH) to the staging account; the
+# staging EDGE (CloudFront E1CGYA1AJ9OYL0 + S3 + WAF + ACM + OAC) still
+# lives in the prod account. Q5 twins the edge here, GoDaddy-CNAME cuts
+# over, soaks, then decommissions the prod-account edge.
+#
+# TWO-APPLY [B1]: this PR is APPLY 1 — the ACM cert ONLY. It is created
+# PENDING_VALIDATION; the `validation_record` output is the CNAME the
+# operator adds in the GoDaddy console (DNS is GoDaddy, not Route53 —
+# verified P0.1). Apply 2 (OAC + WAF + S3 widget bucket + CloudFront
+# distribution + the tenant-bucket OAC grant) is a SEPARATE later PR,
+# gated on this cert reaching ISSUED.
+# ──────────────────────────────────────────────────────────────────────
+module "acm_chat_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/acm-chat-staging"
+}
+
 # JWT secret resource policy — restricts read to the Lambda exec roles
 # that legitimately validate Picasso-issued JWTs. Defense-in-depth: the
 # Lambda IAM policies already grant the read; this resource-side Deny
