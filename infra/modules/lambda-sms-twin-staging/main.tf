@@ -59,6 +59,12 @@ variable "log_retention_days" {
   default     = 30
 }
 
+variable "telnyx_public_key" {
+  description = "Telnyx Ed25519 webhook signing PUBLIC key (base64). Wired into SMS_Webhook_Handler as the TELNYX_PUBLIC_KEY env var. Public half of an Ed25519 keypair — not a secret, but per-account (different value for staging vs prod Telnyx accounts). Hardcoded in root main.tf module call. When empty, the handler fails closed (returns 500) per Phase D audit row #2."
+  type        = string
+  default     = ""
+}
+
 # ------------------------------------------------------------------
 # Common data sources
 # ------------------------------------------------------------------
@@ -88,10 +94,48 @@ locals {
 # public key after standalone Telnyx account procurement (Phase B P-0).
 # Lifecycle `ignore_changes = [secret_string]` prevents subsequent Terraform
 # applies from reverting the operator's update.
+#
+# KMS-encrypted with a CMK (Phase D audit row #11) — matches the Phase C.2
+# pattern for in-account secret encryption. The KMS key policy scopes use to
+# Secrets Manager + the SMS Lambda roles + the deploy role.
+
+data "aws_iam_policy_document" "telnyx_secret_kms" {
+  statement {
+    sid     = "EnableRootAccount"
+    actions = ["kms:*"]
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"]
+    }
+    resources = ["*"]
+  }
+  statement {
+    sid     = "AllowSecretsManagerService"
+    actions = ["kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"]
+    principals {
+      type        = "Service"
+      identifiers = ["secretsmanager.amazonaws.com"]
+    }
+    resources = ["*"]
+  }
+}
+
+resource "aws_kms_key" "telnyx_secret" {
+  description             = "CMK for picasso/telnyx-staging secret (Phase D audit #11)"
+  enable_key_rotation     = true
+  deletion_window_in_days = 7
+  policy                  = data.aws_iam_policy_document.telnyx_secret_kms.json
+}
+
+resource "aws_kms_alias" "telnyx_secret" {
+  name          = "alias/picasso-telnyx-staging-secret"
+  target_key_id = aws_kms_key.telnyx_secret.key_id
+}
 
 resource "aws_secretsmanager_secret" "telnyx_staging" {
   name        = "picasso/telnyx-staging"
   description = "Telnyx API credentials for staging-account-local SMS twin. Separate Telnyx account from prod per Phase B isolation strategy."
+  kms_key_id  = aws_kms_key.telnyx_secret.arn
 }
 
 resource "aws_secretsmanager_secret_version" "telnyx_staging_placeholder" {
@@ -113,15 +157,18 @@ resource "aws_secretsmanager_secret_version" "telnyx_staging_placeholder" {
 # GetSecretValue on every plan/apply — without it, plans fail with explicit-
 # deny. Admin SSO + Console users do NOT have read; populate via
 # `aws secretsmanager put-secret-value` (PutSecretValue isn't gated here).
-locals {
-  # Hardcoded deploy role ARN per AWS account; matches the GitHub Environment
-  # `staging`'s AWS_DEPLOY_ROLE_ARN var. Not a secret, doesn't rotate.
-  deploy_role_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/GitHubActionsDeployRole"
+# Phase D audit row #17: replace hardcoded ARN literal with a data source so
+# any future role rename surfaces as a Terraform plan failure rather than a
+# silent IAM mismatch. The data source asserts the role exists at plan time.
+data "aws_iam_role" "deploy_role" {
+  name = "GitHubActionsDeployRole"
+}
 
+locals {
   telnyx_secret_readers = [
     aws_iam_role.sms_sender.arn,
     aws_iam_role.sms_webhook_handler.arn,
-    local.deploy_role_arn,
+    data.aws_iam_role.deploy_role.arn,
   ]
 }
 
@@ -311,9 +358,10 @@ resource "aws_lambda_function" "sms_sender" {
       NOTIFICATION_SENDS_TABLE = var.notification_sends_table_name
       SMS_CONSENT_TABLE        = var.sms_consent_table_name
       SMS_USAGE_TABLE          = var.sms_usage_table_name
-      # WEBHOOK_BASE_URL populated post-deploy with the SMS_Webhook_Handler
-      # Function URL (computed below). Set via lambda-repo CI matrix env_vars
-      # to avoid a Terraform-side cycle.
+      # SMS_Sender embeds this URL as `webhook_url` per Telnyx message so
+      # delivery callbacks land on our staging webhook handler. Resolved
+      # within this module (no circular dep — both Lambdas live here).
+      WEBHOOK_BASE_URL = aws_lambda_function_url.sms_webhook.function_url
     }
   }
 
@@ -321,8 +369,11 @@ resource "aws_lambda_function" "sms_sender" {
     mode = "PassThrough"
   }
 
+  # Phase D audit row #1: `environment` REMOVED from ignore_changes — was
+  # silently wiping out-of-band env var sets on any subsequent apply. Env
+  # vars are now Terraform-managed source of truth (matches BSH module).
   lifecycle {
-    ignore_changes = [filename, source_code_hash, environment]
+    ignore_changes = [filename, source_code_hash]
   }
 
   depends_on = [aws_cloudwatch_log_group.sms_sender, aws_iam_role_policy.sms_sender_exec]
@@ -480,6 +531,11 @@ resource "aws_lambda_function" "sms_webhook_handler" {
       TELNYX_SECRET_NAME        = aws_secretsmanager_secret.telnyx_staging.name
       NOTIFICATION_EVENTS_TABLE = var.notification_events_table_name
       SMS_CONSENT_TABLE         = var.sms_consent_table_name
+      # Phase D audit row #2: TELNYX_PUBLIC_KEY is now Terraform-managed
+      # (was: out-of-band). Handler reads `process.env.TELNYX_PUBLIC_KEY`
+      # at module init; missing/empty value triggers fail-closed (returns 500)
+      # per the paired Lambda code change.
+      TELNYX_PUBLIC_KEY = var.telnyx_public_key
     }
   }
 
@@ -487,8 +543,9 @@ resource "aws_lambda_function" "sms_webhook_handler" {
     mode = "PassThrough"
   }
 
+  # Phase D audit row #1: `environment` REMOVED from ignore_changes.
   lifecycle {
-    ignore_changes = [filename, source_code_hash, environment]
+    ignore_changes = [filename, source_code_hash]
   }
 
   depends_on = [aws_cloudwatch_log_group.sms_webhook, aws_iam_role_policy.sms_webhook_exec]
@@ -496,14 +553,20 @@ resource "aws_lambda_function" "sms_webhook_handler" {
 
 # Public Function URL — Telnyx POSTs delivery webhooks here. Auth is NONE
 # at the URL layer; the handler verifies the Ed25519 signature on every
-# request using TELNYX_PUBLIC_KEY from the secret. Requests with invalid
-# signatures are rejected before any side effect.
+# request using TELNYX_PUBLIC_KEY env var. Requests with invalid signatures
+# are rejected before any side effect.
+#
+# Phase D audit row #12: CORS removed (`allow_origins = []`). This is a
+# server-to-server endpoint (Telnyx posts from their backends, not browsers).
+# Wildcard CORS was misleading — CORS doesn't gate server-side calls. Empty
+# allow_origins disables CORS preflights entirely, which is the correct
+# posture for a pure webhook receiver.
 resource "aws_lambda_function_url" "sms_webhook" {
   function_name      = aws_lambda_function.sms_webhook_handler.function_name
   authorization_type = "NONE"
 
   cors {
-    allow_origins = ["*"]
+    allow_origins = []
     allow_methods = ["POST"]
     allow_headers = ["content-type", "telnyx-signature-ed25519", "telnyx-timestamp"]
     max_age       = 0

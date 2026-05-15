@@ -340,6 +340,12 @@ module "lambda_sms_twin_staging" {
   sms_consent_table_name         = module.picasso_form_tables.sms_consent_table_name
   sms_usage_table_arn            = module.picasso_form_tables.sms_usage_table_arn
   sms_usage_table_name           = module.picasso_form_tables.sms_usage_table_name
+
+  # Telnyx Ed25519 webhook signing public key for the staging Telnyx account.
+  # Public half of an Ed25519 keypair — not sensitive. Source: operator-
+  # provisioned standalone Telnyx account, copied from Mission Control Portal
+  # → Auth → Public Keys. Handed off via session 2026-05-15 Phase B P-0.
+  telnyx_public_key = "EYM8gLQtICrOBbIZd8CIdcE5r4tRPccmnBMUyeOnY5I="
 }
 
 # Clerk secret resource policy — restricts read to the ADA exec role
