@@ -556,21 +556,14 @@ resource "aws_lambda_function" "sms_webhook_handler" {
 # request using TELNYX_PUBLIC_KEY env var. Requests with invalid signatures
 # are rejected before any side effect.
 #
-# Phase D audit row #12: CORS removed (`allow_origins = []`). This is a
+# Phase D audit row #12 (fix-forward): CORS block REMOVED entirely. This is a
 # server-to-server endpoint (Telnyx posts from their backends, not browsers).
-# Wildcard CORS was misleading — CORS doesn't gate server-side calls. Empty
-# allow_origins disables CORS preflights entirely, which is the correct
-# posture for a pure webhook receiver.
+# CORS doesn't gate server-side calls. AWS rejects `cors{}` with empty
+# `AllowOrigins` (InvalidParameterValueException); the correct way to disable
+# CORS is to omit the block entirely, which is what we want here anyway.
 resource "aws_lambda_function_url" "sms_webhook" {
   function_name      = aws_lambda_function.sms_webhook_handler.function_name
   authorization_type = "NONE"
-
-  cors {
-    allow_origins = []
-    allow_methods = ["POST"]
-    allow_headers = ["content-type", "telnyx-signature-ed25519", "telnyx-timestamp"]
-    max_age       = 0
-  }
 }
 
 # =============================================================================
