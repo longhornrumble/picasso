@@ -184,3 +184,20 @@ WIDGET-001 (streaming innerHTML without DOMPurify)
 - Third-party dependency deep audit (npm audit was blocked by sandbox)
 - Clerk Dashboard configuration review
 - CloudFront security headers / WAF rules
+
+---
+
+## Addenda (post-audit findings)
+
+### IAM-001 — Staging Bedrock handler shares execution role with prod Master_Function (HIGH)
+
+**Filed:** 2026-05-03 — [lambda#44](https://github.com/longhornrumble/lambda/issues/44)
+**Discovery context:** surfaced during Issue #5 (server-side analytics recording) deeper-research stream
+
+`Bedrock_Streaming_Handler_Staging` (a publicly exposed, JWT-free staging Lambda Function URL) and `Master_Function` (a production Lambda) both run under `Master_Function-role-zyux77wq`. That shared role carries prod-class IAM policies: `DynamoDBProductionAccess`, `DynamoDBBlacklistAccess`, `picassoWrite`, `BillingEventsWrite`, `SES-SendEmail`, `AmazonBedrockFullAccess`, plus secrets-read for JWT signing keys.
+
+Net effect: any input-handling bug in the staging handler reaches production DynamoDB tables and the production blacklist. The pre-existing forge-able `?action=analytics` route (`index.js:280-285`) compounds this — arbitrary callers can submit events without authentication.
+
+Marked HIGH (not CRITICAL) because no active exploit is known and Bedrock handler input is constrained by prompt-shape, not by the role's broader perms. Remediation tracked in [lambda#44](https://github.com/longhornrumble/lambda/issues/44): split the staging handler onto a dedicated role.
+
+**Operational note for anyone modifying `Master_Function-role-zyux77wq`:** changing this role affects BOTH the staging Bedrock handler and the production Master_Function lambda simultaneously. There is no way to staged-rollout a policy change on this role.

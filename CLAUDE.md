@@ -127,7 +127,7 @@ npm run lint
 ### Lambda Functions
 ```bash
 # Python Lambda deployment
-# Functions: Master_Function_Staging, Analytics_Function, Aggregator_Function,
+# Functions: Master_Function_Staging, Aggregator_Function,
 #   Analytics_Dashboard_API, Analytics_Event_Processor, Analytics_Aggregator,
 #   SSO_Token_Generator, send_email, ses_event_handler, deploy_tenant_stack
 cd Lambdas/lambda/[function_name]
@@ -273,7 +273,6 @@ npm run preview  # Preview production build
 - **Analytics_Dashboard_API** (Python) - Backend API for analytics dashboard (DynamoDB + Athena)
 - **Analytics_Event_Processor** (Python) - SQS → S3 pipeline for analytics events
 - **Analytics_Aggregator** (Python) - Hourly EventBridge-triggered data aggregation
-- **Analytics_Function** (Python) - Analytics event ingestion
 - **Aggregator_Function** (Python) - Legacy aggregation
 
 **Tenant & Infrastructure:**
