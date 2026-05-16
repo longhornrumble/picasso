@@ -61,6 +61,12 @@ module "picasso_form_tables" {
 module "tenant_config_staging" {
   count  = var.env == "staging" ? 1 : 0
   source = "./modules/s3-tenant-config-staging"
+
+  # Q5 Phase 1 Apply 2 [B2]: grant the staging widget CloudFront OAC
+  # s3:GetObject so /tenants/* + /collateral/* serve from THIS bucket
+  # (severs the prod-account cross-account read). One-directional dep:
+  # this module's bucket policy ← cloudfront-widget-staging's ARN.
+  cloudfront_distribution_arn = module.cloudfront_widget_staging[0].distribution_arn
 }
 
 # Issue #5 batch 2a: dependent state for staging-account Lambdas. Each table
@@ -420,6 +426,57 @@ module "ops_alarms_master_function_staging" {
 module "acm_chat_staging" {
   count  = var.env == "staging" ? 1 : 0
   source = "./modules/acm-chat-staging"
+}
+
+# ──────────────────────────────────────────────────────────────────────
+# Q5 APPLY 2 — the edge twin. Gated on Apply 1's cert reaching ISSUED
+# (verified 2026-05-16: arn …525409062831:certificate/8e60e2b9-… = ISSUED).
+# Provisions, in the staging account, a faithful twin of prod-account
+# CloudFront E1CGYA1AJ9OYL0: a fresh OAC, a CLOUDFRONT WAF (twin of
+# picasso-streaming-waf), the hardened widget S3 bucket, and the CloudFront
+# distribution itself (4 origins — the dangling API-GW origin is dropped).
+# Still NO DNS change — the twin is validated via its raw d###.cloudfront.net
+# domain (EC-Q5.4) before the GoDaddy cutover (Q5 Phase 3).
+#
+# OPERATOR-GATED PREREQUISITE [B3 / locked decision #5]: the two distinct
+# `x-picasso-cf-origin` header values are non-committed sensitive vars
+# (q5_mfs_cf_origin_secret / q5_streaming_cf_origin_secret) with NO default.
+# They are supplied to CI via TF_VAR_ from two `staging`-environment GitHub
+# secrets the operator MUST create before this PR's CI plan/apply can
+# succeed (Q5 PR body documents the exact values' source — the P0.2 rollback
+# dump; never rotated, never committed).
+# ──────────────────────────────────────────────────────────────────────
+module "cloudfront_oac_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/cloudfront-oac-staging"
+}
+
+module "waf_streaming_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/waf-streaming-staging"
+}
+
+module "s3_widget_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/s3-widget-staging"
+
+  # OAC GetObject grant scoped to the new distribution. One-directional
+  # dep (this bucket policy ← cloudfront-widget ARN); the CF module
+  # references this bucket by fixed regional domain, so no cycle.
+  cloudfront_distribution_arn = module.cloudfront_widget_staging[0].distribution_arn
+}
+
+module "cloudfront_widget_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/cloudfront-widget-staging"
+
+  acm_certificate_arn = module.acm_chat_staging[0].certificate_arn
+  web_acl_arn         = module.waf_streaming_staging[0].web_acl_arn
+  oac_id              = module.cloudfront_oac_staging[0].oac_id
+
+  # Non-committed, distinct per origin. See operator-gated prerequisite above.
+  mfs_cf_origin_secret       = var.q5_mfs_cf_origin_secret
+  streaming_cf_origin_secret = var.q5_streaming_cf_origin_secret
 }
 
 # JWT secret resource policy — restricts read to the Lambda exec roles
