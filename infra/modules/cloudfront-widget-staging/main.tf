@@ -87,15 +87,44 @@ locals {
   mfs_origin_id       = "picasso-master-function-staging"
   streaming_origin_id = "picasso-streaming-lambda"
 
-  # AWS-managed policies — global, referenced by ID (P0.2-captured):
+  # AWS-MANAGED policies — global, same ID in every account, verified
+  # 2026-05-16 via `aws cloudfront get-{cache,origin-request}-policy`:
   cache_optimized_id   = "658327ea-f89d-4fab-a63d-7e88639e58f6" # Managed-CachingOptimized
   cache_disabled_id    = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad" # Managed-CachingDisabled
-  orp_all_viewer_id    = "a33e0165-8a55-4236-af65-cac31e112c36" # Managed-AllViewer
   orp_all_viewer_xh_id = "b689b0a8-53d0-40ab-baf2-68738e2966ac" # Managed-AllViewerExceptHostHeader
+  # NOTE: the prod dist's other ORP `a33e0165-…` is NOT managed — it is the
+  # CUSTOM prod-account policy `Picasso-Origin-Request`, so it cannot be
+  # referenced cross-account. Faithfully twinned as the resource below
+  # (verified 2026-05-16 — feedback_verify_cloud_provider_behavior_empirically).
 
   all_methods    = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
   read_methods   = ["GET", "HEAD", "OPTIONS"]
   cached_methods = ["GET", "HEAD"]
+}
+
+# Faithful twin of the prod-account CUSTOM origin request policy
+# `Picasso-Origin-Request` (id a33e0165-… in 614056832592) — config captured
+# verbatim 2026-05-16 via `aws cloudfront get-origin-request-policy`. Used by
+# the /Master_Function*, /tenants/* and /collateral/* behaviors. Custom (not
+# AWS-managed) → must exist in THIS account; cannot be referenced cross-account.
+resource "aws_cloudfront_origin_request_policy" "picasso_origin_request" {
+  name    = "Picasso-Origin-Request-staging"
+  comment = "Forward headers for CORS and API keys"
+
+  headers_config {
+    header_behavior = "whitelist"
+    headers {
+      items = ["Origin", "Accept", "x-api-key", "content-type", "Accept-Language"]
+    }
+  }
+
+  cookies_config {
+    cookie_behavior = "none"
+  }
+
+  query_strings_config {
+    query_string_behavior = "all"
+  }
 }
 
 resource "aws_cloudfront_distribution" "widget" {
@@ -178,7 +207,7 @@ resource "aws_cloudfront_distribution" "widget" {
     allowed_methods          = local.all_methods
     cached_methods           = local.cached_methods
     cache_policy_id          = local.cache_disabled_id
-    origin_request_policy_id = local.orp_all_viewer_id
+    origin_request_policy_id = aws_cloudfront_origin_request_policy.picasso_origin_request.id
     compress                 = true
   }
 
@@ -189,7 +218,7 @@ resource "aws_cloudfront_distribution" "widget" {
     allowed_methods          = local.read_methods
     cached_methods           = local.cached_methods
     cache_policy_id          = local.cache_optimized_id
-    origin_request_policy_id = local.orp_all_viewer_id
+    origin_request_policy_id = aws_cloudfront_origin_request_policy.picasso_origin_request.id
     compress                 = true
   }
 
@@ -200,7 +229,7 @@ resource "aws_cloudfront_distribution" "widget" {
     allowed_methods          = local.read_methods
     cached_methods           = local.cached_methods
     cache_policy_id          = local.cache_optimized_id
-    origin_request_policy_id = local.orp_all_viewer_id
+    origin_request_policy_id = aws_cloudfront_origin_request_policy.picasso_origin_request.id
     compress                 = true
   }
 
