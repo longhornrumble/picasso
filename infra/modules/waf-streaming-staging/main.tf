@@ -22,8 +22,9 @@
 # in us-east-1 — which the root default provider is — no alias needed.
 
 resource "aws_wafv2_web_acl" "streaming" {
-  name        = "picasso-streaming-waf-staging"
-  description = "Staging-account twin of prod picasso-streaming-waf (Q5)"
+  name = "picasso-streaming-waf-staging"
+  # WAFv2 description regex forbids parentheses — keep to \w + space + - , . : / = # @ +
+  description = "Q5 staging-account twin of prod picasso-streaming-waf"
   scope       = "CLOUDFRONT"
 
   default_action {
