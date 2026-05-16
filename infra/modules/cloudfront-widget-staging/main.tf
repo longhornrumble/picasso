@@ -289,7 +289,7 @@ resource "aws_cloudwatch_log_group" "cf_access" {
 
 resource "aws_cloudwatch_log_delivery_source" "cf_access" {
   name         = "picasso-widget-staging-access"
-  log_type     = "ACCESS"
+  log_type     = "ACCESS_LOGS" # CloudFront delivery-source valid set: [ACCESS_LOGS, CONNECTION_LOGS]
   resource_arn = aws_cloudfront_distribution.widget.arn
 }
 
