@@ -6,11 +6,15 @@
 # FAITHFUL TWIN: every origin, behavior, cache/origin-request policy ID, method
 # set, timeout, compression flag and protocol policy is reproduced VERBATIM
 # from the live prod-account distribution config captured in P0.2 (2026-05-16),
-# with three intentional changes:
-#   1. ACM cert + WAF + OAC point at the new staging-account resources.
+# with four intentional changes:
+#   1. WAF + OAC point at the new staging-account resources.
 #   2. The S3 origins point at the staging widget + tenant-config buckets.
 #   3. The dangling `picasso-staging-lambda-api` API-GW origin is DROPPED —
 #      P0.2 confirmed NO behavior references it (locked decision #6).
+#   4. The `staging.chat.myrecruiter.ai` alias + ACM cert are DEFERRED
+#      behind `enable_custom_domain` (default false) — CloudFront forbids
+#      duplicating the live prod dist's CNAME at create time. Attached at
+#      Phase 3 cutover (associate-alias + flag flip). See the variable.
 # CloudFront access logging is ADDED [arch-SR4] (the live twin has logging
 # disabled) via CloudWatch Logs standard logging v2 — deliberately not the
 # legacy S3 `logging_config` block, which would need an ACL-enabled bucket
@@ -31,8 +35,23 @@
 # Provider: root default (us-east-1) — no alias.
 
 variable "acm_certificate_arn" {
-  description = "ARN of the ISSUED staging.chat.myrecruiter.ai ACM cert (acm-chat-staging output). Must be us-east-1."
+  description = "ARN of the ISSUED staging.chat.myrecruiter.ai ACM cert (acm-chat-staging output). Must be us-east-1. Only attached when enable_custom_domain = true (Phase 3 cutover)."
   type        = string
+}
+
+# Cutover gate. CloudFront enforces global CNAME uniqueness at distribution
+# CREATE time — the live prod-account dist E1CGYA1AJ9OYL0 holds
+# `staging.chat.myrecruiter.ai`, and removing it from prod first would
+# violate EC-Q5.2b (old edge stays 200 throughout). So the twin is created
+# WITHOUT the alias (default cert; validate via the raw d###.cloudfront.net
+# domain — EC-Q5.4). At Phase 3 cutover the operator runs
+# `aws cloudfront associate-alias` (cross-account move of the CNAME from
+# E1CGYA1AJ9OYL0 to this dist), flips this flag true (attaches the ACM cert
+# + alias), then performs the GoDaddy DNS change. Zero downtime.
+variable "enable_custom_domain" {
+  description = "Phase 3 cutover only. false = no alias + default *.cloudfront.net cert (twin validatable via raw CF domain, prod alias untouched). true = attach staging.chat.myrecruiter.ai alias + the ACM cert (requires the CNAME already moved off E1CGYA1AJ9OYL0 via associate-alias)."
+  type        = bool
+  default     = false
 }
 
 variable "web_acl_arn" {
@@ -130,7 +149,7 @@ resource "aws_cloudfront_origin_request_policy" "picasso_origin_request" {
 resource "aws_cloudfront_distribution" "widget" {
   enabled             = true
   comment             = "Staging - Picasso Widget"
-  aliases             = ["staging.chat.myrecruiter.ai"]
+  aliases             = var.enable_custom_domain ? ["staging.chat.myrecruiter.ai"] : []
   default_root_object = "index.html"
   price_class         = "PriceClass_100"
   http_version        = "http2"
@@ -244,10 +263,14 @@ resource "aws_cloudfront_distribution" "widget" {
     compress                 = false
   }
 
+  # No-alias phase: default *.cloudfront.net cert (a custom ACM cert REQUIRES
+  # at least one alias, so it can only attach once enable_custom_domain flips
+  # at Phase 3 cutover). Faithful sni-only / TLSv1.2_2021 restored with it.
   viewer_certificate {
-    acm_certificate_arn      = var.acm_certificate_arn
-    ssl_support_method       = "sni-only"
-    minimum_protocol_version = "TLSv1.2_2021"
+    cloudfront_default_certificate = var.enable_custom_domain ? null : true
+    acm_certificate_arn            = var.enable_custom_domain ? var.acm_certificate_arn : null
+    ssl_support_method             = var.enable_custom_domain ? "sni-only" : null
+    minimum_protocol_version       = var.enable_custom_domain ? "TLSv1.2_2021" : null
   }
 
   restrictions {
