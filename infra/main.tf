@@ -466,6 +466,15 @@ module "s3_widget_staging" {
   cloudfront_distribution_arn = module.cloudfront_widget_staging[0].distribution_arn
 }
 
+# PHASE 3 CUTOVER (do NOT do during Phase 1/2): the staging.chat alias + cert
+# are deferred behind `enable_custom_domain` (default false; NOT passed below).
+# The zero-downtime cross-account move requires the WILDCARD method + a NEW
+# `*.chat.myrecruiter.ai` ACM cert (Apply-1 exact-name cert is insufficient —
+# verified from AWS docs, Phase-1 audit Row 1). At Phase 3: provision the
+# wildcard cert, extend this module for the wildcard alias+cert, set
+# `enable_custom_domain = true` here, then follow the corrected runbook in
+# project_q5_staging_edge_handoff_2026-05-16_apply2_APPLIED.md. Forgetting the
+# flag = serving prod traffic on the default *.cloudfront.net cert (TLS error).
 module "cloudfront_widget_staging" {
   count  = var.env == "staging" ? 1 : 0
   source = "./modules/cloudfront-widget-staging"

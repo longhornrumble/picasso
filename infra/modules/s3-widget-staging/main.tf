@@ -98,7 +98,7 @@ data "aws_iam_policy_document" "widget" {
       resources = ["${aws_s3_bucket.widget.arn}/*"]
       condition {
         test     = "StringEquals"
-        variable = "AWS:SourceArn"
+        variable = "aws:SourceArn"
         values   = [var.cloudfront_distribution_arn]
       }
     }
