@@ -49,6 +49,13 @@ jobs:
       - name: Terraform plan
         if: github.event_name == 'pull_request'
         id: plan
+        # Q5 Apply 2: the two distinct x-picasso-cf-origin values are
+        # non-committed sensitive vars. Supplied here from staging-environment
+        # secrets the operator must create before this plan renders clean.
+        # Terraform marks them sensitive — never printed in the plan comment.
+        env:
+          TF_VAR_q5_mfs_cf_origin_secret: ${{ secrets.Q5_MFS_CF_ORIGIN_SECRET }}
+          TF_VAR_q5_streaming_cf_origin_secret: ${{ secrets.Q5_STREAMING_CF_ORIGIN_SECRET }}
         run: |
           terraform plan -var-file=envs/staging.tfvars -no-color -out=plan.tfplan 2>&1 | tee /tmp/plan.txt
 
@@ -69,4 +76,7 @@ jobs:
 
       - name: Terraform apply
         if: github.event_name == 'push' && github.ref == 'refs/heads/staging'
+        env:
+          TF_VAR_q5_mfs_cf_origin_secret: ${{ secrets.Q5_MFS_CF_ORIGIN_SECRET }}
+          TF_VAR_q5_streaming_cf_origin_secret: ${{ secrets.Q5_STREAMING_CF_ORIGIN_SECRET }}
         run: terraform apply -var-file=envs/staging.tfvars -auto-approve
