@@ -31,6 +31,48 @@ resource "aws_wafv2_web_acl" "streaming" {
     allow {}
   }
 
+  # Phase-1 audit Row 2: the twin's raw d###.cloudfront.net domain is publicly
+  # reachable and (because CloudFront injects x-picasso-cf-origin) is a fully
+  # working unauthenticated chat/Bedrock endpoint until the Phase-3 cutover.
+  # Block anything whose Host header is not exactly the intended alias. Raw-CF
+  # validation must therefore use `curl --resolve staging.chat.myrecruiter.ai`
+  # (Host = the real name); post-cutover real traffic carries that Host so this
+  # also stays as permanent defense against direct cloudfront.net access.
+  rule {
+    name     = "BlockNonStagingChatHost"
+    priority = 0
+
+    action {
+      block {}
+    }
+
+    statement {
+      not_statement {
+        statement {
+          byte_match_statement {
+            search_string         = "staging.chat.myrecruiter.ai"
+            positional_constraint = "EXACTLY"
+            field_to_match {
+              single_header {
+                name = "host"
+              }
+            }
+            text_transformation {
+              priority = 0
+              type     = "LOWERCASE"
+            }
+          }
+        }
+      }
+    }
+
+    visibility_config {
+      sampled_requests_enabled   = true
+      cloudwatch_metrics_enabled = true
+      metric_name                = "PicassoBlockNonStagingChatHost"
+    }
+  }
+
   rule {
     name     = "RateLimitPerIP"
     priority = 1

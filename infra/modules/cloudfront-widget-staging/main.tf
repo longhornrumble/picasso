@@ -14,7 +14,12 @@
 #   4. The `staging.chat.myrecruiter.ai` alias + ACM cert are DEFERRED
 #      behind `enable_custom_domain` (default false) — CloudFront forbids
 #      duplicating the live prod dist's CNAME at create time. Attached at
-#      Phase 3 cutover (associate-alias + flag flip). See the variable.
+#      Phase 3 cutover (wildcard-cert method — see APPLIED handoff). See var.
+#   5. Phase-1 audit Row 8: /Master_Function*, /tenants/*, /collateral/*
+#      use `redirect-to-https` (prod live config is `allow-all`). Deliberate
+#      hardening — no legitimate HTTP path exists; closes cleartext exposure
+#      of tenant config + a header-trust downgrade. Prod edge keeps the
+#      weakness (separate concern, not regressed by this twin).
 # CloudFront access logging is ADDED [arch-SR4] (the live twin has logging
 # disabled) via CloudWatch Logs standard logging v2 — deliberately not the
 # legacy S3 `logging_config` block, which would need an ACL-enabled bucket
@@ -222,7 +227,7 @@ resource "aws_cloudfront_distribution" "widget" {
   ordered_cache_behavior {
     path_pattern             = "/Master_Function*"
     target_origin_id         = local.mfs_origin_id
-    viewer_protocol_policy   = "allow-all"
+    viewer_protocol_policy   = "redirect-to-https"
     allowed_methods          = local.all_methods
     cached_methods           = local.cached_methods
     cache_policy_id          = local.cache_disabled_id
@@ -233,7 +238,7 @@ resource "aws_cloudfront_distribution" "widget" {
   ordered_cache_behavior {
     path_pattern             = "/tenants/*"
     target_origin_id         = local.tenant_origin_id
-    viewer_protocol_policy   = "allow-all"
+    viewer_protocol_policy   = "redirect-to-https"
     allowed_methods          = local.read_methods
     cached_methods           = local.cached_methods
     cache_policy_id          = local.cache_optimized_id
@@ -244,7 +249,7 @@ resource "aws_cloudfront_distribution" "widget" {
   ordered_cache_behavior {
     path_pattern             = "/collateral/*"
     target_origin_id         = local.tenant_origin_id
-    viewer_protocol_policy   = "allow-all"
+    viewer_protocol_policy   = "redirect-to-https"
     allowed_methods          = local.read_methods
     cached_methods           = local.cached_methods
     cache_policy_id          = local.cache_optimized_id

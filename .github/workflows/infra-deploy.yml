@@ -20,6 +20,14 @@ permissions:
   contents: read
   pull-requests: write  # post plan output on PRs
 
+# Phase-1 audit Row 11: serialize ALL runs of this workflow (plan + apply)
+# against the shared staging TF backend. cancel-in-progress:false so a
+# mid-flight `terraform apply` is never killed — runs queue instead. Prevents
+# the shared-`staging`-branch race that the 4 failed Q5 applies exposed.
+concurrency:
+  group: terraform-infra-staging
+  cancel-in-progress: false
+
 jobs:
   terraform:
     name: Terraform plan/apply (staging)
@@ -72,13 +80,22 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            const plan = fs.readFileSync('/tmp/plan.txt', 'utf8');
-            const truncated = plan.length > 60000 ? plan.slice(-60000) + '\n... (truncated)' : plan;
+            // Phase-1 audit Row 12: the plan step can fail BEFORE writing
+            // /tmp/plan.txt (init/auth failure). Guard so this step surfaces
+            // that instead of throwing an opaque ENOENT and eating the cause.
+            let body;
+            if (fs.existsSync('/tmp/plan.txt')) {
+              const plan = fs.readFileSync('/tmp/plan.txt', 'utf8');
+              const truncated = plan.length > 60000 ? plan.slice(-60000) + '\n... (truncated)' : plan;
+              body = '### Terraform plan (staging)\n```\n' + truncated + '\n```';
+            } else {
+              body = '### Terraform plan (staging)\n⚠️ The plan step failed before producing output (likely `terraform init`/credentials). See the failed job logs.';
+            }
             github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
-              body: '### Terraform plan (staging)\n```\n' + truncated + '\n```'
+              body
             });
 
       - name: Terraform apply
