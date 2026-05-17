@@ -210,13 +210,13 @@ const ENVIRONMENTS = {
   },
   staging: {
     // STAGING ENDPOINTS: Mirrors production — CloudFront proxies to API Gateway for config/chat
-    // CloudFront: staging.chat.myrecruiter.ai (E1CGYA1AJ9OYL0) → S3: picassostaging
+    // CloudFront: staging.chat.myrecruiter.ai (Q5: staging acct E3G30AUOEJTB36) → S3: picasso-widget-staging
     // API Gateway: kgvc8xnewf → /primary/staging/Master_Function → Master_Function:staging Lambda
     // Streaming: Bedrock_Streaming_Handler_Staging via Lambda Function URL
     API_BASE_URL: typeof __API_BASE_URL__ !== 'undefined' ? __API_BASE_URL__ : 'https://staging.chat.myrecruiter.ai/Master_Function',
     CHAT_API_URL: typeof __API_BASE_URL__ !== 'undefined' ? __API_BASE_URL__ : 'https://staging.chat.myrecruiter.ai/Master_Function',
     ASSET_BASE_URL: typeof __CONFIG_DOMAIN__ !== 'undefined' ? __CONFIG_DOMAIN__ : 'https://staging.chat.myrecruiter.ai',
-    S3_BUCKET: 'picassostaging', // Code bucket for staging
+    S3_BUCKET: 'picasso-widget-staging', // Code bucket for staging (Q5: staging account 525409062831)
     CONFIG_BUCKET: 'myrecruiter-picasso', // Tenant configs and mappings for ALL environments
     WIDGET_DOMAIN: typeof __WIDGET_DOMAIN__ !== 'undefined' ? __WIDGET_DOMAIN__ : 'https://staging.chat.myrecruiter.ai',
     DEBUG: true,
@@ -385,7 +385,7 @@ export const config = {
     }
     
     if (currentEnv === 'development') {
-      return `https://picassostaging.s3.amazonaws.com/tenants/${tenantHash}/${assetPath}`;
+      return `https://staging.chat.myrecruiter.ai/tenants/${tenantHash}/${assetPath}`;
     }
     if (currentEnv === 'staging') {
       return `https://staging.chat.myrecruiter.ai/tenants/${tenantHash}/${assetPath}`;

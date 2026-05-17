@@ -10,6 +10,17 @@ variable "replication_source_account_id" {
   default     = "614056832592"
 }
 
+# Q5 Phase 1 Apply 2 [B2]: additive, optional. When the staging widget
+# CloudFront distribution exists, its OAC needs s3:GetObject on this bucket to
+# serve /tenants/* and /collateral/* (severing the prod-account cross-account
+# read). Default empty so this audited module is a no-op change until Q5 wires
+# the ARN from main.tf (one-directional dep: this policy ← cloudfront-widget).
+variable "cloudfront_distribution_arn" {
+  description = "ARN of the staging widget CloudFront distribution. When non-empty, adds an OAC-scoped s3:GetObject grant (aws:SourceArn = this ARN). Empty = no statement emitted (pre-Q5 behavior preserved exactly)."
+  type        = string
+  default     = ""
+}
+
 resource "aws_s3_bucket" "tenant_config" {
   bucket = "myrecruiter-picasso-staging"
 
@@ -96,6 +107,30 @@ data "aws_iam_policy_document" "tenant_config" {
       test     = "StringEquals"
       variable = "aws:PrincipalAccount"
       values   = [var.staging_account_id]
+    }
+  }
+
+  # Q5 [B2]: OAC-only read for the staging widget CloudFront distribution.
+  # GetObject (read) — does NOT conflict with the Put/Delete Deny above
+  # (different actions), and the CloudFront service principal is not in the
+  # staging account so the aws:PrincipalAccount-scoped Deny never matches it.
+  # Scoped to THIS distribution via aws:SourceArn. Emitted only when wired.
+  dynamic "statement" {
+    for_each = var.cloudfront_distribution_arn != "" ? [1] : []
+    content {
+      sid    = "AllowStagingWidgetCloudFrontOACGetObject"
+      effect = "Allow"
+      principals {
+        type        = "Service"
+        identifiers = ["cloudfront.amazonaws.com"]
+      }
+      actions   = ["s3:GetObject"]
+      resources = ["${aws_s3_bucket.tenant_config.arn}/*"]
+      condition {
+        test     = "StringEquals"
+        variable = "aws:SourceArn"
+        values   = [var.cloudfront_distribution_arn]
+      }
     }
   }
 }

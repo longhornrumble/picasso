@@ -20,6 +20,14 @@ permissions:
   contents: read
   pull-requests: write  # post plan output on PRs
 
+# Phase-1 audit Row 11: serialize ALL runs of this workflow (plan + apply)
+# against the shared staging TF backend. cancel-in-progress:false so a
+# mid-flight `terraform apply` is never killed — runs queue instead. Prevents
+# the shared-`staging`-branch race that the 4 failed Q5 applies exposed.
+concurrency:
+  group: terraform-infra-staging
+  cancel-in-progress: false
+
 jobs:
   terraform:
     name: Terraform plan/apply (staging)
@@ -49,24 +57,50 @@ jobs:
       - name: Terraform plan
         if: github.event_name == 'pull_request'
         id: plan
+        # Q5 Apply 2: the two distinct x-picasso-cf-origin values are
+        # non-committed sensitive vars. Supplied here from staging-environment
+        # secrets the operator must create before this plan renders clean.
+        # Terraform marks them sensitive — never printed in the plan comment.
+        env:
+          TF_VAR_q5_mfs_cf_origin_secret: ${{ secrets.Q5_MFS_CF_ORIGIN_SECRET }}
+          TF_VAR_q5_streaming_cf_origin_secret: ${{ secrets.Q5_STREAMING_CF_ORIGIN_SECRET }}
         run: |
           terraform plan -var-file=envs/staging.tfvars -no-color -out=plan.tfplan 2>&1 | tee /tmp/plan.txt
+          # `| tee` makes the pipeline exit 0 even when terraform exits non-zero,
+          # which let a failing plan (e.g. the Q5 cf-origin variable-validation
+          # gate rejecting a missing secret) show a GREEN check. Propagate
+          # terraform's real exit code so a failing plan fails the job.
+          exit "${PIPESTATUS[0]}"
 
       - name: Comment plan on PR
-        if: github.event_name == 'pull_request'
+        # always() so a FAILED plan (e.g. the cf-origin validation gate) still
+        # posts its actionable error to the PR instead of only a red check.
+        if: ${{ always() && github.event_name == 'pull_request' }}
         uses: actions/github-script@v7
         with:
           script: |
             const fs = require('fs');
-            const plan = fs.readFileSync('/tmp/plan.txt', 'utf8');
-            const truncated = plan.length > 60000 ? plan.slice(-60000) + '\n... (truncated)' : plan;
+            // Phase-1 audit Row 12: the plan step can fail BEFORE writing
+            // /tmp/plan.txt (init/auth failure). Guard so this step surfaces
+            // that instead of throwing an opaque ENOENT and eating the cause.
+            let body;
+            if (fs.existsSync('/tmp/plan.txt')) {
+              const plan = fs.readFileSync('/tmp/plan.txt', 'utf8');
+              const truncated = plan.length > 60000 ? plan.slice(-60000) + '\n... (truncated)' : plan;
+              body = '### Terraform plan (staging)\n```\n' + truncated + '\n```';
+            } else {
+              body = '### Terraform plan (staging)\n⚠️ The plan step failed before producing output (likely `terraform init`/credentials). See the failed job logs.';
+            }
             github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
-              body: '### Terraform plan (staging)\n```\n' + truncated + '\n```'
+              body
             });
 
       - name: Terraform apply
         if: github.event_name == 'push' && github.ref == 'refs/heads/staging'
+        env:
+          TF_VAR_q5_mfs_cf_origin_secret: ${{ secrets.Q5_MFS_CF_ORIGIN_SECRET }}
+          TF_VAR_q5_streaming_cf_origin_secret: ${{ secrets.Q5_STREAMING_CF_ORIGIN_SECRET }}
         run: terraform apply -var-file=envs/staging.tfvars -auto-approve

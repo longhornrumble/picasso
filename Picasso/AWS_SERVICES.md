@@ -56,7 +56,7 @@ This document tracks AWS service configurations, versions, and deployment histor
 
 | Bucket | Purpose | Last Deploy |
 |--------|---------|-------------|
-| `picassostaging` | Widget assets (staging) | - |
+| `picasso-widget-staging` | Widget assets (staging — staging acct 525409062831, Q5) | - |
 
 ### CloudFront Distributions
 
