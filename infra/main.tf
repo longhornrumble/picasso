@@ -488,6 +488,15 @@ module "cloudfront_widget_staging" {
   streaming_cf_origin_secret = var.q5_streaming_cf_origin_secret
 }
 
+# Q5 Phase 2 [locked decision #9]: minimal CI widget-deploy role. No module
+# deps (bucket/dist/repo are locked Q5 literals) — pure logical grouping.
+# Phase 2.2 sets its ARN as GitHub secret AWS_DEPLOY_ROLE_ARN_STAGING and
+# repoints build-and-deploy-staging off the prod-account legacy role.
+module "iam_widget_deploy_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/iam-widget-deploy-staging"
+}
+
 # JWT secret resource policy — restricts read to the Lambda exec roles
 # that legitimately validate Picasso-issued JWTs. Defense-in-depth: the
 # Lambda IAM policies already grant the read; this resource-side Deny
