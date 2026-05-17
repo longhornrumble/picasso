@@ -44,17 +44,14 @@ variable "acm_certificate_arn" {
   type        = string
 }
 
-# Cutover gate. CloudFront enforces global CNAME uniqueness at distribution
-# CREATE time — the live prod-account dist E1CGYA1AJ9OYL0 holds
-# `staging.chat.myrecruiter.ai`, and removing it from prod first would
-# violate EC-Q5.2b (old edge stays 200 throughout). So the twin is created
-# WITHOUT the alias (default cert; validate via the raw d###.cloudfront.net
-# domain — EC-Q5.4). At Phase 3 cutover the operator runs
-# `aws cloudfront associate-alias` (cross-account move of the CNAME from
-# E1CGYA1AJ9OYL0 to this dist), flips this flag true (attaches the ACM cert
-# + alias), then performs the GoDaddy DNS change. Zero downtime.
+# Cutover gate. CloudFront enforces global CNAME uniqueness — the live
+# prod-account dist E1CGYA1AJ9OYL0 holds `staging.chat.myrecruiter.ai`, so
+# the twin is created WITHOUT the alias (default *.cloudfront.net cert;
+# validate via the raw d###.cloudfront.net domain). At Phase 3 the operator
+# deletes E1CGYA1AJ9OYL0 (releasing the alias), this flag flips true to
+# attach the alias + ACM cert, then the GoDaddy CNAME is repointed.
 variable "enable_custom_domain" {
-  description = "Phase 3 cutover only. false = no alias + default *.cloudfront.net cert (twin validatable via raw CF domain, prod alias untouched). true = attach staging.chat.myrecruiter.ai alias + the ACM cert (requires the CNAME already moved off E1CGYA1AJ9OYL0 via associate-alias)."
+  description = "Phase 3 cutover only. false = no alias + default *.cloudfront.net cert (validatable via raw CF domain). true = attach staging.chat.myrecruiter.ai alias + the ACM cert (requires E1CGYA1AJ9OYL0 to have released the alias first)."
   type        = bool
   default     = false
 }
