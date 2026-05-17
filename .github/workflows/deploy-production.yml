@@ -21,7 +21,7 @@ env:
   NODE_VERSION: '22'
   AWS_REGION: 'us-east-1'
   S3_BUCKET_PRODUCTION: 's3://picassocode/'
-  S3_BUCKET_STAGING: 's3://picassostaging/'
+  S3_BUCKET_STAGING: 's3://picasso-widget-staging/'
   CLOUDFRONT_DISTRIBUTION_ID: ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }}
   CLOUDFRONT_STAGING_ID: ${{ secrets.CLOUDFRONT_STAGING_DISTRIBUTION_ID }}
 
@@ -284,7 +284,9 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          # Q5 Phase 2: staging-account widget-deploy role (picasso-widget-deploy-staging).
+          # Distinct from the prod-account AWS_DEPLOY_ROLE_ARN used by the prod deploy job.
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN_STAGING }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Deploy to staging S3
