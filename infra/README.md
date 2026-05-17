@@ -53,7 +53,23 @@ terraform apply -var-file=envs/dev.tfvars
 | dev | `myrecruiter-tfstate-dev` (372666940362) | `myrecruiter-tfstate-lock-dev` |
 | prod | TBD — created in Phase 2 of P0 | TBD |
 
-State buckets have versioning + AES256 encryption + public access blocked.
+State buckets have versioning + public access blocked. **staging** state is
+encrypted with a customer-managed KMS CMK (`alias/myrecruiter-tfstate-staging`,
+key `e9bd10a4-ed54-4aca-ae29-2d3f38393e36`) via the backend's `kms_key_id`; dev
+remains SSE-S3 (AES256).
+
+### State CMK bootstrap (deliberate out-of-band exception)
+
+The staging tfstate CMK is **created out-of-band via `aws kms`, not Terraform**.
+A TF-managed key that encrypts TF's own state is a chicken-and-egg: a
+`terraform destroy` or state corruption could orphan the key that unlocks the
+state. Its key policy grants account root (`kms:*`, break-glass / never-orphan;
+also covers AdministratorAccess SSO via IAM delegation) and an explicit
+least-privilege grant to the CI deploy role `GitHubActionsDeployRole`
+(`Decrypt`/`Encrypt`/`GenerateDataKey*`/`DescribeKey`/`ReEncrypt*`). Annual
+rotation is enabled. If the key policy or alias is ever changed, the staging
+`infra-deploy` pipeline must still be able to decrypt or every infra run breaks
+— validate on a real CI run, not by reading the policy.
 
 ## Adding a new resource
 

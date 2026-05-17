@@ -2,6 +2,7 @@ bucket       = "myrecruiter-tfstate-staging"
 key          = "terraform.tfstate"
 region       = "us-east-1"
 encrypt      = true
+kms_key_id   = "arn:aws:kms:us-east-1:525409062831:key/e9bd10a4-ed54-4aca-ae29-2d3f38393e36"
 use_lockfile = true
 # AWS credentials sourced from AWS_PROFILE env var (set this before running terraform).
 # Do NOT add a `profile = "..."` line here — it conflicts with Terraform's SSO handling.
