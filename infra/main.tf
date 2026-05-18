@@ -481,8 +481,13 @@ module "lambda_meta_staging" {
   # Single Meta App for both accounts (dev-mode). Not a secret.
   meta_app_id = "791705810685396"
 
-  messenger_verify_token  = var.messenger_verify_token
-  meta_oauth_callback_url = var.meta_oauth_callback_url
+  messenger_verify_token = var.messenger_verify_token
+
+  # Two-apply step 2: captured from apply-#1's Meta_OAuth_Handler Function URL
+  # (a Lambda can't reference its own Function URL without a Terraform cycle, so
+  # apply #1 created it with "" and this literal closes the loop on apply #2).
+  # This is the value registered in the Meta App Dashboard at cutover C1/C2.
+  meta_oauth_callback_url = "https://zqzw7c4jol6tsvoabbvgxly6ya0cusst.lambda-url.us-east-1.on.aws/meta/oauth/callback"
 }
 
 module "ops_alarms_meta_staging" {
