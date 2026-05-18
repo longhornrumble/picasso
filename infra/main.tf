@@ -409,6 +409,163 @@ module "ops_alarms_master_function_staging" {
 }
 
 # ──────────────────────────────────────────────────────────────────────
+# Meta Messenger project — staging-account cluster. Twin of the dormant
+# prod-614 Meta_Webhook_Handler / Meta_Response_Processor / Meta_OAuth_Handler
+# + their DDB/KMS/secret/DLQ/alarms (Q3-parked prod residue). Stands the
+# integration up correctly in 525 per the staging-first SOP. Reuses what 525
+# already has: staging-recent-messages, the analytics SQS pipeline, the
+# tenant-config bucket, the tenant registry, the cross-account KB retriever
+# role, and the ops SNS topic. Real Lambda code lands via the lambda-repo CI
+# matrix; this ships placeholder zips. Plan:
+# ~/.claude/plans/i-m-continuing-work-on-zany-popcorn.md
+# ──────────────────────────────────────────────────────────────────────
+module "ddb_channel_mappings_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/ddb-channel-mappings-staging"
+}
+
+module "ddb_webhook_dedup_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/ddb-webhook-dedup-staging"
+}
+
+module "kms_channel_tokens_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/kms-channel-tokens-staging"
+}
+
+module "secrets_meta_app_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/secrets-meta-app-staging"
+}
+
+module "lambda_meta_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/lambda-meta-staging"
+
+  channel_mappings_table_arn        = module.ddb_channel_mappings_staging[0].table_arn
+  channel_mappings_table_name       = module.ddb_channel_mappings_staging[0].table_name
+  channel_mappings_tenant_index_arn = module.ddb_channel_mappings_staging[0].tenant_index_arn
+  webhook_dedup_table_arn           = module.ddb_webhook_dedup_staging[0].table_arn
+  webhook_dedup_table_name          = module.ddb_webhook_dedup_staging[0].table_name
+
+  # Shared with core chat — schema-identical, already Terraform-managed.
+  recent_messages_table_arn  = module.ddb_recent_messages_staging[0].table_arn
+  recent_messages_table_name = module.ddb_recent_messages_staging[0].table_name
+
+  # bedrock-core registry resolution (cross-account-KB twin requirement).
+  tenant_registry_table_arn  = module.ddb_tenant_registry_staging[0].table_arn
+  tenant_registry_table_name = module.ddb_tenant_registry_staging[0].table_name
+
+  channel_tokens_kms_key_arn   = module.kms_channel_tokens_staging[0].key_arn
+  channel_tokens_kms_key_alias = module.kms_channel_tokens_staging[0].key_alias
+
+  meta_app_secret_arn = module.secrets_meta_app_staging[0].app_secret_arn
+  ig_app_secret_arn   = module.secrets_meta_app_staging[0].ig_app_secret_arn
+
+  # Faithful-twin rewrite of the 614 ANALYTICS_QUEUE_URL → the 525 queue.
+  analytics_queue_arn = module.analytics_events_pipeline_staging[0].queue_arn
+  analytics_queue_url = module.analytics_events_pipeline_staging[0].queue_url
+
+  tenant_config_bucket_arn = module.tenant_config_staging[0].bucket_arn
+  config_bucket_name       = module.tenant_config_staging[0].bucket_name
+
+  # Same KB + prod-side retriever role as the BSH/MFS modules above.
+  kb_arns = [
+    "arn:aws:bedrock:us-east-1:614056832592:knowledge-base/0BQBWFYDMT",
+  ]
+  kb_retriever_role_arns = [
+    "arn:aws:iam::614056832592:role/picasso-kb-retriever-from-staging",
+  ]
+
+  # Single Meta App for both accounts (dev-mode). Not a secret.
+  meta_app_id = "791705810685396"
+
+  messenger_verify_token  = var.messenger_verify_token
+  meta_oauth_callback_url = var.meta_oauth_callback_url
+}
+
+module "ops_alarms_meta_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/ops-alarms-meta-staging"
+
+  webhook_function_name            = module.lambda_meta_staging[0].webhook_function_name
+  response_processor_function_name = module.lambda_meta_staging[0].response_processor_function_name
+  response_dlq_name                = module.lambda_meta_staging[0].response_dlq_name
+  sns_topic_arn                    = module.ops_alarms_master_function_staging[0].topic_arn
+}
+
+# Meta secret resource policies — locked to the consuming Lambda exec roles.
+# Root-level (not in the secrets module) to avoid the circular dep: the policy
+# needs the role ARNs; the roles live in lambda_meta_staging which needs the
+# secret ARNs. Same pattern as the JWT/Clerk secret policies above.
+resource "aws_secretsmanager_secret_policy" "meta_app_secret_staging" {
+  count      = var.env == "staging" ? 1 : 0
+  secret_arn = module.secrets_meta_app_staging[0].app_secret_arn
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AllowMetaWebhookAndOAuthRoles"
+        Effect = "Allow"
+        Principal = { AWS = [
+          module.lambda_meta_staging[0].webhook_role_arn,
+          module.lambda_meta_staging[0].oauth_role_arn,
+        ] }
+        Action   = "secretsmanager:GetSecretValue"
+        Resource = "*"
+      },
+      {
+        Sid       = "DenyAllOtherStagingPrincipals"
+        Effect    = "Deny"
+        Principal = "*"
+        Action    = "secretsmanager:GetSecretValue"
+        Resource  = "*"
+        Condition = {
+          StringNotEquals = {
+            "aws:PrincipalArn" = [
+              module.lambda_meta_staging[0].webhook_role_arn,
+              module.lambda_meta_staging[0].oauth_role_arn,
+            ]
+          }
+        }
+      },
+    ]
+  })
+}
+
+resource "aws_secretsmanager_secret_policy" "meta_ig_app_secret_staging" {
+  count      = var.env == "staging" ? 1 : 0
+  secret_arn = module.secrets_meta_app_staging[0].ig_app_secret_arn
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "AllowMetaWebhookRole"
+        Effect    = "Allow"
+        Principal = { AWS = module.lambda_meta_staging[0].webhook_role_arn }
+        Action    = "secretsmanager:GetSecretValue"
+        Resource  = "*"
+      },
+      {
+        Sid       = "DenyAllOtherStagingPrincipals"
+        Effect    = "Deny"
+        Principal = "*"
+        Action    = "secretsmanager:GetSecretValue"
+        Resource  = "*"
+        Condition = {
+          StringNotEquals = {
+            "aws:PrincipalArn" = module.lambda_meta_staging[0].webhook_role_arn
+          }
+        }
+      },
+    ]
+  })
+}
+
+# ──────────────────────────────────────────────────────────────────────
 # Q5: staging widget edge migration (prod acct 614056832592 → staging
 # 525409062831). Plan: ~/.claude/plans/glistening-strolling-oasis.md.
 # Phase D moved the staging COMPUTE (MFS+BSH) to the staging account; the
