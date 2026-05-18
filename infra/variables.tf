@@ -54,14 +54,26 @@ variable "q5_streaming_cf_origin_secret" {
 # Meta Messenger project — webhook GET-verification shared secret. Reuse the
 # prod-account (614) value so Meta's webhook re-verification passes at cutover
 # (Phase C2). Sensitive; CI supplies via TF_VAR_messenger_verify_token from a
-# `staging`-environment GitHub secret MESSENGER_VERIFY_TOKEN. No length
-# validation: a wrong value only breaks the one-time webhook GET challenge,
-# which fails LOUDLY and immediately at cutover C2 (Meta won't echo the
-# challenge) — not a silent-degradation risk that needs a defensive gate.
+# `staging`-environment GitHub secret MESSENGER_VERIFY_TOKEN.
+#
+# NON-EMPTY validation is the real fail-loud gate (same lesson as the Q5
+# q5_*_cf_origin_secret vars above): GitHub Actions resolves a missing
+# `${{ secrets.X }}` to an EMPTY STRING, so "no default" is NOT sufficient —
+# terraform sees the var as *provided* ("") and would happily plan/apply a
+# Meta_Webhook_Handler with MESSENGER_VERIFY_TOKEN="" (green CI, silently
+# broken webhook verification at cutover C2). We deliberately DON'T assert an
+# exact length (a wrong-but-present value only breaks the one-time GET
+# challenge, caught immediately at C2 — no brittle == N gate needed), but the
+# value MUST be non-empty.
 variable "messenger_verify_token" {
   description = "Meta webhook verify token (Meta App Dashboard → Webhooks). Reuse the existing 614 value. Supplied via TF_VAR_messenger_verify_token from the staging-env GitHub secret MESSENGER_VERIFY_TOKEN."
   type        = string
   sensitive   = true
+
+  validation {
+    condition     = length(var.messenger_verify_token) > 0
+    error_message = "messenger_verify_token is empty — the staging-environment GitHub secret MESSENGER_VERIFY_TOKEN is missing or unset. Create it (reuse the existing 614 Meta_Webhook_Handler value) before plan/apply."
+  }
 }
 
 # Meta Messenger project — public OAuth callback URL registered in the Meta App
