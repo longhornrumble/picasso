@@ -139,6 +139,23 @@ module "ddb_token_blacklist_staging" {
   env    = var.env
 }
 
+# Scheduling v1 (impl plan sub-phase A8c, R1 intent, R6 naming). Both tables
+# are greenfield creates in staging-525: the A6 jti table (PR #52) was
+# provisioned in prod-614 under a staging name pre-account-split and is
+# Q3-parked there (left untouched), so there is nothing to import. The
+# Booking table's two GSIs are created at table-creation time.
+module "ddb_token_jti_blacklist_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/ddb-token-jti-blacklist"
+  env    = var.env
+}
+
+module "ddb_booking_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/ddb-booking"
+  env    = var.env
+}
+
 module "secrets_jwt_staging" {
   count  = var.env == "staging" ? 1 : 0
   source = "./modules/secrets-jwt-staging"

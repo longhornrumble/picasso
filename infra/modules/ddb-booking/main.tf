@@ -1,0 +1,84 @@
+variable "env" {
+  description = "Environment suffix (dev, staging, prod)."
+  type        = string
+}
+
+# Scheduling Booking table (impl plan A8c, R1/R6; canonical §5.2).
+#
+# Identity key: (tenantId, booking_id). The (resource_id, start_at, end_at)
+# uniqueness rule from canonical §5.2 is a write-time constraint enforced in
+# C6 — it is NOT the table key.
+#
+# Both GSIs MUST exist at table-creation time (DynamoDB cannot add a GSI
+# without a table rebuild). Round-robin needs no GSI — its state lives on
+# RoutingPolicy, atomically updated at booking commit (canonical §10.1/§10.2).
+#
+# v1 hot-partition acceptance: tenantId is the PK on all scheduling tables.
+# Fine at single-tenant pilot scale; the v2 mitigation (composite-PK shard
+# suffix) is documented in docs/runbooks/SCHEDULING_DYNAMODB_TABLES.md and
+# applies only when high-volume tenants land.
+resource "aws_dynamodb_table" "booking" {
+  name         = "picasso-booking-${var.env}"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "tenantId"
+  range_key    = "booking_id"
+
+  attribute {
+    name = "tenantId"
+    type = "S"
+  }
+
+  attribute {
+    name = "booking_id"
+    type = "S"
+  }
+
+  # GSI key attributes (must be declared).
+  attribute {
+    name = "start_at"
+    type = "S"
+  }
+
+  attribute {
+    name = "coordinator_email"
+    type = "S"
+  }
+
+  # GSI 1 — (tenantId, start_at): tenant-scoped time-range queries.
+  # B5 onboarding hook, B11 stranded-booking detection, E9 nightly
+  # reconciliation, OOO-overlap detection (canonical §5.2 item 5 / §14.2).
+  global_secondary_index {
+    name            = "tenantId-start_at-index"
+    hash_key        = "tenantId"
+    range_key       = "start_at"
+    projection_type = "ALL"
+  }
+
+  # GSI 2 — (tenantId, coordinator_email): B11 stranded-booking queries —
+  # all bookings for a departed coordinator without a full-table scan
+  # (canonical §16).
+  global_secondary_index {
+    name            = "tenantId-coordinator_email-index"
+    hash_key        = "tenantId"
+    range_key       = "coordinator_email"
+    projection_type = "ALL"
+  }
+
+  # Bookings carry volunteer PII and are operational records (not
+  # auto-expired — retention/PII deletion is sub-phase F, not a TTL).
+  point_in_time_recovery {
+    enabled = true
+  }
+
+  tags = {
+    Name = "picasso-booking-${var.env}"
+  }
+}
+
+output "table_name" {
+  value = aws_dynamodb_table.booking.name
+}
+
+output "table_arn" {
+  value = aws_dynamodb_table.booking.arn
+}
