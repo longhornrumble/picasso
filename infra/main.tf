@@ -856,13 +856,17 @@ resource "aws_kms_key_policy" "pii_staging" {
         Resource = "*"
       },
       {
+        # GitHubActionsDeployRole is DELIBERATELY NOT a data-plane principal
+        # (Apply-1 phase-completion-audit G-1): it needs ONLY kms:CreateGrant
+        # for DDB SSE association (DeployRoleDdbSseGrant below). Granting it
+        # Decrypt/GenerateDataKey would let any CI run decrypt consumer PII
+        # once the tables are CMK-associated (Apply 2). Do not re-add it here.
         Sid    = "DataPlaneAllowListedRoles"
         Effect = "Allow"
         Principal = { AWS = [
           module.lambda_master_function_staging[0].role_arn,
           module.lambda_pii_delete_staging[0].delete_role_arn,
           module.lambda_pii_delete_staging[0].backfill_role_arn,
-          "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/GitHubActionsDeployRole",
         ] }
         Action   = ["kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"]
         Resource = "*"
@@ -886,11 +890,16 @@ resource "aws_kms_key_policy" "pii_staging" {
         # set aws:PrincipalArn → IfExists makes the condition not-match →
         # Deny skipped for them (SSE works). aws:PrincipalArn also
         # normalizes assumed-role sessions back to the role ARN (same
-        # rationale as the secret policies above).
+        # rationale as the secret policies above). Audit G-10: GenerateDataKey*
+        # (wildcard) also denies GenerateDataKeyWithoutPlaintext / future
+        # variants. Audit G-1: GitHubActionsDeployRole is NOT in the exception
+        # list — it is explicitly denied direct data-plane decrypt and retains
+        # only kms:CreateGrant (DeployRoleDdbSseGrant); the DDB SSE service
+        # path is grant-based (no aws:PrincipalArn) so it is unaffected.
         Sid       = "DenyDecryptToAllOtherPrincipals"
         Effect    = "Deny"
         Principal = "*"
-        Action    = ["kms:Decrypt", "kms:GenerateDataKey"]
+        Action    = ["kms:Decrypt", "kms:GenerateDataKey*"]
         Resource  = "*"
         Condition = {
           StringNotEqualsIfExists = {
@@ -899,7 +908,6 @@ resource "aws_kms_key_policy" "pii_staging" {
               module.lambda_pii_delete_staging[0].delete_role_arn,
               module.lambda_pii_delete_staging[0].backfill_role_arn,
               module.lambda_pii_delete_staging[0].breakglass_role_arn,
-              "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/GitHubActionsDeployRole",
             ]
           }
         }

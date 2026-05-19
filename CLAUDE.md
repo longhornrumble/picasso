@@ -423,4 +423,5 @@ Brand reference document for visual consistency. All dashboard styling should al
 - Analytics dashboard deployed to S3 bucket `app-myrecruiter-ai` with CloudFront `EJ0Y6ZUIUBSAT`
 - Deal_prep_level-2 and Website Redesign each have their own CLAUDE.md with project-specific guidance
 - `scheduling/` contains only a planning doc — no code implemented yet
+- **IaC IAM string-charset gotcha:** AWS IAM `aws_iam_role`/`aws_iam_policy`/`aws_iam_role_policy` `description`/`name`/`path` accept ONLY `[\t\n\r\x20-\x7E\xA1-\xFF]` (tab/LF/CR + printable ASCII + Latin-1; `§` U+00A7 OK, but em-dash `—` U+2014 / en-dash / smart-quotes are REJECTED). `terraform validate` AND `terraform plan` PASS — it fails only at the live `apply` (often a partial apply). Before committing/applying any Terraform that adds/edits IAM resources, run `grep -rnP '[^\x09\x0A\x0D\x20-\x7E\xA1-\xFF]' infra/` and fix any hit on an IAM `description`/`name` to ASCII. KMS key descriptions have no such constraint. (Cost a partial Apply-1 failure, 2026-05-19.)
 - `.firecrawl/` is a working directory for scraping operations (cached data, not source code)
