@@ -120,6 +120,25 @@ module "ddb_pii_subject_index_staging" {
   source = "./modules/ddb-pii-subject-index-staging"
 }
 
+# Consumer PII Remediation Path A, Phase 2 — APPLY 1 (design
+# docs/roadmap/PII_DELETE_PIPELINE_DESIGN.md §13 step 2, gate-cleared rev 3).
+# Scoped CMK + the dedicated delete / short-lived back-fill / MFA break-glass
+# roles ONLY (no Lambda, no table association — those are Apply 2/3 + step 7,
+# HARD-GATED before any live-tenant staging traffic). The NB-A key policy is
+# the root-level `aws_kms_key_policy.pii_staging` below (cycle-break, mirrors
+# the `aws_secretsmanager_secret_policy` pattern).
+module "kms_pii_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/kms-pii-staging"
+}
+
+module "lambda_pii_delete_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/lambda-pii-delete-staging"
+
+  pii_cmk_key_arn = module.kms_pii_staging[0].key_arn
+}
+
 module "ddb_notification_events_staging" {
   count  = var.env == "staging" ? 1 : 0
   source = "./modules/ddb-notification-events-staging"
@@ -781,6 +800,119 @@ resource "aws_secretsmanager_secret_policy" "jwt_signing_key_staging" {
             ]
           }
         }
+      },
+    ]
+  })
+}
+
+# ──────────────────────────────────────────────────────────────────────
+# Consumer PII Remediation Path A, Phase 2 — NB-A scoped-CMK key policy.
+# Root-level (not in kms-pii-staging) for the SAME cycle-break the
+# JWT/Clerk/Meta/BSH secret policies above use: this policy must name the
+# delete / back-fill / break-glass role ARNs, those roles live in
+# lambda_pii_delete_staging, and that module needs the CMK ARN for its
+# kms:Decrypt grant — a cycle if the policy lived in the kms module.
+#
+# NB-A (design PII_DELETE_PIPELINE_DESIGN.md §6, gate round-2 fix): the rev-1
+# `NotPrincipal`+`Deny` would have caught the DynamoDB SSE service principal
+# and bricked every encrypted table on Apply 2. This uses the repo's proven
+# condition-based-Deny shape (jwt_signing_key_staging et al. above) —
+# `Deny` + `Principal:"*"` + `StringNotEqualsIfExists aws:PrincipalArn` —
+# DELIBERATELY extended from those policies' `StringNotEquals` to the
+# `…IfExists` form: a CMK used by DynamoDB SSE has service-principal /
+# grant data-plane callers that do NOT populate aws:PrincipalArn; with
+# IfExists an absent key makes the condition not-match, so the Deny is
+# skipped for the service (SSE keeps working) while still firing for any
+# IAM principal — incl. staging PowerUser — not on the allow-list.
+# Root is admin-only (NO kms:Decrypt/GenerateDataKey/kms:*), so PowerUser
+# cannot decrypt via IAM delegation (the Q5 Row-7 bug the channel-tokens
+# key still has). Root retains kms:Put* ⇒ no policy lockout.
+# ──────────────────────────────────────────────────────────────────────
+data "aws_caller_identity" "current" {}
+
+resource "aws_kms_key_policy" "pii_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  key_id = module.kms_pii_staging[0].key_id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "KeyAdminNoDataPlane"
+        Effect = "Allow"
+        Principal = {
+          AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
+        }
+        # Administration only — deliberately NO kms:Decrypt / kms:Encrypt /
+        # kms:GenerateDataKey / kms:* so the root principal is not a
+        # data-plane decrypt path that IAM (PowerUserAccess) could delegate.
+        # kms:Put* preserves PutKeyPolicy ⇒ no lockout.
+        Action = [
+          "kms:Create*", "kms:Describe*", "kms:Enable*", "kms:List*",
+          "kms:Put*", "kms:Update*", "kms:Revoke*", "kms:Disable*",
+          "kms:Get*", "kms:Delete*", "kms:ScheduleKeyDeletion",
+          "kms:CancelKeyDeletion", "kms:TagResource", "kms:UntagResource",
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "DataPlaneAllowListedRoles"
+        Effect = "Allow"
+        Principal = { AWS = [
+          module.lambda_master_function_staging[0].role_arn,
+          module.lambda_pii_delete_staging[0].delete_role_arn,
+          module.lambda_pii_delete_staging[0].backfill_role_arn,
+          "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/GitHubActionsDeployRole",
+        ] }
+        Action   = ["kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"]
+        Resource = "*"
+      },
+      {
+        # DynamoDB SSE association (Apply 2) is performed by the deploy role
+        # creating a service grant. Scoped to AWS-resource grants only.
+        Sid       = "DeployRoleDdbSseGrant"
+        Effect    = "Allow"
+        Principal = { AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/GitHubActionsDeployRole" }
+        Action    = ["kms:CreateGrant"]
+        Resource  = "*"
+        Condition = {
+          Bool = { "kms:GrantIsForAWSResource" = "true" }
+        }
+      },
+      {
+        # The NB-A control. Explicit Deny overrides any IAM Allow (incl. a
+        # PowerUserAccess-delegated kms:Decrypt). StringNotEqualsIfExists +
+        # aws:PrincipalArn: service principals / DynamoDB SSE grants do not
+        # set aws:PrincipalArn → IfExists makes the condition not-match →
+        # Deny skipped for them (SSE works). aws:PrincipalArn also
+        # normalizes assumed-role sessions back to the role ARN (same
+        # rationale as the secret policies above).
+        Sid       = "DenyDecryptToAllOtherPrincipals"
+        Effect    = "Deny"
+        Principal = "*"
+        Action    = ["kms:Decrypt", "kms:GenerateDataKey"]
+        Resource  = "*"
+        Condition = {
+          StringNotEqualsIfExists = {
+            "aws:PrincipalArn" = [
+              module.lambda_master_function_staging[0].role_arn,
+              module.lambda_pii_delete_staging[0].delete_role_arn,
+              module.lambda_pii_delete_staging[0].backfill_role_arn,
+              module.lambda_pii_delete_staging[0].breakglass_role_arn,
+              "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/GitHubActionsDeployRole",
+            ]
+          }
+        }
+      },
+      {
+        # MFA-gated emergency decrypt. Off by default — the break-glass role
+        # is only assumable with MFA (its trust policy); this is its sole
+        # capability. Replaces root-delegated decrypt (Q5 Row-7 anti-pattern).
+        Sid       = "BreakGlassDecrypt"
+        Effect    = "Allow"
+        Principal = { AWS = module.lambda_pii_delete_staging[0].breakglass_role_arn }
+        Action    = ["kms:Decrypt"]
+        Resource  = "*"
       },
     ]
   })

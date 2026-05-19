@@ -181,6 +181,50 @@ resource "aws_cloudwatch_metric_alarm" "cf_origin_rejection" {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Alarm 5: pii_unindexed signal — Consumer PII Remediation Path A, Phase 2
+# gate G8 (design PII_DELETE_PIPELINE_DESIGN.md §8; plan §"Phase 1 audit"
+# gate item #8). pii_subject.get_or_create_pii_subject_id logs an UNINDEXED
+# warning when a form submission gets a pii_subject_id that never made it
+# into the email→subject index (throttle / IAM gap / exhausted retry, OR —
+# after the Phase-2 NB-E/N1 code fix — the form_handler import-failure
+# fallback). Each such row is a compliance gap: a subject the DSAR
+# email-lookup cannot resolve and an index-walk delete would miss until the
+# Phase-2 orphan-sweep runs. Without this alarm the condition is invisible
+# until that sweep. Threshold 0 (any occurrence) — matches the
+# kb_creds_init_failed alarm; correct staging behavior is ZERO. Lands with
+# Apply 1 (design §13), inside the pre-live-traffic envelope, before any
+# real tenant submits.
+# ─────────────────────────────────────────────────────────────────────────────
+resource "aws_cloudwatch_log_metric_filter" "pii_unindexed" {
+  name           = "pii_unindexed"
+  log_group_name = var.log_group_name
+  pattern        = "UNINDEXED"
+
+  metric_transformation {
+    name          = "PiiUnindexed"
+    namespace     = "Picasso/Master_Function_Staging"
+    value         = "1"
+    default_value = 0
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "pii_unindexed" {
+  alarm_name          = "${var.function_name}-pii-unindexed"
+  alarm_description   = "Master_Function_Staging minted a pii_subject_id that did NOT reach the email→subject index (UNINDEXED). Each occurrence is a Consumer-PII compliance gap (DSAR-unresolvable + missed by an index-walk delete until the Phase-2 orphan-sweep). Cause: DynamoDB throttle, MFS IAM gap on the index table, exhausted conditional-put retries, or the form_handler import-failure fallback. See PII_DELETE_PIPELINE_DESIGN.md §4/§8."
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  threshold           = 0
+  treat_missing_data  = "notBreaching"
+
+  metric_name = "PiiUnindexed"
+  namespace   = "Picasso/Master_Function_Staging"
+  period      = 300
+  statistic   = "Sum"
+
+  alarm_actions = [aws_sns_topic.ops_alerts.arn]
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
 output "topic_arn" {
   value = aws_sns_topic.ops_alerts.arn
 }
