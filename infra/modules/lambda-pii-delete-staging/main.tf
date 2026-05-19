@@ -242,7 +242,7 @@ data "aws_iam_policy_document" "breakglass_trust" {
 resource "aws_iam_role" "breakglass" {
   name               = "picasso-pii-breakglass-staging"
   assume_role_policy = data.aws_iam_policy_document.breakglass_trust.json
-  description        = "MFA-gated PII CMK break-glass. No permissions policy by design — power is solely the kms:Decrypt allow-list entry in aws_kms_key_policy.pii_staging."
+  description        = "MFA-gated PII CMK break-glass. No permissions policy by design; power is solely the kms:Decrypt allow-list entry in aws_kms_key_policy.pii_staging."
   # Intentionally NO aws_iam_role_policy attached.
 }
 
