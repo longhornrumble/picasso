@@ -21,7 +21,7 @@
 # (Apply 2, design §13), and there is zero live-tenant traffic (verified).
 
 resource "aws_kms_key" "pii" {
-  description             = "Scoped CMK for Consumer PII Remediation Path A — DELETE-scoped DynamoDB PII tables (design PII_DELETE_PIPELINE_DESIGN.md §6). Policy set at root (aws_kms_key_policy.pii_staging)."
+  description             = "Scoped CMK for Consumer PII Remediation Path A - DELETE-scoped DynamoDB PII tables (design PII_DELETE_PIPELINE_DESIGN.md section 6). Policy set at root (aws_kms_key_policy.pii_staging)."
   enable_key_rotation     = true
   deletion_window_in_days = 7
 
