@@ -321,6 +321,17 @@ resource "aws_lambda_function_url" "webhook" {
   authorization_type = "NONE"
 }
 
+# ──────────────────────────────────────────────────────────────────────
+# # MANUAL STEP REQUIRED — see full note in lambda-bedrock-handler-staging
+# After creation, AWS Console → Lambda → Meta_Webhook_Handler →
+# Configuration → Function URL → Edit → Save (no changes). Adds the
+# missing FunctionURLAllowInvokeAction policy statement that AWS provider
+# 5.x can't create — WITHOUT IT THE URL RETURNS HTTP 403 and the handler
+# is never invoked (zero log streams). Verify both SIDs present:
+# aws lambda get-policy --function-name Meta_Webhook_Handler. Re-run if
+# the Lambda is ever destroyed/recreated.
+# ──────────────────────────────────────────────────────────────────────
+
 # =============================================================================
 # Meta_Response_Processor
 # =============================================================================
@@ -663,6 +674,17 @@ resource "aws_lambda_function_url" "oauth" {
   function_name      = aws_lambda_function.oauth.function_name
   authorization_type = "NONE"
 }
+
+# ──────────────────────────────────────────────────────────────────────
+# # MANUAL STEP REQUIRED — see full note in lambda-bedrock-handler-staging
+# After creation, AWS Console → Lambda → Meta_OAuth_Handler →
+# Configuration → Function URL → Edit → Save (no changes). Adds the
+# missing FunctionURLAllowInvokeAction policy statement that AWS provider
+# 5.x can't create — WITHOUT IT THE URL RETURNS HTTP 403 and the handler
+# is never invoked (zero log streams). Verify both SIDs present:
+# aws lambda get-policy --function-name Meta_OAuth_Handler. Re-run if
+# the Lambda is ever destroyed/recreated.
+# ──────────────────────────────────────────────────────────────────────
 
 # =============================================================================
 # Outputs
