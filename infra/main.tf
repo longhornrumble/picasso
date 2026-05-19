@@ -113,6 +113,13 @@ module "ddb_form_submissions_staging" {
   source = "./modules/ddb-form-submissions-staging"
 }
 
+# Consumer PII Remediation Path A, Phase 1 — normalized-email -> pii_subject_id index.
+# Additive: scheduling continues keying on form_submission_id (PII Identity Contract §1).
+module "ddb_pii_subject_index_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/ddb-pii-subject-index-staging"
+}
+
 module "ddb_notification_events_staging" {
   count  = var.env == "staging" ? 1 : 0
   source = "./modules/ddb-notification-events-staging"
@@ -256,6 +263,8 @@ module "lambda_master_function_staging" {
   form_submissions_table_name       = module.ddb_form_submissions_staging[0].table_name
   notification_sends_table_arn      = module.ddb_notification_sends_staging[0].table_arn
   notification_sends_table_name     = module.ddb_notification_sends_staging[0].table_name
+  pii_subject_index_table_arn       = module.ddb_pii_subject_index_staging[0].table_arn
+  pii_subject_index_table_name      = module.ddb_pii_subject_index_staging[0].table_name
   streaming_endpoint                = module.lambda_bedrock_handler_staging[0].function_url
 
   # CloudFront origin secret ARN. Activates the conditional CfOriginSecretRead
