@@ -53,6 +53,109 @@ Transform tasks into verifiable success criteria before coding. "Add validation"
 
 ---
 
+## 🛡️ PII Governance Project
+
+**Goal (verbatim user quote, 2026-05-19):** *"Design MyRecruiter/Picasso so personal information is collected intentionally, stored minimally, protected by default, separated by tenant, retained only as long as needed, and easy to disclose, export, delete, or anonymize later."*
+
+**Operational translation:** manage the data that we control and keep it safe, while adhering to best efforts for legal compliance.
+
+**Source of truth:** [`docs/roadmap/PII-Project/README.md`](docs/roadmap/PII-Project/README.md) (the "MyRecruiter / Picasso PII Governance Strategy and Advisory Agent Guide"). All PII project docs live under [`docs/roadmap/PII-Project/`](docs/roadmap/PII-Project/).
+
+The sections below (Advisory Model, PII Review Triggers, Agent Routing, Employment / Hiring Trigger, Background Check Caution) are verbatim inserts from that strategy doc. The Living-Inventory PR Rule at the bottom is the only added discipline rule (closes gap G-B from the 2026-05-19 plan gaps review).
+
+---
+
+## Compliance and Governance Advisory Model
+
+Compliance-related agents in this project serve an advisory role during planning, architecture, implementation, and code review.
+
+They do not:
+- make final legal determinations
+- provide legal advice
+- block development by default
+- replace qualified legal counsel
+- determine whether MyRecruiter is legally compliant
+
+They do:
+- identify privacy, consent, AI governance, nonprofit, donor, volunteer, communications, and consumer-protection risks
+- recommend safer technical, product, UX, and documentation patterns
+- suggest data minimization and logging controls
+- flag issues that may require attorney review
+- help technical agents convert risk findings into implementable work
+- produce audit-friendly notes for future review
+
+Compliance advisors should be invoked early in planning, not only after code is written.
+
+---
+
+## PII Review Triggers
+
+Before production, require PII/Data Lifecycle advisory review for any feature that:
+- collects name, email, phone, address, IP, session ID, or chat transcript content
+- stores or displays form submissions
+- sends data to Bubble, n8n, Sheets, CRM, email, SMS, analytics, or another third party
+- changes logging behavior
+- changes tenant identity, tenant hash, config lookup, or access control
+- stores raw transcripts
+- generates AI summaries, labels, scores, or classifications about a person
+- sends email or SMS follow-up
+- introduces user deletion/export/access workflows
+- touches minors, foster care, families, health, disability, legal, financial, crisis, or background-check-related information
+
+---
+
+## Agent Routing
+
+PII data flow unclear?
+â pii-data-lifecycle-advisor
+
+Privacy notice, California readiness, retention, deletion, or vendor implications?
+â privacy-data-governance-advisor
+
+Donation, volunteer, nonprofit program, tax, or supporter-facing claims?
+â nonprofit-volunteer-donor-risk-advisor
+
+Email, SMS, newsletter, reminders, donor nurture, volunteer nurture, or follow-up?
+â communications-consent-advisor
+
+AI prompt, RAG answer, summarization, classification, routing, scoring, or handoff?
+â ai-governance-advisor
+
+Need to convert findings into actual code/tests/schema changes?
+â compliance-implementation-advisor
+
+---
+
+## Employment / Hiring Compliance Trigger
+
+MyRecruiter/Picasso does not currently recruit employees. The current compliance scope is nonprofit volunteers, donors, supporters, and website visitors.
+
+If any feature begins to:
+- collect employee applicant data,
+- screen or rank job candidates,
+- recommend hiring decisions,
+- process resumes,
+- evaluate employment eligibility,
+- conduct interview scoring,
+- integrate with ATS systems for paid roles,
+- or use AI for employment-related decisions,
+
+Claude must stop and recommend creation of a dedicated Employment, FCRA, EEOC, and AI Hiring Compliance Advisor before implementation continues.
+
+---
+
+## Background Check Caution
+
+Picasso should not evaluate background-check results, recommend acceptance/rejection, summarize consumer reports, or make placement recommendations based on background-check data unless qualified counsel has reviewed the workflow.
+
+---
+
+## Living-Inventory PR Rule
+
+Any PR that adds (or modifies the PII shape of) a DynamoDB table, Lambda, S3 prefix, or CloudWatch log group that holds PII MUST update [`docs/roadmap/PII-Project/pii-inventory.md`](docs/roadmap/PII-Project/pii-inventory.md) in the same PR, and classify the new/changed surface against the tiers in [`docs/roadmap/PII-Project/data-classification.md`](docs/roadmap/PII-Project/data-classification.md). This keeps the inventory living (closes G-B from the 2026-05-19 plan gaps review); a snapshot inventory recreates the original failure mode.
+
+---
+
 ## 🎯 Tenant Config Optimization
 
 After building a tenant config in the Config Builder, invoke the optimization skill to audit and fine-tune:
