@@ -2,12 +2,14 @@
 
 ## Status
 
-- **Project state:** Active — **started 2026-05-18** (owner assigned; previously Initiation 2026-04-27, unowned for 21 days).
+- **Project state:** Active — **Phase 0.5 foundation closing** (re-baselined 2026-05-20). Originally started 2026-05-18 (owner assigned; previously Initiation 2026-04-27, unowned for 21 days).
 - **Owner:** Chris — end-to-end ownership.
-- **Priority:** High. Regulatory exposure exists today.
+- **Priority:** High for capability completion (the DSAR fulfillment bundle); medium for incremental defenses (deferred until trigger).
+- **Authoritative section:** **Path A Re-baseline v3 (2026-05-20) — Foundation-Informed** (below). The v2 (2026-05-18) section is retained for its "Locked decisions" but its 5-phase build plan is **superseded** by v3.
 - **Timeline target:**
-  - **Path B (F0-minimal — gates scheduling Austin v1 prod flip):** identity-driven hard-delete across the full identity graph (`picasso-form-submissions` + `picasso-notification-sends`/`-events` + `picasso-sms-usage` + scheduling's `Booking` + the written Google Calendar event) **plus** the now-items (corrected FTC §5 widget claim, manual DSAR path, CloudWatch retention). **Operational no later than 2026-05-25** (≤7 days from start). Satisfies scheduling F0 — see [`scheduling/docs/launch_blocker_remediation_2026-05-18.md`](../../scheduling/docs/launch_blocker_remediation_2026-05-18.md) → N2.
-  - **Path A (full pipeline — gates tenant #2 / Atlanta):** the 5-phase scope below (stable identifier → delete backbone → retention TTLs → DSAR workflow → audit). Original 4–6-week estimate stands; continuing track after Path B, audited before tenant #2 onboards.
+  - **Path B (F0-minimal — gates scheduling Austin v1 prod flip):** owned by parallel scheduling session; not Path A. Unchanged from v2.
+  - **Path A capability bundle (DSAR Lambda + alarm + Gmail + playbook):** ~5–7 working days of build + ~1 day playbook post-build. Single named next concrete Path A action per the v3 re-baseline.
+  - **Path A incremental defenses (Apply-2 CMK / Apply-3 GSI / portal / break-glass hardening):** deferred until a real-party trigger fires (see v3 §"Counsel engagement").
 - **Surfaced from:** Scheduling project design discussions ([`scheduling/docs/design_discussion.md`](../../scheduling/docs/design_discussion.md)). Scheduling does not own this remediation; this is platform-level work scheduling depends on indirectly.
 
 ## Purpose of this document
@@ -26,7 +28,113 @@ MyRecruiter does **not** handle PHI and is not in HIPAA scope (the platform is a
 
 ---
 
-## Path A Re-baseline & Charter (2026-05-18) — authoritative
+## Path A Re-baseline v3 (2026-05-20) — Foundation-Informed, AUTHORITATIVE for build plan
+
+> **This section supersedes the v2 (2026-05-18) re-baseline's build plan** based on the Phase 0.5 foundation outcomes (D1 charter, D2 inventory, D3 flow map, D4 classification, D5 risk register, counsel input package). The v2 "Locked decisions" + "Regulatory coverage" + "Out of scope" + "Coordination seam" remain in effect — only the **5-phase build plan** is re-baselined here. The pre-Phase-0.5 5-phase plan was scoped without an actual surface map; with D2 in hand, the original "Phase 2 delete pipeline" / "Phase 3 retention TTL hygiene" / "Phase 4 DSAR workflow" decomposition is replaced by a tighter capability-first plan.
+
+> **Plan: `~/.claude/plans/let-s-work-on-the-cheerful-manatee.md` Step 10.** Advisor reviews before merge: `compliance-implementation-advisor` (scope discipline) + `pii-data-lifecycle-advisor` (lifecycle coverage) + `tech-lead-reviewer` (engineering proportionality).
+
+### What changed in Phase 0.5 that justifies re-baselining
+
+Phase 0.5 found:
+- **The platform CAN respond to a DSAR today** via Gmail + AWS CLI + the Apply-1 IAM roles + a manual walk of D2. What's missing is the **operator-invocable tool** that wraps the walk + the **operational docs** that turn capability into procedure (PR #154 landed the docs side).
+- **The "biggest early risk"** the strategy doc framed (`Can we find, export, delete, or anonymize PII later?`) is a **capability + procedure** problem, not a CMK + portal + GSI problem.
+- **Counsel engagement is trigger-driven**, not calendar-driven. The Step 8 package is held until a real-party event fires (tenant LOI / DSAR / regulator inquiry / threshold feature / commercial event). Engaging counsel on hypotheticals = process theater.
+- **The original Apply-2 design** (full delete pipeline + CMK on tables + GSI + resolver/executor split + self-service portal + break-glass hardening) is **over-built** for zero-DSAR / one-pilot-tenant scale. The capability layer (operator-invocable Lambda) closes the gap; the operational-ergonomics layers (portal, GSI, CMK) are deferable incremental defenses.
+
+### Two structural decisions (now answered)
+
+**Decision A — resolver/executor flip: ANSWERED → FLIP.** Phase 0.5 D2 + D5 confirm: zero DSARs to date, one pilot tenant, most surfaces TTL-deletable or manually walkable. The resolver/executor split is over-engineering. Ship an **operator-invocable manual delete via the DSAR Lambda** now; defer the automated intake (Phase 4 self-service portal) until DSAR volume justifies the operational complexity.
+
+**Decision B — break-glass role: ANSWERED → NO FURTHER HARDENING IN THIS BUNDLE.** Per Apply-1 audit (memory: `project_consumer_pii_remediation_path_a_phase2_apply1_audit_2026-05-19`), the current break-glass form is theater (no IAM users in acct 525; SSO sessions don't set `aws:MultiFactorAuthPresent`). D4 surface count shows Tier 4 is concentrated in narrow surfaces (channel-mappings page tokens, JWT blacklist tables, config-manager). Recovery purpose is narrow. Decision: **keep the named IAM role as-is; no further hardening as part of this bundle. Recovery posture to be documented (not pre-selected) if the Apply-2 design gate ever opens.**
+
+### The single named next concrete Path A action
+
+**Build the DSAR fulfillment capability bundle.** Engineering items + same-sprint operator items, separated for legibility. Estimate range reflects the spec's breadth (14+ DELETE-scoped surfaces in D2; cross-tenant walk; dry-run + audit semantics).
+
+**Engineering items (Backend-Engineer + test-engineer agents):**
+
+| # | Item | Estimate |
+|---|---|---|
+| 1a | `picasso-pii-dsar-staging` Lambda + IaC — **milestone 1: MFS-scoped surfaces only** (form-submissions, notification-sends + events, recent-messages, conversation-summaries, audit). Operator-invocable; takes `{subject_identifier, identifier_type, request_type, tenant_id, operator, dsar_id, dry_run}`; walks the named surfaces; writes audit row; returns rows-touched + manual-followups list. **Lambda gets a dedicated execution role (`picasso-pii-dsar-staging-role`) per CLAUDE.md never-share-roles** — that role assumes (or is granted permissions equivalent to) the Apply-1 `pii-delete-staging` + `pii-export-staging` roles for the data-plane walk; the Apply-1 roles remain the data-plane principal pattern. | 3–5 days |
+| 1b | Lambda **milestone 2: Meta + S3 + extended fan-out** (channel-mappings PSID-keyed walk via tenant-scoped Scan + FilterExpression; conditional per-tenant fulfillment S3 prefix walk; ARCHIVE_BUCKET walk if Decision-A reachability confirms inclusion). Accepts increased complexity from PSID lookup and per-tenant bucket resolution. | 2–4 days |
+| 2 | `picasso-pii-dsar-audit-staging` DDB table IaC | <1 day (single ddb-* module) |
+| 3 | EventBridge SLA alarm (G-D enforcer) — daily scan of audit table for open DSARs nearing SLA → SNS → email to `chris@myrecruiter.ai` | 1 day |
+| 6 | Integration tests against staging DynamoDB tables (dry-run + real delete + audit-row verification + **explicit Meta-only PSID-by-Scan test** + per-tenant S3 bucket walk test) | ~1.5 days |
+
+**Engineering subtotal:** ~6–11 working days (range reflects optimistic vs pessimistic; 1a is the acceptance criterion for tenant-#2 capability — 1b can land in a follow-on if 1a milestone slips). Item 1a alone delivers the bulk of the capability; 1b extends to the channel-edge cases.
+
+**Same-sprint operator items (NOT engineering work):**
+
+| # | Item | Estimate |
+|---|---|---|
+| 4 | **Run** the CLI commands documented in the existing `bedrock-invocation-logging-decision.md` + `archive-reachability-decision.md` templates (from PR #154 — merged); paste output into the templates' `Result:` blocks via small follow-up commits. The templates exist; the runtime evidence is what's missing. | < 1 hour |
+| 5 | Gmail `privacy@myrecruiter.ai` alias + 3 labels (`dsar/{open,awaiting-verification,closed}`) + filter (operator config, no repo artifact — operator-attested) | < 1 hour |
+| 7 | **DSAR Operator Playbook** (`docs/roadmap/PII-Project/dsar-operator-playbook.md`) — **written AFTER build**; takes the D5 §"Operational fulfillment workflow" skeleton + the existing 6 templates + verification posture + ledger + decision docs, and **fleshes out into a standalone operator runbook with concrete CLI invocations tested against the deployed Lambda, alarm-response procedures, Gmail workflow steps**, and "from the moment the email arrives, do exactly this" walkthroughs. | ≥1 day, post-build |
+
+**Per-D5-row closure (mapped to bundle items):**
+- **G-D enforcer** (item 3) — closes the D5 row directly.
+- **G-F (DSAR portability under-designed)** — closed by items 1a + 1b + 7. Lambda handles the export path; playbook documents it.
+- **F9 (tenant-configured downstream destinations)** — mitigation has **three load-bearing parts**, none of which are "MyR building a tenant vendor inventory" (that conflated tenant's-controller-responsibility with MyR's-processor-responsibility):
+  - **(a)** MyR publishes its **own** sub-processor list ([`myrecruiter-subprocessor-list.md`](./myrecruiter-subprocessor-list.md), this bundle) — standard SaaS DPA practice; tenants accept the list at onboarding, MyR notifies on additions/removals.
+  - **(b)** Tenant DPA language (drafted post-counsel response on Q1) requires the **tenant** to honor DSARs across the downstream destinations *they* configured (n8n / Sheets / CRMs / per-tenant fulfillment buckets). The tenant is the controller for those destinations; MyR's role is to forward per tenant config and coordinate when a DSAR arrives.
+  - **(c)** [`templates/tenant-sink-deletion-request.md`](./templates/tenant-sink-deletion-request.md) (already in PR #154) is the operational coordination mechanism — MyR notifies the tenant of an incoming DSAR; tenant honors on their side; tenant confirms in writing.
+  
+  F9's H/H rating in D5 holds because (b) requires counsel + tenant-DPA execution, neither of which lands in this bundle. The risk is mitigated procedurally today; counsel-determined posture is the closure trigger.
+- **F12 (Meta-PSID identity-graph gap)** — **NOT closed by this bundle as a *capability* gap; mitigated as a *procedure* gap.** Item 1b's tenant-scoped Scan + FilterExpression with explicit integration test (item 6) **must demonstrate exhaustive subject reachability** for PSID-keyed surfaces (no false-negatives at any volume), otherwise the deferral is invalid. If the test reveals false-negative cases, true closure requires a PSID column on `picasso-pii-subject-index-staging` (deferred until Meta-channel volume + acceptance bar justifies the engineering cost).
+- **F13-a (Bedrock model-invocation logging verification)** — closed by item 4 (CLI evidence → decision doc).
+- **F13-b / F15 (Bedrock response content quality + KB-leak)** — **NOT closed by this bundle**; separate workstream owned outside the DSAR-capability bundle; remains in D5.
+- **F14 open-item (ARCHIVE_BUCKET reachability)** — **partial closure.** Item 4 closes the *posture verification half* (records bucket name / region / encryption / lifecycle / versioning). The *delete-walk-inclusion design decision* is part of item 1b's spec — must explicitly state "walk the archive bucket" or "document the carve-out reason." Otherwise the playbook inherits an undecided Decision A.
+
+### What stays deferred (incremental defenses or procedure-mitigated; NOT silent capability abandonment)
+
+| Deferred | Framing | Why deferred |
+|---|---|---|
+| **Apply-2 CMK attached to Tier 3 tables** | Incremental defense | SSE-DDB is the baseline. Resume when an event justifies (tenant-#2 DPA requirement, regulator inquiry, threshold-crossing feature). |
+| **Apply-3 PiiSubjectIdIndex GSI on form-submissions** | Performance optimization | Scan works at zero/low volume. Resume when DSAR volume > ~5/month or scan latency > 30s. |
+| **Self-service DSAR portal** (Phase 4 original) | Operational ergonomics | Operator-invocable Lambda + Gmail intake is proportionate at solo-founder / zero-volume scale. Resume when DSAR volume > ~10/month or operator-bandwidth becomes a bottleneck. |
+| **Break-glass role hardening** (Decision B) | Defense-in-depth | Apply-1 audit proved the current form is theater. Defer indefinitely; re-evaluate if Apply-2 design gate opens. |
+| **Resolver/executor split** (original Phase 2 §design) | Architecture choice | Decision A flip eliminated. Single Lambda is the executor; operator is the resolver. |
+| **JSON-Schema request contract** | Validation rigor | Operator-invoke validation suffices at this scale. |
+| **PSID → `pii_subject_id` index column** (Finding 12 hard fix) | Subject-reachability mitigation | Procedure-mitigated by item 1b's tenant-scoped Scan + FilterExpression + integration test demonstrating exhaustive reachability. **If the integration test reveals false-negatives at low volume, this becomes a capability gap, not a deferred defense — defer status is conditional on the test result.** Resume when Meta-channel subjects' DSAR volume justifies indexed lookup OR test fails. |
+| **DDB PITR-residue mitigation** (35-day backup window persists deleted PII) | Audit-integrity defense | Acceptable under GDPR Art 17(3)(b) ("legal claims") reasoning per D5 G-C; document the position in counsel-pending response when triggered. No engineering action in this bundle. |
+| **CloudWatch log-redaction at source** (Tier 3 logs carry PII at 14-day retention) | Procedural defense | Out of capability-bundle scope. D5 G-A row + horizontal D4 concern. Deferred owner per scheduling-track / Path B Cloudwatch retention now-item. |
+
+### Counsel engagement (trigger-list, per D5)
+
+Counsel package (PR #153) is **prepared and held**. Engagement initiates on any of:
+1. A tenant signs an LOI / requests a DPA / demands a privacy attestation in vendor diligence.
+2. A DSAR arrives requiring a substantive response (any DSAR — the package + the playbook arm the response; counsel reviews the standing posture + the specific request).
+3. A regulator inquiry arrives in any form (subpoena, civil investigative demand, informal letter, state-AG request).
+4. A new product feature crosses a sensitivity threshold (explicit health-data handling; eligibility decisioning; payment instrument storage; minor-targeted flows). *(v3 addition consistent with D5's escalation-trigger spirit; transcribe into D5 if formal alignment is later required.)*
+5. A material commercial event (large foundation, healthcare-adjacent partner, enterprise customer) demands legal sign-off as part of onboarding.
+
+**This closes gap G-E** (counsel-engagement gate previously had no owner / date / input package) — owner = Chris; trigger conditions = enumerated; package = #153 merged; send-date will be recorded when triggered.
+
+### Tenant-#2 (Atlanta) gate semantics (post-Phase-0.5)
+
+Replaces the v2 "tenant-#2 gate = delete capability + DSAR + counsel sign-off." Post-Phase-0.5, Atlanta onboarding requires:
+- **Capability:** DSAR Lambda (items 1a + 1b) + audit table (item 2) + alarm (item 3) + verifications (item 4) + Gmail (item 5) + integration tests (item 6) + playbook (item 7) deployed and operationally tested.
+- **Foundation:** D2 inventory reflects prod state (re-verify against live AWS at onboarding time, not staging-only).
+- **Risk register — three unmitigated H/H rows must be closed or carry a counsel-determined posture by Atlanta onboarding:**
+  - **G-A** (FTC §5 widget claim) — owned by Path B; must be confirmed shipped to prod by independent re-run of the Step 5 verification.
+  - **G-I** (controller/processor + privacy notice) — counsel response on Q1 of the input package is required.
+  - **F9** (tenant-configured downstream destinations) — three-part mitigation: published sub-processor list (item in this bundle) + tenant DPA language requiring tenant-side DSAR-honor (drafted post-counsel-Q1) + `tenant-sink-deletion-request.md` coordination template (already shipped in PR #154).
+- **Counsel sequencing (G-I dependency on Atlanta-LOI is bi-directional — make the order explicit):** **at Atlanta LOI signing, the counsel package sends same-day** (trigger #1). **Atlanta onboarding proceeds AFTER counsel responds, not before.** The 3–4-week async window begins at LOI signing; onboarding planning runs in parallel during the wait, but cutover does not.
+- **Operational verifiability:** **re-run the D5 row-status check immediately before Atlanta cutover** (no more than 5 business days prior) and **paste the row-status snapshot into the Atlanta onboarding ticket as a recorded gate artifact.** Otherwise "no unmitigated H/H" is asserted at LOI-time and re-asserted at cutover with no recorded check between.
+
+One paragraph (extended); not a 20-item gate checklist. Tenant-#2 is not currently imminent — this is the gate when LOI arrives.
+
+### What this section does NOT do
+
+- Does not deprecate Apply-1's scaffold deployment in acct 525. The CMK + 3 IAM roles stay. They become inputs to the DSAR Lambda's IAM permissions.
+- Does not change the strategy-doc verbatim discipline elsewhere in the project.
+- Does not commit to a Phase 4 self-service portal or to Phase 5 counsel sign-off as build deliverables. Both are trigger-driven.
+- Does not reopen the v2 "Locked decisions" — those (opaque `pii_subject_id`, per-tenant, backfill, carve-outs, now-items-out-of-Path-A) all stand.
+
+---
+
+## Path A Re-baseline & Charter (2026-05-18) — SUPERSEDED for build plan by v3 above; locked decisions still in force
 
 > This section re-baselines the project against **verified current code/infra** and records
 > the **ratified governance decision** and **locked design decisions** for **Path A** (the
