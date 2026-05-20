@@ -149,6 +149,17 @@ module "lambda_pii_delete_staging" {
   pii_cmk_key_arn = module.kms_pii_staging[0].key_arn
 }
 
+# Consumer PII Remediation Path A — capability-bundle item 1a (IAM half).
+# Plan: docs/roadmap/PII-Project/CONSUMER_PII_REMEDIATION.md §"Path A Re-baseline v3".
+# IAM-only at this PR; aws_lambda_function resource lands with Python code follow-up.
+module "lambda_pii_dsar_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/lambda-pii-dsar-staging"
+
+  pii_cmk_key_arn      = module.kms_pii_staging[0].key_arn
+  dsar_audit_table_arn = module.ddb_pii_dsar_audit_staging[0].table_arn
+}
+
 module "ddb_notification_events_staging" {
   count  = var.env == "staging" ? 1 : 0
   source = "./modules/ddb-notification-events-staging"
