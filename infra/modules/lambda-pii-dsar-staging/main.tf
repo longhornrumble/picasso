@@ -177,10 +177,79 @@ resource "aws_iam_role_policy" "dsar" {
   policy = data.aws_iam_policy_document.dsar.json
 }
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Log group + Lambda function — capability-bundle item 1a (Lambda half).
+# Wires the dedicated role above to the Python code shipped in lambda repo
+# PR #132 (`picasso_pii_dsar_staging/lambda_function.py`).
+#
+# Same placeholder pattern as lambda-master-function-staging: Terraform owns
+# function existence + config + role binding; real code deploys via
+# `aws lambda update-function-code` per CLAUDE.md (lifecycle.ignore_changes
+# prevents Terraform from reverting CLI/CI code deploys).
+# ─────────────────────────────────────────────────────────────────────────────
+
+variable "log_retention_days" {
+  description = "CloudWatch log retention for the DSAR Lambda. Matches the 14d staging default per MFS Phase 2 R5."
+  type        = number
+  default     = 14
+}
+
+resource "aws_cloudwatch_log_group" "lambda" {
+  name              = "/aws/lambda/picasso-pii-dsar-staging"
+  retention_in_days = var.log_retention_days
+}
+
+data "archive_file" "placeholder" {
+  type        = "zip"
+  source_dir  = "${path.module}/placeholder"
+  output_path = "${path.module}/placeholder.zip"
+}
+
+resource "aws_lambda_function" "this" {
+  function_name = "picasso-pii-dsar-staging"
+  role          = aws_iam_role.dsar.arn
+  runtime       = "python3.11"
+  handler       = "lambda_function.lambda_handler"
+  memory_size   = 256
+  timeout       = 60
+  architectures = ["x86_64"]
+
+  filename         = data.archive_file.placeholder.output_path
+  source_code_hash = data.archive_file.placeholder.output_base64sha256
+
+  # No env vars — table names + expected account are constants in the Lambda
+  # code (CONSUMER_PII_REMEDIATION.md v3 §"Decision A — FLIP": IaC pins the
+  # account assertion; config-only prod promotion is intentionally impossible).
+
+  tracing_config {
+    mode = "PassThrough"
+  }
+
+  lifecycle {
+    # Real code deploys via `aws lambda update-function-code` from
+    # Lambdas/lambda/picasso_pii_dsar_staging/. Terraform must not revert.
+    ignore_changes = [filename, source_code_hash]
+  }
+
+  depends_on = [aws_cloudwatch_log_group.lambda, aws_iam_role_policy.dsar]
+}
+
 output "dsar_role_arn" {
   value = aws_iam_role.dsar.arn
 }
 
 output "dsar_role_name" {
   value = aws_iam_role.dsar.name
+}
+
+output "function_name" {
+  value = aws_lambda_function.this.function_name
+}
+
+output "function_arn" {
+  value = aws_lambda_function.this.arn
+}
+
+output "log_group_name" {
+  value = aws_cloudwatch_log_group.lambda.name
 }
