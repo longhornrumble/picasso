@@ -120,6 +120,16 @@ module "ddb_pii_subject_index_staging" {
   source = "./modules/ddb-pii-subject-index-staging"
 }
 
+# Consumer PII Remediation Path A, Post-Phase-0.5 — capability-bundle item 2
+# (`docs/roadmap/PII-Project/CONSUMER_PII_REMEDIATION.md` §"Path A Re-baseline v3").
+# Immutable event-log audit for DSAR fulfillment. Empty until the picasso-pii-dsar-
+# staging Lambda (capability-bundle items 1a + 1b) writes rows. Defined ahead of the
+# Lambda so the GSI lands on an empty table (no online backfill).
+module "ddb_pii_dsar_audit_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/ddb-pii-dsar-audit-staging"
+}
+
 # Consumer PII Remediation Path A, Phase 2 — APPLY 1 (design
 # docs/roadmap/PII_DELETE_PIPELINE_DESIGN.md §13 step 2, gate-cleared rev 3).
 # Scoped CMK + the dedicated delete / short-lived back-fill / MFA break-glass
