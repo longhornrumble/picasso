@@ -33,6 +33,32 @@
 #   - NO DeleteItem on picasso-audit-staging (Art 17(3)(b) carve-out, D5 G-C)
 #   - NO writes to picasso-pii-subject-index UpdateItem (that grant belongs to
 #     the Apply-1 backfill role, not DSAR)
+#
+# ACCEPTED RESIDUAL RISK — tenant isolation is code-only (D5 row F-DSAR2,
+# added 2026-05-20 from DSAR Lambda item-1a audit, Security advisor F-5):
+# DeleteItem on form-submissions (and the other MFS surfaces this role can
+# reach once their walkers ship) does NOT carry a dynamodb:LeadingKeys
+# condition bounding writes to the operator-requested tenant_id. The walker
+# enforces tenant isolation in code via:
+#   KeyConditionExpression = Key("tenant_id").eq(tenant_id)
+# in Lambdas/lambda/picasso_pii_dsar_staging/lambda_function.py
+# (_walk_form_submissions). DeleteItem Key uses the row's tenant_id+submission_id
+# recovered from that bounded Query.
+#
+# Three IAM-level alternatives were considered and explicitly rejected for the
+# Phase 0.5 posture:
+#   1. Static dynamodb:LeadingKeys enumeration of all tenant_ids — defeats
+#      isolation as the list expands; trivially stale on new-tenant onboarding.
+#   2. Per-tenant assumed-role pattern — adds an STS hop and per-tenant role
+#      provisioning; over-engineered at current scale (<50 tenants, single
+#      operator).
+#   3. Session policy via aws lambda invoke per-call — operator must construct
+#      and inject policy per invocation; operationally fragile and error-prone.
+#
+# Revisit triggers (any one): tenant count >50; cross-tenant near-miss observed
+# in integration tests; operator role expands beyond a single operator; any
+# post-incident finding implicating cross-tenant blast radius. See
+# docs/roadmap/PII-Project/privacy-risk-register.md row F-DSAR2.
 
 variable "pii_cmk_key_arn" {
   description = "ARN of the scoped PII CMK (module.kms_pii_staging.key_arn). The DSAR role gets kms:Decrypt/GenerateDataKey/DescribeKey on it for the data-plane walk."
