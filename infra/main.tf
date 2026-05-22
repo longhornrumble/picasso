@@ -128,6 +128,10 @@ module "ddb_pii_subject_index_staging" {
 module "ddb_pii_dsar_audit_staging" {
   count  = var.env == "staging" ? 1 : 0
   source = "./modules/ddb-pii-dsar-audit-staging"
+
+  # C2 SSE-KMS DEFERRED: see ddb-pii-dsar-audit-staging/main.tf inline note.
+  # Apply-2 precondition (CMK service-principal Allow) must land first.
+  # Audit-table DeleteItem-Deny resource policy ships in PR1 (no CMK dep).
 }
 
 # Consumer PII Remediation Path A, Phase 2 — APPLY 1 (design
@@ -882,12 +886,18 @@ resource "aws_kms_key_policy" "pii_staging" {
         # for DDB SSE association (DeployRoleDdbSseGrant below). Granting it
         # Decrypt/GenerateDataKey would let any CI run decrypt consumer PII
         # once the tables are CMK-associated (Apply 2). Do not re-add it here.
+        # H3 (PR1 fix-now-4): DSAR Lambda role added so the role can
+        # GenerateDataKey when writing audit rows (audit table is CMK-encrypted
+        # per C2) AND Decrypt when the AuditReadOnly walker reads them.
+        # SLA Lambda role is added in a separate PR4b SR-G edit (two-pass
+        # mitigated by the shadow-key gate per kms-pii-staging-policy-change-runbook.md).
         Sid    = "DataPlaneAllowListedRoles"
         Effect = "Allow"
         Principal = { AWS = [
           module.lambda_master_function_staging[0].role_arn,
           module.lambda_pii_delete_staging[0].delete_role_arn,
           module.lambda_pii_delete_staging[0].backfill_role_arn,
+          module.lambda_pii_dsar_staging[0].dsar_role_arn,
         ] }
         Action   = ["kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"]
         Resource = "*"
@@ -924,11 +934,15 @@ resource "aws_kms_key_policy" "pii_staging" {
         Resource  = "*"
         Condition = {
           StringNotEqualsIfExists = {
+            # H3 (PR1 fix-now-4): DSAR Lambda role added to the Deny-exception
+            # list. SLA Lambda role added in PR4b SR-G under its own shadow-key
+            # gate per kms-pii-staging-policy-change-runbook.md §"PR4b SR-G".
             "aws:PrincipalArn" = [
               module.lambda_master_function_staging[0].role_arn,
               module.lambda_pii_delete_staging[0].delete_role_arn,
               module.lambda_pii_delete_staging[0].backfill_role_arn,
               module.lambda_pii_delete_staging[0].breakglass_role_arn,
+              module.lambda_pii_dsar_staging[0].dsar_role_arn,
             ]
           }
         }
