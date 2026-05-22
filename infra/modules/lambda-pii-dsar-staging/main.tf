@@ -220,6 +220,12 @@ variable "log_retention_days" {
   default     = 14
 }
 
+variable "operator_sso_permission_set_name" {
+  description = "Name of the AWS SSO permission set whose assumed role is the sole authorized DSAR invoker (C1, PR1 fix-now-4). The reserved-SSO role ARN is computed at apply time as arn:aws:iam::<acct>:role/aws-reserved/sso.amazonaws.com/<name>. Discovered 2026-05-21 in acct 525; MERGE-BLOCKING smoke test in PR1 acceptance gate validates the grant works. Override only if a different SSO permission set is discovered."
+  type        = string
+  default     = "AWSReservedSSO_AdministratorAccess_c46cb409a39e2990"
+}
+
 resource "aws_cloudwatch_log_group" "lambda" {
   name              = "/aws/lambda/picasso-pii-dsar-staging"
   retention_in_days = var.log_retention_days
@@ -260,8 +266,35 @@ resource "aws_lambda_function" "this" {
   depends_on = [aws_cloudwatch_log_group.lambda, aws_iam_role_policy.dsar]
 }
 
+# C1 (PR1 fix-now-4): Lambda resource-based permission grants the SSO
+# operator-role explicit `lambda:InvokeFunction`. The reserved-SSO role ARN
+# is computed at apply time from the permission-set name (which is what AWS
+# documents for cross-account SSO references — the underlying role ARN
+# includes the permission-set ID suffix and may differ across accounts/
+# permission-set assignments). The role is the only intentionally-authorized
+# operator path; any other AdministratorAccess principal can still invoke via
+# its IAM grant — the env-guard (`_assert_account`) is the additional defense
+# against wrong-account invocation, and the operator-attestation gate (§6.7)
+# captures the operator-rotation discipline.
+#
+# **MERGE-BLOCKING:** PR1 acceptance gates a live smoke test where the SSO
+# role is assumed and the Lambda is invoked. If AccessDenied → the SSO
+# permission-set discovery was wrong; surface to operator for re-discovery
+# via `aws sso-admin list-permission-sets`.
+resource "aws_lambda_permission" "operator_only" {
+  statement_id  = "AllowOperatorInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.this.function_name
+  principal     = "arn:aws:iam::${local.acct}:role/aws-reserved/sso.amazonaws.com/${var.operator_sso_permission_set_name}"
+}
+
 output "dsar_role_arn" {
   value = aws_iam_role.dsar.arn
+}
+
+output "operator_principal_arn" {
+  description = "The SSO-role principal granted lambda:InvokeFunction. Used by the C1 smoke test to assume + invoke."
+  value       = aws_lambda_permission.operator_only.principal
 }
 
 output "dsar_role_name" {
