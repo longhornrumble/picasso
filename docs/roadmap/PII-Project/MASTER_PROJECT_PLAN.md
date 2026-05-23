@@ -183,7 +183,15 @@ User-authorized this disposition 2026-05-23 by explicitly directing "fix the iss
 
 **Dependencies:** M1 Lambda LIVE; M2 optional for v1 playbook (M2 surfaces documented as "Lambda extension pending" in v1; v1.1 update post-M2).
 
-**Status:** NOT STARTED.
+**Status:** **IN PROGRESS** (4 of 6 done-bar items shipping in 3 PRs; #1+#3 remaining).
+
+**Closure (per-item):**
+- #1 (EventBridge SLA alarm): lambda PR #143 (runtime code) + this PR commit `44ef6ee` (IaC module + main.tf wiring) — **OPEN; pending merge + operator post-merge deploy + test-fire**
+- #2 (Fault-test): pre-documented in `dsar-operator-playbook.md` §8; executes after #1 ships
+- #3 (Gmail config): **OPERATOR-PENDING** (operator-configured `privacy@myrecruiter.ai` alias + 3 labels + filter)
+- #4 (Bedrock CLI verification): PR #171 commit `2e91d9f` — staging closed ✅; **prod-614 operator-pending** (auto-mode blocked agent-initiated prod read)
+- #5 (ARCHIVE CLI verification): PR #171 commit `2e91d9f` — staging closed ✅; **prod-614 operator-pending**. **Finding: archive-bucket versioning ENABLED** → new D5 row F-DSAR17 added (routed to M9 TTL hygiene audit; 7-day NoncurrentVersionExpiration caps leak)
+- #6 (Operator playbook v1): PR #171 commit `76fd217` — **DONE ✅** (`dsar-operator-playbook.md` published; correction template `templates/dsar-response-correction.md` added)
 
 **Done-bar (verifiable):**
 
@@ -219,7 +227,12 @@ User-authorized this disposition 2026-05-23 by explicitly directing "fix the iss
 
 **Estimate:** ~1–2 days engineering + verification. **Stall trigger:** if no PR opened within **30 days of M1 closing**, M4 status flips to STALLED and escalates to user. *(tech-lead B3)*
 
-**Status:** NOT STARTED.
+**Status:** **IN PROGRESS** (both halves shipping in 2 PRs; pending merges + prod re-verification).
+
+**Closure (per-item):**
+- #1 (Widget claim removed): picasso PR [#172](https://github.com/longhornrumble/picasso/pull/172) — **OPEN; surgical 1-line removal in StateManagementPanel.jsx**. Stall-trigger NOT hit (PR opened well within 30d of M1 closing).
+- #2 (form_handler TTL writer): lambda PR [#142](https://github.com/longhornrumble/lambda/pull/142) — **OPEN; 365-day TTL added to `_store_submission` put_item** + dedicated MagicMock TTL test + DSAR walker contract test (CLAUDE.md schema-discipline rule). 109/109 DSAR tests PASS (was 108; +1 new contract test); writer + reader tests PASS.
+- #3 (Both halves re-verified in prod): **OPERATOR-PENDING** (operator runs Phase 0.5 Step 5 verification procedure after both PRs merge + deploys reach prod).
 
 **Done-bar (verifiable):**
 
@@ -599,3 +612,4 @@ User-checkable monthly invariants:
 | 0.1 | 2026-05-22 | Chris (via Claude session) | Initial authoring per `~/.claude/plans/compiled-noodling-turing.md`. Integrates adversarial review from `compliance-implementation-advisor` + `pii-data-lifecycle-advisor` + `tech-lead-reviewer` as gap-router rows under M1–M9 + structural rules in §3 + §7 + §8. No new milestones created. ACTIVE: M1, M2, M3, M4, M9. WATCH/DEFERRED: M5, M6, M7, M8. |
 | 0.2 | 2026-05-23 | Chris (via Claude session) | M1 status → DONE. All 8 done-bar items closed via picasso PR #167 (#6/#7/#8 + G5) and lambda PR #140 (#3/#5; 7/7 integration tests PASS vs real DDB). Status buckets updated: DONE = M1; ACTIVE = M2/M3/M4/M9. Actual M1 burn = ~1.25h post-authoring (well under 50% gap-router ceiling). Gap-router G1/G2/G3 routed-on-demand; G4 deferred-until-trigger; G5 closed. |
 | 0.3 | 2026-05-23 | Chris (via Claude session) | **M1 phase-completion-audit + fixes.** Ran phase-completion-audit (4 adversarial reviewers — `code-reviewer`, `tech-lead-reviewer`, `Security-Reviewer`, `test-engineer`). 31 rows surfaced — 8 blockers, 16 strong, 7 nice. **25 rows fixed** in 2 follow-up PRs (lambda #141 + this picasso PR): IaC tightening (audit-table Deny expansion to BatchWriteItem/UpdateItem/PartiQL/DeleteTable), code (rows_delete_failed counter on all 4 walkers; CLI snippet email redaction; caller_arn in audit), tests (3 new integration tests for notification-sends/events/recent-messages walkers; assertion tightening across all 7 existing tests; replay test documents actual idempotency scope). **4 rows deferred as pointless** (rows 19/22/29/30 with rationale). **2 rows reconceived as v0.3 scope re-records**: row 5 = explicit M1 outcome re-scope excluding conversation-summaries + audit-read-only (user-authorized); row 6 = explicit fix-now-4 PR2-PR8 disposition recorded (PR2 partially shipped via this update; PR3-PR8 routed to M2/M3/M7/M9). MFS_SCOPED_SURFACES renamed to DEFERRED_SURFACES. Tenant-isolation control plan: function-name fix + ABAC migration lead-time quantified (2-5 engineering days). F-DSAR-C2-SSE-DEFER waiver expanded with operator-side response storage classification (Tier 3 obligations for pii_subject_id + exported_rows). D5 register: new F-DSAR16 row for 12-month counsel safety-floor backstop. Audit-finding-post-M1 (replay protection docstring-vs-code gap) filed as follow-up for future milestone gap-router. Master plan §3 routing rule now exercised against the audit itself — every audit finding routed to one of: (a) fix-now in this PR series, (b) explicit deferred-as-pointless with rationale, (c) scope re-record with user authorization, (d) follow-on milestone routing. |
+| 0.4 | 2026-05-23 | Chris (via Claude session) | **M3 + M4 parallel kickoff.** Both ACTIVE milestones move from NOT STARTED → IN PROGRESS with PRs open. **M3 progress (4 of 6 done-bar items shipping in 3 PRs across picasso + lambda repos):** done-bar #4+#5 STAGING (picasso PR #171 commit `2e91d9f` — Bedrock + ARCHIVE CLI verifications, D5 row F-DSAR17 added for archive versioning finding; routed to M9); done-bar #6 (`dsar-operator-playbook.md` v1.0 published + `templates/dsar-response-correction.md` added — picasso PR #171 commit `76fd217`); done-bar #1 (EventBridge daily SLA monitor — lambda PR #143 runtime code + 10/10 unit tests pass + this PR commit `44ef6ee` Terraform module `lambda-pii-dsar-sla-monitor-staging` + main.tf wiring reusing existing `ops-alarms-master-function-staging` SNS topic; dedicated IAM role per CLAUDE.md never-share rule). Remaining: #2 fault-test (operator-post-deploy; procedure pre-documented in playbook §8); #3 Gmail config (operator-pending); #4+#5 prod-614 (operator-pending; auto-mode correctly blocked agent-initiated prod read). **M4 progress (both halves in 2 PRs):** done-bar #1 widget claim removed (picasso PR #172 — surgical 1-line StateManagementPanel.jsx edit); done-bar #2 `_store_submission` writes `ttl` (lambda PR #142 — 365d interim default matching archive lifecycle + CCPA §1798.105 12mo common reference; CLAUDE.md schema-discipline contract test in DSAR walker test_dsar.py verifies forward-compat reader; 109/109 DSAR tests pass + new dedicated MagicMock TTL writer test). Remaining: #3 prod re-verification (operator-pending; Phase 0.5 Step 5 procedure). M4 stall-trigger (30d post-M1-close = 2026-06-22) NOT hit — both PRs opened same day as M1 close. |
