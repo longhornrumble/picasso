@@ -47,21 +47,49 @@ aws s3api get-public-access-block --bucket $BUCKET --profile myrecruiter-staging
 
 ## Result
 
-**Bucket name (from Step 1):** `[TODO: paste from step 1]`
+**Bucket name (from Step 1):** `picasso-archive-staging`
 
-**Region:** `[TODO: paste from get-bucket-location]`
+**Region:** `us-east-1` (LocationConstraint=null per AWS convention)
 
-**Encryption:** `[TODO: paste sse_algorithm and KMS key if applicable]`
+**Encryption:** `AES256` (SSE-S3; BucketKeyEnabled=true; no CMK)
 
-**Versioning:** `[TODO: Enabled / Suspended / NotConfigured]`
+**Versioning:** `Enabled` ⚠️ — **finding** per interpretation §"If versioning is ON"
 
-**Lifecycle:** `[TODO: paste rules or "none"]`
+**Lifecycle:**
+```
+Rules:
+  - ID: DeleteAfterOneYear
+    Filter: { Prefix: sessions/ }
+    Status: Enabled
+    Expiration.Days: 365
+    NoncurrentVersionExpiration.NoncurrentDays: 7
+```
 
-**Public-access block:** `[TODO: all-four-flags-true / partial / missing]`
+**Public-access block:** all-four-flags-true (BlockPublicAcls + IgnorePublicAcls + BlockPublicPolicy + RestrictPublicBuckets) ✅
 
-**Sample key shape:** `[TODO: paste the head-20 output — anonymize if any keys contain identifiers]`
+**Sample key shape:**
+```
+$ AWS_PROFILE=myrecruiter-staging aws s3 ls s3://picasso-archive-staging/ --recursive | head -20
+(empty — bucket has no objects at verification time)
+```
 
-**Date verified:** `[TODO: YYYY-MM-DD]`
+Bucket is empty as of 2026-05-23 verification. This is consistent with either: (a) `picasso-session-archiver` not yet invoked at scale (staging traffic light); or (b) writes failing silently (D3 F14 follow-up). Either way, an immediate DSAR walk against this surface returns zero rows; the bucket's posture is what matters for forward-looking DSAR fulfillment.
+
+**Date verified:** 2026-05-23 (staging acct 525)
+
+## Decision applied (2026-05-23)
+
+**Posture is mostly within expected baseline** — SSE-S3, lifecycle present, public-access blocked, region matches DDB source. **Single deviation: versioning is ENABLED.** Branch "If versioning is ON" applies:
+
+1. **Compensating control already in place:** lifecycle rule `DeleteAfterOneYear` has `NoncurrentVersionExpiration.NoncurrentDays = 7`, so old versions auto-expire 7 days after a new version is written. The DSAR-impact window is therefore bounded to 7 days post-mutation rather than indefinite.
+2. **Bucket is currently empty.** No DSAR-impacting history exists yet — the finding is preventive, not remedial.
+3. **DSAR walker (M2 future scope) must enumerate versions when walking the archive.** Until M2 lands the ARCHIVE_BUCKET walker, the operator playbook (M3 done-bar #6) carries the procedure: `aws s3api list-object-versions --bucket picasso-archive-staging --prefix sessions/{sessionId}/` then per-version delete with `--version-id`.
+4. **Long-term remediation = turn versioning OFF** (one-shot operational change; no data loss). Tracked as D5 row F-DSAR17 (new, this commit). Routed to M9's TTL hygiene audit milestone — when M9 runs the per-row TTL status confirmation, this archive-bucket versioning posture is one of the rows audited. Until then, the 7-day NoncurrentVersionExpiration + walker enumeration is the standing mitigation.
+5. **No additional D5 escalation today** — the SSE-S3 / lifecycle / public-access posture is acceptable; only versioning needed flagging.
+
+## Production-account ARCHIVE_BUCKET (operator-pending)
+
+Staging verification (above) does not cover prod-614. Operator (Chris) must run the equivalent verification against the prod-account session-archiver Lambda when explicit prod authorization is granted. Expected outcome: a prod-account analogue of `picasso-archive-prod` (or named per prod-account convention) with matching posture. Findings update this doc + D5 routing.
 
 ## Interpretation guide
 
