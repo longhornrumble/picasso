@@ -2,8 +2,21 @@
 
 **Status:** v1.0 — published 2026-05-23 (M3 done-bar #6, master plan v0.3 §M3).
 **Owner:** Chris Miller.
-**Scope:** zero-volume / solo-founder DSAR fulfillment for the Picasso platform as it stands today (Path A v3 capability bundle item 1a deployed via M1; M2 ARCHIVE/Meta extension + M3 SLA alarm pending).
+**Scope:** zero-volume / solo-founder DSAR fulfillment for the Picasso platform as it stands today (Path A v3 capability bundle item 1a deployed via M1; M3 SLA monitor LIVE in staging acct 525 since 2026-05-23T08:13Z; M2 ARCHIVE/Meta extension pending).
 **Updates expected:** v1.1 after M2 (Meta/S3/ARCHIVE walker LIVE); v1.2 after counsel-Q1 (G-I) response refines verification posture.
+
+## Operational state (live as of 2026-05-23T08:15Z post-M3 deploy)
+
+| Component | State | Where |
+|---|---|---|
+| DSAR Lambda (M1) | LIVE | `picasso-pii-dsar-staging` in acct 525; CodeSha256 `HNo+XSi67mi9wYmRoDzRojXrx9GNUCtBbHFl3PRYJrg=` |
+| Audit table 4-action Deny (M1) | LIVE | `picasso-pii-dsar-audit-staging` resource policy in acct 525 |
+| SLA Monitor Lambda (M3 #1) | LIVE | `picasso-pii-dsar-sla-monitor-staging` in acct 525; CodeSha256 `gBwoFCFJu2xt1CAgqOxBYyBYwm7atlxFJllPZvtWnHc=`; daily 14:00 UTC EventBridge schedule. Test-fire 2026-05-23 confirmed: at-risk detection + SNS publish + skip-on-closed all work end-to-end. SNS topic `picasso-ops-alerts-staging`; operator confirms email subscription. |
+| Bedrock invocation logging (M3 #4) | OFF in staging (525) + prod (614) — verified 2026-05-23 | `aws bedrock get-model-invocation-logging-configuration` empty response in both accounts |
+| ARCHIVE_BUCKET (M3 #5) | STAGING: `picasso-archive-staging` verified — SSE-S3, lifecycle, public-access blocked, **versioning ENABLED** (F-DSAR17). PROD: operator-pending (classifier blocked agent prod `lambda list-functions` despite user auth) | See [`archive-reachability-decision.md`](./archive-reachability-decision.md) |
+| Gmail `privacy@` alias + 3 labels (M3 #3) | OPERATOR-PENDING | Gmail MCP `create_label` returns "insufficient authentication scopes" 2026-05-23 — operator must create via Gmail UI: `dsar/open`, `dsar/awaiting-verification`, `dsar/closed`. Alias creation requires Google Workspace admin Console. Filter creation requires Gmail UI (no API). |
+| M4 #1 widget claim (Picasso) | PR #172 MERGED to picasso staging branch; bundle on `staging.chat.myrecruiter.ai` + `chat.myrecruiter.ai` is 4 days stale (Last-Modified 2026-05-19) — operator-pending Picasso build + deploy + staging→main promotion to prod |
+| M4 #2 form-handler TTL (Lambda) | LIVE in staging acct 525 | `Master_Function_Staging` CodeSha256 `s3WIrLPMOy9NwVqKOPhup2J2GQrEzQJrzbW1LqUf6eU=` (deployed 2026-05-23T08:02:25Z post-PR #142 merge). Prod (614) Master_Function requires hand-managed promotion. |
 
 This document is the **operational** companion to:
 - [`MASTER_PROJECT_PLAN.md`](./MASTER_PROJECT_PLAN.md) — milestone roadmap (§M3 covers this playbook)
