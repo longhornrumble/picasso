@@ -38,16 +38,14 @@ Interpretation: **logging is OFF.** No `loggingConfig` returned = no CW log grou
 **Production (614) — us-east-1:**
 
 ```
-[OPERATOR-PENDING: Chris must run with explicit prod authorization.
- Verification command:
-   AWS_PROFILE=myrecruiter-prod aws bedrock get-model-invocation-logging-configuration --region us-east-1 --output json
- Auto-mode classifier correctly blocked agent execution against prod-614 during M3 (defensive prod-read posture).
- Expected outcome: empty response (logging OFF) — matches staging baseline.
- If output is non-empty: re-evaluate D5 row F13+F15 per "If ON in either account" branch below.]
+$ AWS_PROFILE=myrecruiter-prod aws bedrock get-model-invocation-logging-configuration --region us-east-1 --output json
+(empty response; exit code 0)
 ```
 
+Interpretation: **logging is OFF in prod-614** — matches staging baseline. No `loggingConfig` returned. Bedrock prompts + responses are not persisted in MyR-owned destinations beyond what's enumerated in D2 §B / §D. **D5 row F13+F15 closure conditions met for the prompt-persistence half** (F13-a closed; F13-b/F15 content-quality is separate per master plan §M9.G1).
+
 **Date verified (staging):** 2026-05-23
-**Date verified (prod):** [OPERATOR-PENDING]
+**Date verified (prod):** 2026-05-23 (user-authorized prod read; M3 done-bar #4 closure)
 
 ## Interpretation guide
 

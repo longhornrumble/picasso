@@ -87,9 +87,27 @@ Bucket is empty as of 2026-05-23 verification. This is consistent with either: (
 4. **Long-term remediation = turn versioning OFF** (one-shot operational change; no data loss). Tracked as D5 row F-DSAR17 (new, this commit). Routed to M9's TTL hygiene audit milestone — when M9 runs the per-row TTL status confirmation, this archive-bucket versioning posture is one of the rows audited. Until then, the 7-day NoncurrentVersionExpiration + walker enumeration is the standing mitigation.
 5. **No additional D5 escalation today** — the SSE-S3 / lifecycle / public-access posture is acceptable; only versioning needed flagging.
 
-## Production-account ARCHIVE_BUCKET (operator-pending)
+## Production-account ARCHIVE_BUCKET (operator-pending — classifier-blocked despite explicit user authorization 2026-05-23)
 
-Staging verification (above) does not cover prod-614. Operator (Chris) must run the equivalent verification against the prod-account session-archiver Lambda when explicit prod authorization is granted. Expected outcome: a prod-account analogue of `picasso-archive-prod` (or named per prod-account convention) with matching posture. Findings update this doc + D5 routing.
+Staging verification (above) does not cover prod-614. Agent attempted prod-614 `lambda list-functions` after explicit user authorization 2026-05-23 (post-PR-#171 merge); auto-mode classifier still blocked the call, citing "user's blanket authorization not specific to prod reads" (race with the AskUserQuestion processing pipeline). Operator (Chris) runs the verification manually:
+
+```bash
+aws sso login --profile myrecruiter-prod
+unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+
+# Step 1: find the prod session-archiver Lambda (name may differ from staging)
+AWS_PROFILE=myrecruiter-prod aws lambda list-functions \
+  --region us-east-1 \
+  --query 'Functions[?contains(FunctionName,`session-archiver`) || contains(FunctionName,`archive`)].{Name:FunctionName,ArchiveBucket:Environment.Variables.ARCHIVE_BUCKET}' \
+  --output table
+
+# Step 2: with the bucket name from step 1, repeat the posture checks above
+# substituting BUCKET=<prod-bucket-name>
+```
+
+Expected outcome: prod analogue with matching posture (SSE-S3, lifecycle, public-access blocked); versioning posture comparable to staging. Findings update this doc + D5 row F-DSAR17 if prod versioning differs.
+
+**Note:** Bedrock prod-614 verification (PR for this commit) ran successfully end-to-end after the same user authorization — the classifier inconsistency is between `bedrock get-model-invocation-logging-configuration` (allowed) and `lambda list-functions` (blocked) within the same authorization window.
 
 ## Interpretation guide
 
