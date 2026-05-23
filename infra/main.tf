@@ -113,6 +113,75 @@ module "ddb_form_submissions_staging" {
   source = "./modules/ddb-form-submissions-staging"
 }
 
+# Consumer PII Remediation Path A, Phase 1 — normalized-email -> pii_subject_id index.
+# Additive: scheduling continues keying on form_submission_id (PII Identity Contract §1).
+module "ddb_pii_subject_index_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/ddb-pii-subject-index-staging"
+}
+
+# Consumer PII Remediation Path A, Post-Phase-0.5 — capability-bundle item 2
+# (`docs/roadmap/PII-Project/CONSUMER_PII_REMEDIATION.md` §"Path A Re-baseline v3").
+# Immutable event-log audit for DSAR fulfillment. Empty until the picasso-pii-dsar-
+# staging Lambda (capability-bundle items 1a + 1b) writes rows. Defined ahead of the
+# Lambda so the GSI lands on an empty table (no online backfill).
+module "ddb_pii_dsar_audit_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/ddb-pii-dsar-audit-staging"
+
+  # C2 SSE-KMS DEFERRED: see ddb-pii-dsar-audit-staging/main.tf inline note.
+  # Apply-2 precondition (CMK service-principal Allow) must land first.
+  # Audit-table DeleteItem-Deny resource policy ships in PR1 (no CMK dep).
+}
+
+# Consumer PII Remediation Path A, Phase 2 — APPLY 1 (design
+# docs/roadmap/PII_DELETE_PIPELINE_DESIGN.md §13 step 2, gate-cleared rev 3).
+# Scoped CMK + the dedicated delete / short-lived back-fill / MFA break-glass
+# roles ONLY (no Lambda, no table association — those are Apply 2/3 + step 7,
+# HARD-GATED before any live-tenant staging traffic). The NB-A key policy is
+# the root-level `aws_kms_key_policy.pii_staging` below (cycle-break, mirrors
+# the `aws_secretsmanager_secret_policy` pattern).
+module "kms_pii_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/kms-pii-staging"
+}
+
+module "lambda_pii_delete_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/lambda-pii-delete-staging"
+
+  pii_cmk_key_arn = module.kms_pii_staging[0].key_arn
+}
+
+# Consumer PII Remediation Path A — capability-bundle item 1a (IAM half).
+# Plan: docs/roadmap/PII-Project/CONSUMER_PII_REMEDIATION.md §"Path A Re-baseline v3".
+# IAM-only at this PR; aws_lambda_function resource lands with Python code follow-up.
+module "lambda_pii_dsar_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/lambda-pii-dsar-staging"
+
+  pii_cmk_key_arn      = module.kms_pii_staging[0].key_arn
+  dsar_audit_table_arn = module.ddb_pii_dsar_audit_staging[0].table_arn
+}
+
+# Consumer PII Remediation Path A, M3 done-bar #1 (master plan v0.3 §M3).
+# Daily EventBridge-triggered Lambda that scans picasso-pii-dsar-audit-staging
+# StatusIndex for open DSARs past intake+25d (SLA-at-risk window) and publishes
+# SNS alerts to ops-alerts topic. Closes D5 G-D.
+#
+# Reuses the existing ops-alerts SNS topic from ops-alarms-master-function-staging
+# (operator-subscribed via Console; no per-alarm topic). Dedicated IAM role
+# (CLAUDE.md never-share rule); scoped read on audit table + Publish on the
+# single topic; no DDB writes, no PII CMK access (audit table remains default
+# DDB SSE pending M7 F-DSAR-C2-SSE-DEFER resolution).
+module "lambda_pii_dsar_sla_monitor_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/lambda-pii-dsar-sla-monitor-staging"
+
+  dsar_audit_table_arn = module.ddb_pii_dsar_audit_staging[0].table_arn
+  ops_sns_topic_arn    = module.ops_alarms_master_function_staging[0].topic_arn
+}
+
 module "ddb_notification_events_staging" {
   count  = var.env == "staging" ? 1 : 0
   source = "./modules/ddb-notification-events-staging"
@@ -136,6 +205,23 @@ module "ddb_employee_registry_v2_staging" {
 module "ddb_token_blacklist_staging" {
   count  = var.env == "staging" ? 1 : 0
   source = "./modules/ddb-token-blacklist"
+  env    = var.env
+}
+
+# Scheduling v1 (impl plan sub-phase A8c, R1 intent, R6 naming). Both tables
+# are greenfield creates in staging-525: the A6 jti table (PR #52) was
+# provisioned in prod-614 under a staging name pre-account-split and is
+# Q3-parked there (left untouched), so there is nothing to import. The
+# Booking table's two GSIs are created at table-creation time.
+module "ddb_token_jti_blacklist_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/ddb-token-jti-blacklist"
+  env    = var.env
+}
+
+module "ddb_booking_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/ddb-booking"
   env    = var.env
 }
 
@@ -239,6 +325,8 @@ module "lambda_master_function_staging" {
   form_submissions_table_name       = module.ddb_form_submissions_staging[0].table_name
   notification_sends_table_arn      = module.ddb_notification_sends_staging[0].table_arn
   notification_sends_table_name     = module.ddb_notification_sends_staging[0].table_name
+  pii_subject_index_table_arn       = module.ddb_pii_subject_index_staging[0].table_arn
+  pii_subject_index_table_name      = module.ddb_pii_subject_index_staging[0].table_name
   streaming_endpoint                = module.lambda_bedrock_handler_staging[0].function_url
 
   # CloudFront origin secret ARN. Activates the conditional CfOriginSecretRead
@@ -406,6 +494,168 @@ module "ops_alarms_master_function_staging" {
 
   function_name  = module.lambda_master_function_staging[0].function_name
   log_group_name = module.lambda_master_function_staging[0].log_group_name
+}
+
+# ──────────────────────────────────────────────────────────────────────
+# Meta Messenger project — staging-account cluster. Twin of the dormant
+# prod-614 Meta_Webhook_Handler / Meta_Response_Processor / Meta_OAuth_Handler
+# + their DDB/KMS/secret/DLQ/alarms (Q3-parked prod residue). Stands the
+# integration up correctly in 525 per the staging-first SOP. Reuses what 525
+# already has: staging-recent-messages, the analytics SQS pipeline, the
+# tenant-config bucket, the tenant registry, the cross-account KB retriever
+# role, and the ops SNS topic. Real Lambda code lands via the lambda-repo CI
+# matrix; this ships placeholder zips. Plan:
+# ~/.claude/plans/i-m-continuing-work-on-zany-popcorn.md
+# ──────────────────────────────────────────────────────────────────────
+module "ddb_channel_mappings_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/ddb-channel-mappings-staging"
+}
+
+module "ddb_webhook_dedup_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/ddb-webhook-dedup-staging"
+}
+
+module "kms_channel_tokens_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/kms-channel-tokens-staging"
+}
+
+module "secrets_meta_app_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/secrets-meta-app-staging"
+}
+
+module "lambda_meta_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/lambda-meta-staging"
+
+  channel_mappings_table_arn        = module.ddb_channel_mappings_staging[0].table_arn
+  channel_mappings_table_name       = module.ddb_channel_mappings_staging[0].table_name
+  channel_mappings_tenant_index_arn = module.ddb_channel_mappings_staging[0].tenant_index_arn
+  webhook_dedup_table_arn           = module.ddb_webhook_dedup_staging[0].table_arn
+  webhook_dedup_table_name          = module.ddb_webhook_dedup_staging[0].table_name
+
+  # Shared with core chat — schema-identical, already Terraform-managed.
+  recent_messages_table_arn  = module.ddb_recent_messages_staging[0].table_arn
+  recent_messages_table_name = module.ddb_recent_messages_staging[0].table_name
+
+  # bedrock-core registry resolution (cross-account-KB twin requirement).
+  tenant_registry_table_arn  = module.ddb_tenant_registry_staging[0].table_arn
+  tenant_registry_table_name = module.ddb_tenant_registry_staging[0].table_name
+
+  channel_tokens_kms_key_arn   = module.kms_channel_tokens_staging[0].key_arn
+  channel_tokens_kms_key_alias = module.kms_channel_tokens_staging[0].key_alias
+
+  meta_app_secret_arn = module.secrets_meta_app_staging[0].app_secret_arn
+  ig_app_secret_arn   = module.secrets_meta_app_staging[0].ig_app_secret_arn
+
+  # Faithful-twin rewrite of the 614 ANALYTICS_QUEUE_URL → the 525 queue.
+  analytics_queue_arn = module.analytics_events_pipeline_staging[0].queue_arn
+  analytics_queue_url = module.analytics_events_pipeline_staging[0].queue_url
+
+  tenant_config_bucket_arn = module.tenant_config_staging[0].bucket_arn
+  config_bucket_name       = module.tenant_config_staging[0].bucket_name
+
+  # Same KB + prod-side retriever role as the BSH/MFS modules above.
+  kb_arns = [
+    "arn:aws:bedrock:us-east-1:614056832592:knowledge-base/0BQBWFYDMT",
+  ]
+  kb_retriever_role_arns = [
+    "arn:aws:iam::614056832592:role/picasso-kb-retriever-from-staging",
+  ]
+
+  # Single Meta App for both accounts (dev-mode). Not a secret.
+  meta_app_id = "791705810685396"
+
+  messenger_verify_token = var.messenger_verify_token
+
+  # Two-apply step 2: captured from apply-#1's Meta_OAuth_Handler Function URL
+  # (a Lambda can't reference its own Function URL without a Terraform cycle, so
+  # apply #1 created it with "" and this literal closes the loop on apply #2).
+  # This is the value registered in the Meta App Dashboard at cutover C1/C2.
+  meta_oauth_callback_url = "https://zqzw7c4jol6tsvoabbvgxly6ya0cusst.lambda-url.us-east-1.on.aws/meta/oauth/callback"
+}
+
+module "ops_alarms_meta_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/ops-alarms-meta-staging"
+
+  webhook_function_name            = module.lambda_meta_staging[0].webhook_function_name
+  response_processor_function_name = module.lambda_meta_staging[0].response_processor_function_name
+  response_dlq_name                = module.lambda_meta_staging[0].response_dlq_name
+  sns_topic_arn                    = module.ops_alarms_master_function_staging[0].topic_arn
+}
+
+# Meta secret resource policies — locked to the consuming Lambda exec roles.
+# Root-level (not in the secrets module) to avoid the circular dep: the policy
+# needs the role ARNs; the roles live in lambda_meta_staging which needs the
+# secret ARNs. Same pattern as the JWT/Clerk secret policies above.
+resource "aws_secretsmanager_secret_policy" "meta_app_secret_staging" {
+  count      = var.env == "staging" ? 1 : 0
+  secret_arn = module.secrets_meta_app_staging[0].app_secret_arn
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AllowMetaWebhookAndOAuthRoles"
+        Effect = "Allow"
+        Principal = { AWS = [
+          module.lambda_meta_staging[0].webhook_role_arn,
+          module.lambda_meta_staging[0].oauth_role_arn,
+        ] }
+        Action   = "secretsmanager:GetSecretValue"
+        Resource = "*"
+      },
+      {
+        Sid       = "DenyAllOtherStagingPrincipals"
+        Effect    = "Deny"
+        Principal = "*"
+        Action    = "secretsmanager:GetSecretValue"
+        Resource  = "*"
+        Condition = {
+          StringNotEquals = {
+            "aws:PrincipalArn" = [
+              module.lambda_meta_staging[0].webhook_role_arn,
+              module.lambda_meta_staging[0].oauth_role_arn,
+            ]
+          }
+        }
+      },
+    ]
+  })
+}
+
+resource "aws_secretsmanager_secret_policy" "meta_ig_app_secret_staging" {
+  count      = var.env == "staging" ? 1 : 0
+  secret_arn = module.secrets_meta_app_staging[0].ig_app_secret_arn
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "AllowMetaWebhookRole"
+        Effect    = "Allow"
+        Principal = { AWS = module.lambda_meta_staging[0].webhook_role_arn }
+        Action    = "secretsmanager:GetSecretValue"
+        Resource  = "*"
+      },
+      {
+        Sid       = "DenyAllOtherStagingPrincipals"
+        Effect    = "Deny"
+        Principal = "*"
+        Action    = "secretsmanager:GetSecretValue"
+        Resource  = "*"
+        Condition = {
+          StringNotEquals = {
+            "aws:PrincipalArn" = module.lambda_meta_staging[0].webhook_role_arn
+          }
+        }
+      },
+    ]
+  })
 }
 
 # ──────────────────────────────────────────────────────────────────────
@@ -593,6 +843,137 @@ resource "aws_secretsmanager_secret_policy" "jwt_signing_key_staging" {
             ]
           }
         }
+      },
+    ]
+  })
+}
+
+# ──────────────────────────────────────────────────────────────────────
+# Consumer PII Remediation Path A, Phase 2 — NB-A scoped-CMK key policy.
+# Root-level (not in kms-pii-staging) for the SAME cycle-break the
+# JWT/Clerk/Meta/BSH secret policies above use: this policy must name the
+# delete / back-fill / break-glass role ARNs, those roles live in
+# lambda_pii_delete_staging, and that module needs the CMK ARN for its
+# kms:Decrypt grant — a cycle if the policy lived in the kms module.
+#
+# NB-A (design PII_DELETE_PIPELINE_DESIGN.md §6, gate round-2 fix): the rev-1
+# `NotPrincipal`+`Deny` would have caught the DynamoDB SSE service principal
+# and bricked every encrypted table on Apply 2. This uses the repo's proven
+# condition-based-Deny shape (jwt_signing_key_staging et al. above) —
+# `Deny` + `Principal:"*"` + `StringNotEqualsIfExists aws:PrincipalArn` —
+# DELIBERATELY extended from those policies' `StringNotEquals` to the
+# `…IfExists` form: a CMK used by DynamoDB SSE has service-principal /
+# grant data-plane callers that do NOT populate aws:PrincipalArn; with
+# IfExists an absent key makes the condition not-match, so the Deny is
+# skipped for the service (SSE keeps working) while still firing for any
+# IAM principal — incl. staging PowerUser — not on the allow-list.
+# Root is admin-only (NO kms:Decrypt/GenerateDataKey/kms:*), so PowerUser
+# cannot decrypt via IAM delegation (the Q5 Row-7 bug the channel-tokens
+# key still has). Root retains kms:Put* ⇒ no policy lockout.
+# ──────────────────────────────────────────────────────────────────────
+data "aws_caller_identity" "current" {}
+
+resource "aws_kms_key_policy" "pii_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  key_id = module.kms_pii_staging[0].key_id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "KeyAdminNoDataPlane"
+        Effect = "Allow"
+        Principal = {
+          AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
+        }
+        # Administration only — deliberately NO kms:Decrypt / kms:Encrypt /
+        # kms:GenerateDataKey / kms:* so the root principal is not a
+        # data-plane decrypt path that IAM (PowerUserAccess) could delegate.
+        # kms:Put* preserves PutKeyPolicy ⇒ no lockout.
+        Action = [
+          "kms:Create*", "kms:Describe*", "kms:Enable*", "kms:List*",
+          "kms:Put*", "kms:Update*", "kms:Revoke*", "kms:Disable*",
+          "kms:Get*", "kms:Delete*", "kms:ScheduleKeyDeletion",
+          "kms:CancelKeyDeletion", "kms:TagResource", "kms:UntagResource",
+        ]
+        Resource = "*"
+      },
+      {
+        # GitHubActionsDeployRole is DELIBERATELY NOT a data-plane principal
+        # (Apply-1 phase-completion-audit G-1): it needs ONLY kms:CreateGrant
+        # for DDB SSE association (DeployRoleDdbSseGrant below). Granting it
+        # Decrypt/GenerateDataKey would let any CI run decrypt consumer PII
+        # once the tables are CMK-associated (Apply 2). Do not re-add it here.
+        # H3 (PR1 fix-now-4): DSAR Lambda role added so the role can
+        # GenerateDataKey when writing audit rows (audit table is CMK-encrypted
+        # per C2) AND Decrypt when the AuditReadOnly walker reads them.
+        # SLA Lambda role is added in a separate PR4b SR-G edit (two-pass
+        # mitigated by the shadow-key gate per kms-pii-staging-policy-change-runbook.md).
+        Sid    = "DataPlaneAllowListedRoles"
+        Effect = "Allow"
+        Principal = { AWS = [
+          module.lambda_master_function_staging[0].role_arn,
+          module.lambda_pii_delete_staging[0].delete_role_arn,
+          module.lambda_pii_delete_staging[0].backfill_role_arn,
+          module.lambda_pii_dsar_staging[0].dsar_role_arn,
+        ] }
+        Action   = ["kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"]
+        Resource = "*"
+      },
+      {
+        # DynamoDB SSE association (Apply 2) is performed by the deploy role
+        # creating a service grant. Scoped to AWS-resource grants only.
+        Sid       = "DeployRoleDdbSseGrant"
+        Effect    = "Allow"
+        Principal = { AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/GitHubActionsDeployRole" }
+        Action    = ["kms:CreateGrant"]
+        Resource  = "*"
+        Condition = {
+          Bool = { "kms:GrantIsForAWSResource" = "true" }
+        }
+      },
+      {
+        # The NB-A control. Explicit Deny overrides any IAM Allow (incl. a
+        # PowerUserAccess-delegated kms:Decrypt). StringNotEqualsIfExists +
+        # aws:PrincipalArn: service principals / DynamoDB SSE grants do not
+        # set aws:PrincipalArn → IfExists makes the condition not-match →
+        # Deny skipped for them (SSE works). aws:PrincipalArn also
+        # normalizes assumed-role sessions back to the role ARN (same
+        # rationale as the secret policies above). Audit G-10: GenerateDataKey*
+        # (wildcard) also denies GenerateDataKeyWithoutPlaintext / future
+        # variants. Audit G-1: GitHubActionsDeployRole is NOT in the exception
+        # list — it is explicitly denied direct data-plane decrypt and retains
+        # only kms:CreateGrant (DeployRoleDdbSseGrant); the DDB SSE service
+        # path is grant-based (no aws:PrincipalArn) so it is unaffected.
+        Sid       = "DenyDecryptToAllOtherPrincipals"
+        Effect    = "Deny"
+        Principal = "*"
+        Action    = ["kms:Decrypt", "kms:GenerateDataKey*"]
+        Resource  = "*"
+        Condition = {
+          StringNotEqualsIfExists = {
+            # H3 (PR1 fix-now-4): DSAR Lambda role added to the Deny-exception
+            # list. SLA Lambda role added in PR4b SR-G under its own shadow-key
+            # gate per kms-pii-staging-policy-change-runbook.md §"PR4b SR-G".
+            "aws:PrincipalArn" = [
+              module.lambda_master_function_staging[0].role_arn,
+              module.lambda_pii_delete_staging[0].delete_role_arn,
+              module.lambda_pii_delete_staging[0].backfill_role_arn,
+              module.lambda_pii_delete_staging[0].breakglass_role_arn,
+              module.lambda_pii_dsar_staging[0].dsar_role_arn,
+            ]
+          }
+        }
+      },
+      {
+        # MFA-gated emergency decrypt. Off by default — the break-glass role
+        # is only assumable with MFA (its trust policy); this is its sole
+        # capability. Replaces root-delegated decrypt (Q5 Row-7 anti-pattern).
+        Sid       = "BreakGlassDecrypt"
+        Effect    = "Allow"
+        Principal = { AWS = module.lambda_pii_delete_staging[0].breakglass_role_arn }
+        Action    = ["kms:Decrypt"]
+        Resource  = "*"
       },
     ]
   })

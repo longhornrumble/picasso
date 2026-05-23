@@ -20,7 +20,8 @@ Icon?
 .project
 .classpath
 .settings/
-.claude/
+.claude/*
+!.claude/agents/
 
 # Dependencies
 node_modules/

@@ -138,37 +138,23 @@ resource "aws_secretsmanager_secret" "telnyx_staging" {
   kms_key_id  = aws_kms_key.telnyx_secret.arn
 }
 
-resource "aws_secretsmanager_secret_version" "telnyx_staging_placeholder" {
-  secret_id = aws_secretsmanager_secret.telnyx_staging.id
-  secret_string = jsonencode({
-    api_key              = "placeholder"
-    public_key           = "placeholder"
-    messaging_profile_id = "placeholder"
-  })
-  lifecycle {
-    ignore_changes = [secret_string]
-  }
-}
-
-# Defense-in-depth secret resource policy: only the two SMS Lambda roles +
-# the Terraform deploy role can READ the secret value; everyone else
-# explicitly denied for GetSecretValue. Deploy role needs read access because
-# Terraform refreshes `aws_secretsmanager_secret_version` state by calling
-# GetSecretValue on every plan/apply — without it, plans fail with explicit-
-# deny. Admin SSO + Console users do NOT have read; populate via
-# `aws secretsmanager put-secret-value` (PutSecretValue isn't gated here).
-# Phase D audit row #17: replace hardcoded ARN literal with a data source so
-# any future role rename surfaces as a Terraform plan failure rather than a
-# silent IAM mismatch. The data source asserts the role exists at plan time.
-data "aws_iam_role" "deploy_role" {
-  name = "GitHubActionsDeployRole"
-}
-
+# Defense-in-depth secret resource policy: only the two SMS Lambda execution
+# roles can READ the secret value; every other staging principal (incl. Admin
+# SSO + Console + the Terraform CI deploy role) is explicitly denied
+# GetSecretValue. The secret value is populated out-of-band by the operator
+# via `aws secretsmanager put-secret-value`; Terraform does NOT manage a
+# secret version, so plan/apply never needs to read the value.
+# Phase D audit row #13: the prior `aws_secretsmanager_secret_version`
+# placeholder forced a GetSecretValue refresh on every plan, which is why the
+# CI deploy role previously held standing read. Both the placeholder version
+# resource and the deploy-role grant are removed here so the deploy role holds
+# no standing secret read. Coordinated removal — the version resource must
+# leave Terraform state via `terraform state rm` BEFORE this policy applies,
+# else CI plan fails AccessDenied refreshing it (see PR body runbook).
 locals {
   telnyx_secret_readers = [
     aws_iam_role.sms_sender.arn,
     aws_iam_role.sms_webhook_handler.arn,
-    data.aws_iam_role.deploy_role.arn,
   ]
 }
 
@@ -179,7 +165,7 @@ resource "aws_secretsmanager_secret_policy" "telnyx_staging" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid       = "AllowSmsLambdaRolesAndDeployRoleRead"
+        Sid       = "AllowSmsLambdaRolesRead"
         Effect    = "Allow"
         Principal = { AWS = local.telnyx_secret_readers }
         Action    = "secretsmanager:GetSecretValue"

@@ -108,6 +108,16 @@ variable "notification_sends_table_name" {
   type        = string
 }
 
+variable "pii_subject_index_table_arn" {
+  description = "ARN of the staging-account PII subject-index table (Consumer PII Path A Phase 1)."
+  type        = string
+}
+
+variable "pii_subject_index_table_name" {
+  description = "Name of the PII subject-index table (for env var PII_SUBJECT_INDEX_TABLE)."
+  type        = string
+}
+
 variable "streaming_endpoint" {
   description = "Function URL of the staging Bedrock streaming handler."
   type        = string
@@ -304,6 +314,22 @@ data "aws_iam_policy_document" "exec" {
     ]
   }
 
+  # PII subject-index (Consumer PII Path A Phase 1). Least-privilege: pii_subject.py
+  # does only get_item + a conditional put_item — no Update/Delete/Query from MFS.
+  # Wired atomically with the form_handler code change so there is no interval where
+  # the code runs without permission (gate blocker B2). The Phase-2 delete service
+  # gets its own dedicated role with DeleteItem + GSI Query — NOT this role.
+  statement {
+    sid = "DynamoDBPiiSubjectIndex"
+    actions = [
+      "dynamodb:GetItem",
+      "dynamodb:PutItem",
+    ]
+    resources = [
+      var.pii_subject_index_table_arn,
+    ]
+  }
+
   statement {
     sid       = "BedrockKBRetrieve"
     actions   = ["bedrock-agent-runtime:Retrieve"]
@@ -400,6 +426,7 @@ resource "aws_lambda_function" "this" {
       BLACKLIST_TABLE_NAME        = var.token_blacklist_table_name
       FORM_SUBMISSIONS_TABLE      = var.form_submissions_table_name
       NOTIFICATION_SENDS_TABLE    = var.notification_sends_table_name
+      PII_SUBJECT_INDEX_TABLE     = var.pii_subject_index_table_name
       BEDROCK_MODEL_ID            = var.bedrock_model_id
       STREAMING_ENDPOINT          = var.streaming_endpoint
       JWT_EXPIRY_MINUTES          = "30"

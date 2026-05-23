@@ -532,7 +532,6 @@ const StateManagementPanel = ({ isOpen, onClose }) => {
                 <h4>Privacy & Compliance</h4>
                 <div className="privacy-info">
                   <p>✅ All data is encrypted in transit</p>
-                  <p>✅ No personal information stored permanently</p>
                   <p>✅ Audit logging for compliance</p>
                   <p>✅ Data retention: 30 minutes session storage</p>
                 </div>
