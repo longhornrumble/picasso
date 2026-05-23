@@ -18,7 +18,7 @@ This control plan documents the controls in force, the residual risk accepted (F
 
 The DSAR Lambda walker (`Lambdas/lambda/picasso_pii_dsar_staging/lambda_function.py`) issues every Query against PII tables with `KeyConditionExpression = Key("tenant_id").eq(tenant_id)` where `tenant_id` is the operator-supplied parameter at invocation time. DynamoDB's partition-key model guarantees the Query returns only items within that partition.
 
-**Affected operations:** all read paths (`_walk_form_submissions`, `_walk_notification_sends`, `_walk_notification_events`, `_walk_recent_messages`, `_walk_conversation_summaries`, `_walk_audit`).
+**Affected operations:** all implemented walker read paths (`_walk_form_submissions`, `_walk_notification_sends`, `_walk_notification_events`, `_walk_recent_messages`). Note: `conversation-summaries` and `audit-read-only` walkers are M1-deferred (see [`MASTER_PROJECT_PLAN.md`](./MASTER_PROJECT_PLAN.md) §2 M1 v0.3 scope re-record); when they ship, they will inherit Control 1 via the same `KeyConditionExpression` pattern. *(M1 audit row 9 — function-name correction; tenant-isolation-control-plan.md cited two functions that don't exist in current code.)*
 
 ### Control 2 — Walker `DeleteItem` Key is recovered from bounded Query result
 
@@ -78,6 +78,19 @@ If any of the following fires, this control plan is re-evaluated and F-DSAR2 D5 
 2. **Cross-tenant near-miss observed in integration tests** (item 6 in MASTER_PROJECT_PLAN.md M1 done-bar #3). If integration tests reveal any path that returns or deletes cross-tenant data despite Controls 1–6, immediate F-DSAR2 reopening.
 3. **Multi-operator deployment.** Today there is a single operator (Chris). If operator role expands to multiple humans (or to automated invocation), the single-operator assumption underpinning Control 5 no longer holds — IAM-level scope becomes necessary.
 4. **Post-incident finding implicating cross-tenant blast radius.** Any incident — whether security, operational, or data-integrity — that surfaces cross-tenant exposure as a root cause or contributing factor automatically reopens F-DSAR2.
+
+### ABAC migration lead-time (audit row 23)
+
+When any trigger fires, the closure path is the assumed-role + ABAC migration pattern. **Realistic lead-time = 2–5 engineering days** from trigger → shipped:
+
+- ~0.5d: design the assumed-role + session-policy pattern; verify operator-supplied `tenant_id` flows into session policy at invoke time
+- ~1d: IaC — add per-tenant assumed-role provisioning (or session-policy-based scoping) to `infra/modules/lambda-pii-dsar-staging/`
+- ~1d: Lambda handler change — wrap walker invocations in STS AssumeRole or pass tenant-scoped session credentials
+- ~0.5d: integration test updates — new cross-tenant test confirms IAM-level scope (not just walker-code scope) now blocks cross-tenant data access
+- ~0.5d: rollout to staging + smoke-test against operator workflow
+- ~0.5d (variable): coordination with operator-procedure changes if multi-operator deployment is the trigger
+
+**Operational consequence:** if trigger #3 (multi-operator deployment) fires WITHOUT advance ABAC implementation, F-DSAR2 exposure window = the lead-time above. To avoid the window, ABAC migration must SHIP BEFORE the second operator is enabled. This sequencing is operator-procedure work; flagging it here so the operator never accidentally enables a second operator without the migration in place.
 
 ## Tenant-isolation under DSAR data flows
 

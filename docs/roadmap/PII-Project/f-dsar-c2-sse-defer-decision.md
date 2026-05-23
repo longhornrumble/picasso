@@ -54,6 +54,16 @@ This waiver MUST be reconsidered if any of the following fires:
 5. **Regulator inquiry** that specifically questions DSAR audit-trail confidentiality.
 6. **M7 ships for unrelated reasons** — at that point, audit-table SSE-KMS association is no-incremental-cost; revoke this waiver and associate.
 
+## Operator-side response storage classification (audit row 13)
+
+The Lambda response includes several fields that are NOT in audit-table storage but ARE in **operator-side response storage** (operator's DSAR ledger, ticketing system, log files, etc.). Per Security SR4 (M1 phase-completion-audit 2026-05-23), these need explicit classification because operator response storage is outside the audit table's controlled environment:
+
+- **`pii_subject_id`** (response): opaque but still PII per D5 G-H. Whatever system the operator stores the response in (Gmail label, support ticket, spreadsheet, etc.) is a **Tier 3** surface under D4 classification when it contains this value. The operator's DSAR ledger requires Tier 3-equivalent controls (access-controlled; retention-defined; deletion-possible). Today this is implicit; future hardening = explicit operator-procedure documentation in `dsar-operator-playbook.md` (M3).
+- **`manual_followups` strings**: contain `tenant_id` (operator-side; not Tier 3) and placeholder tokens (`<SUBJECT_EMAIL>`, `<SUBMISSION_ID>`) per audit row 11 redaction. **No raw consumer email** in followups as of 2026-05-23.
+- **`exported_rows`** (access mode only): contain consumer PII directly (e.g., `form_data_labeled.email`, `recent-messages.content`). When operator delivers these to the data subject, transmission must be over a secure channel; intermediate operator storage must be Tier 3-equivalent.
+
+The audit-table waiver below applies to the audit TABLE alone. The response payload's downstream operator storage is a separate classification + posture decision; it inherits Tier 3 obligations whenever it contains `pii_subject_id` or consumer-data exports.
+
 ## Operational posture (what stays in place)
 
 These compensating controls remain active under the waiver:

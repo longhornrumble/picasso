@@ -89,6 +89,21 @@ resource "aws_dynamodb_table" "pii_dsar_audit" {
 #   the correct mechanism is the DynamoDB resource policy (Nov 2023 GA;
 #   requires aws provider >= 5.27 — confirmed pinned via .terraform.lock.hcl
 #   at 5.100.0).
+#
+# Why ALL of these actions, not just DeleteItem:
+#   M1 phase-completion-audit row 10 (Security SR1, 2026-05-23) found that
+#   DeleteItem-only Deny does NOT block other tamper vectors:
+#     - BatchWriteItem with DeleteRequest (separate API; resource policies
+#       must list it explicitly — DeleteItem Deny does not propagate)
+#     - UpdateItem (effective tamper by overwriting status/details fields
+#       rather than deleting the row)
+#     - ExecuteStatement / BatchExecuteStatement (PartiQL DELETE)
+#     - DeleteTable (table-level destruction; resource policies attach to
+#       the table ARN and CAN block this)
+#   Audit immutability requires all 5 row-mutation actions Denied AT MINIMUM.
+#   RestoreTableToPointInTime is NOT preventable via resource policy (it's a
+#   create-not-delete action); for that protection PITR-retention discipline
+#   is the compensating control.
 resource "aws_dynamodb_resource_policy" "audit_delete_deny" {
   resource_arn = aws_dynamodb_table.pii_dsar_audit.arn
   policy = jsonencode({
@@ -98,8 +113,15 @@ resource "aws_dynamodb_resource_policy" "audit_delete_deny" {
         Sid       = "AuditDeleteDeny"
         Effect    = "Deny"
         Principal = "*"
-        Action    = "dynamodb:DeleteItem"
-        Resource  = aws_dynamodb_table.pii_dsar_audit.arn
+        Action = [
+          "dynamodb:DeleteItem",
+          "dynamodb:BatchWriteItem",
+          "dynamodb:UpdateItem",
+          "dynamodb:ExecuteStatement",
+          "dynamodb:BatchExecuteStatement",
+          "dynamodb:DeleteTable",
+        ]
+        Resource = aws_dynamodb_table.pii_dsar_audit.arn
       },
     ]
   })
