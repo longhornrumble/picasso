@@ -106,8 +106,8 @@ data "aws_iam_policy_document" "monitor" {
 
   # SNS Publish on the single ops topic only. No wildcards.
   statement {
-    sid     = "OpsAlertsPublish"
-    actions = ["sns:Publish"]
+    sid       = "OpsAlertsPublish"
+    actions   = ["sns:Publish"]
     resources = [var.ops_sns_topic_arn]
   }
 }
