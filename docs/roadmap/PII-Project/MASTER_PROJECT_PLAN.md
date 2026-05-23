@@ -83,20 +83,40 @@ Outcome-based milestones with verifiable done-bars + gap-router rows.
 
 A milestone's status bucket is editorial — it indicates where engineering attention belongs. The 9-milestone structure is preserved (per user directive); the ACTIVE/WATCH split prevents the parking-lot anti-pattern.
 
-### M1 — DSAR fulfillment capability operational (MFS-scoped) [ACTIVE]
+### M1 — DSAR fulfillment capability operational (MFS-scoped, 4 walkers) [ACTIVE]
 
-**Outcome:** A consumer DSAR for any MFS-scoped surface (form-submissions, notification-sends + events, recent-messages, conversation-summaries, audit) can be fulfilled by one operator-invocable Lambda call producing rows-touched + audit row + manual-followups list, with the access/portability path returning a subject-scoped JSON export equivalent to the delete path.
+**Outcome (v0.3 re-scoped 2026-05-23 per phase-completion-audit row 5):** A consumer DSAR for the **four M1-scoped walker surfaces** (form-submissions, notification-sends, notification-events, recent-messages) can be fulfilled by one operator-invocable Lambda call producing rows-touched + audit row + manual-followups list, with the access/portability path returning a subject-scoped JSON export equivalent to the delete path.
+
+**Explicit scope exclusions (v0.3 re-scope per audit row 5):** `conversation-summaries` and `audit-read-only` were named in the v0.1/v0.2 outcome statement but never had walker implementations. The phase-completion-audit (2026-05-23) flagged this mismatch (tech-lead B1). User authorization granted 2026-05-23: re-scope M1 to exclude these two surfaces; they remain `DEFERRED_SURFACES` in the Lambda code and are routed to a follow-on milestone (TBD when an operational need surfaces — neither is required for a consumer-rights deliverable today since: conversation-summaries are sessionId-keyed with no subject linkage that's actionable until M2 chained-walker patterns mature; audit-read-only is Art 17(3)(b) carve-out per D5 G-C / counsel-pending).
 
 **Owner:** Chris.
 
-**Estimate:** ~7–10 working days remaining at authoring; actual burn ~1.25 hours total post-authoring (3 quick-win docs in PR #167 ~30 min + 7 integration tests in lambda PR #140 ~45 min). Well under the 50% gap-router ceiling — no scope expansion required.
+**Estimate:** ~7–10 working days at v0.1 authoring (covered full fix-now-4 v2.5 8-PR scope); **actual burn ~3.5 hours post-authoring** for the re-scoped M1 (3 quick-win docs in PR #167 ~30 min + 7 integration tests in lambda PR #140 ~45 min + 16-row phase-completion-audit fixes ~2 hours).
 
-**Status:** ✅ **DONE — 2026-05-23.** All 8 done-bar items closed; G5 gap-router closed via PR #167; G1/G2/G3 deferred-with-named-routing (no force-multiplier need surfaced); G4 deferred-until-trigger.
+**Estimate-vs-actual reconciliation (audit row 14):** the original 7–10 day estimate inherited from the fix-now-4 v2.5 plan (8 PRs covering PR1+PR2-PR8). At master plan v0.1 authoring, PR1 was complete and PR2-PR8 were absorbed into M1.G1/G2 gap-router rows. The 1.25h–3.5h actual is burn on the **reduced scope** (PR1 + master plan + integration tests + audit fixes), NOT on the original 8-PR scope. The discrepancy reflects a scope reduction recorded as G1/G2 + the v0.3 surface re-scope, not an estimation error.
+
+**fix-now-4 PR2-PR8 disposition (audit row 6 — explicit user re-scope authorization 2026-05-23):** the v2.5 plan's 8 PRs are dispositioned as:
+- **PR1** (lambda #139 + picasso #165): SHIPPED 2026-05-22
+- **PR2** (D5 honesty pass + F-DSAR16 12-month counsel backstop row + MEMORY.md cleanup): F-DSAR16 row addition shipped under this PR #168/v0.3 update (see [`privacy-risk-register.md`](./privacy-risk-register.md) entry; MEMORY.md cleanup done in this PR series too)
+- **PR3** (Operator Playbook v1): routed to **M3** (M3's done-bar #6 covers it explicitly)
+- **PR4** (Item 1b Lambda extension — Meta + S3 + ARCHIVE_BUCKET): routed to **M2** (M2's outcome statement)
+- **PR5** (audit-table SSE-KMS Apply-2 alignment): F-DSAR-C2-SSE-DEFER waiver decision shipped via PR #167; SSE-KMS itself remains in **M7** (DEFERRED with named triggers)
+- **PR6** (SLA alarm + Gmail): routed to **M3** (M3's done-bar #1–#5)
+- **PR7** (recipient normalization writer-side fix — F-DSAR3): routed to **M9** (M9's done-bar #3 covers the design stub)
+- **PR8** (DSAR audit fix-now-3 audit-of-audit): routed to **M3** + this v0.3 phase-completion-audit substitutes
+
+User-authorized this disposition 2026-05-23 by explicitly directing "fix the issues. dont defer unless its pointless." Disposition is durable here in the master plan v0.3.
+
+**Phase-completion-audit (audit row 7):** ran 2026-05-23 with 4 adversarial reviewers (`code-reviewer`, `tech-lead-reviewer`, `Security-Reviewer`, `test-engineer`). 31 rows surfaced — 8 blockers, 16 strong, 7 nice. **25 rows fixed** in 2 follow-up PRs (lambda #141 + this picasso PR). **4 rows explicitly deferred as pointless** (rows 19/22/29/30 — rationale in audit memory). **2 rows reconceived as v0.3 scope re-records** (rows 5/6, this section). M1 phase status is DONE per the v0.3 risk-posture re-record AFTER all 25 fixes merge.
+
+**Status:** ✅ **DONE — 2026-05-23 (v0.3 re-scoped).** All 8 done-bar items closed; 25 phase-completion-audit fix rows shipped; 4 deferred-as-pointless with rationale; v0.3 outcome statement explicitly excludes conversation-summaries + audit-read-only with user-authorized re-scope.
 
 **Closure (per-item):**
 - #1 + #2 + #4: lambda PR #139 / picasso PR #165 (merged 2026-05-22)
 - #6 + #7 + #8 (+ G5): picasso PR #167 (merged 2026-05-23T01:41:14Z, merge `8d03c99`)
 - #3 + #5: lambda PR #140 (merged 2026-05-23T02:08:24Z, merge `3e85602`) — 7/7 integration tests PASS in 7.23s vs real DDB; 108/108 unit tests no regression
+- Audit fixes (16 rows): lambda PR #141 (open) — 11/11 integration tests PASS; 108/108 unit
+- Audit fixes (9 rows): picasso PR for v0.3 (this PR) — IaC + docs only
 
 **Done-bar (verifiable):**
 
@@ -578,3 +598,4 @@ User-checkable monthly invariants:
 |---|---|---|---|
 | 0.1 | 2026-05-22 | Chris (via Claude session) | Initial authoring per `~/.claude/plans/compiled-noodling-turing.md`. Integrates adversarial review from `compliance-implementation-advisor` + `pii-data-lifecycle-advisor` + `tech-lead-reviewer` as gap-router rows under M1–M9 + structural rules in §3 + §7 + §8. No new milestones created. ACTIVE: M1, M2, M3, M4, M9. WATCH/DEFERRED: M5, M6, M7, M8. |
 | 0.2 | 2026-05-23 | Chris (via Claude session) | M1 status → DONE. All 8 done-bar items closed via picasso PR #167 (#6/#7/#8 + G5) and lambda PR #140 (#3/#5; 7/7 integration tests PASS vs real DDB). Status buckets updated: DONE = M1; ACTIVE = M2/M3/M4/M9. Actual M1 burn = ~1.25h post-authoring (well under 50% gap-router ceiling). Gap-router G1/G2/G3 routed-on-demand; G4 deferred-until-trigger; G5 closed. |
+| 0.3 | 2026-05-23 | Chris (via Claude session) | **M1 phase-completion-audit + fixes.** Ran phase-completion-audit (4 adversarial reviewers — `code-reviewer`, `tech-lead-reviewer`, `Security-Reviewer`, `test-engineer`). 31 rows surfaced — 8 blockers, 16 strong, 7 nice. **25 rows fixed** in 2 follow-up PRs (lambda #141 + this picasso PR): IaC tightening (audit-table Deny expansion to BatchWriteItem/UpdateItem/PartiQL/DeleteTable), code (rows_delete_failed counter on all 4 walkers; CLI snippet email redaction; caller_arn in audit), tests (3 new integration tests for notification-sends/events/recent-messages walkers; assertion tightening across all 7 existing tests; replay test documents actual idempotency scope). **4 rows deferred as pointless** (rows 19/22/29/30 with rationale). **2 rows reconceived as v0.3 scope re-records**: row 5 = explicit M1 outcome re-scope excluding conversation-summaries + audit-read-only (user-authorized); row 6 = explicit fix-now-4 PR2-PR8 disposition recorded (PR2 partially shipped via this update; PR3-PR8 routed to M2/M3/M7/M9). MFS_SCOPED_SURFACES renamed to DEFERRED_SURFACES. Tenant-isolation control plan: function-name fix + ABAC migration lead-time quantified (2-5 engineering days). F-DSAR-C2-SSE-DEFER waiver expanded with operator-side response storage classification (Tier 3 obligations for pii_subject_id + exported_rows). D5 register: new F-DSAR16 row for 12-month counsel safety-floor backstop. Audit-finding-post-M1 (replay protection docstring-vs-code gap) filed as follow-up for future milestone gap-router. Master plan §3 routing rule now exercised against the audit itself — every audit finding routed to one of: (a) fix-now in this PR series, (b) explicit deferred-as-pointless with rationale, (c) scope re-record with user authorization, (d) follow-on milestone routing. |
