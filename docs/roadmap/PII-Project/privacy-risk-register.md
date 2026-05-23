@@ -1,5 +1,7 @@
 # Privacy Risk Register (D5)
 
+> **2026-05-22:** Master-plan milestone routing for every D5 row is maintained in [`MASTER_PROJECT_PLAN.md`](./MASTER_PROJECT_PLAN.md) §6 (closure-target column per row). The D5 register remains the authoritative risk inventory; the master plan routes each open row to its closure milestone (M1–M9) or explicit DEFERRED-with-named-trigger. Do not maintain a parallel routing column here — single source of truth lives in the master plan to prevent drift.
+
 **Phase 0.5 deliverable D5.** Established 2026-05-20. Table form, **18 rows** (11 G-rows + 4 F-rows seeded at Phase 0.5 + 2 F-DSAR rows added 2026-05-20 from the DSAR Lambda item-1a audit + 1 F-DSAR row added 2026-05-21 from the 2-advisor audit of PR #135). Pre-seeded with the 11 gaps from the 2026-05-19 plan-gaps review (G-A..G-K) plus 4 new rows for the highest-priority D2+D3+D4-surfaced findings that don't map cleanly into a G-row. Each row carries a **named owner**; no unmitigated H/H row is ownerless.
 
 > **Method:** consolidate prior enumeration. The 16 findings in D2+D3 + the Tier-vs-lifecycle gaps in D4 + the 11 gaps in the plan-gaps review + horizontal concerns surfaced by advisors are condensed into the row budget. Where a single risk has multiple findings as evidence, those are listed in the **Surface(s) / evidence** column. D5 is **the consolidation point**, not a re-derivation.

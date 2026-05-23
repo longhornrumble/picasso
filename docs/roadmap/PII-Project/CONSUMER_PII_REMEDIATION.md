@@ -1,5 +1,7 @@
 # Consumer PII Handling Remediation
 
+> **2026-05-22:** This document remains the v3 Path A capability-bundle spec (re-baselined 2026-05-20). It is an INPUT to the unified master plan, not the program's source of truth. The master plan at [`MASTER_PROJECT_PLAN.md`](./MASTER_PROJECT_PLAN.md) supersedes this document's build-plan section (M1 + M2 + M3 + M5 in the master plan cover the v3 capability bundle items 1a/1b/2/3/4/5/7) and absorbs the v3 deferral list verbatim into master plan M7. The v3 "Locked decisions" (Path A v2 section below — opaque `pii_subject_id`, per-tenant deletion, carve-outs, scheduling-coordination) remain in force as design constraints inherited by the master plan.
+
 ## Status
 
 - **Project state:** Active — **Phase 0.5 foundation closing** (re-baselined 2026-05-20). Originally started 2026-05-18 (owner assigned; previously Initiation 2026-04-27, unowned for 21 days).
