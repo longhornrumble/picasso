@@ -164,6 +164,24 @@ module "lambda_pii_dsar_staging" {
   dsar_audit_table_arn = module.ddb_pii_dsar_audit_staging[0].table_arn
 }
 
+# Consumer PII Remediation Path A, M3 done-bar #1 (master plan v0.3 §M3).
+# Daily EventBridge-triggered Lambda that scans picasso-pii-dsar-audit-staging
+# StatusIndex for open DSARs past intake+25d (SLA-at-risk window) and publishes
+# SNS alerts to ops-alerts topic. Closes D5 G-D.
+#
+# Reuses the existing ops-alerts SNS topic from ops-alarms-master-function-staging
+# (operator-subscribed via Console; no per-alarm topic). Dedicated IAM role
+# (CLAUDE.md never-share rule); scoped read on audit table + Publish on the
+# single topic; no DDB writes, no PII CMK access (audit table remains default
+# DDB SSE pending M7 F-DSAR-C2-SSE-DEFER resolution).
+module "lambda_pii_dsar_sla_monitor_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/lambda-pii-dsar-sla-monitor-staging"
+
+  dsar_audit_table_arn = module.ddb_pii_dsar_audit_staging[0].table_arn
+  ops_sns_topic_arn    = module.ops_alarms_master_function_staging[0].topic_arn
+}
+
 module "ddb_notification_events_staging" {
   count  = var.env == "staging" ? 1 : 0
   source = "./modules/ddb-notification-events-staging"
