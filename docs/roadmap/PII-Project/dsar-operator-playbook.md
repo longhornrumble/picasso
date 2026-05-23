@@ -13,7 +13,7 @@
 | Audit table 4-action Deny (M1) | LIVE | `picasso-pii-dsar-audit-staging` resource policy in acct 525 |
 | SLA Monitor Lambda (M3 #1) | LIVE | `picasso-pii-dsar-sla-monitor-staging` in acct 525; CodeSha256 `gBwoFCFJu2xt1CAgqOxBYyBYwm7atlxFJllPZvtWnHc=`; daily 14:00 UTC EventBridge schedule. Test-fire 2026-05-23 confirmed: at-risk detection + SNS publish + skip-on-closed all work end-to-end. SNS topic `picasso-ops-alerts-staging`; operator confirms email subscription. |
 | Bedrock invocation logging (M3 #4) | OFF in staging (525) + prod (614) — verified 2026-05-23 | `aws bedrock get-model-invocation-logging-configuration` empty response in both accounts |
-| ARCHIVE_BUCKET (M3 #5) | STAGING: `picasso-archive-staging` verified — SSE-S3, lifecycle, public-access blocked, **versioning ENABLED** (F-DSAR17). PROD: operator-pending (classifier blocked agent prod `lambda list-functions` despite user auth) | See [`archive-reachability-decision.md`](./archive-reachability-decision.md) |
+| ARCHIVE_BUCKET (M3 #5) | STAGING: `picasso-archive-staging` verified — SSE-S3, lifecycle, public-access blocked, **versioning ENABLED** (F-DSAR17). PROD: verified 2026-05-23 — **no prod session-archiver Lambda exists** (26 prod-614 Lambdas, none with archive/session-archiver in name, none carrying `ARCHIVE_BUCKET` env var). Archive surface is staging-only at current product state. | See [`archive-reachability-decision.md`](./archive-reachability-decision.md) |
 | Gmail `privacy@` alias + 3 labels + filter (M3 #3) | LIVE | Operator-created 2026-05-23: alias `privacy@myrecruiter.ai` (Google Workspace admin); 3 labels `dsar/open`, `dsar/awaiting-verification`, `dsar/closed` (Gmail Web UI); 1 filter on `to:privacy@myrecruiter.ai` auto-applying `dsar/open` (Gmail Web UI). Filter applies `dsar/open` only — the other two labels are workflow-state toggles operator switches manually per playbook §1. |
 | M4 #1 widget claim (Picasso) | PR #172 MERGED to picasso staging branch; bundle on `staging.chat.myrecruiter.ai` + `chat.myrecruiter.ai` is 4 days stale (Last-Modified 2026-05-19) — operator-pending Picasso build + deploy + staging→main promotion to prod |
 | M4 #2 form-handler TTL (Lambda) | LIVE in staging acct 525 | `Master_Function_Staging` CodeSha256 `s3WIrLPMOy9NwVqKOPhup2J2GQrEzQJrzbW1LqUf6eU=` (deployed 2026-05-23T08:02:25Z post-PR #142 merge). Prod (614) Master_Function requires hand-managed promotion. |
@@ -390,17 +390,20 @@ Manually compute age: `today - intake_date`. Any row > 25 days = at-risk; > 30 d
 
 **Calendar reminder** (operator-configured): every Monday at 09:00 local — "DSAR SLA review."
 
-### Fault-test for the future EventBridge alarm
+### Fault-test for the EventBridge alarm — EXECUTED 2026-05-23, RESULT PASS
 
-When M3 done-bar #1 ships, the alarm must be **fault-tested** (M3 done-bar #2) to ensure operator detects alarm-miss:
-1. Disable the SNS topic subscription (operator-side, in AWS Console)
-2. Insert a synthetic open row past intake+25d into audit table
-3. Confirm EventBridge fires + Lambda scans + tries to publish → fails silently to SNS (because subscription disabled)
-4. Confirm **secondary check** detects: the operator's weekly Monday CLI scan above SHOULD also catch the row OR Google Calendar reminder at intake+21d (operator-configured per-DSAR) fires
-5. Re-enable SNS subscription
-6. Re-fire alarm; confirm email arrives
+The alarm was fault-tested per M3 done-bar #2 using a **non-destructive FilterPolicy** approach (preferred over unsubscribe, which would require email re-confirmation):
 
-Without the fault-test, G-D doesn't close (per M3 done-bar #2).
+1. Set `FilterPolicy={"fault_test_block":["never_present"]}` on the `chris@myrecruiter.ai` SNS subscription. Lambda's publish lacks that MessageAttribute → subscription filters the message out at delivery time, simulating a disabled subscription without losing the subscription itself.
+2. Inserted synthetic row `smoke-sla-faulttest-001` with `event_timestamp` 30d ago, `status=in_progress`, `event_type=request_received` into `picasso-pii-dsar-audit-staging`.
+3. Manually invoked `picasso-pii-dsar-sla-monitor-staging` Lambda → returned `{at_risk_count: 1, dsar_ids: ["smoke-sla-faulttest-001"]}` ✅
+4. CloudWatch SNS metrics for the 16:58 UTC bucket: `NumberOfMessagesPublished=1`, **no `NumberOfNotificationsDelivered` datapoint** ✅ — confirms the message was published by the Lambda but blocked at delivery by the FilterPolicy (the "alarm-miss" scenario).
+5. Secondary check (this section's weekly Monday CLI scan) executed in parallel — found `smoke-sla-faulttest-001` in its output ✅, confirming that even with the email channel down, the operator's secondary check detects the at-risk DSAR.
+6. Removed FilterPolicy (`set-subscription-attributes` with `{}`), inserted closing event for `smoke-sla-faulttest-001`. Subscription returned to normal-flow.
+
+**G-D closure conditions met:** alarm fires, SNS publish succeeds, delivery loss is detectable by secondary check, normal-flow restoration verified. Logged in master plan v0.7 (this commit's companion).
+
+**Re-run cadence:** annually (during quarterly D2/D3/D4 currency review per master plan §4) OR after any change to the SLA monitor Lambda / topic / subscription / IAM scope.
 
 ---
 
