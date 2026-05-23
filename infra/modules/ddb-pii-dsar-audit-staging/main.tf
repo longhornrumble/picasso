@@ -90,20 +90,40 @@ resource "aws_dynamodb_table" "pii_dsar_audit" {
 #   requires aws provider >= 5.27 — confirmed pinned via .terraform.lock.hcl
 #   at 5.100.0).
 #
-# Why ALL of these actions, not just DeleteItem:
+# Why this action list:
 #   M1 phase-completion-audit row 10 (Security SR1, 2026-05-23) found that
-#   DeleteItem-only Deny does NOT block other tamper vectors:
-#     - BatchWriteItem with DeleteRequest (separate API; resource policies
-#       must list it explicitly — DeleteItem Deny does not propagate)
-#     - UpdateItem (effective tamper by overwriting status/details fields
-#       rather than deleting the row)
-#     - ExecuteStatement / BatchExecuteStatement (PartiQL DELETE)
+#   DeleteItem-only Deny does NOT block other tamper vectors. This statement
+#   expands to the 4 actions that AWS DynamoDB resource policies SUPPORT:
+#     - DeleteItem (row delete; primary protection)
+#     - BatchWriteItem (separate API; can carry DeleteRequest entries —
+#       DeleteItem Deny does NOT propagate)
+#     - UpdateItem (effective tamper by overwriting status/details fields)
 #     - DeleteTable (table-level destruction; resource policies attach to
 #       the table ARN and CAN block this)
-#   Audit immutability requires all 5 row-mutation actions Denied AT MINIMUM.
-#   RestoreTableToPointInTime is NOT preventable via resource policy (it's a
-#   create-not-delete action); for that protection PITR-retention discipline
-#   is the compensating control.
+#
+# What we tried and AWS rejected (fix-forward 2026-05-23 — original PR #169
+# deploy failed with ValidationException):
+#     - dynamodb:ExecuteStatement, dynamodb:BatchExecuteStatement (PartiQL)
+#     ARE valid IAM actions but are NOT in the DynamoDB resource-policy
+#     supported-action list. AWS PutResourcePolicy rejects them with
+#     "ValidationException: The following action names are invalid".
+#
+# Residual gap (compensating controls; not preventable via DDB resource
+# policy):
+#     - PartiQL DELETE statements (via ExecuteStatement / BatchExecuteStatement)
+#       MUST be Denied at the IAM policy level on every principal that has
+#       access to this table. Today: the DSAR Lambda's execution role only has
+#       scoped read/delete on the data-plane tables (per the M1 tenant-
+#       isolation control plan); operator SSO has AdministratorAccess which
+#       can issue PartiQL via console or CLI but is operator-in-the-loop
+#       (Control 5). M1 audit row 10 closes for the 4 row-mutation actions
+#       above; PartiQL coverage is filed as audit-finding-post-M1-row10 for
+#       a future IAM-level Deny statement on the operator role (or for
+#       move to a dedicated DSAR-operator role distinct from break-glass
+#       admin).
+#     - RestoreTableToPointInTime is NOT preventable via resource policy
+#       (it's a create-not-delete action); compensating control = PITR
+#       retention discipline + monitoring on RestoreTable API calls.
 resource "aws_dynamodb_resource_policy" "audit_delete_deny" {
   resource_arn = aws_dynamodb_table.pii_dsar_audit.arn
   policy = jsonencode({
@@ -117,8 +137,6 @@ resource "aws_dynamodb_resource_policy" "audit_delete_deny" {
           "dynamodb:DeleteItem",
           "dynamodb:BatchWriteItem",
           "dynamodb:UpdateItem",
-          "dynamodb:ExecuteStatement",
-          "dynamodb:BatchExecuteStatement",
           "dynamodb:DeleteTable",
         ]
         Resource = aws_dynamodb_table.pii_dsar_audit.arn
