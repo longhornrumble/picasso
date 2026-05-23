@@ -297,7 +297,15 @@ AWS_PROFILE=myrecruiter-staging aws dynamodb scan \
 
 For each matched row, manually `delete-item` (delete path) or include in export (access path).
 
-**Operator tracking:** if this fallback is used more than 3× total OR DSAR volume reaches 1/month sustained, that triggers promotion of M9.G3 to active build per F-DSAR18 — surface the count in the next session-handoff so the trigger condition is visible.
+**Operator tracking:** trigger thresholds UPDATED 2026-05-23 per advisor review (compliance 🔴-2): **first form-submission DSAR ever** triggers promotion (was ">3× total"); DSAR volume ≥1/month sustained; prod-twin scoping; Atlanta LOI; **calendar backstop 2026-08-23**. F-DSAR18 routing corrected M9.G3 → **M1.G6** (§3 routing-rule violation — gap touches M1's walker surface). Surface the trigger status in the next session-handoff.
+
+**⚠️ PROD-CLI WARNING (F-DSAR20, advisor review 2026-05-23 — compliance 🟡-3 + lifecycle 🔴 #10):** the CLI snippets above reference **STAGING tables + STAGING profile**. For a real **prod-tenant DSAR** (e.g., Austin Angels), you MUST substitute:
+
+- Table name: `picasso-form-submissions-staging` → `picasso_form_submissions` (note: dash→underscore, no `-staging` suffix)
+- Profile: `myrecruiter-staging` → `chris-admin` (or per-account SSO)
+- Manual-walk surface checklist: form-submissions, notification-sends, notification-events, recent-messages PLUS surfaces only the Lambda enumerates but no CLI snippet exists for (channel-mappings F12, conversation-summaries, per-tenant fulfillment S3 prefixes F9, employee-registry-v2 G-H, analytics G-K).
+
+A pre-substituted "Prod DSAR fulfillment" playbook section is **scoped as M9.G4** but not yet written. **Until M9.G4 ships, do an `aws dynamodb describe-table` confirmation in prod before any DSAR action** — do NOT rely on memory substitution under SLA pressure. Foot-cannon, not foot-gun (advisor wording).
 
 ### F-DSAR4: recent-messages no subject linkage (chat-only-no-form subjects)
 
@@ -403,9 +411,11 @@ The alarm was fault-tested per M3 done-bar #2 using a **non-destructive FilterPo
 5. Secondary check (this section's weekly Monday CLI scan) executed in parallel — found `smoke-sla-faulttest-001` in its output ✅, confirming that even with the email channel down, the operator's secondary check detects the at-risk DSAR.
 6. Removed FilterPolicy (`set-subscription-attributes` with `{}`), inserted closing event for `smoke-sla-faulttest-001`. Subscription returned to normal-flow.
 
-**G-D closure conditions met:** alarm fires, SNS publish succeeds, delivery loss is detectable by secondary check, normal-flow restoration verified. Logged in master plan v0.7 (this commit's companion).
+**G-D closure conditions met:** alarm fires, SNS publish succeeds, delivery loss is detectable by secondary check, normal-flow restoration verified. Logged in master plan v0.7.
 
-**Re-run cadence:** annually (during quarterly D2/D3/D4 currency review per master plan §4) OR after any change to the SLA monitor Lambda / topic / subscription / IAM scope.
+**⚠️ ADVISOR CAVEAT 2026-05-23 (compliance 🔴-1+5, F-DSAR22):** the FilterPolicy approach above is **weaker** than the original done-bar wording ("disable SNS topic"). FilterPolicy blocks delivery at one subscription; it does NOT exercise the topic-level failure mode. Additionally, the secondary check "found the row" in the same hour because the operator knew to look — a real alarm miss happens when the operator is **unaware**. The weekly Monday 09:00 CLI is operator-attested only, not enforced by a recurring calendar/cron, and is vacation-fragile. M3 done-bar #2 is therefore re-classified to **PARTIAL** with **F-DSAR22** (D5) as the open gap. Three remediation options (tracked under **M9.G6**): (1) enforce Google Calendar recurring event with response checklist; (2) belt-and-suspenders cron — second EventBridge schedule that emails the operator weekly to remember the CLI scan (~0.5d); (3) re-do fault test with operator-blinded approach (operator commitment + brief ops-alarm blind window).
+
+**Re-run cadence:** quarterly (paired with D2/D3/D4 currency review per master plan §4) — replaces v0.7's "annually" per advisor review (compliance 🔴-1: "every change to operator email, calendar habits, vacation invalidates the secondary control more frequently than annually"). Plus: re-run after any change to the SLA monitor Lambda / topic / subscription / IAM scope.
 
 ---
 
