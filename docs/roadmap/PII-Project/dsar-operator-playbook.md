@@ -283,9 +283,9 @@ If correction requests exceed ~5/month sustained, scope a Lambda extension (new 
 
 When the DSAR Lambda flags a coverage gap (`manual_followup` block in its response), the operator executes the corresponding fallback. The Lambda emits these snippets verbatim; this section is the reference glossary.
 
-### F-DSAR1: pre-Phase-1 form-submission rows
+### F-DSAR1 + F-DSAR18: pre-Phase-1 + active-writer (BSH) form-submission rows
 
-**Trigger:** Lambda's response includes `manual_followup` with `f_dsar1` field populated.
+**Trigger:** Lambda's response includes `manual_followup` for the form-submissions walker. Per F-DSAR18 (added 2026-05-23), this is now the **primary** path for any real form-submission DSAR — not the fallback — because BSH `form_handler.js` (the active widget chat-form writer) does not write `pii_subject_id`, so the walker's `pii_subject_id` FilterExpression silently false-negatives on every BSH-written row. Until M9.G3 promotes the writer-side fix (D5 row F-DSAR18 option 1), expect `manual_followup` on every real DSAR for this surface.
 
 **Action:** copy-paste the snippet provided by the Lambda — it includes the operator's email + tenant_id substituted:
 ```bash
@@ -296,6 +296,8 @@ AWS_PROFILE=myrecruiter-staging aws dynamodb scan \
 ```
 
 For each matched row, manually `delete-item` (delete path) or include in export (access path).
+
+**Operator tracking:** if this fallback is used more than 3× total OR DSAR volume reaches 1/month sustained, that triggers promotion of M9.G3 to active build per F-DSAR18 — surface the count in the next session-handoff so the trigger condition is visible.
 
 ### F-DSAR4: recent-messages no subject linkage (chat-only-no-form subjects)
 
