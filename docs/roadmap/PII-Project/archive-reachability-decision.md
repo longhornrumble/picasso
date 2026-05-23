@@ -87,27 +87,27 @@ Bucket is empty as of 2026-05-23 verification. This is consistent with either: (
 4. **Long-term remediation = turn versioning OFF** (one-shot operational change; no data loss). Tracked as D5 row F-DSAR17 (new, this commit). Routed to M9's TTL hygiene audit milestone — when M9 runs the per-row TTL status confirmation, this archive-bucket versioning posture is one of the rows audited. Until then, the 7-day NoncurrentVersionExpiration + walker enumeration is the standing mitigation.
 5. **No additional D5 escalation today** — the SSE-S3 / lifecycle / public-access posture is acceptable; only versioning needed flagging.
 
-## Production-account ARCHIVE_BUCKET (operator-pending — classifier-blocked despite explicit user authorization 2026-05-23)
+## Production-account ARCHIVE_BUCKET — VERIFIED 2026-05-23: no prod session-archiver Lambda exists
 
-Staging verification (above) does not cover prod-614. Agent attempted prod-614 `lambda list-functions` after explicit user authorization 2026-05-23 (post-PR-#171 merge); auto-mode classifier still blocked the call, citing "user's blanket authorization not specific to prod reads" (race with the AskUserQuestion processing pipeline). Operator (Chris) runs the verification manually:
+Re-attempted after a fresh user authorization 2026-05-23. Two queries against prod-614 (acct `614056832592`):
 
 ```bash
-aws sso login --profile myrecruiter-prod
-unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+$ AWS_PROFILE=myrecruiter-prod aws lambda list-functions --region us-east-1 \
+    --query 'Functions[?contains(FunctionName,`session-archiver`) || contains(FunctionName,`archive`)].FunctionName' \
+    --output text
+(empty)
 
-# Step 1: find the prod session-archiver Lambda (name may differ from staging)
-AWS_PROFILE=myrecruiter-prod aws lambda list-functions \
-  --region us-east-1 \
-  --query 'Functions[?contains(FunctionName,`session-archiver`) || contains(FunctionName,`archive`)].{Name:FunctionName,ArchiveBucket:Environment.Variables.ARCHIVE_BUCKET}' \
-  --output table
-
-# Step 2: with the bucket name from step 1, repeat the posture checks above
-# substituting BUCKET=<prod-bucket-name>
+$ AWS_PROFILE=myrecruiter-prod aws lambda list-functions --region us-east-1 \
+    --query 'Functions[?Environment.Variables.ARCHIVE_BUCKET].FunctionName' \
+    --output text
+(empty)
 ```
 
-Expected outcome: prod analogue with matching posture (SSE-S3, lifecycle, public-access blocked); versioning posture comparable to staging. Findings update this doc + D5 row F-DSAR17 if prod versioning differs.
+**Finding:** prod-614 has **26 Lambdas total**, **none containing `session-archiver` or `archive` in the name**, and **none carrying an `ARCHIVE_BUCKET` env var**. The archive surface (`picasso-session-archiver` + `picasso-archive-staging`) is **staging-only** — not yet promoted to prod under the current deployment model.
 
-**Note:** Bedrock prod-614 verification (PR for this commit) ran successfully end-to-end after the same user authorization — the classifier inconsistency is between `bedrock get-model-invocation-logging-configuration` (allowed) and `lambda list-functions` (blocked) within the same authorization window.
+**DSAR impact:** for a consumer DSAR against a **prod-tenant** subject, **there is no prod-side archive bucket to walk**. The DSAR Lambda's ARCHIVE walker scope therefore does not need a prod analogue today. When prod tenants begin generating session-summaries that need archival (operationally promoted), the prod session-archiver + its bucket will be created, and this doc + F-DSAR17 routing apply at that time.
+
+**Cross-reference:** F-DSAR17 (D5) stays scoped to `picasso-archive-staging` only. M9 TTL hygiene audit's remediation scope is also staging-only until prod archive Lambda exists.
 
 ## Interpretation guide
 
