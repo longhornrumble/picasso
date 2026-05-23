@@ -77,7 +77,8 @@ This section names what already exists. Master plan does NOT modify these — it
 Outcome-based milestones with verifiable done-bars + gap-router rows.
 
 **Status buckets:**
-- **ACTIVE** (build now): M1, M2, M3, M4, M9
+- **DONE**: M1 (2026-05-23)
+- **ACTIVE** (build now): M2, M3, M4, M9
 - **WATCH/DEFERRED** (trigger-or-prerequisite-driven): M5 (mostly done), M6, M7, M8
 
 A milestone's status bucket is editorial — it indicates where engineering attention belongs. The 9-milestone structure is preserved (per user directive); the ACTIVE/WATCH split prevents the parking-lot anti-pattern.
@@ -88,9 +89,14 @@ A milestone's status bucket is editorial — it indicates where engineering atte
 
 **Owner:** Chris.
 
-**Estimate:** ~7–10 working days remaining (PR1 done 2026-05-22; PR2–PR8 of fix-now-4 absorbed into gap-router below). **Gap-router ceiling: 50% above original estimate** — if accumulated gap-router rows exceed ~5 additional person-days, milestone escalates to user for re-scope decision (split / waive specific rows / extend with explicit authorization). No silent extension.
+**Estimate:** ~7–10 working days remaining at authoring; actual burn ~1.25 hours total post-authoring (3 quick-win docs in PR #167 ~30 min + 7 integration tests in lambda PR #140 ~45 min). Well under the 50% gap-router ceiling — no scope expansion required.
 
-**Status:** IN PROGRESS — PR1 MERGED 2026-05-22.
+**Status:** ✅ **DONE — 2026-05-23.** All 8 done-bar items closed; G5 gap-router closed via PR #167; G1/G2/G3 deferred-with-named-routing (no force-multiplier need surfaced); G4 deferred-until-trigger.
+
+**Closure (per-item):**
+- #1 + #2 + #4: lambda PR #139 / picasso PR #165 (merged 2026-05-22)
+- #6 + #7 + #8 (+ G5): picasso PR #167 (merged 2026-05-23T01:41:14Z, merge `8d03c99`)
+- #3 + #5: lambda PR #140 (merged 2026-05-23T02:08:24Z, merge `3e85602`) — 7/7 integration tests PASS in 7.23s vs real DDB; 108/108 unit tests no regression
 
 **Done-bar (verifiable):**
 
@@ -571,3 +577,4 @@ User-checkable monthly invariants:
 | Version | Date | Author | Change |
 |---|---|---|---|
 | 0.1 | 2026-05-22 | Chris (via Claude session) | Initial authoring per `~/.claude/plans/compiled-noodling-turing.md`. Integrates adversarial review from `compliance-implementation-advisor` + `pii-data-lifecycle-advisor` + `tech-lead-reviewer` as gap-router rows under M1–M9 + structural rules in §3 + §7 + §8. No new milestones created. ACTIVE: M1, M2, M3, M4, M9. WATCH/DEFERRED: M5, M6, M7, M8. |
+| 0.2 | 2026-05-23 | Chris (via Claude session) | M1 status → DONE. All 8 done-bar items closed via picasso PR #167 (#6/#7/#8 + G5) and lambda PR #140 (#3/#5; 7/7 integration tests PASS vs real DDB). Status buckets updated: DONE = M1; ACTIVE = M2/M3/M4/M9. Actual M1 burn = ~1.25h post-authoring (well under 50% gap-router ceiling). Gap-router G1/G2/G3 routed-on-demand; G4 deferred-until-trigger; G5 closed. |
