@@ -383,22 +383,24 @@ AWS_PROFILE=myrecruiter-staging aws dynamodb scan \
 | D+30 | Internal deadline (conservative; legal SLA is 45) | — |
 | D+45 | Legal deadline (CCPA) — must have responded OR sent extension notice | — |
 
-### Manual SLA tracking (pre-M3 alarm)
+### Manual SLA tracking (secondary check + post-M9.G6 weekly reminder companion)
 
-Until EventBridge alarm ships (M3 done-bar #1), operator runs **weekly** (every Monday morning):
+Originally the operator-attested weekly Monday CLI; now also referenced by the M9.G6 weekly reminder Lambda's embedded snippet. Filter on the actual status the audit writer emits for intake events (`in_progress`, not `open` — the previous wording was a documentation bug surfaced by M9.G6 and fixed 2026-05-23):
 ```bash
 AWS_PROFILE=myrecruiter-staging aws dynamodb query \
   --table-name picasso-pii-dsar-audit-staging \
   --index-name StatusIndex \
-  --key-condition-expression "#s = :open" \
+  --key-condition-expression "#s = :s" \
   --expression-attribute-names '{"#s":"status"}' \
-  --expression-attribute-values '{":open":{"S":"open"}}' \
-  --query 'Items[].{dsar:dsar_id.S,ts:event_timestamp.S,details:details.M}'
+  --expression-attribute-values '{":s":{"S":"in_progress"}}' \
+  --query "Items[?event_type.S=='request_received'].{dsar:dsar_id.S,ts:event_timestamp.S}"
 ```
+
+The `?event_type.S=='request_received'` filter is defensive — `status="in_progress"` is only set on `request_received` events today, but the audit writer is general and may add other in-progress events later.
 
 Manually compute age: `today - intake_date`. Any row > 25 days = at-risk; > 30 days = breach risk; > 45 days = legal breach.
 
-**Calendar reminder** (operator-configured): every Monday at 09:00 local — "DSAR SLA review."
+**Calendar reminder** (operator-configured): every Monday at 09:00 local — "DSAR SLA review." Plus the **M9.G6 weekly reminder Lambda** (Mondays 14:00 UTC) which emails this same instruction with embedded CLI snippets — an independent secondary control that fires regardless of the primary monitor's state.
 
 ### Fault-test for the EventBridge alarm — EXECUTED 2026-05-23, RESULT PASS
 
