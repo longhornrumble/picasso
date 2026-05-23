@@ -182,6 +182,20 @@ module "lambda_pii_dsar_sla_monitor_staging" {
   ops_sns_topic_arn    = module.ops_alarms_master_function_staging[0].topic_arn
 }
 
+# M9.G6 (master plan v0.12). Closes D5 F-DSAR22 (M3 SLA monitor secondary-
+# control independence). Belt-and-suspenders weekly reminder Lambda — an
+# independent EventBridge schedule + dedicated Lambda + dedicated IAM role,
+# publishing to the same ops-alerts SNS topic. Fires every Monday 14:00 UTC
+# regardless of the primary monitor's state, so a silent primary-monitor
+# failure still surfaces to the operator via the weekly reminder + the
+# embedded CLI snippets the operator runs to verify.
+module "lambda_pii_dsar_weekly_reminder_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/lambda-pii-dsar-weekly-reminder-staging"
+
+  ops_sns_topic_arn = module.ops_alarms_master_function_staging[0].topic_arn
+}
+
 module "ddb_notification_events_staging" {
   count  = var.env == "staging" ? 1 : 0
   source = "./modules/ddb-notification-events-staging"
