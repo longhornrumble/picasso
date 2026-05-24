@@ -53,6 +53,79 @@ Transform tasks into verifiable success criteria before coding. "Add validation"
 
 ---
 
+## 🏗️ Deployment Model & SOP (post-P0, established 2026-05-04)
+
+The platform runs across **3 isolated AWS accounts** under one Organization. Account boundaries enforce isolation — code in dev/staging cannot reach prod resources, period. New work goes into staging first, gets validated, then promotes to prod via a per-resource cutover decision.
+
+### Account topology
+
+| Env | Account ID | SSO profile | Role on prod cutover |
+|---|---|---|---|
+| **prod** | 614056832592 | `myrecruiter-prod` | Hand-managed legacy. Receives new clean-shape resources only via deliberate Phase 2 promotion. |
+| **staging** | 525409062831 | `myrecruiter-staging` | Where features live for demos + soak. PowerUserAccess (no IAM tampering). |
+| **dev** | 372666940362 | `myrecruiter-dev` | Engineer + AI agent iteration. Destructible. AdministratorAccess. |
+
+**SSO portal**: https://myrecruiter.awsapps.com/start
+
+Full operational reference: `~/.claude/projects/-Users-chrismiller-Desktop-Working-Folder/memory/reference_aws_accounts.md`
+
+### Deployment SOP
+
+1. **Develop locally or in dev account**. Engineers + AI agents have AdministratorAccess in dev; can do destructive things without risk.
+2. **Promote to staging via Terraform**. New resources defined in `infra/` directory. PR → CI runs `terraform plan` against staging and posts comment. Merge to `staging` long-lived branch (when created) → CI runs `apply`.
+3. **Soak in staging**. Demos run against `staging.chat.myrecruiter.ai`. Validate end-to-end including dashboards, alarms, etc.
+4. **Promote to prod via per-resource cutover**. NOT a `terraform import` of existing prod resources. Instead: deploy new clean-shape resources in prod alongside the existing hand-managed ones, switch traffic (tenant config, DNS, etc.), decommission old.
+
+### Hard rules (do not violate)
+
+- **Never `terraform apply` against the prod account during normal feature work.** Prod is hand-managed today. Phase 2 cutover decisions are explicit, gated, and rare.
+- **Never share IAM roles across Lambdas.** Each Lambda gets a dedicated execution role. (lambda#44 was the result of historical sharing — don't recreate that pattern.)
+- **Never share resources across environments.** No "single `picasso-X` table used by prod and staging." Use the `{name}-{env}` naming convention.
+- **Never rotate `chris-admin` legacy IAM credentials.** Preserved for legacy CI workflows. Untouched in P0.
+- **Always `unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN` before running terraform.** Stale exported credentials override AWS_PROFILE and trigger SSO 401 errors.
+
+### Local Terraform usage
+
+```bash
+aws sso login --profile myrecruiter-dev          # or staging/prod
+unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+cd infra
+AWS_PROFILE=myrecruiter-dev terraform init -reconfigure -backend-config=backend/dev.tfbackend
+AWS_PROFILE=myrecruiter-dev terraform plan -var-file=envs/dev.tfvars
+AWS_PROFILE=myrecruiter-dev terraform apply -var-file=envs/dev.tfvars
+```
+
+CI deploys via OIDC into per-account `GitHubActionsDeployRole`. See `.github/workflows/infra-deploy.yml`.
+
+### Adding a new resource
+
+1. Create or extend module under `infra/modules/<name>/`
+2. Reference from `infra/main.tf`
+3. Plan + apply in dev account first
+4. Plan + apply in staging account
+5. (Phase 2 only, with explicit gate) plan + apply in prod account
+
+### Where the legacy commands below fit
+
+The `Commands` section below documents direct AWS CLI deploys to prod-account resources via `chris-admin` profile. **Those are legacy operations against the hand-managed prod resources.** They continue to work for backward compatibility but new resources should be Terraform-managed via the SOP above. Existing prod resources stay manually managed until each is intentionally cut over.
+
+---
+
+## 🧬 Schema Discipline (forward-compatible reads)
+
+**Rule:** every reader of a stored record (DynamoDB row, tenant config section, request body, S3 object, etc.) must tolerate missing fields. New fields are additive — old data without them must not crash any reader.
+
+**How to apply:**
+- Python: `item.get('field', default)` — never `item['field']` for optional fields.
+- Node/TS: `item.field ?? default` or destructuring with defaults — never bracket access without nullish coalescing on optional fields.
+- When a PR adds a field to a stored record type, the PR MUST add a contract / fixture test that exercises the reader against an old-shape record (without the new field). If the reader crashes on the old shape, the PR fails CI.
+
+**Why:** dev/staging/prod are isolated by AWS account boundary; only customer data lives in prod. Code promotes forward; data does not. New code deployed to prod will encounter pre-existing prod data that lacks fields added during dev. Forward-compatible reads is the discipline that keeps account isolation safe — without it, a routine deploy can break prod.
+
+**Reference pattern:** Issue #5's `analytics_writer_contract.json` — both Python and Node writers produce identical wire format AND the test fixture covers `attribute_not_exists` initial-state cases. Replicate this pattern whenever a stored record type changes shape.
+
+---
+
 ## 🛡️ PII Governance Project
 
 **Goal (verbatim user quote, 2026-05-19):** *"Design MyRecruiter/Picasso so personal information is collected intentionally, stored minimally, protected by default, separated by tenant, retained only as long as needed, and easy to disclose, export, delete, or anonymize later."*
