@@ -206,6 +206,44 @@ resource "aws_lambda_permission" "eventbridge_invoke" {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
+# M9.G7 / F-DSAR26 — Lambda Errors CloudWatch alarm.
+#
+# Mirrors the SLA monitor module's alarm (M9.G7). The weekly reminder is
+# itself a secondary control; if IT silently fails, the operator loses the
+# belt-and-suspenders independence guarantee. Alarms publish to the same
+# ops-alerts SNS topic; operator triages via the Lambda's own README +
+# CloudWatch logs.
+# ─────────────────────────────────────────────────────────────────────────────
+resource "aws_cloudwatch_metric_alarm" "reminder_errors" {
+  alarm_name        = "${local.function_name}-errors"
+  alarm_description = "M9.G7 / F-DSAR26: weekly reminder Lambda Errors metric > 0. If the secondary control silently fails, the M9.G6 independence guarantee is broken. Publishes to ops-alerts."
+
+  namespace   = "AWS/Lambda"
+  metric_name = "Errors"
+  statistic   = "Sum"
+  period      = 300
+  dimensions = {
+    FunctionName = aws_lambda_function.reminder.function_name
+  }
+
+  threshold           = 0
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  # Lambda runs weekly; most 5-min windows have no data. treat-missing as
+  # not-breaching avoids constant alarms during idle periods.
+  treat_missing_data = "notBreaching"
+
+  alarm_actions = [var.ops_sns_topic_arn]
+  ok_actions    = [var.ops_sns_topic_arn]
+
+  tags = {
+    Project = "pii-governance"
+    Owner   = "chris@myrecruiter.ai"
+    Source  = "M9.G7 / F-DSAR26"
+  }
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Outputs
 # ─────────────────────────────────────────────────────────────────────────────
 output "function_name" {

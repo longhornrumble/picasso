@@ -393,10 +393,12 @@ AWS_PROFILE=myrecruiter-staging aws dynamodb query \
   --key-condition-expression "#s = :s" \
   --expression-attribute-names '{"#s":"status"}' \
   --expression-attribute-values '{":s":{"S":"in_progress"}}' \
-  --query "Items[?event_type.S=='request_received'].{dsar:dsar_id.S,ts:event_timestamp.S}"
+  --query "Items[?event_type.S=='request_received' && !starts_with(dsar_id.S, 'smoke-')].{dsar:dsar_id.S,ts:event_timestamp.S}"
 ```
 
 The `?event_type.S=='request_received'` filter is defensive — `status="in_progress"` is only set on `request_received` events today, but the audit writer is general and may add other in-progress events later.
+
+The `!starts_with(dsar_id.S, 'smoke-')` filter (**M9.G7 / F-DSAR28**, added 2026-05-24) suppresses synthetic smoke-test rows from the operator's review. Smoke rows persist in the audit table permanently per the C2 4-action Deny resource policy (no DeleteItem allowed); without this filter, accumulated test artifacts would distort the operator's at-risk-DSAR view. Real DSARs use `dsar_id` values shaped by `Master_Function_Staging/form_handler.py`'s ID generator (or operator-chosen identifiers) — never the `smoke-` prefix.
 
 Manually compute age: `today - intake_date`. Any row > 25 days = at-risk; > 30 days = breach risk; > 45 days = legal breach.
 
