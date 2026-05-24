@@ -670,6 +670,66 @@ resource "aws_cloudwatch_metric_alarm" "pii_subject_index_unavailable" {
   }
 }
 
+# ─────────────────────────────────────────────────────────────────────────────
+# M9.G8 / F-DSAR24: BSH form_handler silent-catch observability
+#
+# saveFormSubmission's catch is intentional (preserves consumer UX when DDB
+# is unreachable — see lambda#156 commit `7c140e7`) but was previously silent.
+# Empirical 2026-05-14T13:39:29Z staging incident proved 1 real lost
+# submission (AccessDeniedException due to env-var-table-name drift).
+#
+# Lambda-side fix (lambda#156): enrich the error log line with tenant_id +
+# submission_id + error_name + error_message; preserve "Error saving to
+# DynamoDB:" prefix as the metric-filter contract.
+#
+# IaC-side fix (this block): CW Logs metric filter on the literal prefix
+# pattern, plus alarm at ≥1 in any 5-min window → ops-alerts SNS. Closes
+# F-DSAR24 with "option 3 variant" (per master plan v0.18 §M9.G8): keep
+# the catch (preserves UX intent), make the silent catch no longer silent
+# at the alerting layer.
+# ─────────────────────────────────────────────────────────────────────────────
+resource "aws_cloudwatch_log_metric_filter" "form_handler_ddb_write_error" {
+  count          = var.pii_subject_index_alarm_sns_topic_arn != "" ? 1 : 0
+  name           = "${var.function_name}-form-handler-ddb-write-error"
+  log_group_name = aws_cloudwatch_log_group.lambda.name
+  # Literal-string match — quoted form in CW Logs metric-filter syntax means
+  # exact substring. lambda#156 keeps "Error saving to DynamoDB:" as the
+  # prefix verbatim; jest test
+  # `should log structured tenant_id + submission_id when DDB PutCommand fails`
+  # regression-guards the prefix contract.
+  pattern = "\"Error saving to DynamoDB:\""
+
+  metric_transformation {
+    name          = "FormSubmissionDDBWriteError"
+    namespace     = "Picasso/BSH/FormHandler"
+    value         = "1"
+    default_value = "0"
+    unit          = "Count"
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "form_handler_ddb_write_error" {
+  count             = var.pii_subject_index_alarm_sns_topic_arn != "" ? 1 : 0
+  alarm_name        = "${var.function_name}-form-handler-ddb-write-error"
+  alarm_description = "M9.G8 / F-DSAR24: BSH form_handler caught a DDB PutCommand failure (silent-catch path; submission still returned 'success' to consumer but row not persisted). Investigate via CW Logs Insights: filter @message like 'Error saving to DynamoDB:' | fields @timestamp, @message | sort @timestamp desc — extract tenant_id + submission_id + error_name from the structured log line. Empirical: 2026-05-14 incident was env-var-table-name drift."
+
+  namespace           = "Picasso/BSH/FormHandler"
+  metric_name         = "FormSubmissionDDBWriteError"
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = 0
+  comparison_operator = "GreaterThanThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [var.pii_subject_index_alarm_sns_topic_arn]
+
+  tags = {
+    Project = "pii-governance"
+    Owner   = "chris@myrecruiter.ai"
+    Source  = "M9.G8 / F-DSAR24"
+  }
+}
+
 output "function_arn" {
   value = aws_lambda_function.this.arn
 }
