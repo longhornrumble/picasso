@@ -162,6 +162,8 @@ These should land **before sub-phase B starts.** Treat them as part of A's exit 
 
 ### 4.1 Production-deploy approval for scheduling commits — path-based trigger
 
+> **REVISED 2026-05-24 — CI-5 closed as not-a-gap.** Empirical state at sub-phase A audit triage: parent picasso `deploy-production.yml` ALREADY has an always-on manual-approval gate via the `production-approval` GitHub environment (required reviewer: longhornrumble / chris@). Every prod deploy via the normal `push: main` trigger requires reviewer click; the `workflow_dispatch` hotfix path with `skip_staging: true` is the only bypass. Verified `gh api repos/longhornrumble/picasso/environments/production-approval` → `protection_rules: ["required_reviewers"]`. The §4.1 premise below ("today, merge → main = automatic prod deploy") was stale relative to the actual workflow state. The actual implemented control is STRICTER than what CI-5 prescribed — implementing the path-conditional gate as written would be a LOOSENING (non-scheduling PRs would auto-deploy, currently they don't). Closed 2026-05-24 via pcb issue #57 disposition (not-a-gap). The original CI-5 specification below is preserved as historical record of the original threat-model thinking; future revisits should evaluate against the current always-on gate, not the original no-gate premise. Audit memory pointer: `project_scheduling_subphase_a_phase_completion_audit_2026-05-24.md` § "RE-AUDIT".
+
 **What.** PRs whose **changed file paths** touch scheduling-related code require **manual approval** before the production-deploy step runs. Staging deploy remains automatic.
 
 **Trigger mechanism: path-based, not commit-message-based.** GitHub Actions `paths:` filter is unambiguous and requires no human discipline. AI-authored commits use conventional-commit format and won't reliably tag with `[scheduling]`; an untagged commit that touches scheduling code would silently bypass the gate. Path triggers are the GitHub Actions idiom.
@@ -323,7 +325,7 @@ The current `scheduling_implementation_plan.md` references this CI strategy in a
 | **CI-3a** Frontend CTA-action contract test | A (exit criterion) | Implement §3.3 (a) |
 | **CI-3b–d** Lambda contract tests (event types, booking states, token purposes) | B (gate) | Implement §3.3 (b), (c), (d) alongside the first Lambda code that consumes each enum |
 | **CI-4** Cross-repo schemas shared artifact (git submodule) | E (gate) | Implement §3.4 once schemas have stabilized through B/C/D. Demoted from earlier "B gate" placement — premature for v1. |
-| **CI-5** Production-deploy approval gate (path-based triggers) | B (gate) | Implement §4.1; configure GitHub Actions environment protection with `paths:` filter |
+| **CI-5** Production-deploy approval gate (path-based triggers) | B (gate) | **Closed 2026-05-24 as not-a-gap** — see §4.1 REVISED note. Parent picasso always-on `production-approval` env supersedes the proposed path-conditional gate. |
 | **CI-6** Synthetic monitoring Lambda (multi-cycle, time-bound) | E (Customer Portal integration) | Implement §5.1 — multiple cycles, test-mode flag in scheduling Lambda, email-receipt verification, synthetic-booking cleanup. **Realistic 1-week effort.** |
 | **CI-7** CloudWatch alarms + email notifications + Lambda config-cache drain detector | F (pre-launch) | Implement §4.3 alarm requirements |
 | **CI-8** Per-sub-phase automated test gate enforcement | A onward (every sub-phase) | Make Gate A from §4.2 part of every sub-phase exit; not just Gate B (audit) |
