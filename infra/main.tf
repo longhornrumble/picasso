@@ -295,6 +295,12 @@ module "lambda_bedrock_handler_staging" {
   pii_subject_index_table_arn  = module.ddb_pii_subject_index_staging[0].table_arn
   pii_subject_index_table_name = module.ddb_pii_subject_index_staging[0].table_name
 
+  # Sprint F3 / audit-of-audit finding 2: PII subject-index EMF metric alarms
+  # publish to the existing ops-alerts SNS topic (same one used by SLA monitor
+  # + weekly reminder). Reuses the M3 alarm topic so operators get one
+  # consistent paging channel for all PII alerts.
+  pii_subject_index_alarm_sns_topic_arn = module.ops_alarms_master_function_staging[0].topic_arn
+
   # Phase C analytics-events pipeline. Wiring the queue URL flips BSH's
   # handleAnalyticsEvent from no-op to live SQS send (index.js:66-106).
   analytics_queue_arn = module.analytics_events_pipeline_staging[0].queue_arn
