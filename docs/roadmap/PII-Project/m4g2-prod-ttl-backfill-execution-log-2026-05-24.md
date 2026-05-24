@@ -67,10 +67,48 @@ note that prod CloudTrail (`myrecruiter-management-events` trail) is
 write would have been a DynamoDB data-plane event, which the prod trail
 does not capture.
 
-**Negative finding documented; source remains unattributed.** The forensic
-limit is the prod trail's data-event posture (broader gap tracked under
-F-DSAR21 / M9.G5). No further investigation possible without first wiring
-DDB data events into prod CloudTrail.
+**Negative finding documented; source remains unattributed via CloudTrail.**
+The forensic limit on CloudTrail is the prod trail's data-event posture
+(broader gap tracked under F-DSAR21 / M9.G5).
+
+#### Sprint F4 / audit-of-audit finding 9 — writer-fingerprint analysis
+
+Sprint E4's CloudTrail-only investigation left an unknown-unknown
+unaddressed. Per the audit-of-audit Security-Reviewer
+(session `a5db671ddf84ce7fa`), the row's `submission_id` format and field
+shape can be fingerprinted against known writer code paths even without
+CloudTrail data events.
+
+**Field-shape fingerprint:**
+
+| Field | Mystery row value | BSH writer | MFS writer |
+|---|---|---|---|
+| `submission_id` | `volunteer_dare2dream_1776194362503` | `{formId}_{Date.now()}` — **matches exactly** (13-digit ms timestamp) | `uuid.uuid4()` hex — does NOT match |
+| `submitted_at` | `2026-04-14T19:19:22.505Z` | `new Date().toISOString()` → `.NNNZ` suffix — **matches exactly** | `datetime.isoformat()` → `+00:00` suffix — does NOT match |
+| `status` | `pending_fulfillment` | Both emit this — not distinguishing | Both — not distinguishing |
+| `ttl` | `1807730427` (~364d) | Pre-F-DSAR18 BSH had no `ttl` field; current BSH writes `+365d`. The 364d value matches NEITHER current BSH (365d) nor MFS (no ttl until M4.G2 backfill). | N/A |
+
+**Conclusion:** the row's `submission_id` prefix + `submitted_at` suffix both
+point to **BSH `form_handler.js` as the writer**, not a manual Console set
+(which was the Sprint E4 hypothesis). The 364d `ttl` likely came from one
+of:
+1. A transient earlier BSH revision that used 364d formula (predating
+   PR #145's 365d standardization).
+2. A one-off manual edit on the `ttl` attribute only, on a row whose other
+   fields were written by BSH.
+
+The most likely explanation given timing (2026-04-14 predates BSH 365d ttl
+landing on 2026-05-23): the row was written by BSH BEFORE TTL was ever
+added to BSH's writer; somebody later manually set `ttl=1807730427` via
+Console as an ad-hoc retention experiment. The exact source remains
+historically unverified, but the **writer identity is now attributed** to
+BSH for the originating PutItem.
+
+**Impact on M4.G2 closure:** none. The row has a valid future TTL, has
+been correctly skipped by idempotency, and the writer-fingerprint
+investigation confirms it's not a synthetic or out-of-band insertion. The
+broader question of "what other prod-vs-staging IaC drift exists" remains
+routed to F-DSAR21 / M9.G5.
 
 ## Per-row outcomes
 
