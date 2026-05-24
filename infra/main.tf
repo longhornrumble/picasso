@@ -286,6 +286,15 @@ module "lambda_bedrock_handler_staging" {
   sms_usage_table_arn           = module.picasso_form_tables.sms_usage_table_arn
   sms_usage_table_name          = module.picasso_form_tables.sms_usage_table_name
 
+  # M1.G6 (master plan v0.12 / F-DSAR18 closure). BSH form_handler.js port
+  # of pii_subject.js needs the same picasso-pii-subject-index-staging
+  # table the Master_Function_Staging Python writer uses; least-priv grant
+  # (GetItem + conditional PutItem only). Closes the BSH active-writer gap
+  # where DSAR walker FilterExpression on pii_subject_id silently
+  # false-negatives every BSH-written row.
+  pii_subject_index_table_arn  = module.ddb_pii_subject_index_staging[0].table_arn
+  pii_subject_index_table_name = module.ddb_pii_subject_index_staging[0].table_name
+
   # Phase C analytics-events pipeline. Wiring the queue URL flips BSH's
   # handleAnalyticsEvent from no-op to live SQS send (index.js:66-106).
   analytics_queue_arn = module.analytics_events_pipeline_staging[0].queue_arn
