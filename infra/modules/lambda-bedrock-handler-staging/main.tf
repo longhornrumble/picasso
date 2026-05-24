@@ -85,6 +85,24 @@ variable "form_submissions_table_name" {
   default     = ""
 }
 
+# M1.G6 (master plan v0.12 / F-DSAR18 closure). BSH form_handler.js now mints
+# + indexes pii_subject_id via the same picasso-pii-subject-index-staging
+# table the Master_Function_Staging Python writer uses. Default empty keeps
+# the module backward-compatible — when the var is empty, the IAM statement
+# below + the env var entry are omitted; the Lambda's pii_subject.js falls
+# back to its UNINDEXED-candidate best-effort path (submission never fails).
+variable "pii_subject_index_table_arn" {
+  description = "ARN of picasso-pii-subject-index-staging (BSH pii_subject.js mints + indexes pii_subject_id). Empty = grant + env var omitted (backward-compatible fallback to UNINDEXED rows)."
+  type        = string
+  default     = ""
+}
+
+variable "pii_subject_index_table_name" {
+  description = "Name of the PII subject-index table (env var PII_SUBJECT_INDEX_TABLE). Must be paired with pii_subject_index_table_arn (both empty OR both set)."
+  type        = string
+  default     = ""
+}
+
 variable "notification_sends_table_arn" {
   description = "ARN of picasso-notification-sends-staging (BSH form_handler.js writes notification delivery log)."
   type        = string
@@ -289,6 +307,26 @@ data "aws_iam_policy_document" "exec" {
     }
   }
 
+  # M1.G6 (master plan v0.12 / F-DSAR18 closure). PII subject-index for BSH's
+  # pii_subject.js — least-privilege mirror of the MFS grant: get_item + a
+  # conditional put_item only (no Update/Delete/Query from BSH; the Phase-2
+  # delete service gets its own dedicated role). Wired atomically with the
+  # BSH form_handler code change so there is no interval where the code
+  # runs without permission (same gate as MFS B2). Conditional on the var
+  # being passed; empty preserves backward-compat with the existing
+  # UNINDEXED-fallback path in pii_subject.js.
+  dynamic "statement" {
+    for_each = var.pii_subject_index_table_arn != "" ? [1] : []
+    content {
+      sid = "DynamoDBPiiSubjectIndex"
+      actions = [
+        "dynamodb:GetItem",
+        "dynamodb:PutItem",
+      ]
+      resources = [var.pii_subject_index_table_arn]
+    }
+  }
+
   # Phase C analytics-events pipeline send grant. Conditional on the queue ARN
   # being passed (when empty, BSH's handleAnalyticsEvent no-ops per index.js:66-106
   # so no IAM grant is required). SendMessage + SendMessageBatch cover both
@@ -451,6 +489,13 @@ resource "aws_lambda_function" "this" {
       # (no same-account SMS_Sender Lambda).
       var.sms_sender_function_name != "" ? {
         SMS_SENDER_FUNCTION = var.sms_sender_function_name
+      } : {},
+      # M1.G6 (master plan v0.12 / F-DSAR18 closure). When set, BSH's
+      # pii_subject.js writes into this table; when empty, pii_subject.js
+      # falls back to its UNINDEXED-candidate path (submission never fails,
+      # but the row is not email-indexed).
+      var.pii_subject_index_table_name != "" ? {
+        PII_SUBJECT_INDEX_TABLE = var.pii_subject_index_table_name
       } : {}
     )
   }
