@@ -24,8 +24,10 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
-// The contract: every CTA action MessageBubble.handleActionClick dispatches.
-// `form_trigger` is the type-alias handled inside the start_form branch.
+// The contract: every CTA-or-chip action MessageBubble dispatches across
+// BOTH handleCtaClick (local var `cta`) and handleActionClick (local var
+// `action`). `form_trigger` is the type-alias handled inside the start_form
+// branch; `show_showcase` is dispatched from handleActionClick (chip).
 const HANDLED_CTA_ACTIONS = [
   'cancel_form',
   'external_link',
@@ -34,6 +36,7 @@ const HANDLED_CTA_ACTIONS = [
   'resume_scheduling',
   'send_query',
   'show_info',
+  'show_showcase',
   'start_form',
   'start_scheduling',
   'switch_form',
@@ -46,7 +49,11 @@ const MESSAGE_BUBBLE_SRC = readFileSync(
 
 function scannedDispatchActions(src) {
   const set = new Set();
-  const re = /cta\.action === '([a-z_]+)'/g;
+  // Match both handler locals: `cta.action === '…'` (handleCtaClick) and
+  // `action.action === '…'` (handleActionClick). Without both, the contract
+  // is blind to new dispatch branches added in handleActionClick — that was
+  // the gap that hid `show_showcase` from this guard pre-2026-05-24 audit.
+  const re = /(?:cta|action)\.action === '([a-z_]+)'/g;
   let m;
   while ((m = re.exec(src)) !== null) set.add(m[1]);
   return [...set].sort();

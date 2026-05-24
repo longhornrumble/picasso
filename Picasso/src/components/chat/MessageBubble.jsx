@@ -683,7 +683,6 @@ export default function MessageBubble({
     setClickedButtonIds(prev => new Set([...prev, buttonId]));
     setAnyButtonClicked(true); // Disable all buttons in this message
 
-    console.log('[MessageBubble] CTA clicked - full data:', JSON.stringify(cta, null, 2));
     console.log('[MessageBubble] CTA properties:', {
       buttonId,
       action: cta.action,
@@ -725,8 +724,9 @@ export default function MessageBubble({
         formMode.cancelForm();
       }
 
-      // Now start the new form (fall through to form trigger logic)
-      cta.action = 'start_form';
+      // Fall through to the form-trigger branch below; switch_form is handled
+      // jointly with start_form/form_trigger. Do NOT mutate cta.action — same
+      // cta object can be referenced elsewhere in React state.
     }
 
     if (cta.action === 'start_scheduling') {
@@ -759,7 +759,7 @@ export default function MessageBubble({
       return;
     } else if (cta.action === 'external_link' && cta.url) {
       window.open(cta.url, '_blank', 'noopener,noreferrer');
-    } else if (cta.action === 'start_form' || cta.action === 'form_trigger' || cta.type === 'form_trigger') {
+    } else if (cta.action === 'start_form' || cta.action === 'form_trigger' || cta.action === 'switch_form' || cta.type === 'form_trigger') {
       // Get form ID from CTA
       let formId = cta.formId || cta.form_id || cta.id;
 
