@@ -2,9 +2,21 @@
 
 **Generated:** 2026-05-24T05:02:32.523460+00:00
 **Operator:** chris@myrecruiter.ai (via SSO profile `myrecruiter-prod`)
+**Operator IAM identity (Sprint E4 D4 retrospective capture, 2026-05-24):**
+  - `Account`: `614056832592` (prod)
+  - `UserId`: `AROAY56FDVZIM65V6ER4R:chris`
+  - `Arn`: `arn:aws:sts::614056832592:assumed-role/AWSReservedSSO_AdministratorAccess_e71915a66e3fbdc7/chris`
+  - SSO role: `AWSReservedSSO_AdministratorAccess_e71915a66e3fbdc7` (Administrator)
+  - Snapshot command: `aws sts get-caller-identity --profile myrecruiter-prod`
+  - **Note:** snapshot captured retroactively (Sprint E4); per phase-completion-audit
+    finding D4 (Sec 🔴 #7). The SSO role + AWS_PROFILE were unchanged between
+    the 05:02Z execution and the 06:00Z+ retroactive snapshot.
 **Mode:** real-run
 **Result:** real-run-complete
-**Script:** `/tmp/m4g2_backfill.py` (preserved as Sprint 3 artifact; see also §6 of `m4g2-prod-ttl-backfill-decision.md`)
+**Script:** `tools/m4g2_backfill.py` (preserved as Sprint 3 artifact; committed
+  to repo in Sprint E4 per audit finding D7; see also §6 of
+  `m4g2-prod-ttl-backfill-decision.md` and `tools/test_m4g2_backfill.py` for
+  the formula unit tests added at commit time)
 **Closes:** D5 row **F-DSAR19**; master plan **M4.G2**
 
 ## Execution summary
@@ -33,6 +45,32 @@ GetItem on `volunteer_dare2dream_1776194362503` returned:
 - `ttl`: `1807730427` (decodes to **2027-04-14T19:20:27Z** ≈ `submitted_at + 364d`)
 
 Interpretation per §5.1 rules: **future epoch → INFORMATIONAL**. The 364-day retention is unusual but introduces no risk (row simply persists ~1 day shorter than the 365d-retention sibling rows). Source unidentified — likely a manual Console set or an out-of-band write (no automated path uses a 364d formula). Idempotency safely skipped this row during Sprint 3 (the row does NOT appear in the per-row outcomes below because the re-scan filter `attribute_not_exists(ttl)` excluded it before the candidate list was built).
+
+#### Sprint E4 / audit D5 — CloudTrail forensic lookup (2026-05-24 retroactive)
+
+Per audit finding D5 (Sec 🟡 #4 + TL 🟡 #5), ran retrospective CloudTrail
+lookup against prod-614 for the 2026-04-14 window to attempt source
+identification of the mystery row:
+
+```
+aws cloudtrail lookup-events \
+  --start-time 2026-04-13T00:00:00Z --end-time 2026-04-15T00:00:00Z \
+  --lookup-attributes AttributeKey=ResourceName,AttributeValue=picasso_form_submissions \
+  --max-results 50 \
+  --profile myrecruiter-prod
+```
+
+**Returned 2 events**, both `DescribeTable` from user `ChrisIam`. **No `UpdateItem`
+or `PutItem` events recorded** — consistent with the master plan v0.15 §M4
+note that prod CloudTrail (`myrecruiter-management-events` trail) is
+**management-events-only** (`CloudWatchLogsLogGroupArn=null`). The 364d
+write would have been a DynamoDB data-plane event, which the prod trail
+does not capture.
+
+**Negative finding documented; source remains unattributed.** The forensic
+limit is the prod trail's data-event posture (broader gap tracked under
+F-DSAR21 / M9.G5). No further investigation possible without first wiring
+DDB data events into prod CloudTrail.
 
 ## Per-row outcomes
 
