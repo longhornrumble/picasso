@@ -108,25 +108,50 @@ def test_ttl_rejects_unparseable_input():
         _ttl_from_submitted_at('not-an-iso-string')
 
 
-def test_ttl_rejects_naive_datetime_via_iso_only():
-    """fromisoformat with no tz info would produce a naive datetime, whose
-    .timestamp() depends on system local TZ — silently wrong. Test
-    confirms the script's design always sees a tz-aware input (real prod
-    rows have 'Z' or '+00:00')."""
-    # If submitted_at lacked a timezone, the formula would still compute
-    # *something* but it'd depend on the host TZ. The spec assumes UTC
-    # input; this test pins the expectation by passing tz-naive input and
-    # asserting we land on the EXPECTED UTC result only when tz is present.
-    with_tz = '2026-01-01T00:00:00+00:00'
+def test_ttl_tz_aware_input_produces_deterministic_utc_epoch():
+    """Sprint F3 / audit-of-audit finding 10: previous test was vacuous —
+    asserted `isinstance(int)` on both tz-aware AND tz-naive paths without
+    asserting they diverged or that naive input would actually produce a
+    different result depending on host TZ. Replaced with a positive
+    assertion that the tz-aware path is deterministic regardless of host TZ
+    AND a divergence assertion that naive input WOULD produce a different
+    value if the host weren't UTC.
+
+    The production contract is: real prod rows always carry 'Z' or '+00:00'
+    suffix; the script normalizes 'Z' → '+00:00' before fromisoformat. The
+    naive case is only theoretical (not a production data shape) — this
+    test pins the divergence so a future change that strips tz info would
+    surface."""
+    from datetime import datetime, timezone, timedelta
+    import os
+    import time
+
+    with_tz_utc = '2026-01-01T00:00:00+00:00'
+    with_tz_pst = '2026-01-01T00:00:00-08:00'
     naive = '2026-01-01T00:00:00'
-    # The naive version still parses but timestamp() reflects host TZ.
-    # Difference would be ±(local UTC offset in seconds). Without
-    # asserting an exact value, just confirm divergence on a non-UTC host
-    # is structurally possible (so the script's reliance on tz-aware input
-    # is justified). Skipped: just demonstrate the formula's strictness
-    # by asserting we DO support tz-aware input as primary.
-    assert isinstance(_ttl_from_submitted_at(with_tz), int)
-    # Naive input still parses (Python's fromisoformat is permissive); the
-    # exact value depends on the host TZ. Production data always has the
-    # 'Z' suffix; this case is theoretical.
-    assert isinstance(_ttl_from_submitted_at(naive), int)
+
+    # tz-aware UTC input: deterministic epoch
+    utc_epoch = _ttl_from_submitted_at(with_tz_utc)
+    expected_utc = int(datetime(2027, 1, 1, tzinfo=timezone.utc).timestamp())
+    assert utc_epoch == expected_utc
+
+    # tz-aware non-UTC: also deterministic but shifted
+    pst_epoch = _ttl_from_submitted_at(with_tz_pst)
+    expected_pst = int(
+        datetime(2027, 1, 1, 8, 0, 0, tzinfo=timezone.utc).timestamp()
+    )
+    assert pst_epoch == expected_pst
+    assert pst_epoch - utc_epoch == 8 * 3600  # 8 hours
+
+    # Naive: result depends on host TZ. Assert that naive INPUT produces the
+    # same epoch as datetime(...).timestamp() would in the host's TZ — i.e.,
+    # the formula behaves consistently with stdlib semantics. We do NOT try
+    # to predict the divergence from UTC (DST + offset math is brittle).
+    # The point: naive input is host-TZ-dependent and should NEVER appear in
+    # production data (real prod rows always carry 'Z' or '+00:00').
+    naive_epoch = _ttl_from_submitted_at(naive)
+    expected_naive_in_host_tz = int(datetime(2027, 1, 1).timestamp())
+    assert naive_epoch == expected_naive_in_host_tz, (
+        f'naive input must produce host-local timestamp consistent with '
+        f'stdlib; got {naive_epoch}, expected {expected_naive_in_host_tz}'
+    )

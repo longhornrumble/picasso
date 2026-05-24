@@ -20,6 +20,15 @@ PROFILE = 'myrecruiter-prod'
 TABLE = 'picasso_form_submissions'
 BASELINE = 46  # §2 baseline candidate count
 
+# Sprint F3 / audit-of-audit finding 3 (Security 🟡): account guard.
+# The hardcoded PROFILE relies on ~/.aws/config resolving to prod-614, but a
+# future operator with a misconfigured profile (or a stale assumed role
+# carrying different credentials) could silently target the wrong account.
+# `_assert_prod_account()` calls sts:get-caller-identity and aborts if the
+# resolved account isn't prod-614 BEFORE any write loop runs. Mirrors the
+# pattern in picasso_pii_dsar_staging/lambda_function.py:_assert_account.
+EXPECTED_ACCOUNT = '614056832592'  # prod-614
+
 
 def run_aws(args):
     """Run aws CLI with the prod profile + return parsed JSON."""
@@ -31,6 +40,35 @@ def run_aws(args):
         return json.loads(result.stdout) if result.stdout.strip() else {}
     except json.JSONDecodeError:
         return {'__error__': True, 'stderr': 'invalid json', 'stdout': result.stdout}
+
+
+def _assert_prod_account():
+    """Sprint F3 / audit-of-audit finding 3: account guard.
+
+    Calls sts:get-caller-identity via the configured PROFILE and aborts the
+    script if the resolved account isn't EXPECTED_ACCOUNT (prod-614). Run
+    BEFORE any write loop so a misconfigured profile cannot trigger
+    UpdateItem against the wrong account.
+    """
+    identity = run_aws(['sts', 'get-caller-identity', '--output', 'json'])
+    if identity.get('__error__'):
+        raise SystemExit(
+            f'ACCOUNT GUARD ABORT: sts:get-caller-identity failed via PROFILE={PROFILE}: '
+            f'{identity.get("stderr", "unknown")[:300]}'
+        )
+    actual = identity.get('Account')
+    if actual != EXPECTED_ACCOUNT:
+        raise SystemExit(
+            f'ACCOUNT GUARD ABORT: PROFILE={PROFILE} resolved to account '
+            f'{actual} (Arn={identity.get("Arn")}); expected {EXPECTED_ACCOUNT} '
+            f'(prod-614). Refusing to proceed; check ~/.aws/config + active '
+            f'SSO session.'
+        )
+    print(
+        f'[{datetime.now(timezone.utc).isoformat()}] Account guard PASSED: '
+        f'PROFILE={PROFILE} → Account={actual} ({identity.get("Arn")})',
+        file=sys.stderr,
+    )
 
 
 def scan_missing_ttl():
@@ -87,10 +125,17 @@ def main():
                         help='No writes; print the plan only')
     args = parser.parse_args()
 
+    # Sprint F3 / audit-of-audit finding 3: account guard runs FIRST, before
+    # any scan or write. Fails fast if PROFILE resolves to the wrong account.
+    # Runs even in dry-run mode (read-only Scan also costs DDB RCU on the
+    # wrong account, even if no rows are written).
+    _assert_prod_account()
+
     log = {
         'start_ts': datetime.now(timezone.utc).isoformat(),
         'mode': 'dry-run' if args.dry_run else 'real-run',
         'profile': PROFILE,
+        'expected_account': EXPECTED_ACCOUNT,
         'table': TABLE,
         'baseline_count': BASELINE,
     }
