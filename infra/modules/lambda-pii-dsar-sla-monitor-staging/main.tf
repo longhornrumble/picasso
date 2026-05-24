@@ -92,11 +92,12 @@ data "aws_iam_policy_document" "monitor" {
 
   # Read on audit table: main table (PK=dsar_id Query) + StatusIndex GSI Query
   # Explicit table ARN + the StatusIndex GSI sub-ARN; no wildcards on the index name.
+  # Sprint E5 / audit nice-to-have N20: dynamodb:DescribeTable removed — not
+  # used at runtime; was over-grant from the initial scaffold.
   statement {
     sid = "AuditTableReadOnly"
     actions = [
       "dynamodb:Query",
-      "dynamodb:DescribeTable",
     ]
     resources = [
       var.dsar_audit_table_arn,
@@ -225,7 +226,9 @@ resource "aws_cloudwatch_metric_alarm" "monitor_errors" {
   treat_missing_data = "notBreaching"
 
   alarm_actions = [var.ops_sns_topic_arn]
-  ok_actions    = [var.ops_sns_topic_arn]
+  # Sprint E5 / audit nice-to-have N18: ok_actions removed — every ALARM
+  # produced a matching OK message on recovery, doubling SNS noise for transient
+  # errors. Operator gets the ALARM; recovery requires no separate notification.
 
   tags = {
     Project = "pii-governance"
@@ -250,8 +253,12 @@ resource "aws_sqs_queue" "monitor_dlq" {
   # Hold failed events 14 days (SQS max) so operator has a full work-cycle
   # to inspect + drain.
   message_retention_seconds = 1209600 # 14 days
-  # No encryption: the Lambda's input event is the EventBridge schedule
-  # payload (no consumer data). Operator-metadata-only profile applies.
+  # Sprint E5 / audit nice-to-have N21: SSE-SQS (SQS-managed) at no cost.
+  # Today's payload is the EventBridge schedule input (no consumer PII), but
+  # a future code change could surface request metadata in the DLQ; SSE-SQS
+  # is free and removes the "no encryption" finding without affecting cost
+  # or operator workflow.
+  sqs_managed_sse_enabled = true
 
   tags = {
     Project = "pii-governance"
@@ -304,6 +311,45 @@ resource "aws_lambda_function_event_invoke_config" "monitor_dlq_wire" {
   maximum_retry_attempts       = 2
 
   depends_on = [aws_iam_role_policy.monitor_dlq_send]
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Sprint E3 / audit defer-ok D1 — Lambda Invocations CloudWatch alarm.
+#
+# The Errors alarm above only fires when the Lambda runs AND errors. If the
+# EventBridge schedule is disabled (accidental or malicious) the Lambda never
+# runs → Errors stays 0 → ALARM stays OK while DSAR SLA violations accumulate
+# silently. This Invocations alarm closes that gap: with the daily schedule,
+# 2 consecutive 24h windows missing invocations breaches and pages ops.
+#
+# treat_missing_data=breaching: Lambda emits no metric datapoint when there's
+# no activity, so "missing" must count as breach. Without this the alarm would
+# never fire on a disabled schedule.
+# ─────────────────────────────────────────────────────────────────────────────
+resource "aws_cloudwatch_metric_alarm" "monitor_invocations" {
+  alarm_name        = "${local.function_name}-invocations"
+  alarm_description = "Sprint E3 / audit D1: SLA monitor Lambda Invocations < 1 over 2 consecutive 24h windows. Catches EventBridge-disable case (accidental or otherwise) which the Errors alarm cannot detect. Publishes to ops-alerts."
+
+  namespace   = "AWS/Lambda"
+  metric_name = "Invocations"
+  statistic   = "Sum"
+  period      = 86400 # 1 day (max CW alarm period)
+  dimensions = {
+    FunctionName = aws_lambda_function.monitor.function_name
+  }
+
+  threshold           = 1
+  comparison_operator = "LessThanThreshold"
+  evaluation_periods  = 2 # 2 consecutive missing-data days → 1d grace, then page
+  treat_missing_data  = "breaching"
+
+  alarm_actions = [var.ops_sns_topic_arn]
+
+  tags = {
+    Project = "pii-governance"
+    Owner   = "chris@myrecruiter.ai"
+    Source  = "Sprint E3 / audit D1"
+  }
 }
 
 # ─────────────────────────────────────────────────────────────────────────────

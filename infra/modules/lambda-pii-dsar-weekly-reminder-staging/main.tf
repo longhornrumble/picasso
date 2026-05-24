@@ -234,12 +234,47 @@ resource "aws_cloudwatch_metric_alarm" "reminder_errors" {
   treat_missing_data = "notBreaching"
 
   alarm_actions = [var.ops_sns_topic_arn]
-  ok_actions    = [var.ops_sns_topic_arn]
+  # Sprint E5 / audit nice-to-have N18: ok_actions removed — see SLA monitor
+  # module for the doubled-notification rationale.
 
   tags = {
     Project = "pii-governance"
     Owner   = "chris@myrecruiter.ai"
     Source  = "M9.G7 / F-DSAR26"
+  }
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Sprint E3 / audit defer-ok D1 — Lambda Invocations CloudWatch alarm.
+#
+# Mirrors the SLA monitor module's Invocations alarm. The weekly reminder runs
+# weekly (cron Mondays 14:00 UTC). 9 consecutive 24h missing-data windows
+# (1 week schedule + 2 day grace) breaches and pages ops. Catches the
+# EventBridge-disable case that the Errors alarm cannot detect.
+# ─────────────────────────────────────────────────────────────────────────────
+resource "aws_cloudwatch_metric_alarm" "reminder_invocations" {
+  alarm_name        = "${local.function_name}-invocations"
+  alarm_description = "Sprint E3 / audit D1: weekly reminder Lambda Invocations < 1 over 9 consecutive 24h windows (1wk schedule + 2d grace). Catches EventBridge-disable case which the Errors alarm cannot detect."
+
+  namespace   = "AWS/Lambda"
+  metric_name = "Invocations"
+  statistic   = "Sum"
+  period      = 86400 # 1 day (max CW alarm period)
+  dimensions = {
+    FunctionName = aws_lambda_function.reminder.function_name
+  }
+
+  threshold           = 1
+  comparison_operator = "LessThanThreshold"
+  evaluation_periods  = 9 # 7d schedule + 2d grace
+  treat_missing_data  = "breaching"
+
+  alarm_actions = [var.ops_sns_topic_arn]
+
+  tags = {
+    Project = "pii-governance"
+    Owner   = "chris@myrecruiter.ai"
+    Source  = "Sprint E3 / audit D1"
   }
 }
 
