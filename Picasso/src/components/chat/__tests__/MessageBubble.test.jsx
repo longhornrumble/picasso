@@ -331,6 +331,71 @@ describe('MessageBubble - scheduling dispatch branches', () => {
   });
 });
 
+describe('MessageBubble - dispatch hardening (audit B1/B2 regression)', () => {
+  let consoleLogSpy;
+
+  beforeEach(() => {
+    consoleLogSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+    mockFormModeContext.startFormWithConfig.mockClear();
+    mockFormModeContext.cancelForm.mockClear();
+  });
+
+  afterEach(() => {
+    consoleLogSpy.mockRestore();
+  });
+
+  it('switch_form must NOT mutate cta.action (audit B1) — the same cta object can be referenced elsewhere in React state', () => {
+    const cta = {
+      id: 'switch_apply',
+      label: 'Switch form',
+      action: 'switch_form',
+      formId: 'volunteer_apply',
+      cancelPreviousForm: true,
+    };
+
+    renderWithProviders(
+      <MessageBubble
+        role="assistant"
+        content="Want to switch forms?"
+        ctaButtons={[cta]}
+        renderMode="static"
+      />
+    );
+
+    screen.getByText('Switch form').click();
+
+    // The switch_form branch must have executed (proving the click reached the handler)
+    expect(mockFormModeContext.cancelForm).toHaveBeenCalled();
+    // …but the cta object must be untouched (no prop mutation).
+    expect(cta.action).toBe('switch_form');
+  });
+
+  it('handleCtaClick must NOT dump full cta via JSON.stringify (audit B2) — operator-configured values must not leak to browser console', () => {
+    const cta = {
+      id: 'send_q',
+      label: 'Ask',
+      action: 'send_query',
+      query: 'sensitive-looking-operator-string',
+    };
+
+    renderWithProviders(
+      <MessageBubble
+        role="assistant"
+        content="Question?"
+        ctaButtons={[cta]}
+        renderMode="static"
+      />
+    );
+
+    screen.getByText('Ask').click();
+
+    const fullDumpCall = consoleLogSpy.mock.calls.find(
+      (call) => typeof call[0] === 'string' && call[0].includes('CTA clicked - full data')
+    );
+    expect(fullDumpCall).toBeUndefined();
+  });
+});
+
 describe('MessageBubble - Accessibility', () => {
   it('should have proper ARIA attributes on ShowcaseCard', () => {
     const showcaseCard = {
