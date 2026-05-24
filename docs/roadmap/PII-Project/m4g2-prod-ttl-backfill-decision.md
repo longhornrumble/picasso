@@ -135,10 +135,33 @@ love_box_referral_1778015262868                          2026-05-05T21:07:42.870
 
 **Summary:** 46 rows would be updated; 1 row skipped (already has `ttl`).
 
-The skipped row (`volunteer_dare2dream_1776194362503`) was written 2026-04-14
-but already has a `ttl` value — likely a manual Console set or an out-of-band
-write. The idempotency `ConditionExpression: attribute_not_exists(ttl)` skips
-it regardless of how the value got there.
+### §5.1 — The skipped row anomaly
+
+`volunteer_dare2dream_1776194362503` (`submitted_at: 2026-04-14T19:19:22Z`) already
+has a `ttl` attribute set, on a table whose TTL config was DISABLED until 2026-05-23T18:01Z.
+This is a factual anomaly on a hand-managed prod table.
+
+**Pre-execution gate:** before Sprint 3 execution, run `GetItem` on this single row
+to read its actual `ttl` value:
+
+```bash
+AWS_PROFILE=myrecruiter-prod aws dynamodb get-item \
+  --table-name picasso_form_submissions \
+  --key '{"submission_id":{"S":"volunteer_dare2dream_1776194362503"}}' \
+  --projection-expression "submission_id, submitted_at, #s, #ttl" \
+  --expression-attribute-names '{"#s":"status","#ttl":"ttl"}'
+```
+
+Interpret the `ttl` value:
+- **Future epoch** (e.g., > now): someone set a valid eviction timestamp out-of-band; the source should be named (Console history? manual UpdateItem? what flow?). Idempotency safely skips this row; the mystery is informational.
+- **Past epoch** (e.g., < now): DynamoDB TTL has already evicted this row (or will, on next sweep). If the GetItem returns "no item," the row already evicted — drop it from the candidate list mentally. Either way the §6 script handles it correctly.
+- **NULL / wrong type**: investigate before Sprint 3 — indicates a corrupted row from a buggy write that we'd want to understand before mutating 46 sibling rows.
+
+Result of this GetItem MUST be recorded in the execution log (§6.7) before Sprint 3 runs, even if "as expected." The 30-second cost of explicit investigation is preferable to leaving a hand-managed-table anomaly unexplained.
+
+Idempotency still protects the row's outcome regardless of the GetItem result — `ConditionExpression: attribute_not_exists(ttl)` skips it correctly. The pre-execution gate is for human understanding, not script safety.
+
+### §5.2 — Eviction range
 
 Eviction range across the 46 backfill candidates:
 - **First eviction**: 2027-01-03T17:50:01Z (oldest row + 365d)
@@ -146,7 +169,16 @@ Eviction range across the 46 backfill candidates:
 
 All evictions fall in 2027, none earlier — no surprise early-eviction class.
 
+The collapsed formula (`submitted_at + 365d`) is strictly **more conservative** than the
+original 3-tier formula for every row in this dataset — every row is `<180d`, so the
+original `<180d → now+(365-age)d` rule would have produced TTLs **earlier in 2027** than
+`submitted_at + 365d` does (because `now > submitted_at`). Choosing `submitted_at + 365d`
+gives consumers more retention runway, not less, and matches the active BSH writer formula
+exactly for operational symmetry.
+
 ## §6 — Execution plan (Sprint 3, post user approval)
+
+**Single-operator execution only.** Concurrent runs are safe (idempotency guarantees correctness) but unnecessary — see §6.5.
 
 For each of the 46 rows where `attribute_not_exists(ttl)`:
 
@@ -161,11 +193,37 @@ AWS_PROFILE=myrecruiter-prod aws dynamodb update-item \
 ```
 
 Driven by a small Python wrapper that:
-1. Re-scans prod for the current set of rows missing `ttl` (re-confirms count matches §2)
-2. For each, computes `ttl = int((datetime.fromisoformat(submitted_at) + 365d).timestamp())`
-3. Runs UpdateItem with the ConditionExpression above
-4. Counts successes vs `ConditionalCheckFailedException` (already done)
-5. Verifies post-condition: re-scan returns 0 rows missing `ttl`
+
+1. **Re-scan prod** for the current set of rows missing `ttl`.
+   - **Drift handling (decision rule):** if the re-scan count differs from the §2 baseline (46), **proceed against the live re-scan set**, NOT the §2 list. This is the right behavior because (a) new rows landing between Sprint 1 audit and Sprint 3 execution should also be backfilled if they lack `ttl`, and (b) rows that gained `ttl` out-of-band (like the §5 SKIP row) should be excluded. Log the drift delta + the new candidate count for the operator record. Do NOT halt on drift.
+2. For each, computes `ttl = int((datetime.fromisoformat(submitted_at) + 365d).timestamp())`.
+   - **Defensive parsing:** wrap `datetime.fromisoformat()` in `try/except`. If `submitted_at` is missing or malformed on any row, log the `submission_id` + skip that row (do NOT crash the batch). The dry-run shows all 46 candidates have clean `submitted_at`, but the script handles future-shape drift safely.
+3. Runs UpdateItem with the ConditionExpression above.
+4. Counts successes vs `ConditionalCheckFailedException` (treated as success — the row already has `ttl`, somehow).
+5. Verifies post-condition per §7.
+
+### §6.5 — Idempotency + concurrency semantics
+
+`ConditionExpression: attribute_not_exists(ttl)` makes each individual write idempotent. The full script is **idempotent under sequential re-run** (re-scan filters to remaining candidates; CCFs treated as success). The script is **safe under concurrent run** in the sense of "no row ends up with a wrong `ttl`" — but two terminals racing produces double the CloudTrail noise + double the cost for zero benefit. Run from one terminal at a time.
+
+### §6.6 — Throughput
+
+`picasso_form_submissions` runs on on-demand throughput (verified via `describe-table` 2026-05-24: `BillingMode: PAY_PER_REQUEST`, `WriteCapacityUnits: 0`). 46 sequential UpdateItems complete in ~10 seconds with no throttling risk. If the table is ever converted to provisioned throughput, this section should be revisited.
+
+### §6.7 — Audit trail (explicit; CloudTrail does NOT cover this)
+
+**Important:** prod-614 CloudTrail (`myrecruiter-management-events` trail) is configured with **management-events-only** event selectors — NO data events on DynamoDB. Verified 2026-05-24 via `aws cloudtrail get-event-selectors`. As a result, the 46 `UpdateItem` calls **will NOT appear in CloudTrail logs**.
+
+(This same observability gap is the broader concern captured by D5 row **F-DSAR21** / master plan **M9.G5** prod IaC drift audit — out of scope for this PR but reinforces why the script-local audit trail below is the primary artifact.)
+
+The Python wrapper script MUST therefore emit a structured execution log to stdout, redirected to a file. The log contains:
+- Start timestamp + end timestamp (ISO 8601 UTC)
+- Re-scan candidate count + drift delta vs §2 baseline (46)
+- Per-row outcome: `submission_id`, `new_ttl_epoch`, `evicts_at`, outcome (`updated` | `already_had_ttl` | `parse_error_skipped`)
+- Final tallies: `updated_count`, `already_had_ttl_count`, `parse_error_count`, `total_processed`
+- Post-condition verification result (§7 scan output)
+
+The log file is committed to the repo as the Sprint 4 artifact: `docs/roadmap/PII-Project/m4g2-prod-ttl-backfill-execution-log-<YYYY-MM-DD>.md`. This file IS the operator-attested audit artifact for regulator defensibility — it is the only durable record that these 46 writes occurred and what they wrote.
 
 ## §7 — Post-execution verification
 
@@ -177,7 +235,19 @@ AWS_PROFILE=myrecruiter-prod aws dynamodb scan \
   --select COUNT
 ```
 
-Expected: `Count: 0`.
+**Pass condition:** `Count: 0`.
+
+**Failure procedure (Count > 0):**
+1. Re-list the residual `submission_id` values:
+   ```bash
+   AWS_PROFILE=myrecruiter-prod aws dynamodb scan \
+     --table-name picasso_form_submissions \
+     --filter-expression "attribute_not_exists(#ttl)" \
+     --expression-attribute-names '{"#ttl":"ttl"}' \
+     --projection-expression "submission_id, submitted_at"
+   ```
+2. **Re-run the script once.** Idempotency means rows already updated are safe; the second pass should pick up rows that landed between the first scan and the first update batch.
+3. If post-condition still returns `Count > 0` after the second run, **HALT — do not declare M4.G2 closed.** Record the residual `submission_id` values in `dsar-log.md` (or the execution log per §6.7) and surface to the operator for manual triage. Possible causes: schema drift (new write path emits a row without `submitted_at` so the script skipped it per §6 step 2), DynamoDB inconsistency window, or a permission issue mid-batch.
 
 ## §8 — Risk + rollback
 
@@ -193,12 +263,21 @@ UpdateExpression: `REMOVE #ttl`. The backfill is therefore reversible without
 data loss. *(The forward-only TTL enable on the table itself is a separate
 configuration knob and is not part of this backfill.)*
 
-## §9 — Approval gate
+## §9 — Approval gate + closure framing
 
-This document is the artifact for the Sprint 2 → Sprint 3 transition.
-User reviews + approves the dry-run before Sprint 3 execution. After Sprint 3:
+This document is the artifact for the Sprint 2 → Sprint 3 transition. User reviews
++ approves the dry-run before Sprint 3 execution. After Sprint 3:
+
 - Master plan v0.15 records closure with execution timestamps + success count
 - D5 F-DSAR19 marked CLOSED with post-condition verification artifact
+- Sprint 4 closure doc explicitly records: **"spec collapse from 3 tiers to 1 was justified for the 2026-05-24 backfill because all candidates were `<180d` old; if any future backfill scenario produces rows `>180d` old, the original tiered formula in master plan §M4.G2 applies."** This makes the closure doc self-contained for future readers without requiring a trace back through D5.
+
+**Counsel-pending caveat:** The 365-day retention reference is the BSH/Python writer
+default + CCPA §1798.105 12-month common reference. If counsel-Q1 (G-I) returns with
+a different determination, the closure is **not** automatically invalidated — but the
+retention reference should be re-rated then, which would trigger an M4.G2 follow-up
+(adjust both the BSH writer formula AND a re-backfill with the new value). M8 work
+will surface this if it happens.
 
 ## §10 — Lessons in scope
 
@@ -208,3 +287,26 @@ Mitigation for this single operation: every `aws ... --table-name
 picasso_form_submissions` command in this doc names the prod profile explicitly
 (`AWS_PROFILE=myrecruiter-prod`) and the prod-shaped table name (underscores,
 no `-staging` suffix). M9.G4 work will generalize this discipline.
+
+## §11 — Adversarial review record (tech-lead-reviewer, 2026-05-24)
+
+Tech-lead-reviewer ran an adversarial review of v1 of this doc (commit `5de62bc`).
+Verdict: **conditional approve — 0 hard blockers, 4 strong recommendations + 2 nice-to-haves + 1 anomaly worth pre-execution investigation.**
+
+| # | Finding | Disposition in this doc |
+|---|---|---|
+| 1 | §6 step 1 lacks decision rule for re-scan-count drift | ADDRESSED — §6 step 1 now explicitly states "proceed against live re-scan set, log drift delta, do not halt" |
+| 2 | Idempotency story doesn't explicitly forbid concurrent runs | ADDRESSED — §6 opening states "single-operator execution only" + §6.5 explains concurrency semantics |
+| 3 | §7 lacks failure procedure if Count > 0 | ADDRESSED — §7 now has explicit failure procedure (re-run once → if persists, HALT + manual triage) |
+| 4 | Defensive parsing for missing `submitted_at` not explicit | ADDRESSED — §6 step 2 adds `try/except` posture |
+| 6 | CloudTrail data-event coverage was an implicit assumption | ADDRESSED — **prod CloudTrail does NOT capture DDB data events** (verified via `get-event-selectors`); §6.7 makes the script-local execution log the explicit primary audit artifact, committed to repo as Sprint 4 deliverable |
+| 8 | Mystery row anomaly was hand-waved | ADDRESSED — §5.1 adds an explicit pre-execution GetItem gate + interpretation rules + log requirement |
+| 9 | Sprint 4 closure claim might be borderline | ADDRESSED — §9 closure framing now records the spec-collapse rationale + counsel-pending caveat |
+| 10 | Throughput mode not stated | ADDRESSED — §6.6 records verified `BillingMode: PAY_PER_REQUEST` |
+
+What tech-lead called solid (preserved unchanged):
+- Spec collapse justification — math is correct + the collapsed formula is strictly more conservative
+- Idempotency mechanism (`attribute_not_exists(ttl)` + CCF-as-success) — correct DDB semantics
+- Scope discipline — one attribute, one table, one account, fixed candidate set, no accidental blanking
+
+Reviewer session: `ab9a155b40f157ef1`. Full output preserved in the PR conversation.
