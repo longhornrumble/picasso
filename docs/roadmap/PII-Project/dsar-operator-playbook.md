@@ -228,7 +228,7 @@ AWS_PROFILE=myrecruiter-prod aws dynamodb query \
 [ ] _____ Subject-disclosed PII redacted from export before send (third-party PII removed)
 ```
 
-**Dry-run rehearsal (REQUIRED before first prod DSAR ever):** use synthetic identifier `rehearsal-noop@example.invalid` against a prod tenant — every scan/query returns `Count=0` (the synthetic email has no rows), confirming the operator has working credentials + correct table names + correct CLI shape without any mutation. Record rehearsal output in [`dsar-log.md`](./dsar-log.md) as `request_type=rehearsal`.
+**Dry-run rehearsal (REQUIRED before first prod DSAR ever):** use synthetic identifier `rehearsal-noop-$(uuidgen)@example.invalid` against a prod tenant (the UUID suffix makes the synthetic collision-proof against any test seed data that might exist — audit row 20). Run EVERY scan listed in the §3.1 pre-substituted commands AND the §6.1 no-record path AND the notification-sends + session-summaries surfaces from the manual-walk checklist below; every query MUST return `Count=0` (the synthetic email has no rows), confirming the operator has working credentials + correct table names + correct CLI shape + IAM read access to each surface without any mutation. Record rehearsal output in [`dsar-log.md`](./dsar-log.md) as `request_type=rehearsal` and reference the UUID-keyed identifier used.
 
 **Maintenance note:** if §3 above changes (new step, new flag), update §3.1 substitutions table + pre-substituted commands in the SAME PR. The duplication is intentional (advisor review 2026-05-23: operator should not mentally substitute under SLA pressure) but creates sync debt — keep the substitution table as the single source of truth for name-mapping; only the commands need re-pre-substitution.
 
@@ -295,7 +295,7 @@ AWS_PROFILE=myrecruiter-prod aws dynamodb query \
 2. **Access path §3.1 completed first** — operator has the full per-surface row list from the access walk; deletion targets ONLY those rows (no Scan-then-delete in a single pass)
 3. **Identity verification §2 completed AND counsel-trigger checklist §9 cleared** (delete is irreversible; verification bar is the highest of all paths)
 
-**Pre-substituted prod delete-path commands (copy-paste-ready; ALWAYS dry-rehearse with `--dry-run` flag on the `aws` command, which is read-only validation, before removing the flag):**
+**Pre-substituted prod delete-path commands (copy-paste-ready). REHEARSAL FIRST**: run `describe-table` for each target table (per §4.1 rehearsal block below); the `aws dynamodb delete-item` API has NO `--dry-run` flag (that flag exists only on EC2 APIs — audit row 9), so the safe-rehearsal substitute is `describe-table` to confirm key shape + `--select COUNT` on a Scan with the targeted PK to confirm the row exists before deleting it.
 
 ```bash
 # Step 1: Per matched form-submission row from §3.1 access walk, delete by submission_id PK.
@@ -305,14 +305,20 @@ AWS_PROFILE=myrecruiter-prod aws dynamodb delete-item \
   --key '{"submission_id":{"S":"<SUBMISSION_ID_FROM_ACCESS_WALK>"}}' \
   --return-values ALL_OLD
 # Inspect ALL_OLD output; confirms the row that was deleted (operator paste into dsar-log.md).
+# ⚠️ INTERPRETATION (audit row 10): ALL_OLD returns the deleted row's attributes IF a row matched.
+# If ALL_OLD returns an empty `{}` Attributes map, the row did NOT exist — looks identical to a
+# successful delete of an already-TTL-expired row. RECHECK your submission_id from §3.1 step 2
+# results before concluding the delete succeeded. A truly-deleted row returns non-empty Attributes.
 
 # Step 2: Per matched notification-sends row, delete by composite key.
 # (Notification-sends PK = recipient_email_norm OR a composite; confirm via describe-table.)
-# Notification-sends rows are append-only audit-class; per advisor review 2026-05-23, do NOT delete
-# notification-sends rows for a consumer DSAR — they are processing logs (Art 17(3)(b)/(e) carve-out
-# parallel to DSAR audit table). Document this in the response: "we retain the fact that we sent you
-# a notification, but the content of your submission is deleted."
-# If counsel-Q1 (G-I) response later overrides this carve-out, this section updates.
+# Notification-sends rows are append-only audit-class; per advisor review 2026-05-23 (note: this
+# citation pre-dates the formal M9.G4 prod-CLI scope — audit row 19 sync debt; if counsel-Q1
+# (G-I) later overrides this carve-out, this §4.1 reference + the M3 §M3 done-bar #6 playbook
+# both need updating in the same PR), do NOT delete notification-sends rows for a consumer DSAR —
+# they are processing logs (Art 17(3)(b)/(e) carve-out parallel to DSAR audit table). Document
+# this in the response: "we retain the fact that we sent you a notification, but the content
+# of your submission is deleted."
 
 # Step 3: Recent-messages — TTL handles natural eviction in 24h. For SLA-bound deletion confirmation,
 # delete by composite (sessionId, messageId) per matched row.
@@ -471,10 +477,26 @@ AWS_PROFILE=myrecruiter-staging aws dynamodb put-item \
 
 ```
 [ ] _____ Account guard executed; ✅ prod 614 confirmed
-[ ] _____ Per-tenant Scan: Count=0 confirmed for EACH candidate prod tenant_id (list tenants_scanned in audit row)
-[ ] _____ Notification-sends Scan: Count=0 confirmed by recipient_email
+[ ] _____ Per-tenant Scan picasso_form_submissions: Count=0 for EACH candidate prod tenant_id
+[ ] _____ Notification-sends Scan: Count=0 by recipient_email
+[ ] _____ Session-summaries Scan: Count=0 by sessionId (the access path covers session-summaries
+          per §3.1 checklist; a no-record disclosure that skips this surface and a session-summary
+          row later surfaces is an affirmative misrepresentation under CCPA — audit row 8)
 [ ] _____ DSAR audit row written to picasso-pii-dsar-audit-staging with tenants_scanned + surfaces_scanned
 [ ] _____ No-record response template sent
+```
+
+Session-summaries no-record scan command (Sprint G2 addition for audit row 8):
+```bash
+# Subjects who chatted without submitting a form may have session-summary rows but no
+# form-submission rows. Skipping this surface would produce a false no-record finding.
+AWS_PROFILE=myrecruiter-prod aws dynamodb scan \
+  --table-name picasso-session-summaries \
+  --filter-expression "contains(content, :phrase) OR submitter_email = :e" \
+  --expression-attribute-values '{":phrase":{"S":"<UNIQUE_PHRASE_SUBJECT_PROVIDED>"},":e":{"S":"<claimed_email>"}}' \
+  --select COUNT
+# Best-effort: session-summaries rows do not have submitter_email if the subject never
+# submitted a form during the session. The content scan is the no-record evidence.
 ```
 
 ---
