@@ -59,15 +59,9 @@ The platform runs across **3 isolated AWS accounts** under one Organization. Acc
 
 ### Account topology
 
-| Env | Account ID | SSO profile | Role on prod cutover |
-|---|---|---|---|
-| **prod** | 614056832592 | `myrecruiter-prod` | Hand-managed legacy. Receives new clean-shape resources only via deliberate Phase 2 promotion. |
-| **staging** | 525409062831 | `myrecruiter-staging` | Where features live for demos + soak. PowerUserAccess (no IAM tampering). |
-| **dev** | 372666940362 | `myrecruiter-dev` | Engineer + AI agent iteration. Destructible. AdministratorAccess. |
+Three AWS accounts under one Organization: **prod** (hand-managed legacy; receives new resources only via deliberate Phase 2 promotion), **staging** (where features live for demos + soak; PowerUserAccess, no IAM tampering), and **dev** (engineer + AI agent iteration; destructible; AdministratorAccess).
 
-**SSO portal**: https://myrecruiter.awsapps.com/start
-
-Full operational reference: `~/.claude/projects/-Users-chrismiller-Desktop-Working-Folder/memory/reference_aws_accounts.md`
+**Account IDs, SSO profile names, and the SSO portal URL** live in the operator-local memory file `~/.claude/projects/-Users-chrismiller-Desktop-Working-Folder/memory/reference_aws_accounts.md` (operator-local, not in this repo). Agents with checkout access typically have access to that memory file; agents without it should ask the operator.
 
 ### Deployment SOP
 
@@ -81,7 +75,7 @@ Full operational reference: `~/.claude/projects/-Users-chrismiller-Desktop-Worki
 - **Never `terraform apply` against the prod account during normal feature work.** Prod is hand-managed today. Phase 2 cutover decisions are explicit, gated, and rare.
 - **Never share IAM roles across Lambdas.** Each Lambda gets a dedicated execution role. (lambda#44 was the result of historical sharing — don't recreate that pattern.)
 - **Never share resources across environments.** No "single `picasso-X` table used by prod and staging." Use the `{name}-{env}` naming convention.
-- **Never rotate `chris-admin` legacy IAM credentials.** Preserved for legacy CI workflows. Untouched in P0.
+- **Do not rotate the legacy operator IAM credentials used by legacy CI workflows.** Specific credential name + rotation policy in the operator-local `reference_aws_accounts.md` memory file.
 - **Always `unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN` before running terraform.** Stale exported credentials override AWS_PROFILE and trigger SSO 401 errors.
 
 ### Local Terraform usage
@@ -107,7 +101,7 @@ CI deploys via OIDC into per-account `GitHubActionsDeployRole`. See `.github/wor
 
 ### Where the legacy commands below fit
 
-The `Commands` section below documents direct AWS CLI deploys to prod-account resources via `chris-admin` profile. **Those are legacy operations against the hand-managed prod resources.** They continue to work for backward compatibility but new resources should be Terraform-managed via the SOP above. Existing prod resources stay manually managed until each is intentionally cut over.
+The `Commands` section below documents direct AWS CLI deploys to prod-account resources via a legacy operator IAM profile. **Those are legacy operations against the hand-managed prod resources.** They continue to work for backward compatibility but new resources should be Terraform-managed via the SOP above. Existing prod resources stay manually managed until each is intentionally cut over.
 
 ---
 
