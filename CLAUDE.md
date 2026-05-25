@@ -497,6 +497,25 @@ Per the Developer Playbook:
 - main branch = production
 - Use Sandbox/ for temporary work
 
+### Branch routing for PRs (established 2026-05-25)
+
+Choose the PR base branch by **what the PR contains**, not by habit:
+
+| Contents | Base | Why |
+|---|---|---|
+| Pure docs that are self-contained or cite only main-promoted state (master plan revisions, D5 updates, CLAUDE.md edits, runbooks, methodology notes, SOP changes) | `main` | No production behavior change; no soak needed; routing through staging just accumulates drift. |
+| Pure docs that cite live staging-only state (decision docs naming staging Lambda CodeSha256s, staging IaC ARNs, etc.) | `staging` | Doc must co-locate with the artifact it references so a reader of the same branch can verify the citation. |
+| Code, IaC, or mixed (docs + code) | `staging` | Soak in staging acct 525 before promote-to-main per Deployment SOP §"Deployment SOP" above. |
+
+**Promote-to-main pattern (when code/IaC PRs accumulate on staging):**
+- Per `feedback_promote_pr_scope_discipline`: scoped promote-PRs per decision gate (e.g., "promote M9.G5 chain for prod cutover"), NOT multi-milestone bundles.
+- Cherry-pick the relevant commits onto a branch from main; do NOT merge staging into main wholesale.
+- A promote-PR's diff must be **reviewable as the work being promoted** — not "everything that's been accumulating since last promote."
+
+**Why this rule exists:** before 2026-05-25, all PII work uniformly targeted staging by habit. Pure-docs (master plan revisions, decision docs without staging citations) accumulated on staging with no production gate to trigger promotion, growing to a 30+ commit backlog. Routing docs directly to main when they don't depend on staging-only state shrinks the drift without losing soak discipline for code/IaC.
+
+**Operational prerequisite:** the `Deploy to Production` workflow at `.github/workflows/deploy-production.yml` has `paths-ignore: [docs/**, **/*.md]` on the `push.main` trigger (added in picasso#225/#226), so pure-docs PRs targeting main do NOT trigger the production deploy pipeline. Mixed-content PRs (docs + code) still trigger the workflow per GitHub paths-ignore semantics.
+
 ## Card Extraction & Forms Workflow
 
 ### Tenant Onboarding Pipeline
