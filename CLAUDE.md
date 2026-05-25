@@ -516,6 +516,14 @@ Choose the PR base branch by **what the PR contains**, not by habit:
 
 **Operational prerequisite:** the `Deploy to Production` workflow at `.github/workflows/deploy-production.yml` has `paths-ignore: [docs/**, **/*.md]` on the `push.main` trigger (added in picasso#225/#226), so pure-docs PRs targeting main do NOT trigger the production deploy pipeline. Mixed-content PRs (docs + code) still trigger the workflow per GitHub paths-ignore semantics.
 
+### Force-push attestation convention (established 2026-05-25)
+
+When force-pushing to a PR branch after CI has already passed (e.g., rebase-to-update-with-main before merge), include in the PR description a one-line attestation that the only delta vs the pre-rebase tip is the rebase parent update (no substantive content change). Example:
+
+> **Force-push attestation 2026-05-25:** rebased onto `origin/main@<sha>` to satisfy branch-protection "up-to-date with base"; no content delta vs pre-rebase tip `<old-sha>`.
+
+**Why:** force-push-with-lease on a feature branch rewrites the pre-rebase tip from remote reflog. For docs-only PRs this is low risk, but the attestation makes the operator's intent explicit and recoverable. Established by `project_scheduling_subphase_b_opening_phase_completion_audit_2026-05-25` audit row 24.
+
 ## Card Extraction & Forms Workflow
 
 ### Tenant Onboarding Pipeline

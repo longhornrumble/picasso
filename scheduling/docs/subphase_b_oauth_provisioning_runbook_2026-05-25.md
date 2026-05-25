@@ -31,7 +31,7 @@ aws secretsmanager list-secrets --profile myrecruiter-staging \
 **Sub-steps inside the project:**
 
 1. **APIs & Services → Library → enable "Google Calendar API"** (required for all sub-phase B Lambdas: B2 listener, B3 renewer, B5 onboarding, B6 offboarding, B10 responseStatus polling).
-2. **APIs & Services → OAuth consent screen** → User Type = `External` (or `Internal` if Google Workspace org); App name = `Picasso Scheduling (staging)`; User support email = `chris@myrecruiter.ai`; Developer contact = same. Add scope `https://www.googleapis.com/auth/calendar` (read-write events). **For staging-only access**, leave publishing status as **Testing** and add your test calendar Google account as a Test User. Production publishing is a separate operator step for sub-phase F prod cutover.
+2. **APIs & Services → OAuth consent screen** → **User Type = `Internal`** (mandatory for Google Workspace orgs — Internal bypasses the 7-day refresh-token-expiry trap of External-Testing mode, and the `auth/calendar` Sensitive scope requires no verification for Internal). App name = `Picasso Scheduling (staging)`; User support email = `chris@myrecruiter.ai`; Developer contact = same. Add scope `https://www.googleapis.com/auth/calendar` (read-write events; tier: **Sensitive** per Google's classification — not Restricted; CASA assessment not required). Add the test coordinator Google account as a Test User. Production publishing is a separate operator step for sub-phase F prod cutover (External + full app verification).
 3. **APIs & Services → Credentials → + Create Credentials → OAuth client ID**:
    - Application type: `Web application` (forward-compat for sub-phase E coordinator-facing OAuth UI; for sub-phase B alone, `Desktop app` is sufficient — `Web application` is preferred so the same client carries forward to E11)
    - Name: `picasso-scheduling-staging-web`
@@ -59,7 +59,7 @@ Sub-phase B's integration tests (`events.watch`, `events.stop`, `events.get`) ne
 
 **What you have at end of Step 2:** `refresh_token` for one test coordinator. The access token is short-lived; only the refresh token is persisted.
 
-**Hygiene note:** the OAuth Playground requires the redirect URI `https://developers.google.com/oauthplayground` to be added to the OAuth client's Authorized redirect URIs in Step 1 temporarily. Add it before doing Step 2; remove it after capturing the refresh token if you want to keep the OAuth client redirect surface clean.
+**Hygiene note (MANDATORY — not optional):** the OAuth Playground requires the redirect URI `https://developers.google.com/oauthplayground` to be added to the OAuth client's Authorized redirect URIs in Step 1 temporarily. Add it before doing Step 2; **you MUST remove it after capturing the refresh token** — leaving it in place is a permanent attack surface (anyone with the `client_id` can initiate OAuth flows via the Playground against any added Test User). Verify removal in Google Cloud Console → Credentials → click the OAuth client → confirm `https://developers.google.com/oauthplayground` is NOT in the Authorized redirect URIs list.
 
 ---
 
@@ -81,36 +81,91 @@ aws secretsmanager describe-secret \
 
 **Apply (copy-paste; substitute the four values from Step 1 + Step 2):**
 ```bash
-# Substitute the four placeholders with your actual values from Steps 1+2:
+set -euo pipefail
+
+# Substitute the four placeholders with your actual values from Steps 1+2.
+# Use single quotes — values containing $ or \ will not expand or escape.
 GOOGLE_CLIENT_ID='REPLACE_WITH_STEP_1_CLIENT_ID'
 GOOGLE_CLIENT_SECRET='REPLACE_WITH_STEP_1_CLIENT_SECRET'
 GOOGLE_REFRESH_TOKEN='REPLACE_WITH_STEP_2_REFRESH_TOKEN'
 COORDINATOR_EMAIL='REPLACE_WITH_TEST_COORDINATOR_GOOGLE_EMAIL'
 
-# JSON payload — forward-compat shape per E11 description
-cat > /tmp/oauth-secret.json <<EOF
-{
+# Compute timestamps in the parent shell (NOT inside the heredoc — avoids
+# silent-fail paths on macOS-vs-GNU date semantics inside an unquoted heredoc).
+CREATED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+# 90-day rotation reminder. Hardcoded format avoids the macOS/GNU `date -v` vs
+# `date -d` fork (which both silently fall through to empty if either fails).
+# If you want a different rotation window, edit this literal:
+ROTATE_AFTER='2026-08-23T00:00:00Z'
+
+# Use Python to safely build the JSON — handles any special chars in the
+# credentials (including $, \, ", newlines). This is more robust than a
+# heredoc with shell expansion.
+python3 - <<'PY' > /tmp/oauth-secret.json
+import json, os
+print(json.dumps({
   "provider": "google",
-  "client_id": "${GOOGLE_CLIENT_ID}",
-  "client_secret": "${GOOGLE_CLIENT_SECRET}",
-  "refresh_token": "${GOOGLE_REFRESH_TOKEN}",
-  "coordinator_email": "${COORDINATOR_EMAIL}",
+  "client_id": os.environ["GOOGLE_CLIENT_ID"],
+  "client_secret": os.environ["GOOGLE_CLIENT_SECRET"],
+  "refresh_token": os.environ["GOOGLE_REFRESH_TOKEN"],
+  "coordinator_email": os.environ["COORDINATOR_EMAIL"],
   "scopes": ["https://www.googleapis.com/auth/calendar"],
   "token_endpoint": "https://oauth2.googleapis.com/token",
-  "created_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  "created_at": os.environ["CREATED_AT"],
   "purpose": "subphase-b-integration-tests",
-  "rotate_after": "$(date -u -v+90d +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d '+90 days' +%Y-%m-%dT%H:%M:%SZ)"
-}
-EOF
+  "rotate_after": os.environ["ROTATE_AFTER"],
+}, indent=2))
+PY
 
-aws secretsmanager create-secret \
-  --name picasso/scheduling/oauth/MYR384719/test-coordinator \
-  --description "Sub-phase B integration-test OAuth credentials for MYR384719 staging tenant (test coordinator). Provisioned 2026-05-25 per subphase_b_oauth_provisioning_runbook." \
-  --secret-string file:///tmp/oauth-secret.json \
-  --profile myrecruiter-staging
+# Idempotent apply: try create-secret first; on ResourceExistsException, fall
+# back to put-secret-value (creates a new version on the existing secret).
+SECRET_ID='picasso/scheduling/oauth/MYR384719/test-coordinator'
+if aws secretsmanager describe-secret --secret-id "$SECRET_ID" --profile myrecruiter-staging >/dev/null 2>&1; then
+  echo "Secret already exists; applying new version via put-secret-value"
+  aws secretsmanager put-secret-value \
+    --secret-id "$SECRET_ID" \
+    --secret-string "file:///tmp/oauth-secret.json" \
+    --profile myrecruiter-staging
+else
+  aws secretsmanager create-secret \
+    --name "$SECRET_ID" \
+    --description "Sub-phase B integration-test OAuth credentials for MYR384719 staging tenant (test coordinator). Provisioned 2026-05-25 per subphase_b_oauth_provisioning_runbook." \
+    --secret-string "file:///tmp/oauth-secret.json" \
+    --profile myrecruiter-staging
+fi
 
-# Cleanup local plaintext immediately
-shred -u /tmp/oauth-secret.json 2>/dev/null || rm -P /tmp/oauth-secret.json 2>/dev/null || rm /tmp/oauth-secret.json
+# Cross-platform secure cleanup: overwrite then delete (works on macOS APFS,
+# Linux ext4 — `shred` is not on macOS, `rm -P` was removed from recent macOS).
+python3 -c "
+import os
+path = '/tmp/oauth-secret.json'
+size = os.path.getsize(path)
+with open(path, 'r+b') as f:
+    f.write(b'\x00' * size)
+    f.flush()
+    os.fsync(f.fileno())
+os.remove(path)
+"
+echo "Plaintext file overwritten with zeros and deleted."
+```
+
+**If the original secret was previously stored with non-canonical keys** (e.g., uppercase `GOOGLE_CLIENT_ID` instead of lowercase `client_id`), the `put-secret-value` above creates a new AWSCURRENT version with the canonical schema. **Then demote the prior version from AWSPREVIOUS** so it cannot be retrieved without explicit VersionId knowledge:
+
+```bash
+# Identify the AWSPREVIOUS version
+PREV_VERSION=$(aws secretsmanager list-secret-version-ids \
+  --secret-id picasso/scheduling/oauth/MYR384719/test-coordinator \
+  --profile myrecruiter-staging --region us-east-1 \
+  --query 'Versions[?contains(Stages, `AWSPREVIOUS`)].VersionId' --output text)
+
+# Demote it (removes from AWSPREVIOUS stage; version retained in history without label)
+if [ -n "$PREV_VERSION" ]; then
+  aws secretsmanager update-secret-version-stage \
+    --secret-id picasso/scheduling/oauth/MYR384719/test-coordinator \
+    --version-stage AWSPREVIOUS \
+    --remove-from-version-id "$PREV_VERSION" \
+    --profile myrecruiter-staging --region us-east-1
+fi
 ```
 
 **Verifier (no plaintext leakage):**
@@ -128,9 +183,12 @@ aws secretsmanager describe-secret \
 aws secretsmanager get-secret-value \
   --secret-id picasso/scheduling/oauth/MYR384719/test-coordinator \
   --profile myrecruiter-staging \
-  --query 'SecretString' --output text | jq 'with_entries(if .key | test("secret|token|client_id") then .value = "REDACTED" else . end)'
-# Expected: JSON with client_id/client_secret/refresh_token = "REDACTED",
-#   other fields visible (provider=google, scopes=[calendar], purpose=…, etc.)
+  --query 'SecretString' --output text | jq 'with_entries(if .key | test("secret|token|client_id|email") then .value = "REDACTED" else . end)'
+# Expected: JSON with client_id/client_secret/refresh_token/coordinator_email
+#   all REDACTED; other fields visible (provider=google, scopes=[calendar],
+#   purpose=…, etc.). `coordinator_email` is a real Google account email —
+#   redacting it from terminal output keeps shell history / screen recordings
+#   clean.
 ```
 
 ---
@@ -157,7 +215,7 @@ No action required in this runbook step — captured here for forward reference.
 
 ## Step 5 — Gate-closure verification
 
-After Steps 1–3 complete, the sub-phase B Entry precondition is met when **all** of the following return non-empty:
+After Steps 1–3 complete, the sub-phase B Entry precondition is met when **all** of the following pass:
 
 ```bash
 # (a) Secret exists in staging-525 at the canonical path
@@ -175,12 +233,26 @@ aws secretsmanager get-secret-value \
   && echo "OAuth secret payload structurally valid" \
   || echo "FAIL: payload missing one or more required keys"
 
-# (c) Google API reachable with the credentials (one-time live check; safe — read-only)
+# (c) Only AWSCURRENT stage is labeled — no stale uppercase-key version still
+#     retrievable via AWSPREVIOUS:
+aws secretsmanager list-secret-version-ids \
+  --secret-id picasso/scheduling/oauth/MYR384719/test-coordinator \
+  --profile myrecruiter-staging --region us-east-1 \
+  --query 'Versions[?Stages != null].Stages'
+# Expected: [["AWSCURRENT"]] only. If you see [["AWSPREVIOUS"]] or
+# [["AWSPENDING"]], demote per Step 3's tail block.
+
+# (d) OAuth Playground redirect URI removed (manual check in Google Cloud
+#     Console → Credentials → OAuth client). The Playground URI is a
+#     permanent attack surface if left in place; Step 2 hygiene-note
+#     mandates removal.
+
+# (e) Google API reachable with the credentials (one-time live check; safe — read-only)
 # Run from a Python venv with `google-auth google-api-python-client` installed,
 # OR defer to the first B5/B6 integration test which exercises the same path.
 ```
 
-After (a)+(b) pass, sub-phase B's Entry precondition line 131 transitions from 🔵 VERIFY → 🟢 VERIFIED, and Phase 2 Implementation (B1+) can begin.
+After (a)+(b)+(c)+(d) pass, sub-phase B's Entry precondition line 131 transitions from 🔵 VERIFY → 🟢 VERIFIED, and Phase 2 Implementation (B1+) can begin.
 
 ---
 
@@ -198,4 +270,12 @@ Plan §4 Entry preconditions row 3 (line 131): "🔵 VERIFY: Google Calendar OAu
 
 ## Plan amendment after operator runs this
 
-After successful Step 5 verification, [`scheduling_implementation_plan.md` line 131](scheduling_implementation_plan.md#L131) should be amended in the same PR pattern as line 132 (VERIFIED 2026-05-25 SNS) — convert 🔵 VERIFY → 🟢 VERIFIED 2026-MM-DD with a one-line provenance note pointing back to the canonical secret ARN. A separate one-line plan PR after operator confirmation suffices.
+After successful Step 5 verification, [`scheduling_implementation_plan.md` line 131](scheduling_implementation_plan.md#L131) should be amended in the same PR pattern as line 132 (VERIFIED 2026-05-25 SNS) — convert 🔵 VERIFY → 🟢 VERIFIED 2026-MM-DD with a one-line provenance note pointing back to the canonical secret ARN. A separate one-line plan PR after operator confirmation suffices. Record the OAuth consent screen **User Type** chosen (Internal vs External) in the VERIFIED note so future implementers know the access constraint.
+
+---
+
+## 2026-05-25 incident log — operator + agent collaborative provisioning
+
+On 2026-05-25, this runbook was executed in collaborative mode: operator completed Steps 1–3 (Google Cloud Console + OAuth Playground + AWS Secrets Manager create); agent ran Steps 4–5 (gate verification). During Step 5, agent discovered the operator's stored payload used uppercase shell-variable-style keys (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`, `COORDINATOR_EMAIL`) instead of the canonical E11 lowercase schema. Agent rewrote the payload in-place via `aws secretsmanager update-secret` to add the canonical lowercase keys + metadata fields (`provider`, `scopes`, `token_endpoint`, `created_at`, `purpose`, `rotate_after`). The rewrite created a new AWSCURRENT version; the original uppercase version remained as AWSPREVIOUS until subsequently demoted via `update-secret-version-stage --remove-from-version-id` (audit row 11 closure).
+
+**Process improvement:** the Step 3 apply block above has been hardened to use Python-based JSON generation (avoids heredoc expansion bugs), to use put-secret-value-on-existing-secret for idempotent re-runs, and to include the AWSPREVIOUS-demotion step inline so re-runs of this runbook produce the canonical schema on the first try. Future agent-initiated credential mutations should require an explicit operator confirmation gate before execution (general convention being added to CLAUDE.md).

@@ -100,7 +100,7 @@ No consumer may reject a message solely because it has already processed it — 
 | Scenario | B2 behavior |
 |---|---|
 | Consumer absent (no SQS subscriber yet) | B2 logs the event and continues. v1 ships consumer stubs for C4, C8, C9 so the queue always has a subscriber. |
-| Consumer throws / returns non-2xx | SQS redrive to DLQ after configured max-receive-count. DLQ alarm fires (wired to `picasso-ops-alerts`). |
+| Consumer throws / returns non-2xx | SQS redrive to DLQ after configured max-receive-count. DLQ alarm fires (wired to `picasso-ops-alerts-{env}` — staging: `picasso-ops-alerts-staging` per [plan §4 line 132 VERIFIED](scheduling_implementation_plan.md#L132); prod: `picasso-ops-alerts-prod` reserved for Phase-2 cutover). |
 | Payload fails schema validation | B2 logs full payload + validation error, sends to DLQ, fires alarm. Listener Lambda does NOT crash — process continues for subsequent push notifications. |
 | `events.get` returns 403 (event made private) | Emit `booking.event_made_private`. Do not attempt to read event body. Log degradation. |
 
@@ -129,3 +129,4 @@ No consumer may reject a message solely because it has already processed it — 
 | Date | Change | Author |
 |---|---|---|
 | 2026-05-02 | Initial — derived from canonical §14.2 event taxonomy and §13 token/payload constraints | Chris + Claude |
+| 2026-05-25 | Drift correction: SNS topic name `picasso-ops-alerts` → `picasso-ops-alerts-{env}` (`-staging` is canonical in staging-525 per `{name}-{env}` naming convention). Closes audit row 8 from `project_scheduling_subphase_b_phase_completion_audit_2026-05-25`. | Chris + Claude |
