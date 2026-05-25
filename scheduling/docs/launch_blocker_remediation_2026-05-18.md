@@ -29,7 +29,7 @@ N3/N4 touch `SMS_Webhook_Handler`, **already live in staging** on the transactio
 - Dedup: `MessageDeduplicationId` = the consumer dedupe key already defined in the dispatch interface (`{event_id}:{last_calendar_mutation_at}`); `MessageGroupId` = `tenant_id` (per-tenant ordering, no cross-tenant head-of-line blocking). Content-based dedup off (explicit ID).
 - Dead-letter queue `picasso-calendar-dispatch-dlq-${var.env}.fifo`, `maxReceiveCount` = 5.
 - Queue policy: least-privilege — only `Calendar_Watch_Listener`'s execution role may `SendMessage`; only the consumer Lambdas' roles may `ReceiveMessage`/`DeleteMessage`. No `sqs:SendMessageBatch` in the resource policy (see `feedback_sqs_resource_policy_action_names`).
-- Alarm: DLQ `ApproximateNumberOfMessagesVisible` > 0 → the **R5-resolved** staging topic `arn:aws:sns:us-east-1:525409062831:mfs-phase5-alarms`.
+- Alarm: DLQ `ApproximateNumberOfMessagesVisible` > 0 → the **R5-resolved** staging topic `arn:aws:sns:us-east-1:525409062831:picasso-ops-alerts-staging` (amended 2026-05-25 from the original `mfs-phase5-alarms` name; live `aws sns list-topics` confirms `picasso-ops-alerts-staging` is the only topic in staging-525).
 - Plan wiring: queue ARN becomes a B2 *entry precondition*; B-phase exit criteria gains a queue end-to-end smoke test (listener publishes → consumer stub receives → DLQ empty).
 
 **Verification.** Terraform plan/apply in staging shows queue + DLQ + policy + alarm; smoke test: synthetic listener message is received by a consumer stub and deleted; a poison message lands in DLQ after 5 receives and fires the alarm.
