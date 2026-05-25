@@ -290,10 +290,18 @@ AWS_PROFILE=myrecruiter-prod aws dynamodb query \
 
 **When to use:** consumer of a prod tenant requests deletion. **Higher-risk procedure than §3.1 access** — every step mutates prod data, with no Lambda dry_run guardrail. The substitution table from §3.1 applies; this subsection adds delete-specific safety.
 
-**Hard prerequisites (refuse to proceed without all three):**
-1. **Account guard executed** (see §3.1; refuses if not on account 614)
-2. **Access path §3.1 completed first** — operator has the full per-surface row list from the access walk; deletion targets ONLY those rows (no Scan-then-delete in a single pass)
-3. **Identity verification §2 completed AND counsel-trigger checklist §9 cleared** (delete is irreversible; verification bar is the highest of all paths)
+**Hard prerequisites (refuse to proceed without all four):**
+1. **Prod account guard executed** (see §3.1; refuses if not on account 614)
+2. **Staging account guard ALSO executed** (Sprint G3 / audit row 14 — the cross-account convention writes the DSAR audit row to `picasso-pii-dsar-audit-staging`; if your `myrecruiter-staging` SSO session is expired, the audit row write at step 5 will silently fail and leave the prod deletion un-audited):
+   ```bash
+   test "$(aws sts get-caller-identity --profile myrecruiter-staging --query Account --output text)" = "525409062831" \
+     && echo "✅ Staging account also confirmed (525); audit-row destination reachable" \
+     || { echo "❌ STOP — staging SSO is expired or wrong; refresh with: aws sso login --profile myrecruiter-staging"; exit 1; }
+   ```
+3. **Access path §3.1 completed first** — operator has the full per-surface row list from the access walk; deletion targets ONLY those rows (no Scan-then-delete in a single pass)
+4. **Identity verification §2 completed AND counsel-trigger checklist §9 cleared** (delete is irreversible; verification bar is the highest of all paths)
+
+**Separation-of-duties posture (Sprint G3 / audit row 15):** at current scale (sole operator), single-actor typed-confirm ("DELETE PROD" in `tools/dsar-invoke.sh`) is the approved posture. This is an explicit risk-acceptance, not an oversight. If a second operator joins (Atlanta LOI or later), a mandatory 4-eyes review for prod DeleteItem MUST be added to this procedure + wrapper BEFORE their first DSAR — recorded as a deferred-with-named-trigger gap in [`privacy-risk-register.md`](./privacy-risk-register.md) F-DSAR-SoD (route on trigger).
 
 **Pre-substituted prod delete-path commands (copy-paste-ready). REHEARSAL FIRST**: run `describe-table` for each target table (per §4.1 rehearsal block below); the `aws dynamodb delete-item` API has NO `--dry-run` flag (that flag exists only on EC2 APIs — audit row 9), so the safe-rehearsal substitute is `describe-table` to confirm key shape + `--select COUNT` on a Scan with the targeted PK to confirm the row exists before deleting it.
 
