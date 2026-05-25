@@ -4,6 +4,13 @@ on:
   push:
     branches:
       - main
+    paths-ignore:
+      # Docs-only changes don't affect the widget build artifact — skip the
+      # production deploy gate so docs PRs don't accumulate in the
+      # "Approve Production Deploy" queue. Mixed commits (docs + code)
+      # still trigger the workflow per GitHub paths-ignore semantics.
+      - 'docs/**'
+      - '**/*.md'
   workflow_dispatch:
     inputs:
       invalidate_cache:
