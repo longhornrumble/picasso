@@ -68,13 +68,13 @@ Sub-phase B's integration tests (`events.watch`, `events.stop`, `events.get`) ne
 **Canonical path** per [plan E11 line 386](scheduling_implementation_plan.md#L386): `picasso/scheduling/oauth/{tenantId}/{coordinatorId}`.
 
 For sub-phase B integration tests, choose stable values. Recommended:
-- `{tenantId}` = `AUS123957` (Austin Angels, the v1 pilot tenant — forward-compat with sub-phase F)
+- `{tenantId}` = `MYR384719` (MyRecruiter test tenant — used for sub-phase B integration testing; sub-phase F prod cutover uses real tenants)
 - `{coordinatorId}` = `test-coordinator` (or the Google email's local-part if you want it human-readable; lowercase + alphanumeric)
 
 **Pre-image:**
 ```bash
 aws secretsmanager describe-secret \
-  --secret-id picasso/scheduling/oauth/AUS123957/test-coordinator \
+  --secret-id picasso/scheduling/oauth/MYR384719/test-coordinator \
   --profile myrecruiter-staging 2>&1 | head -3
 # Expected: error "ResourceNotFoundException" (secret does not yet exist)
 ```
@@ -104,8 +104,8 @@ cat > /tmp/oauth-secret.json <<EOF
 EOF
 
 aws secretsmanager create-secret \
-  --name picasso/scheduling/oauth/AUS123957/test-coordinator \
-  --description "Sub-phase B integration-test OAuth credentials for AUS123957 staging tenant (test coordinator). Provisioned 2026-05-25 per subphase_b_oauth_provisioning_runbook." \
+  --name picasso/scheduling/oauth/MYR384719/test-coordinator \
+  --description "Sub-phase B integration-test OAuth credentials for MYR384719 staging tenant (test coordinator). Provisioned 2026-05-25 per subphase_b_oauth_provisioning_runbook." \
   --secret-string file:///tmp/oauth-secret.json \
   --profile myrecruiter-staging
 
@@ -116,17 +116,17 @@ shred -u /tmp/oauth-secret.json 2>/dev/null || rm -P /tmp/oauth-secret.json 2>/d
 **Verifier (no plaintext leakage):**
 ```bash
 aws secretsmanager describe-secret \
-  --secret-id picasso/scheduling/oauth/AUS123957/test-coordinator \
+  --secret-id picasso/scheduling/oauth/MYR384719/test-coordinator \
   --profile myrecruiter-staging \
   --query '{Name: Name, ARN: ARN, Description: Description, CreatedDate: CreatedDate}'
 # Expected: returns a Name + ARN + 2026-05-25 CreatedDate; ARN of shape
-#   arn:aws:secretsmanager:us-east-1:525409062831:secret:picasso/scheduling/oauth/AUS123957/test-coordinator-XXXXXX
+#   arn:aws:secretsmanager:us-east-1:525409062831:secret:picasso/scheduling/oauth/MYR384719/test-coordinator-XXXXXX
 ```
 
 **Round-trip verifier (confirms payload schema; redacts secret values):**
 ```bash
 aws secretsmanager get-secret-value \
-  --secret-id picasso/scheduling/oauth/AUS123957/test-coordinator \
+  --secret-id picasso/scheduling/oauth/MYR384719/test-coordinator \
   --profile myrecruiter-staging \
   --query 'SecretString' --output text | jq 'with_entries(if .key | test("secret|token|client_id") then .value = "REDACTED" else . end)'
 # Expected: JSON with client_id/client_secret/refresh_token = "REDACTED",
@@ -164,11 +164,11 @@ After Steps 1–3 complete, the sub-phase B Entry precondition is met when **all
 aws secretsmanager list-secrets --profile myrecruiter-staging \
   --query "SecretList[?starts_with(Name, 'picasso/scheduling/oauth/')].Name" \
   --output text
-# Expected: picasso/scheduling/oauth/AUS123957/test-coordinator
+# Expected: picasso/scheduling/oauth/MYR384719/test-coordinator
 
 # (b) Secret payload is structurally valid (no jq parse errors)
 aws secretsmanager get-secret-value \
-  --secret-id picasso/scheduling/oauth/AUS123957/test-coordinator \
+  --secret-id picasso/scheduling/oauth/MYR384719/test-coordinator \
   --profile myrecruiter-staging \
   --query SecretString --output text \
   | jq -e 'has("client_id") and has("client_secret") and has("refresh_token") and has("scopes")' >/dev/null \
