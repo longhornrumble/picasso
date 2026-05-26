@@ -532,6 +532,8 @@ If either number > 5 at session close, the session-close hook is to:
 2. Open back-sync PR `base=staging head=main` after the promote-PR merges (or simultaneously if both drift directions exceed 5)
 3. PR descriptions must reference this rule + cite the pre-promote counts
 
+**MERGE STRATEGY:** staging↔main promote-PRs and back-sync PRs MUST be merged with **"Create a merge commit"** (NOT squash, NOT rebase). Squash collapses the 2-parent merge commit into a single commit, breaking history linkage so `rev-list --count` overcounts forever. Established by picasso#249 (squashed → broken linkage) → picasso#250 (recovery with merge-commit strategy).
+
 **Why this rule exists:** before 2026-05-26 the divergence had grown to **41 staging-only + 36 main-only = 77 total**. Two patterns drove the drift:
 - Reflex-routing to staging from before the 2026-05-25 routing convention.
 - Asymmetric routing post-convention: docs went to main, IaC went to staging, with no force pushing periodic reconciliation.
