@@ -693,6 +693,37 @@ If `s3 cp` fails on any key (delete-marker race, transient throttle), retry; if 
 
 **Reference:** F-DSAR32 D5 row.
 
+### F-DSAR33: weekly PII subject-index alarm health check
+
+**Trigger:** preventive — operator's standing **weekly cadence** (every Monday post-stand-up). Catches the failure mode where subject-index write failures degrade silently between alarm fires.
+
+**Why weekly:** F-DSAR33 closing 2026-05-26 (lambda#163 + picasso#242) restored CloudWatch alarms on the no-dim aggregate `PII/SubjectIndex.IndexRaceUnresolved` + `.IndexUnavailable` series. Alarms fire on `Sum > 0 in any 1h window` → page on first failure. The weekly check is a **secondary confidence signal** (per `feedback_milestone_estimate_calibration` calendar-backstop pattern): if alarms haven't fired but the EMF metric stream is empty for >1 week, that's a meta-failure (e.g., BSH not invoked at all; metric emit broken).
+
+**Action:** run CloudWatch Logs Insights query against BSH Lambda log group, last 7 days:
+
+```bash
+AWS_PROFILE=myrecruiter-staging aws logs start-query \
+  --log-group-name "/aws/lambda/Bedrock_Streaming_Handler_Staging" \
+  --start-time $(date -v-7d +%s) \
+  --end-time $(date +%s) \
+  --query-string 'filter source = "pii_subject_emf" | stats count() by bin(1h)'
+```
+
+Wait ~5 sec then retrieve via `get-query-results`. Expected: nonzero count() rows for hours when BSH had pii_subject activity. **Pattern to flag**: zero rows for an entire 7-day window despite known DSAR or form-submission activity → metric emit may have broken; file an investigation row in the operator log.
+
+**Alarm state check** (compact secondary signal):
+
+```bash
+AWS_PROFILE=myrecruiter-staging aws cloudwatch describe-alarms \
+  --alarm-name-prefix "Bedrock_Streaming_Handler_Staging-pii-subject" \
+  --query 'MetricAlarms[].{Name:AlarmName,State:StateValue,Updated:StateUpdatedTimestamp}' \
+  --output table
+```
+
+Expected: both alarms `OK` (after first invocation populates the metric) or `INSUFFICIENT_DATA` (cold state — only acceptable in week 1 post-deploy).
+
+**Reference:** F-DSAR33 D5 row + closeout phase-completion-audit 2026-05-26 strong-rec #17 (Security-Reviewer).
+
 ---
 
 ## §8 — SLA timekeeping
