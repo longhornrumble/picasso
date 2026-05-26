@@ -656,7 +656,7 @@ resource "aws_cloudwatch_metric_alarm" "pii_subject_index_race_unresolved" {
   tags = {
     Project = "pii-governance"
     Owner   = "chris@myrecruiter.ai"
-    Source  = "F-DSAR33 closeout - lambda PR 163"
+    Source  = "F-DSAR33 closeout / lambda#163"
   }
 }
 
@@ -679,7 +679,7 @@ resource "aws_cloudwatch_metric_alarm" "pii_subject_index_unavailable" {
   tags = {
     Project = "pii-governance"
     Owner   = "chris@myrecruiter.ai"
-    Source  = "F-DSAR33 closeout - lambda PR 163"
+    Source  = "F-DSAR33 closeout / lambda#163"
   }
 }
 
