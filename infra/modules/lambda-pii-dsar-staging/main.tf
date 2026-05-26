@@ -235,6 +235,18 @@ data "aws_iam_policy_document" "dsar" {
     sid       = "ArchiveBucketListVersions"
     actions   = ["s3:ListBucket", "s3:ListBucketVersions"]
     resources = [local.s3_archive_bucket]
+    # Audit fix #7 (M2 phase-completion-audit, Security #1a): scope the
+    # bucket-level list to the sessions/ prefix. Without this condition,
+    # the DSAR role could enumerate the full bucket namespace; if future
+    # non-session keys are added (config dumps, diagnostics), they would
+    # be listable. The walker only ever calls list_object_versions with
+    # Prefix=sessions/{sessionId}/ — this condition mirrors the API
+    # constraint in IAM.
+    condition {
+      test     = "StringLike"
+      variable = "s3:prefix"
+      values   = ["sessions/*"]
+    }
   }
   statement {
     sid       = "ArchiveBucketDeleteVersions"

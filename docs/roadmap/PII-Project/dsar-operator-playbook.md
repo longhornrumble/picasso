@@ -592,6 +592,107 @@ AWS_PROFILE=myrecruiter-staging aws dynamodb scan \
     --key <KEY> --version-id <VERSION>
   ```
 
+### F-DSAR30: identifier_type=phone (walker-NOT-supported)
+
+**Trigger:** consumer DSAR arrives with `identifier_type=phone` (no email, no PSID — phone-only subject).
+
+**Why no walker:** phone numbers are not a primary subject identifier on any tenant-scoped row. They appear on `picasso-notification-sends-staging` (already covered by M1 walker via `pii_subject_id` resolution from email) and `picasso-sms-consent-staging` (opt-in artifact, not subject-rights-actionable as a primary key). Subjects who only ever interacted via SMS without ever providing an email are unreachable by Lambda.
+
+**Action:** manual scan of `picasso-sms-consent-staging`, **with paginated retrieval** (M2 phase-completion-audit row #14 + Security #8 — single-shot Scan without `--starting-token` returns only the first 1 MB page and silently truncates on consent tables larger than that, producing false-negative DSAR results).
+
+```bash
+# Step 1: initial scan page
+AWS_PROFILE=myrecruiter-staging aws dynamodb scan \
+  --table-name picasso-sms-consent-staging \
+  --filter-expression "phone = :p" \
+  --expression-attribute-values '{":p":{"S":"<SUBJECT_PHONE_E164>"}}' \
+  --output json > /tmp/dsar-phone-scan-page-1.json
+
+# Step 2: if "LastEvaluatedKey" present in response, paginate ALL pages
+# (REQUIRED — otherwise pre-1MB rows may be missed)
+NEXT_TOKEN=$(jq -r '.LastEvaluatedKey // empty' /tmp/dsar-phone-scan-page-1.json)
+PAGE=2
+while [ -n "$NEXT_TOKEN" ]; do
+  AWS_PROFILE=myrecruiter-staging aws dynamodb scan \
+    --table-name picasso-sms-consent-staging \
+    --filter-expression "phone = :p" \
+    --expression-attribute-values '{":p":{"S":"<SUBJECT_PHONE_E164>"}}' \
+    --starting-token "$NEXT_TOKEN" \
+    --output json > /tmp/dsar-phone-scan-page-${PAGE}.json
+  NEXT_TOKEN=$(jq -r '.LastEvaluatedKey // empty' /tmp/dsar-phone-scan-page-${PAGE}.json)
+  PAGE=$((PAGE + 1))
+done
+
+# Step 3: combine all pages + check for matches
+jq -s '[.[].Items[]?]' /tmp/dsar-phone-scan-page-*.json > /tmp/dsar-phone-matches.json
+jq 'length' /tmp/dsar-phone-matches.json  # 0 = subject not present; >0 = manual delete/export
+```
+
+**For delete:** for each matched row, run `aws dynamodb delete-item --table-name picasso-sms-consent-staging --key '{...}'` with the row's PK+SK from the scan output. Record each delete in the dsar-log audit row.
+
+**For access:** package the scan output as the subject's response packet.
+
+### F-DSAR30: identifier_type=name+address (walker-NOT-supported)
+
+**Trigger:** consumer DSAR with `identifier_type=name+address` (no email, no PSID, no phone).
+
+**Why no walker:** name + address are free-text within `picasso-form-submissions-staging.responses` (a DynamoDB map attribute). No GSI exists on these fields; no projection. The M1 email walker already exports them as part of the form-submission row dump for email-resolved subjects. Subjects who provided name + address but no email cannot be resolved by index lookup.
+
+**Action:** paginated scan with FilterExpression on `contains(responses, :name)`. Same pagination discipline as F-DSAR30 phone.
+
+```bash
+# Step 1: initial scan page (filter on responses map containing the name string)
+# Caution: substring match — false positives possible if name is common
+AWS_PROFILE=myrecruiter-staging aws dynamodb scan \
+  --table-name picasso-form-submissions-staging \
+  --filter-expression "contains(responses, :name)" \
+  --expression-attribute-values '{":name":{"S":"<SUBJECT_NAME>"}}' \
+  --output json > /tmp/dsar-name-scan-page-1.json
+
+# Step 2: paginate until LastEvaluatedKey is absent (same pattern as F-DSAR30 phone)
+NEXT_TOKEN=$(jq -r '.LastEvaluatedKey // empty' /tmp/dsar-name-scan-page-1.json)
+PAGE=2
+while [ -n "$NEXT_TOKEN" ]; do
+  AWS_PROFILE=myrecruiter-staging aws dynamodb scan \
+    --table-name picasso-form-submissions-staging \
+    --filter-expression "contains(responses, :name)" \
+    --expression-attribute-values '{":name":{"S":"<SUBJECT_NAME>"}}' \
+    --starting-token "$NEXT_TOKEN" \
+    --output json > /tmp/dsar-name-scan-page-${PAGE}.json
+  NEXT_TOKEN=$(jq -r '.LastEvaluatedKey // empty' /tmp/dsar-name-scan-page-${PAGE}.json)
+  PAGE=$((PAGE + 1))
+done
+```
+
+**For delete:** per-row DeleteItem AFTER manual review (substring match is false-positive-prone; do NOT auto-delete without operator confirmation that each row genuinely belongs to the subject — record each decision in the dsar-log audit row with rationale).
+
+**For access:** package only the rows that operator-review confirms belong to the subject.
+
+**Address-only matches:** repeat the procedure with `contains(responses, :addr)` substituting the street-line address. Combine results; deduplicate by `submission_id`.
+
+### F-DSAR32: ARCHIVE access path (object bodies)
+
+**Trigger:** consumer DSAR `request_type=access`; Lambda walker returns archive `exported_keys` (key list, not bodies).
+
+**Why operator-mediated:** `_walk_archive_bucket` deliberately omits `s3:GetObject` (Lambda 6 MB response cap; operator pulls bodies via own SSO role).
+
+**Action:** for each key in the Lambda response's `exported_rows["archive"]`, fetch the object body:
+
+```bash
+# For each key returned by the Lambda walker, fetch + add to subject response packet
+for KEY in $(jq -r '.exported_rows.archive[]' /tmp/dsar-lambda-response.json); do
+  AWS_PROFILE=myrecruiter-staging aws s3 cp "s3://picasso-archive-staging/${KEY}" - \
+    > /tmp/dsar-archive-$(basename "$KEY")
+done
+
+# Verify all keys fetched; package into subject response
+ls /tmp/dsar-archive-*
+```
+
+If `s3 cp` fails on any key (delete-marker race, transient throttle), retry; if persistent, surface in the operator's dsar-log entry as `archive_fetch_failed` with the key for follow-up.
+
+**Reference:** F-DSAR32 D5 row.
+
 ---
 
 ## §8 — SLA timekeeping
