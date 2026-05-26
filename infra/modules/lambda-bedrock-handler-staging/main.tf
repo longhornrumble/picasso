@@ -635,6 +635,7 @@ resource "aws_cloudwatch_metric_alarm" "pii_subject_index_race_unresolved" {
     id          = "race_unresolved_sum"
     expression  = "SUM(SEARCH('Namespace=\"PII/SubjectIndex\" MetricName=\"IndexRaceUnresolved\"', 'Sum', 3600))"
     label       = "PII subject-index race unresolved (1h sum across all tenants)"
+    period      = 3600
     return_data = true
   }
 
@@ -660,6 +661,7 @@ resource "aws_cloudwatch_metric_alarm" "pii_subject_index_unavailable" {
     id          = "unavailable_sum"
     expression  = "SUM(SEARCH('Namespace=\"PII/SubjectIndex\" MetricName=\"IndexUnavailable\"', 'Sum', 3600))"
     label       = "PII subject-index unavailable (1h sum across all tenants)"
+    period      = 3600
     return_data = true
   }
 

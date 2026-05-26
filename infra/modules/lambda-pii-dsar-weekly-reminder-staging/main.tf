@@ -248,13 +248,19 @@ resource "aws_cloudwatch_metric_alarm" "reminder_errors" {
 # Sprint E3 / audit defer-ok D1 — Lambda Invocations CloudWatch alarm.
 #
 # Mirrors the SLA monitor module's Invocations alarm. The weekly reminder runs
-# weekly (cron Mondays 14:00 UTC). 9 consecutive 24h missing-data windows
-# (1 week schedule + 2 day grace) breaches and pages ops. Catches the
-# EventBridge-disable case that the Errors alarm cannot detect.
+# weekly (cron Mondays 14:00 UTC). Catches the EventBridge-disable case that
+# the Errors alarm cannot detect.
+#
+# CloudWatch alarm constraint: period (≥3600) × evaluation_periods ≤ 604800
+# (1 week). With period=86400 (24h), max evaluation_periods is 7 — so the
+# original "1wk schedule + 2d grace" (9 windows) was infeasible. Reduced to
+# 7 windows (no grace); alarm fires when the 7th consecutive 24h window
+# shows Sum<1 (i.e., one missed run). Operator should expect immediate page
+# on schedule miss rather than a 2-day grace window.
 # ─────────────────────────────────────────────────────────────────────────────
 resource "aws_cloudwatch_metric_alarm" "reminder_invocations" {
   alarm_name        = "${local.function_name}-invocations"
-  alarm_description = "Sprint E3 / audit D1: weekly reminder Lambda Invocations < 1 over 9 consecutive 24h windows (1wk schedule + 2d grace). Catches EventBridge-disable case which the Errors alarm cannot detect."
+  alarm_description = "Sprint E3 / audit D1: weekly reminder Lambda Invocations < 1 over 7 consecutive 24h windows (1wk schedule, no grace per CW period×eval≤604800 limit). Catches EventBridge-disable case which the Errors alarm cannot detect."
 
   namespace   = "AWS/Lambda"
   metric_name = "Invocations"
@@ -266,7 +272,7 @@ resource "aws_cloudwatch_metric_alarm" "reminder_invocations" {
 
   threshold           = 1
   comparison_operator = "LessThanThreshold"
-  evaluation_periods  = 9 # 7d schedule + 2d grace
+  evaluation_periods  = 7 # 7d schedule; CW limit period×eval ≤604800 forbids grace
   treat_missing_data  = "breaching"
 
   alarm_actions = [var.ops_sns_topic_arn]
