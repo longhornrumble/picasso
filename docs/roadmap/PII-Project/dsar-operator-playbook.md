@@ -574,6 +574,46 @@ AWS_PROFILE=myrecruiter-staging aws dynamodb scan \
    ```
 5. With the resolved `pii_subject_id` (if any) OR direct sessionId, run the recent-messages query per F-DSAR4.
 
+### F-DSAR34: per-tenant S3 fulfillment bucket (Sprint D walker — IAM-gated)
+
+**Trigger:** the form-submission row's `fulfillment_path` attribute is populated (s3:// URI) AND the DSAR Lambda role lacks the matching `(bucket, tenant_id)` IAM grant. The walker hits `AccessDenied`, surfaces a row in `walker_results.fulfillment.failed_paths`, and the audit dispatcher emits a `manual_followup` event pointing at this section.
+
+**Why IAM-gated, not always-granted:** least-privilege design (per `infra/modules/lambda-pii-dsar-staging/main.tf` deliberate-absences block). No tenant currently configures `fulfillment.type='s3'` (empirical scan 2026-05-26 of all 4 prod + 1 staging tenant configs). When the first tenant turns it on, add the grant *with the tenant onboarding*, not preemptively.
+
+**Action — operator side (when a `failed_paths` row surfaces):**
+
+1. **Identify the `(bucket, tenant_id)` pair** from the failed s3:// URI in the walker output (Lambda response or CloudWatch logs):
+   ```
+   s3://{bucket}/submissions/{tenant_id}/{form_type}/{submission_id}.json
+                              └──────────┘
+                               tenant_id
+   ```
+2. **Confirm tenant config actually opts into S3 fulfillment** (defends against stale `fulfillment_path` values from a prior config):
+   ```bash
+   AWS_PROFILE=chris-admin aws s3 cp s3://myrecruiter-picasso/tenants/{TENANT_ID}/{TENANT_ID}-config.json - \
+     | jq '.conversational_forms[] | select(.fulfillment.type == "s3")'
+   ```
+3. **Add the grant to `var.fulfillment_grants` in `infra/main.tf`** (top-level module call):
+   ```hcl
+   module "lambda_pii_dsar_staging" {
+     # ... existing args ...
+     fulfillment_grants = [
+       { bucket = "<BUCKET>", tenant_id = "<TENANT_ID>" },
+     ]
+   }
+   ```
+4. **Stage-apply** (per Deployment SOP):
+   ```bash
+   cd infra
+   AWS_PROFILE=myrecruiter-staging terraform plan -var-file=envs/staging.tfvars -target=module.lambda_pii_dsar_staging
+   AWS_PROFILE=myrecruiter-staging terraform apply -var-file=envs/staging.tfvars -target=module.lambda_pii_dsar_staging
+   ```
+   Plan should show **one new `aws_iam_role_policy` statement** (`FulfillmentDelete{bucket}{tenant_id}`); no other changes.
+5. **Re-invoke the DSAR Lambda** for the original `dsar_id`. The walker's fulfillment branch now succeeds on the granted pair; any other untranslated `(bucket, tenant_id)` still surfaces a `failed_paths` row → repeat 1–4.
+6. **Record the closure** in the audit row + the DSAR log table; reference `F-DSAR34` in the followup-resolved field.
+
+**Reference:** Sprint D walker `Lambdas/lambda/picasso_pii_dsar_staging/lambda_function.py::_walk_fulfillment_s3` (PR lambda#164); writer `Master_Function_Staging/form_handler.py::_persist_fulfillment_path` + `Bedrock_Streaming_Handler_Staging/form_handler.js::persistFulfillmentPath` (PR lambda#166); IAM scaffold (this PR — picasso #N).
+
 ### F14 / F-DSAR17: ARCHIVE_BUCKET
 
 **Trigger:** subject's session-summaries row has aged out (post-TTL); content persists in `picasso-archive-staging`.
