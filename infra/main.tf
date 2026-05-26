@@ -239,6 +239,16 @@ module "ddb_booking_staging" {
   env    = var.env
 }
 
+# B1 runbook-provisioned table (PR #231, 2026-05-25). Not yet under Terraform
+# state — bringing it in via `terraform import` is tracked as a follow-up to
+# close R1 fully for sub-phase B. This data source lets B2 reference the ARN
+# + construct GSI ARNs (used by lambda_calendar_watch_listener_staging below)
+# without blocking on the import work.
+data "aws_dynamodb_table" "calendar_watch_channels_staging" {
+  count = var.env == "staging" ? 1 : 0
+  name  = "picasso-calendar-watch-channels-staging"
+}
+
 module "secrets_jwt_staging" {
   count  = var.env == "staging" ? 1 : 0
   source = "./modules/secrets-jwt-staging"
@@ -685,6 +695,36 @@ resource "aws_secretsmanager_secret_policy" "meta_ig_app_secret_staging" {
       },
     ]
   })
+}
+
+# ──────────────────────────────────────────────────────────────────────
+# Scheduling sub-phase B Task B2 — Calendar_Watch_Listener Lambda.
+# Receives Google Calendar push notifications; validates channel_token via
+# SHA-256 hash + constant-time compare; calls events.get; derives typed
+# events per scheduling/docs/listener_dispatch_interface.md (B0 spec) and
+# dispatches to picasso-calendar-watch-events-staging.fifo keyed by
+# event_id (= booking_id).
+# ──────────────────────────────────────────────────────────────────────
+module "lambda_calendar_watch_listener_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/lambda-calendar-watch-listener-staging"
+
+  # Calendar-watch-channels (runbook-provisioned PR #231; data source for now)
+  calendar_watch_channels_table_arn               = data.aws_dynamodb_table.calendar_watch_channels_staging[0].arn
+  calendar_watch_channels_table_name              = data.aws_dynamodb_table.calendar_watch_channels_staging[0].name
+  calendar_watch_channels_tenant_status_index_arn = "${data.aws_dynamodb_table.calendar_watch_channels_staging[0].arn}/index/tenant-status-index"
+
+  # Booking table (Terraform-managed via ddb-booking module)
+  booking_table_arn                   = module.ddb_booking_staging[0].table_arn
+  booking_table_name                  = module.ddb_booking_staging[0].table_name
+  booking_coordinator_email_index_arn = module.ddb_booking_staging[0].tenant_id_coordinator_email_index_arn
+
+  # Tenant registry (Terraform-managed)
+  tenant_registry_table_arn  = module.ddb_tenant_registry_staging[0].table_arn
+  tenant_registry_table_name = module.ddb_tenant_registry_staging[0].table_name
+
+  # Ops alerts SNS topic (shared with MFS + Meta — created by ops_alarms_master_function_staging)
+  ops_alerts_topic_arn = module.ops_alarms_master_function_staging[0].topic_arn
 }
 
 # ──────────────────────────────────────────────────────────────────────
