@@ -516,6 +516,30 @@ Choose the PR base branch by **what the PR contains**, not by habit:
 
 **Operational prerequisite:** the `Deploy to Production` workflow at `.github/workflows/deploy-production.yml` has `paths-ignore: [docs/**, **/*.md]` on the `push.main` trigger (added in picasso#225/#226), so pure-docs PRs targeting main do NOT trigger the production deploy pipeline. Mixed-content PRs (docs + code) still trigger the workflow per GitHub paths-ignore semantics.
 
+### Drift hard-cap (established 2026-05-26)
+
+**Rule:** `origin/staging` ↔ `origin/main` divergence MUST NOT exceed **5 commits in either direction** at session close. If exceeded, the session ends with a promote-PR opened (and, if reverse drift also exceeds 5, a back-sync PR opened).
+
+**Verifier (one command):**
+
+```bash
+echo "staging → main: $(git rev-list --count origin/main..origin/staging)"
+echo "main → staging: $(git rev-list --count origin/staging..origin/main)"
+```
+
+If either number > 5 at session close, the session-close hook is to:
+1. Open promote-PR `base=main head=staging` titled `promote(staging→main): <one-line summary of scope>`
+2. Open back-sync PR `base=staging head=main` after the promote-PR merges (or simultaneously if both drift directions exceed 5)
+3. PR descriptions must reference this rule + cite the pre-promote counts
+
+**Why this rule exists:** before 2026-05-26 the divergence had grown to **41 staging-only + 36 main-only = 77 total**. Two patterns drove the drift:
+- Reflex-routing to staging from before the 2026-05-25 routing convention.
+- Asymmetric routing post-convention: docs went to main, IaC went to staging, with no force pushing periodic reconciliation.
+
+The 5-commit cap is conservative on purpose — small promote-PRs are easier to review, conflict-resolve, and roll back than 41-commit ones. Pairs with `feedback_promote_pr_scope_discipline`: scoped promote-PRs per decision gate, NOT multi-milestone bundles.
+
+**Established by:** picasso#244 (the first scoped staging→main convergence opened explicitly to reset drift to zero, 2026-05-26).
+
 ### Force-push attestation convention (established 2026-05-25)
 
 When force-pushing to a PR branch after CI has already passed (e.g., rebase-to-update-with-main before merge), include in the PR description a one-line attestation that the only delta vs the pre-rebase tip is the rebase parent update (no substantive content change). Example:
