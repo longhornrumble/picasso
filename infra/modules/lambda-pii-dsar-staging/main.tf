@@ -72,6 +72,40 @@
 # in integration tests; operator role expands beyond a single operator; any
 # post-incident finding implicating cross-tenant blast radius. See
 # docs/roadmap/PII-Project/privacy-risk-register.md row F-DSAR2.
+#
+# AUDIT CLOSURE 2026-05-26 row #19 (Security-Reviewer 🟡): the
+# `aws_lambda_permission "operator_only"` below grants explicit
+# `lambda:InvokeFunction` to the SSO operator role. In staging acct 525 with
+# PowerUserAccess, ANY staging PowerUser principal can still invoke the
+# Lambda via their own IAM grant — the env-guard (`_assert_account`) defends
+# against wrong-account invocation, NOT wrong-principal invocation.
+# Acceptable in staging (synthetic data + a single operator team) but MUST
+# be tightened before prod cutover. Defer-with-trigger:
+#   - Trigger 1: Atlanta tenant LOI signed (M6 prod gate).
+#   - Trigger 2: any operator role count expansion beyond a single team.
+#   - Trigger 3: 2026-08-22 calendar backstop (D2/D3/D4 currency review).
+# Fix at trigger: add `Deny lambda:InvokeFunction` resource-based policy
+# fragment for all principals EXCEPT the operator SSO role + service roles
+# we explicitly enumerate. The env-guard is necessary but not sufficient
+# as an authZ control.
+#
+# AUDIT CLOSURE 2026-05-26 row #22 (Security-Reviewer 🟡): the
+# `lifecycle.ignore_changes = [filename, source_code_hash]` on the Lambda
+# resource below DOES NOT reliably prevent the placeholder re-deploy on
+# staging Terraform apply. Empirically: a 2026-05-26T17:37Z apply re-wrote
+# the manual DSAR deploy (CodeSha256 nvWZ/fiAG... → DLAsbw3..., size
+# 33883 → 30411) DESPITE the ignore_changes block. Tech-lead audit-of-audit
+# row #9 hypothesizes the policy-document refresh triggers a dependency-
+# chain rebuild that overrides ignore_changes. Forward protocol until root
+# cause is fixed:
+#   1. Operator runs `tools/verify-dsar-codesha.sh` after every staging
+#      apply that touches this module (script ships in this PR).
+#   2. If CodeSha256 != expected (real-source value), operator re-deploys
+#      via `aws lambda update-function-code` from the most recent zip.
+# Sprint E follow-up: move the `aws_lambda_function "this"` resource into
+# a SEPARATE module that has no IAM-policy dependency, so policy-document
+# changes never trigger function-resource refresh. Until that ships, the
+# verify-script is the durable mitigation.
 
 variable "pii_cmk_key_arn" {
   description = "ARN of the scoped PII CMK (module.kms_pii_staging.key_arn). The DSAR role gets kms:Decrypt/GenerateDataKey/DescribeKey on it for the data-plane walk."
@@ -115,12 +149,22 @@ variable "fulfillment_grants" {
     tenant_id = string
   }))
   default = []
+  # Audit closure 2026-05-26 row #26 (code-reviewer/Security 🟢): reject
+  # malformed bucket names + non-alphanumeric tenant_ids at plan time. AWS S3
+  # bucket names: 3–63 chars, lowercase + digits + hyphens, must start+end
+  # alphanumeric, no underscores. Catches misconfigurations at plan, not
+  # at apply (which is the IAM-charset-gotcha pattern documented in CLAUDE.md
+  # — em-dash in IAM desc 2026-05-19 + # in CW tag values 2026-05-26).
   validation {
     condition = alltrue([
-      for g in var.fulfillment_grants :
-      length(g.bucket) > 0 && length(g.tenant_id) > 0
+      for g in var.fulfillment_grants : (
+        length(g.bucket) >= 3 && length(g.bucket) <= 63
+        && length(g.tenant_id) > 0
+        && can(regex("^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$", g.bucket))
+        && can(regex("^[A-Za-z0-9][A-Za-z0-9-]*$", g.tenant_id))
+      )
     ])
-    error_message = "Each fulfillment_grants entry must have non-empty `bucket` and `tenant_id` (otherwise the resulting ARN would contain `submissions//*` and over-grant)."
+    error_message = "Each fulfillment_grants entry must have a valid S3 bucket name (3-63 chars, lowercase+digits+hyphens+dots, alphanumeric edges) and a non-empty alphanumeric+hyphen tenant_id."
   }
 }
 
@@ -320,10 +364,17 @@ data "aws_iam_policy_document" "dsar" {
   # the variable's description block above for the gate-trigger procedure.
   # Sids are stable per pair so terraform plan diffs are readable on tenant
   # adds/removes.
+  #
+  # Audit closure 2026-05-26 row #25 (code-reviewer 🟢): IAM Sids have a
+  # 64-char limit. A 63-char bucket name + a 20-char tenant_id would produce
+  # `FulfillmentDelete{bucket}{tenant_id}` exceeding 64 chars (apply-time
+  # error). Use a deterministic 12-char SHA1 prefix of `{bucket}/{tenant_id}`
+  # so the Sid is always 17 + 12 = 29 chars, well under the limit, and
+  # remains stable per (bucket, tenant_id) pair across plans.
   dynamic "statement" {
     for_each = { for g in var.fulfillment_grants : "${g.bucket}-${g.tenant_id}" => g }
     content {
-      sid       = "FulfillmentDelete${replace(replace(statement.key, "-", ""), "_", "")}"
+      sid       = "FulfillmentDelete${substr(sha1("${statement.value.bucket}/${statement.value.tenant_id}"), 0, 12)}"
       actions   = ["s3:DeleteObject"]
       resources = ["arn:aws:s3:::${statement.value.bucket}/submissions/${statement.value.tenant_id}/*"]
     }
