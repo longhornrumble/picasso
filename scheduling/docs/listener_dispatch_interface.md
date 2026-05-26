@@ -114,6 +114,22 @@ No consumer may reject a message solely because it has already processed it — 
 
 ---
 
+## Delta Discovery (B2 Phase 2b precondition)
+
+The "Event-Type Vocabulary" table above speaks in terms of `events.get(eventId)` returning 404 / showing a `visibility` change / etc. **Google Calendar push notifications identify a watched calendar, not a specific event** — `X-Goog-Resource-ID` + `X-Goog-Resource-URI` point at the calendar resource. The listener must run a delta-discovery step to map a push notification to the specific event_id(s) that changed before it can call `events.get` per the table.
+
+**Standard pattern:** `events.list(calendarId, syncToken)`.
+1. Initial registration (B5 onboarding hook) calls `events.list(calendarId)` (no syncToken) → records `nextSyncToken` on the channel row as `last_sync_token`.
+2. On every push notification, listener calls `events.list(calendarId, syncToken=last_sync_token)` → response contains only events that changed since last sync + a new `nextSyncToken`.
+3. Listener atomically updates `last_sync_token` on the channel row (conditional write keyed on prior value to prevent races with concurrent invocations for the same channel — SQS FIFO MessageGroupId=channel_id today; this becomes redundant once Phase 2b lands but is belt-and-suspenders).
+4. For each returned event, derive the matching event_type per the table above (deleted / moved / reassigned / private / attendee_accepted / attendee_declined). OOO overlap derivation (`booking.ooo_overlap_detected`) is a separate path triggered when the changed event is an OOO/working-location event and a GSI lookup on overlapping bookings returns matches.
+
+**Schema impact (lands with Phase 2b infra change):** `picasso-calendar-watch-channels-{env}` row gains `last_sync_token` (S, optional) + `coordinator_id` (S, required for the OAuth secret-path lookup `picasso/scheduling/oauth/{tenant_id}/{coordinator_id}`). B1 runbook + canonical §14.1 update with Phase 2b.
+
+**Status:** B2 **Phase 2a shipped** the OAuth + Calendar API foundation modules ([`Calendar_Watch_Listener/oauth-client.js`](https://github.com/longhornrumble/lambda/blob/main/Calendar_Watch_Listener/oauth-client.js) + [`calendar-api.js`](https://github.com/longhornrumble/lambda/blob/main/Calendar_Watch_Listener/calendar-api.js)) without modifying the handler; Phase 2b will wire the delta-discovery + typed-event-derivation into the handler once this spec section is reviewed.
+
+---
+
 ## Named Consumers
 
 | Consumer | Sub-phase | Event types consumed |
@@ -130,3 +146,4 @@ No consumer may reject a message solely because it has already processed it — 
 |---|---|---|
 | 2026-05-02 | Initial — derived from canonical §14.2 event taxonomy and §13 token/payload constraints | Chris + Claude |
 | 2026-05-25 | Drift correction: SNS topic name `picasso-ops-alerts` → `picasso-ops-alerts-{env}` (`-staging` is canonical in staging-525 per `{name}-{env}` naming convention). Closes audit row 8 from `project_scheduling_subphase_b_phase_completion_audit_2026-05-25`. | Chris + Claude |
+| 2026-05-26 | Added "Delta Discovery" section as Phase 2b precondition — clarifies that `events.list(syncToken)` is required between Google's calendar-level push and the per-event `events.get` calls the table assumes. Surfaces schema additions (`last_sync_token`, `coordinator_id`) that land with Phase 2b infra change. Phase 2a (OAuth + Calendar API foundation modules) shipped via [lambda#165](https://github.com/longhornrumble/lambda/pull/165). | Chris + Claude |
