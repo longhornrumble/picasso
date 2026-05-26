@@ -149,4 +149,12 @@ The expected posture for a session-summaries archive bucket is:
 
 This document, once filled, is the authoritative record of the verification. The git commit SHA of the filled-in version is the citable evidence for the F14 close.
 
-Re-verify: at any change to `picasso-session-archiver` (Lambda or its env vars); at Apply-2 design gate; at first DSAR fulfillment involving an aged-out session.
+Re-verify: at any change to `picasso-session-archiver` (Lambda or its env vars); at Apply-2 design gate; at first DSAR fulfillment involving an aged-out session; **at M2 Sprint C `_walk_archive_bucket` deploy (added 2026-05-25 by Sprint C closure PR)** — confirm versioning posture matches what the version-aware walker assumes (`ListObjectVersions` + `DeleteObject(VersionId)` per version + delete-marker enumeration).
+
+## M2 Sprint C status (2026-05-25)
+
+- **Walker code SHIPPED** (lambda PR #158): `_walk_archive_bucket(tenant_id, session_ids, request_type, dry_run)` mirrors the decision rule above — `list_object_versions` with per-version `delete_object(VersionId=...)` enumeration including delete-markers (full erase under versioning=ENABLED).
+- **IaC IAM scope SHIPPED** (picasso PR — this PR): DSAR Lambda role grants `s3:ListBucket`, `s3:ListBucketVersions` on `picasso-archive-staging`; `s3:DeleteObject`, `s3:DeleteObjectVersion` on `picasso-archive-staging/sessions/*`. **Deliberately omitted**: `s3:GetObject` — walker returns keys only, not object bodies (Lambda 6 MB response cap; operator pulls bodies via their own SSO role with `aws s3 cp`).
+- **Integration test against real bucket** — Sprint E (will populate ≥1 synthetic archived session via `picasso-session-archiver` invocation OR manual `put_object`, then verify walker enumerates + deletes versions correctly).
+- **Lambda DEPLOY pending Sprint E** — IaC + walker source ship in source; `aws lambda update-function-code` happens in Sprint E (per CLAUDE.md SOP + F-DSAR29 deploy pattern).
+- **Prod (614) has no archive surface** — confirmed 2026-05-23 (no `session-archiver` Lambda in prod-614; no `ARCHIVE_BUCKET` env var on any prod Lambda). F-DSAR17 routing remains staging-only.

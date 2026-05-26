@@ -28,9 +28,16 @@
 #
 # DELIBERATE ABSENCES (least-privilege design discipline — same convention as
 # Apply-1 module's "DELIBERATELY ABSENT" block):
-#   - NO s3:* grants (milestone 2)
+#   - NO s3:* grants on tenant-fulfillment buckets — Sprint D will add scoped
+#     s3:DeleteObject on `s3://{tenant-bucket}/submissions/{tenant_id}/*` ARN
+#     pattern per PII_DELETE_PIPELINE_DESIGN.md Arm 3. Sprint C added the
+#     ARCHIVE_BUCKET grants only (picasso-archive-staging; sessions/* prefix).
+#   - NO s3:GetObject on ARCHIVE_BUCKET — walker returns keys only, not bodies
+#     (operator pulls bodies via their own SSO role with `aws s3 cp`).
 #   - NO Scan on any surface except where unavoidable (subject-lookups go through GSI)
 #   - NO DeleteItem on picasso-audit-staging (Art 17(3)(b) carve-out, D5 G-C)
+#   - NO DeleteItem on picasso-channel-mappings (M2 Sprint B IaC follow-up:
+#     psid resolver is read-only; mapping rows are tenant-config, not subject PII)
 #   - NO writes to picasso-pii-subject-index UpdateItem (that grant belongs to
 #     the Apply-1 backfill role, not DSAR)
 #
@@ -88,11 +95,28 @@ locals {
   t_conv_summaries     = "${local.ddb}/staging-conversation-summaries"
   t_audit              = "${local.ddb}/picasso-audit-staging"
   t_subject_index      = "${local.ddb}/picasso-pii-subject-index-staging"
+  # M2 Sprint B IaC follow-up (added Sprint C, picasso PR):
+  # channel-mappings is queried via TenantIndex GSI by the psid resolver
+  # (_resolve_psid_subject); session-events is queried by SESSION#{sessionId}
+  # by the Meta-path walker (_walk_session_events). Both surfaces were
+  # added in Sprint B (lambda PR #157) without the corresponding IaC grants
+  # — surfaced + closed under Sprint C per the M2 Sprint A gap-routing rule.
+  t_channel_mappings = "${local.ddb}/picasso-channel-mappings-staging"
+  t_session_events   = "${local.ddb}/picasso-session-events-staging"
 
   # Forward references to GSIs (already exist in their respective ddb modules).
   gsi_form_subjectid    = "${local.t_form_submissions}/index/PiiSubjectIdIndex"
   gsi_notif_bymessageid = "${local.t_notification_evts}/index/ByMessageId"
   gsi_subject_id        = "${local.t_subject_index}/index/PiiSubjectIdIndex"
+  gsi_chmap_tenantindex = "${local.t_channel_mappings}/index/TenantIndex"
+
+  # M2 Sprint C — ARCHIVE_BUCKET (picasso-archive-staging). Per
+  # archive-reachability-decision.md (2026-05-23): bucket exists in
+  # staging acct 525 only; prod-614 has no archive surface (F-DSAR17
+  # staging-only scope). Versioning ENABLED — walker uses
+  # ListObjectVersions + DeleteObject(VersionId) per version.
+  s3_archive_bucket   = "arn:aws:s3:::picasso-archive-staging"
+  s3_archive_sessions = "arn:aws:s3:::picasso-archive-staging/sessions/*"
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -168,6 +192,66 @@ data "aws_iam_policy_document" "dsar" {
     sid       = "SubjectIndexReadDelete"
     actions   = ["dynamodb:Query", "dynamodb:GetItem", "dynamodb:DeleteItem"]
     resources = [local.t_subject_index, local.gsi_subject_id]
+  }
+
+  # M2 Sprint B IaC follow-up — channel-mappings TenantIndex GSI Query for
+  # the psid resolver (_resolve_psid_subject). Read-only; no DeleteItem
+  # (the resolver only reads PAGE# rows to compose Meta sessionIds, never
+  # mutates the channel-mappings table). Grants both the base table ARN and
+  # the GSI ARN because IAM does not inherit GSI ARNs from the base.
+  statement {
+    sid       = "ChannelMappingsReadOnly"
+    actions   = ["dynamodb:Query", "dynamodb:GetItem"]
+    resources = [local.t_channel_mappings, local.gsi_chmap_tenantindex]
+  }
+
+  # M2 Sprint B IaC follow-up — session-events walker keyed by
+  # pk=SESSION#{sessionId}. Same Query + GetItem + DeleteItem pattern as the
+  # other MFS-scoped surfaces; tenant isolation enforced upstream by
+  # _resolve_psid_subject (channel-mappings TenantIndex GSI Query bounded on
+  # tenantId) and by _walk_form_submissions (email path) — see F-DSAR2 row.
+  statement {
+    sid       = "SessionEventsReadDelete"
+    actions   = ["dynamodb:Query", "dynamodb:GetItem", "dynamodb:DeleteItem"]
+    resources = [local.t_session_events]
+  }
+
+  # M2 Sprint C — ARCHIVE_BUCKET (picasso-archive-staging). Version-aware
+  # walker (_walk_archive_bucket) needs:
+  #   - ListBucketVersions on the bucket ARN (Prefix-scoped via API call;
+  #     IAM-level Prefix conditions on s3:prefix would over-restrict because
+  #     ListObjectVersions doesn't accept the same prefix condition shape as
+  #     ListObjectsV2 — operationally simpler to scope-via-API + IAM-Allow
+  #     on the bucket ARN; mitigated by the per-session_id Prefix on every
+  #     API call enforced in lambda_function.py:_walk_archive_bucket).
+  #   - DeleteObject on the objects ARN scoped to sessions/* prefix.
+  #   - DeleteObjectVersion required to fully erase under versioning=ON
+  #     (single-shot DeleteObject without VersionId only creates a
+  #     delete-marker; prior versions persist).
+  #   - GetObject scope-omitted: the walker returns keys only, not object
+  #     bodies (keeps Lambda response < 6 MB on chatty archives); operator
+  #     pulls bodies via `aws s3 cp` under their own SSO role.
+  statement {
+    sid       = "ArchiveBucketListVersions"
+    actions   = ["s3:ListBucket", "s3:ListBucketVersions"]
+    resources = [local.s3_archive_bucket]
+    # Audit fix #7 (M2 phase-completion-audit, Security #1a): scope the
+    # bucket-level list to the sessions/ prefix. Without this condition,
+    # the DSAR role could enumerate the full bucket namespace; if future
+    # non-session keys are added (config dumps, diagnostics), they would
+    # be listable. The walker only ever calls list_object_versions with
+    # Prefix=sessions/{sessionId}/ — this condition mirrors the API
+    # constraint in IAM.
+    condition {
+      test     = "StringLike"
+      variable = "s3:prefix"
+      values   = ["sessions/*"]
+    }
+  }
+  statement {
+    sid       = "ArchiveBucketDeleteVersions"
+    actions   = ["s3:DeleteObject", "s3:DeleteObjectVersion"]
+    resources = [local.s3_archive_sessions]
   }
 
   # picasso-pii-dsar-audit-staging — PutItem ONLY. Append-only event log;
