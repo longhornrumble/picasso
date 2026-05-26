@@ -248,6 +248,19 @@ data "aws_iam_policy_document" "dsar" {
       values   = ["sessions/*"]
     }
   }
+  # Closeout-audit blocker #2 (2026-05-26 phase-completion-audit, Security
+  # Blocker #1): the cold-start `_check_archive_mfa_delete_posture()`
+  # function at lambda_function.py:1358 calls `s3:GetBucketVersioning`
+  # on the archive bucket to verify the MFA-Delete posture before any
+  # walker runs. This is a bucket-level action that does NOT accept
+  # `s3:prefix` context — it CANNOT live in the ListVersions statement
+  # above (whose StringLike condition would deny it). Separate statement,
+  # narrow action, bucket-resource-scoped.
+  statement {
+    sid       = "ArchiveBucketGetVersioningPosture"
+    actions   = ["s3:GetBucketVersioning"]
+    resources = [local.s3_archive_bucket]
+  }
   statement {
     sid       = "ArchiveBucketDeleteVersions"
     actions   = ["s3:DeleteObject", "s3:DeleteObjectVersion"]
