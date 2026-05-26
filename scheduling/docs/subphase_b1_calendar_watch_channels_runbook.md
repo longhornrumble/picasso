@@ -24,6 +24,8 @@
 | `last_renewed_at` | S | attribute | ISO-8601; updated by Renewer |
 | `status` | S | attribute (GSI range) | `active` \| `unwatched_renewal_failed` \| `event_body_private` (per §14.2) |
 | `channel_token` | S | attribute (Tier-4 secret) | `secrets.token_hex(32)` per channel; validated via `hmac.compare_digest`. See "channel_token encryption" note below. |
+| `coordinator_id` | S | attribute (**Phase 2b: required**) | Logical coordinator slug used in the OAuth secret path `picasso/scheduling/oauth/{tenant_id}/{coordinator_id}`. Distinct from `calendar_id` (which is the email). Written by B5 onboarding hook; consumed by B2 Phase 2b listener for OAuth lookup and by B3 Renewer. Optional in Phase 1 (no channel rows exist yet); becomes required when B5 ships. |
+| `last_sync_token` | S | attribute (**Phase 2b: optional**) | Google Calendar `events.list` syncToken for delta discovery (see [`listener_dispatch_interface.md` "Delta Discovery"](listener_dispatch_interface.md)). Initialized by B5 onboarding hook (initial `events.list` with no syncToken); refreshed by B2 Phase 2b listener after each successful delta read. Atomic update via conditional write on prior value to prevent races across concurrent invocations for the same channel. |
 
 **GSIs (both required):**
 - `tenant-status-index` — HASH `tenant_id` + RANGE `status`. Ops queries: "all unwatched channels for tenant X", "all event-body-private channels per tenant".
