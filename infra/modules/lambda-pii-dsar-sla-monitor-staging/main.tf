@@ -92,11 +92,12 @@ data "aws_iam_policy_document" "monitor" {
 
   # Read on audit table: main table (PK=dsar_id Query) + StatusIndex GSI Query
   # Explicit table ARN + the StatusIndex GSI sub-ARN; no wildcards on the index name.
+  # Sprint E5 / audit nice-to-have N20: dynamodb:DescribeTable removed — not
+  # used at runtime; was over-grant from the initial scaffold.
   statement {
     sid = "AuditTableReadOnly"
     actions = [
       "dynamodb:Query",
-      "dynamodb:DescribeTable",
     ]
     resources = [
       var.dsar_audit_table_arn,
@@ -191,6 +192,164 @@ resource "aws_lambda_permission" "eventbridge_invoke" {
   function_name = aws_lambda_function.monitor.function_name
   principal     = "events.amazonaws.com"
   source_arn    = aws_cloudwatch_event_rule.daily_sla_check.arn
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# M9.G7 / F-DSAR26 — Lambda Errors CloudWatch alarm.
+#
+# The SLA monitor is itself the alarm mechanism for the DSAR system; an
+# invocation error here is a single point of failure with no automated
+# detection prior to M9.G7. The Lambda code re-raises on DDB Query failure
+# (etc.), which makes the failure visible to CloudWatch — but only as a
+# datapoint, not an alarm. This alarm publishes to the existing ops-alerts
+# SNS topic on any Errors >0 in a 5-minute window; the M9.G6 belt-and-
+# suspenders weekly reminder still fires regardless.
+# ─────────────────────────────────────────────────────────────────────────────
+resource "aws_cloudwatch_metric_alarm" "monitor_errors" {
+  alarm_name        = "${local.function_name}-errors"
+  alarm_description = "M9.G7 / F-DSAR26: SLA monitor Lambda Errors metric > 0 in any 5min window. The Lambda is the alarm mechanism for the DSAR SLA; a silent failure here means open DSARs past intake+${var.sla_days_intake_plus}d are unalerted. Publishes to ops-alerts; operator follows playbook §8 (SLA timekeeping + fault-test) for triage."
+
+  namespace   = "AWS/Lambda"
+  metric_name = "Errors"
+  statistic   = "Sum"
+  period      = 300 # 5 minutes
+  dimensions = {
+    FunctionName = aws_lambda_function.monitor.function_name
+  }
+
+  threshold           = 0
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  # Treat missing data as NOT_BREACHING — the Lambda only runs once per day,
+  # so most 5-minute windows have no Invocations + no Errors data points.
+  # Treating missing as breaching would alarm constantly.
+  treat_missing_data = "notBreaching"
+
+  alarm_actions = [var.ops_sns_topic_arn]
+  # Sprint E5 / audit nice-to-have N18: ok_actions removed — every ALARM
+  # produced a matching OK message on recovery, doubling SNS noise for transient
+  # errors. Operator gets the ALARM; recovery requires no separate notification.
+
+  tags = {
+    Project = "pii-governance"
+    Owner   = "chris@myrecruiter.ai"
+    Source  = "M9.G7 / F-DSAR26"
+  }
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# M9.G7 / F-DSAR26 — Lambda DLQ (SQS).
+#
+# EventBridge-invoked Lambdas have their own built-in retry, but on terminal
+# failure the event is dropped. A DLQ captures the unhandled invocation
+# event for operator inspection so a transient failure that masks an open
+# DSAR can be reconstructed. Scoped: SQS visibility 14d (max), no encryption
+# (operator-metadata only, no PII — the event payload is `{}` since the
+# Lambda ignores its input).
+# ─────────────────────────────────────────────────────────────────────────────
+resource "aws_sqs_queue" "monitor_dlq" {
+  name = "${local.function_name}-dlq"
+  # EventBridge retries 2 times before sending to DLQ per its built-in policy.
+  # Hold failed events 14 days (SQS max) so operator has a full work-cycle
+  # to inspect + drain.
+  message_retention_seconds = 1209600 # 14 days
+  # Sprint E5 / audit nice-to-have N21: SSE-SQS (SQS-managed) at no cost.
+  # Today's payload is the EventBridge schedule input (no consumer PII), but
+  # a future code change could surface request metadata in the DLQ; SSE-SQS
+  # is free and removes the "no encryption" finding without affecting cost
+  # or operator workflow.
+  sqs_managed_sse_enabled = true
+
+  tags = {
+    Project = "pii-governance"
+    Owner   = "chris@myrecruiter.ai"
+    Source  = "M9.G7 / F-DSAR26"
+  }
+}
+
+# Grant the Lambda role permission to send failed invocations to the DLQ.
+# The aws_lambda_function.dead_letter_config block (below) is what wires the
+# DLQ destination; this IAM statement allows the Lambda's role to actually
+# write to it. Standard Lambda DLQ pattern.
+resource "aws_iam_role_policy" "monitor_dlq_send" {
+  name = "${local.function_name}-dlq-send"
+  role = aws_iam_role.monitor.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "DlqSend"
+        Effect   = "Allow"
+        Action   = ["sqs:SendMessage"]
+        Resource = [aws_sqs_queue.monitor_dlq.arn]
+      },
+    ]
+  })
+}
+
+# Wire the DLQ to the Lambda via aws_lambda_function_event_invoke_config —
+# the newer-recommended resource for async-invocation retry + destination
+# config (separate from the older inline `dead_letter_config` block on
+# aws_lambda_function). Allows finer control: per-destination on_failure +
+# on_success, explicit retry attempts, max event age. Depends on the
+# DLQ-send IAM policy being in place first; Terraform schedules the policy
+# create BEFORE the event_invoke_config since the latter references the
+# DLQ ARN, but `depends_on` makes the ordering explicit.
+resource "aws_lambda_function_event_invoke_config" "monitor_dlq_wire" {
+  function_name = aws_lambda_function.monitor.function_name
+
+  # On terminal failure (post-built-in-retries), send to DLQ
+  destination_config {
+    on_failure {
+      destination = aws_sqs_queue.monitor_dlq.arn
+    }
+  }
+
+  # Standard EventBridge defaults: 2 retries, 21600s max age (6 hours).
+  # Matches AWS recommendation for scheduled Lambdas.
+  maximum_event_age_in_seconds = 21600
+  maximum_retry_attempts       = 2
+
+  depends_on = [aws_iam_role_policy.monitor_dlq_send]
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Sprint E3 / audit defer-ok D1 — Lambda Invocations CloudWatch alarm.
+#
+# The Errors alarm above only fires when the Lambda runs AND errors. If the
+# EventBridge schedule is disabled (accidental or malicious) the Lambda never
+# runs → Errors stays 0 → ALARM stays OK while DSAR SLA violations accumulate
+# silently. This Invocations alarm closes that gap: with the daily schedule,
+# 2 consecutive 24h windows missing invocations breaches and pages ops.
+#
+# treat_missing_data=breaching: Lambda emits no metric datapoint when there's
+# no activity, so "missing" must count as breach. Without this the alarm would
+# never fire on a disabled schedule.
+# ─────────────────────────────────────────────────────────────────────────────
+resource "aws_cloudwatch_metric_alarm" "monitor_invocations" {
+  alarm_name        = "${local.function_name}-invocations"
+  alarm_description = "Sprint E3 / audit D1: SLA monitor Lambda Invocations < 1 over 2 consecutive 24h windows. Catches EventBridge-disable case (accidental or otherwise) which the Errors alarm cannot detect. Publishes to ops-alerts."
+
+  namespace   = "AWS/Lambda"
+  metric_name = "Invocations"
+  statistic   = "Sum"
+  period      = 86400 # 1 day (max CW alarm period)
+  dimensions = {
+    FunctionName = aws_lambda_function.monitor.function_name
+  }
+
+  threshold           = 1
+  comparison_operator = "LessThanThreshold"
+  evaluation_periods  = 2 # 2 consecutive missing-data days → 1d grace, then page
+  treat_missing_data  = "breaching"
+
+  alarm_actions = [var.ops_sns_topic_arn]
+
+  tags = {
+    Project = "pii-governance"
+    Owner   = "chris@myrecruiter.ai"
+    Source  = "Sprint E3 / audit D1"
+  }
 }
 
 # ─────────────────────────────────────────────────────────────────────────────

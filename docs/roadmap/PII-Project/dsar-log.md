@@ -27,7 +27,7 @@ Schema column meanings:
 
 | dsar_id | intake_date | right | tenant_id | jurisdiction | agent | sla_due | status | lambda_audit_row | gmail_thread | closed_date | notes |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| *(no closed requests as of 2026-05-20)* | | | | | | | | | | | |
+| 2026-05-25-001 | 2026-05-25 | rehearsal | AUS123957 | n/a | self (operator) | n/a | closed | n/a (no audit row written — rehearsal explicitly skips audit; synthetic identifier ensures no PII traversal) | n/a | 2026-05-25 | M9.G4 Sprint G4 dry-run rehearsal. Synthetic identifier `rehearsal-noop-8C39ADE9-8F80-448C-842B-5109B10D3793@example.invalid` scanned against 4 prod surfaces 2026-05-25T00:33:01Z. All Count=0: picasso_form_submissions (47 scanned, AUS123957 tenant filter) / picasso-notification-sends (33 scanned) / production-recent-messages (2 scanned) / picasso-session-summaries (863 scanned). Empirically confirmed operator IAM `dynamodb:Scan` works on all 4 surfaces, filter-expression syntax correct, substitution table accurate, SLA-pressure perf acceptable. Closes M9.G4 phase-completion-audit BLOCKER 1 (rehearsal-not-executed). |
 
 ## Rules
 

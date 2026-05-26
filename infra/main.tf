@@ -182,6 +182,20 @@ module "lambda_pii_dsar_sla_monitor_staging" {
   ops_sns_topic_arn    = module.ops_alarms_master_function_staging[0].topic_arn
 }
 
+# M9.G6 (master plan v0.12). Closes D5 F-DSAR22 (M3 SLA monitor secondary-
+# control independence). Belt-and-suspenders weekly reminder Lambda — an
+# independent EventBridge schedule + dedicated Lambda + dedicated IAM role,
+# publishing to the same ops-alerts SNS topic. Fires every Monday 14:00 UTC
+# regardless of the primary monitor's state, so a silent primary-monitor
+# failure still surfaces to the operator via the weekly reminder + the
+# embedded CLI snippets the operator runs to verify.
+module "lambda_pii_dsar_weekly_reminder_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/lambda-pii-dsar-weekly-reminder-staging"
+
+  ops_sns_topic_arn = module.ops_alarms_master_function_staging[0].topic_arn
+}
+
 module "ddb_notification_events_staging" {
   count  = var.env == "staging" ? 1 : 0
   source = "./modules/ddb-notification-events-staging"
@@ -223,6 +237,16 @@ module "ddb_booking_staging" {
   count  = var.env == "staging" ? 1 : 0
   source = "./modules/ddb-booking"
   env    = var.env
+}
+
+# B1 runbook-provisioned table (PR #231, 2026-05-25). Not yet under Terraform
+# state — bringing it in via `terraform import` is tracked as a follow-up to
+# close R1 fully for sub-phase B. This data source lets B2 reference the ARN
+# + construct GSI ARNs (used by lambda_calendar_watch_listener_staging below)
+# without blocking on the import work.
+data "aws_dynamodb_table" "calendar_watch_channels_staging" {
+  count = var.env == "staging" ? 1 : 0
+  name  = "picasso-calendar-watch-channels-staging"
 }
 
 module "secrets_jwt_staging" {
@@ -271,6 +295,21 @@ module "lambda_bedrock_handler_staging" {
   sms_consent_table_name        = module.picasso_form_tables.sms_consent_table_name
   sms_usage_table_arn           = module.picasso_form_tables.sms_usage_table_arn
   sms_usage_table_name          = module.picasso_form_tables.sms_usage_table_name
+
+  # M1.G6 (master plan v0.12 / F-DSAR18 closure). BSH form_handler.js port
+  # of pii_subject.js needs the same picasso-pii-subject-index-staging
+  # table the Master_Function_Staging Python writer uses; least-priv grant
+  # (GetItem + conditional PutItem only). Closes the BSH active-writer gap
+  # where DSAR walker FilterExpression on pii_subject_id silently
+  # false-negatives every BSH-written row.
+  pii_subject_index_table_arn  = module.ddb_pii_subject_index_staging[0].table_arn
+  pii_subject_index_table_name = module.ddb_pii_subject_index_staging[0].table_name
+
+  # Sprint F3 / audit-of-audit finding 2: PII subject-index EMF metric alarms
+  # publish to the existing ops-alerts SNS topic (same one used by SLA monitor
+  # + weekly reminder). Reuses the M3 alarm topic so operators get one
+  # consistent paging channel for all PII alerts.
+  pii_subject_index_alarm_sns_topic_arn = module.ops_alarms_master_function_staging[0].topic_arn
 
   # Phase C analytics-events pipeline. Wiring the queue URL flips BSH's
   # handleAnalyticsEvent from no-op to live SQS send (index.js:66-106).
@@ -656,6 +695,36 @@ resource "aws_secretsmanager_secret_policy" "meta_ig_app_secret_staging" {
       },
     ]
   })
+}
+
+# ──────────────────────────────────────────────────────────────────────
+# Scheduling sub-phase B Task B2 — Calendar_Watch_Listener Lambda.
+# Receives Google Calendar push notifications; validates channel_token via
+# SHA-256 hash + constant-time compare; calls events.get; derives typed
+# events per scheduling/docs/listener_dispatch_interface.md (B0 spec) and
+# dispatches to picasso-calendar-watch-events-staging.fifo keyed by
+# event_id (= booking_id).
+# ──────────────────────────────────────────────────────────────────────
+module "lambda_calendar_watch_listener_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/lambda-calendar-watch-listener-staging"
+
+  # Calendar-watch-channels (runbook-provisioned PR #231; data source for now)
+  calendar_watch_channels_table_arn               = data.aws_dynamodb_table.calendar_watch_channels_staging[0].arn
+  calendar_watch_channels_table_name              = data.aws_dynamodb_table.calendar_watch_channels_staging[0].name
+  calendar_watch_channels_tenant_status_index_arn = "${data.aws_dynamodb_table.calendar_watch_channels_staging[0].arn}/index/tenant-status-index"
+
+  # Booking table (Terraform-managed via ddb-booking module)
+  booking_table_arn                   = module.ddb_booking_staging[0].table_arn
+  booking_table_name                  = module.ddb_booking_staging[0].table_name
+  booking_coordinator_email_index_arn = module.ddb_booking_staging[0].tenant_id_coordinator_email_index_arn
+
+  # Tenant registry (Terraform-managed)
+  tenant_registry_table_arn  = module.ddb_tenant_registry_staging[0].table_arn
+  tenant_registry_table_name = module.ddb_tenant_registry_staging[0].table_name
+
+  # Ops alerts SNS topic (shared with MFS + Meta — created by ops_alarms_master_function_staging)
+  ops_alerts_topic_arn = module.ops_alarms_master_function_staging[0].topic_arn
 }
 
 # ──────────────────────────────────────────────────────────────────────

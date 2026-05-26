@@ -1,9 +1,9 @@
 # DSAR Operator Playbook v1
 
-**Status:** v1.0 — published 2026-05-23 (M3 done-bar #6, master plan v0.3 §M3).
+**Status:** v1.1 — published 2026-05-23; **prod-CLI variant added 2026-05-24 (M9.G4 / F-DSAR20 closure)**.
 **Owner:** Chris Miller.
-**Scope:** zero-volume / solo-founder DSAR fulfillment for the Picasso platform as it stands today (Path A v3 capability bundle item 1a deployed via M1; M3 SLA monitor LIVE in staging acct 525 since 2026-05-23T08:13Z; M2 ARCHIVE/Meta extension pending).
-**Updates expected:** v1.1 after M2 (Meta/S3/ARCHIVE walker LIVE); v1.2 after counsel-Q1 (G-I) response refines verification posture.
+**Scope:** zero-volume / solo-founder DSAR fulfillment for the Picasso platform as it stands today (Path A v3 capability bundle item 1a deployed via M1; M3 SLA monitor LIVE in staging acct 525 since 2026-05-23T08:13Z; M2 ARCHIVE/Meta extension pending; M9.G4 prod-tenant manual-walk variant SHIPPED 2026-05-24).
+**Updates expected:** v1.2 after M2 (Meta/S3/ARCHIVE walker LIVE); v1.3 after counsel-Q1 (G-I) response refines verification posture.
 
 ## Operational state (live as of 2026-05-23T08:15Z post-M3 deploy)
 
@@ -161,6 +161,77 @@ If a DSAR raises any of the 5 counsel-engagement triggers (per [`counsel-input-p
 
 5. **Send** [`templates/dsar-response-access.md`](./templates/dsar-response-access.md) with the export attached as JSON (or pasted inline if small). Update `dsar-log.md` to `closed`.
 
+### §3.1 — Access path for PROD tenants (M9.G4 / F-DSAR20 closure)
+
+**When to use:** the subject is a consumer of a **prod tenant** (e.g., Austin Angels `AUS123957`). The DSAR Lambda + PII subject-index table are **staging-only** today (see [`README.md`](./README.md) deferred surfaces); prod DSAR fulfillment is **operator-manual** until M2 / M6 promote a prod-twin.
+
+**Account guard — RUN FIRST every prod session** (refuses to proceed against the wrong account):
+```bash
+test "$(aws sts get-caller-identity --profile myrecruiter-prod --query Account --output text)" = "614056832592" \
+  && echo "✅ Prod account confirmed (614056832592)" \
+  || { echo "❌ STOP — wrong account; expected 614056832592"; exit 1; }
+```
+
+**Staging ↔ prod substitution table** (single source of truth — apply these to every snippet in §3 above):
+
+| Surface | Staging name | Prod name (614) | Notes |
+|---|---|---|---|
+| Form submissions | `picasso-form-submissions-staging` | `picasso_form_submissions` | **Underscores, no `-staging` suffix.** Also note: `picasso_form_submissions_staging` (underscores AND staging) exists as a legacy artifact — do NOT use it; canonical staging is the hyphenated name. |
+| Notification sends | `picasso-notification-sends-staging` | `picasso-notification-sends` | Standard `-staging` drop. |
+| Notification events | `picasso-notification-events-staging` | `picasso-notification-events` | Standard `-staging` drop. |
+| Recent messages | `staging-recent-messages` | `production-recent-messages` | **Prefix change**: `staging-` → `production-`. |
+| Session summaries | `picasso-session-summaries-staging` | `picasso-session-summaries` | Standard `-staging` drop. |
+| Channel mappings (F12) | `picasso-channel-mappings-staging` | **does not exist in prod** | Meta walker is staging-only; prod Meta-only subjects require manual Meta Business Suite lookup (F12 §7 procedure). |
+| PII subject-index | `picasso-pii-subject-index-staging` | **does not exist in prod** | Staging-only; for prod manual walks, **skip step 1 (`get-item`) entirely** and proceed directly to per-surface scans by `submitter_email`. |
+| DSAR audit | `picasso-pii-dsar-audit-staging` | **does not exist in prod** | All DSAR audit rows for prod DSARs are still written to the **staging** table — it is the cross-account canonical audit register (intentional design; one auditable system-of-record). |
+| Archive bucket (F14) | `picasso-archive-staging` | **does not exist in prod** | No prod session-archiver Lambda exists (verified 2026-05-23 per `archive-reachability-decision.md`); prod archive walk is N/A at current product state. |
+| AWS profile | `myrecruiter-staging` | `myrecruiter-prod` | SSO profiles per CLAUDE.md `## Deployment Model & SOP`. |
+
+**Pre-substituted prod access-path commands (copy-paste-ready):**
+
+```bash
+# Step 1 (skipped): no PII subject-index in prod. Proceed directly to per-surface scans.
+
+# Step 2 (manual; replaces Lambda invocation): form-submissions per-tenant scan.
+AWS_PROFILE=myrecruiter-prod aws dynamodb scan \
+  --table-name picasso_form_submissions \
+  --filter-expression "submitter_email = :e AND tenant_id = :t" \
+  --expression-attribute-values '{":e":{"S":"<email.lower().strip()>"},":t":{"S":"<TENANT_ID>"}}'
+
+# Step 3 (manual): notification-sends scan by recipient_email.
+AWS_PROFILE=myrecruiter-prod aws dynamodb scan \
+  --table-name picasso-notification-sends \
+  --filter-expression "recipient_email = :e" \
+  --expression-attribute-values '{":e":{"S":"<email.lower().strip()>"}}'
+
+# Step 4 (manual): recent-messages per-session query (operator obtains sessionId from §3 step 2 results, if any).
+AWS_PROFILE=myrecruiter-prod aws dynamodb query \
+  --table-name production-recent-messages \
+  --key-condition-expression "sessionId = :s" \
+  --expression-attribute-values '{":s":{"S":"<SESSION_ID>"}}'
+
+# Step 5 (audit row → STAGING table; see no-record §6 step 4 for the put-item shape).
+```
+
+**Manual-walk surface checklist (operator initials each; required before sending response template):**
+
+```
+[ ] _____ Account guard executed; ✅ prod 614 confirmed
+[ ] _____ Form submissions  — picasso_form_submissions (with tenant_id filter); rows attached/redacted
+[ ] _____ Notification sends — picasso-notification-sends; rows attached/redacted
+[ ] _____ Notification events — picasso-notification-events (by message_id from notification-sends); rows attached/redacted
+[ ] _____ Recent messages — production-recent-messages (by sessionId; document 0-72h structural window if no sessionId)
+[ ] _____ Session summaries — picasso-session-summaries (by sessionId)
+[ ] _____ F12 channel-mappings — Meta Business Suite lookup if subject reports Messenger interaction (no prod table)
+[ ] _____ F14 archive bucket — N/A at current product state (no prod archive bucket; verified 2026-05-23)
+[ ] _____ DSAR audit row written to picasso-pii-dsar-audit-staging (cross-account; see §6 step 4 shape)
+[ ] _____ Subject-disclosed PII redacted from export before send (third-party PII removed)
+```
+
+**Dry-run rehearsal (REQUIRED before first prod DSAR ever):** use synthetic identifier `rehearsal-noop-$(uuidgen)@example.invalid` against a prod tenant (the UUID suffix makes the synthetic collision-proof against any test seed data that might exist — audit row 20). Run EVERY scan listed in the §3.1 pre-substituted commands AND the §6.1 no-record path AND the notification-sends + session-summaries surfaces from the manual-walk checklist below; every query MUST return `Count=0` (the synthetic email has no rows), confirming the operator has working credentials + correct table names + correct CLI shape + IAM read access to each surface without any mutation. Record rehearsal output in [`dsar-log.md`](./dsar-log.md) as `request_type=rehearsal` and reference the UUID-keyed identifier used.
+
+**Maintenance note:** if §3 above changes (new step, new flag), update §3.1 substitutions table + pre-substituted commands in the SAME PR. The duplication is intentional (advisor review 2026-05-23: operator should not mentally substitute under SLA pressure) but creates sync debt — keep the substitution table as the single source of truth for name-mapping; only the commands need re-pre-substitution.
+
 ---
 
 ## §4 — Delete / erasure path
@@ -214,6 +285,96 @@ If a DSAR raises any of the 5 counsel-engagement triggers (per [`counsel-input-p
    - Any `unindexed_row` markers from the subject-index → operator confirms whether they're orphans or pre-Phase-1 (Apply-2 backfill candidates per F-DSAR1)
 
 6. **Send** [`templates/dsar-response-delete.md`](./templates/dsar-response-delete.md). Update `dsar-log.md` to `closed`.
+
+### §4.1 — Delete path for PROD tenants (M9.G4 / F-DSAR20 closure)
+
+**When to use:** consumer of a prod tenant requests deletion. **Higher-risk procedure than §3.1 access** — every step mutates prod data, with no Lambda dry_run guardrail. The substitution table from §3.1 applies; this subsection adds delete-specific safety.
+
+**Hard prerequisites (refuse to proceed without all four):**
+1. **Prod account guard executed** (see §3.1; refuses if not on account 614)
+2. **Staging account guard ALSO executed** (Sprint G3 / audit row 14 — the cross-account convention writes the DSAR audit row to `picasso-pii-dsar-audit-staging`; if your `myrecruiter-staging` SSO session is expired, the audit row write at step 5 will silently fail and leave the prod deletion un-audited):
+   ```bash
+   test "$(aws sts get-caller-identity --profile myrecruiter-staging --query Account --output text)" = "525409062831" \
+     && echo "✅ Staging account also confirmed (525); audit-row destination reachable" \
+     || { echo "❌ STOP — staging SSO is expired or wrong; refresh with: aws sso login --profile myrecruiter-staging"; exit 1; }
+   ```
+3. **Access path §3.1 completed first** — operator has the full per-surface row list from the access walk; deletion targets ONLY those rows (no Scan-then-delete in a single pass)
+4. **Identity verification §2 completed AND counsel-trigger checklist §9 cleared** (delete is irreversible; verification bar is the highest of all paths)
+
+**Separation-of-duties posture (Sprint G3 / audit row 15):** at current scale (sole operator), single-actor typed-confirm ("DELETE PROD" in `tools/dsar-invoke.sh`) is the approved posture. This is an explicit risk-acceptance, not an oversight. If a second operator joins (Atlanta LOI or later), a mandatory 4-eyes review for prod DeleteItem MUST be added to this procedure + wrapper BEFORE their first DSAR — recorded as a deferred-with-named-trigger gap in [`privacy-risk-register.md`](./privacy-risk-register.md) F-DSAR-SoD (route on trigger).
+
+**Pre-substituted prod delete-path commands (copy-paste-ready). REHEARSAL FIRST**: run `describe-table` for each target table (per §4.1 rehearsal block below); the `aws dynamodb delete-item` API has NO `--dry-run` flag (that flag exists only on EC2 APIs — audit row 9), so the safe-rehearsal substitute is `describe-table` to confirm key shape + `--select COUNT` on a Scan with the targeted PK to confirm the row exists before deleting it.
+
+```bash
+# Step 1: Per matched form-submission row from §3.1 access walk, delete by submission_id PK.
+# (Form-submissions table PK = submission_id; confirm via describe-table if unfamiliar.)
+AWS_PROFILE=myrecruiter-prod aws dynamodb delete-item \
+  --table-name picasso_form_submissions \
+  --key '{"submission_id":{"S":"<SUBMISSION_ID_FROM_ACCESS_WALK>"}}' \
+  --return-values ALL_OLD
+# Inspect ALL_OLD output; confirms the row that was deleted (operator paste into dsar-log.md).
+# ⚠️ INTERPRETATION (audit row 10): ALL_OLD returns the deleted row's attributes IF a row matched.
+# If ALL_OLD returns an empty `{}` Attributes map, the row did NOT exist — looks identical to a
+# successful delete of an already-TTL-expired row. RECHECK your submission_id from §3.1 step 2
+# results before concluding the delete succeeded. A truly-deleted row returns non-empty Attributes.
+
+# Step 2: Per matched notification-sends row, delete by composite key.
+# (Notification-sends PK = recipient_email_norm OR a composite; confirm via describe-table.)
+# Notification-sends rows are append-only audit-class; per advisor review 2026-05-23 (note: this
+# citation pre-dates the formal M9.G4 prod-CLI scope — audit row 19 sync debt; if counsel-Q1
+# (G-I) later overrides this carve-out, this §4.1 reference + the M3 §M3 done-bar #6 playbook
+# both need updating in the same PR), do NOT delete notification-sends rows for a consumer DSAR —
+# they are processing logs (Art 17(3)(b)/(e) carve-out parallel to DSAR audit table). Document
+# this in the response: "we retain the fact that we sent you a notification, but the content
+# of your submission is deleted."
+
+# Step 3: Recent-messages — TTL handles natural eviction in 24h. For SLA-bound deletion confirmation,
+# delete by composite (sessionId, messageId) per matched row.
+AWS_PROFILE=myrecruiter-prod aws dynamodb delete-item \
+  --table-name production-recent-messages \
+  --key '{"sessionId":{"S":"<SESSION_ID>"},"messageId":{"S":"<MESSAGE_ID>"}}' \
+  --return-values ALL_OLD
+
+# Step 4: Session-summaries (if subject had session-summary rows from §3.1 walk).
+AWS_PROFILE=myrecruiter-prod aws dynamodb delete-item \
+  --table-name picasso-session-summaries \
+  --key '{"sessionId":{"S":"<SESSION_ID>"}}' \
+  --return-values ALL_OLD
+
+# Step 5: Write DSAR audit row to STAGING audit table.
+AWS_PROFILE=myrecruiter-staging aws dynamodb put-item \
+  --table-name picasso-pii-dsar-audit-staging \
+  --item '{
+    "dsar_id":{"S":"<DSAR_ID>"},
+    "event_timestamp":{"S":"<ISO_TIMESTAMP_with_microseconds>"},
+    "event_type":{"S":"delete_completed"},
+    "status":{"S":"closed"},
+    "created_at_partition":{"S":"<YYYY-MM>"},
+    "details":{"M":{
+      "request_type":{"S":"delete"},
+      "operator_caller_arn":{"S":"<YOUR_PROD_ARN>"},
+      "env":{"S":"prod-614"},
+      "tenant_id":{"S":"<TENANT_ID>"},
+      "rows_deleted":{"N":"<TOTAL_COUNT>"}
+    }}
+  }'
+```
+
+**Delete-specific manual-walk surface checklist (operator initials; required before sending response):**
+
+```
+[ ] _____ Access path §3.1 fully completed and rows enumerated
+[ ] _____ Identity verification §2 cleared at highest standard
+[ ] _____ Counsel trigger checklist §9 cleared (no triggers fired)
+[ ] _____ Account guard re-executed at start of delete session
+[ ] _____ Per-row delete-item executed; ALL_OLD output saved to dsar-log.md
+[ ] _____ Notification-sends NOT deleted (audit carve-out per advisor review; documented in response)
+[ ] _____ F9 tenant-coordination: tenant-sink-deletion-request sent in parallel (if applicable)
+[ ] _____ DSAR audit row written to picasso-pii-dsar-audit-staging with rows_deleted count
+[ ] _____ Response template sent; dsar-log.md updated to closed
+```
+
+**Dry-run rehearsal (REQUIRED before first prod delete ever):** in addition to §3.1 access rehearsal, run a `describe-table` for each target table to confirm the primary-key shape before any `delete-item`. Recovery from a wrong-PK delete is theoretically possible via PITR (if enabled per F-DSAR21 audit) but operationally painful — invest the 60 seconds in `describe-table` first.
 
 ---
 
@@ -277,15 +438,84 @@ If correction requests exceed ~5/month sustained, scope a Lambda extension (new 
      }'
    ```
 
+### §6.1 — No-record path for PROD tenants (M9.G4 / F-DSAR20 closure)
+
+**When to use:** subject claims to be a consumer of a prod tenant but `submitter_email` scan returns `Count=0` across all candidate prod tenants. Required to disclose "no record" rather than silently ignore (even no-record is a disclosure — the subject is entitled to confirmation under CCPA/GDPR).
+
+**Pre-substituted prod no-record commands (copy-paste-ready):**
+
+```bash
+# Step 1: Account guard (see §3.1).
+
+# Step 2: Per-tenant Scan to confirm absence. Repeat for each candidate prod tenant_id.
+AWS_PROFILE=myrecruiter-prod aws dynamodb scan \
+  --table-name picasso_form_submissions \
+  --filter-expression "submitter_email = :e AND tenant_id = :t" \
+  --expression-attribute-values '{":e":{"S":"<claimed_email>"},":t":{"S":"<TENANT_ID>"}}' \
+  --select COUNT
+# Expect Count=0 for true no-record. If Count>0, this is actually a §3.1 access request — pivot.
+
+# Step 3: Also scan notification-sends by recipient_email (subject may have received an email without submitting a form).
+AWS_PROFILE=myrecruiter-prod aws dynamodb scan \
+  --table-name picasso-notification-sends \
+  --filter-expression "recipient_email = :e" \
+  --expression-attribute-values '{":e":{"S":"<claimed_email>"}}' \
+  --select COUNT
+
+# Step 4: Write no-record audit row to STAGING audit table (cross-account convention; see §3.1 table).
+AWS_PROFILE=myrecruiter-staging aws dynamodb put-item \
+  --table-name picasso-pii-dsar-audit-staging \
+  --item '{
+    "dsar_id":{"S":"<DSAR_ID>"},
+    "event_timestamp":{"S":"<ISO_TIMESTAMP_with_microseconds>"},
+    "event_type":{"S":"no_record_confirmed"},
+    "status":{"S":"closed"},
+    "created_at_partition":{"S":"<YYYY-MM>"},
+    "details":{"M":{
+      "request_type":{"S":"no_record"},
+      "operator_caller_arn":{"S":"<YOUR_PROD_ARN>"},
+      "env":{"S":"prod-614"},
+      "tenants_scanned":{"L":[{"S":"<TENANT_ID_1>"},{"S":"<TENANT_ID_2>"}]},
+      "surfaces_scanned":{"S":"picasso_form_submissions, picasso-notification-sends"}
+    }}
+  }'
+```
+
+**No-record manual-walk surface checklist (operator initials):**
+
+```
+[ ] _____ Account guard executed; ✅ prod 614 confirmed
+[ ] _____ Per-tenant Scan picasso_form_submissions: Count=0 for EACH candidate prod tenant_id
+[ ] _____ Notification-sends Scan: Count=0 by recipient_email
+[ ] _____ Session-summaries Scan: Count=0 by sessionId (the access path covers session-summaries
+          per §3.1 checklist; a no-record disclosure that skips this surface and a session-summary
+          row later surfaces is an affirmative misrepresentation under CCPA — audit row 8)
+[ ] _____ DSAR audit row written to picasso-pii-dsar-audit-staging with tenants_scanned + surfaces_scanned
+[ ] _____ No-record response template sent
+```
+
+Session-summaries no-record scan command (Sprint G2 addition for audit row 8):
+```bash
+# Subjects who chatted without submitting a form may have session-summary rows but no
+# form-submission rows. Skipping this surface would produce a false no-record finding.
+AWS_PROFILE=myrecruiter-prod aws dynamodb scan \
+  --table-name picasso-session-summaries \
+  --filter-expression "contains(content, :phrase) OR submitter_email = :e" \
+  --expression-attribute-values '{":phrase":{"S":"<UNIQUE_PHRASE_SUBJECT_PROVIDED>"},":e":{"S":"<claimed_email>"}}' \
+  --select COUNT
+# Best-effort: session-summaries rows do not have submitter_email if the subject never
+# submitted a form during the session. The content scan is the no-record evidence.
+```
+
 ---
 
 ## §7 — Per-surface manual fallback procedures
 
 When the DSAR Lambda flags a coverage gap (`manual_followup` block in its response), the operator executes the corresponding fallback. The Lambda emits these snippets verbatim; this section is the reference glossary.
 
-### F-DSAR1: pre-Phase-1 form-submission rows
+### F-DSAR1 + F-DSAR18: pre-Phase-1 + active-writer (BSH) form-submission rows
 
-**Trigger:** Lambda's response includes `manual_followup` with `f_dsar1` field populated.
+**Trigger:** Lambda's response includes `manual_followup` for the form-submissions walker. Per F-DSAR18 (added 2026-05-23), this is now the **primary** path for any real form-submission DSAR — not the fallback — because BSH `form_handler.js` (the active widget chat-form writer) does not write `pii_subject_id`, so the walker's `pii_subject_id` FilterExpression silently false-negatives on every BSH-written row. Until M9.G3 promotes the writer-side fix (D5 row F-DSAR18 option 1), expect `manual_followup` on every real DSAR for this surface.
 
 **Action:** copy-paste the snippet provided by the Lambda — it includes the operator's email + tenant_id substituted:
 ```bash
@@ -296,6 +526,17 @@ AWS_PROFILE=myrecruiter-staging aws dynamodb scan \
 ```
 
 For each matched row, manually `delete-item` (delete path) or include in export (access path).
+
+**Operator tracking:** trigger thresholds UPDATED 2026-05-23 per advisor review (compliance 🔴-2): **first form-submission DSAR ever** triggers promotion (was ">3× total"); DSAR volume ≥1/month sustained; prod-twin scoping; Atlanta LOI; **calendar backstop 2026-08-23**. F-DSAR18 routing corrected M9.G3 → **M1.G6** (§3 routing-rule violation — gap touches M1's walker surface). Surface the trigger status in the next session-handoff.
+
+**✅ PROD-CLI variant SHIPPED 2026-05-24 (M9.G4 / F-DSAR20 CLOSED):** the §3-§6 CLI snippets above reference **STAGING tables + STAGING profile**. For a real **prod-tenant DSAR** (e.g., Austin Angels), use the pre-substituted procedures in:
+
+- [`§3.1 — Access path for PROD tenants`](#31--access-path-for-prod-tenants-m9g4--f-dsar20-closure) (substitution table + pre-substituted commands + account guard + manual-walk surface checklist + dry-run rehearsal)
+- [`§4.1 — Delete path for PROD tenants`](#41--delete-path-for-prod-tenants-m9g4--f-dsar20-closure) (delete-specific safety: access-first prerequisite + `describe-table` pre-check + notification-sends carve-out + delete-specific checklist)
+- [`§6.1 — No-record path for PROD tenants`](#61--no-record-path-for-prod-tenants-m9g4--f-dsar20-closure) (per-tenant Count scan + cross-account audit row)
+- `tools/dsar-invoke.sh` shell wrapper (forward-looking; for when a prod-twin DSAR Lambda eventually ships; account-guard + dry-run default + explicit-confirm-on-commit)
+
+§3.1's substitution table is the single source of truth for staging↔prod name mapping; all three sub-sections reference it. **Operator MUST still run `aws sts get-caller-identity` account guard at start of every prod session** — the procedure documents it as the first step but does NOT enforce it (a future tool could; for today, operator-attested).
 
 ### F-DSAR4: recent-messages no subject linkage (chat-only-no-form subjects)
 
@@ -351,6 +592,138 @@ AWS_PROFILE=myrecruiter-staging aws dynamodb scan \
     --key <KEY> --version-id <VERSION>
   ```
 
+### F-DSAR30: identifier_type=phone (walker-NOT-supported)
+
+**Trigger:** consumer DSAR arrives with `identifier_type=phone` (no email, no PSID — phone-only subject).
+
+**Why no walker:** phone numbers are not a primary subject identifier on any tenant-scoped row. They appear on `picasso-notification-sends-staging` (already covered by M1 walker via `pii_subject_id` resolution from email) and `picasso-sms-consent-staging` (opt-in artifact, not subject-rights-actionable as a primary key). Subjects who only ever interacted via SMS without ever providing an email are unreachable by Lambda.
+
+**Action:** manual scan of `picasso-sms-consent-staging`, **with paginated retrieval** (M2 phase-completion-audit row #14 + Security #8 — single-shot Scan without `--starting-token` returns only the first 1 MB page and silently truncates on consent tables larger than that, producing false-negative DSAR results).
+
+```bash
+# Step 1: initial scan page
+AWS_PROFILE=myrecruiter-staging aws dynamodb scan \
+  --table-name picasso-sms-consent-staging \
+  --filter-expression "phone = :p" \
+  --expression-attribute-values '{":p":{"S":"<SUBJECT_PHONE_E164>"}}' \
+  --output json > /tmp/dsar-phone-scan-page-1.json
+
+# Step 2: if "LastEvaluatedKey" present in response, paginate ALL pages
+# (REQUIRED — otherwise pre-1MB rows may be missed)
+NEXT_TOKEN=$(jq -r '.LastEvaluatedKey // empty' /tmp/dsar-phone-scan-page-1.json)
+PAGE=2
+while [ -n "$NEXT_TOKEN" ]; do
+  AWS_PROFILE=myrecruiter-staging aws dynamodb scan \
+    --table-name picasso-sms-consent-staging \
+    --filter-expression "phone = :p" \
+    --expression-attribute-values '{":p":{"S":"<SUBJECT_PHONE_E164>"}}' \
+    --starting-token "$NEXT_TOKEN" \
+    --output json > /tmp/dsar-phone-scan-page-${PAGE}.json
+  NEXT_TOKEN=$(jq -r '.LastEvaluatedKey // empty' /tmp/dsar-phone-scan-page-${PAGE}.json)
+  PAGE=$((PAGE + 1))
+done
+
+# Step 3: combine all pages + check for matches
+jq -s '[.[].Items[]?]' /tmp/dsar-phone-scan-page-*.json > /tmp/dsar-phone-matches.json
+jq 'length' /tmp/dsar-phone-matches.json  # 0 = subject not present; >0 = manual delete/export
+```
+
+**For delete:** for each matched row, run `aws dynamodb delete-item --table-name picasso-sms-consent-staging --key '{...}'` with the row's PK+SK from the scan output. Record each delete in the dsar-log audit row.
+
+**For access:** package the scan output as the subject's response packet.
+
+### F-DSAR30: identifier_type=name+address (walker-NOT-supported)
+
+**Trigger:** consumer DSAR with `identifier_type=name+address` (no email, no PSID, no phone).
+
+**Why no walker:** name + address are free-text within `picasso-form-submissions-staging.responses` (a DynamoDB map attribute). No GSI exists on these fields; no projection. The M1 email walker already exports them as part of the form-submission row dump for email-resolved subjects. Subjects who provided name + address but no email cannot be resolved by index lookup.
+
+**Action:** paginated scan with FilterExpression on `contains(responses, :name)`. Same pagination discipline as F-DSAR30 phone.
+
+```bash
+# Step 1: initial scan page (filter on responses map containing the name string)
+# Caution: substring match — false positives possible if name is common
+AWS_PROFILE=myrecruiter-staging aws dynamodb scan \
+  --table-name picasso-form-submissions-staging \
+  --filter-expression "contains(responses, :name)" \
+  --expression-attribute-values '{":name":{"S":"<SUBJECT_NAME>"}}' \
+  --output json > /tmp/dsar-name-scan-page-1.json
+
+# Step 2: paginate until LastEvaluatedKey is absent (same pattern as F-DSAR30 phone)
+NEXT_TOKEN=$(jq -r '.LastEvaluatedKey // empty' /tmp/dsar-name-scan-page-1.json)
+PAGE=2
+while [ -n "$NEXT_TOKEN" ]; do
+  AWS_PROFILE=myrecruiter-staging aws dynamodb scan \
+    --table-name picasso-form-submissions-staging \
+    --filter-expression "contains(responses, :name)" \
+    --expression-attribute-values '{":name":{"S":"<SUBJECT_NAME>"}}' \
+    --starting-token "$NEXT_TOKEN" \
+    --output json > /tmp/dsar-name-scan-page-${PAGE}.json
+  NEXT_TOKEN=$(jq -r '.LastEvaluatedKey // empty' /tmp/dsar-name-scan-page-${PAGE}.json)
+  PAGE=$((PAGE + 1))
+done
+```
+
+**For delete:** per-row DeleteItem AFTER manual review (substring match is false-positive-prone; do NOT auto-delete without operator confirmation that each row genuinely belongs to the subject — record each decision in the dsar-log audit row with rationale).
+
+**For access:** package only the rows that operator-review confirms belong to the subject.
+
+**Address-only matches:** repeat the procedure with `contains(responses, :addr)` substituting the street-line address. Combine results; deduplicate by `submission_id`.
+
+### F-DSAR32: ARCHIVE access path (object bodies)
+
+**Trigger:** consumer DSAR `request_type=access`; Lambda walker returns archive `exported_keys` (key list, not bodies).
+
+**Why operator-mediated:** `_walk_archive_bucket` deliberately omits `s3:GetObject` (Lambda 6 MB response cap; operator pulls bodies via own SSO role).
+
+**Action:** for each key in the Lambda response's `exported_rows["archive"]`, fetch the object body:
+
+```bash
+# For each key returned by the Lambda walker, fetch + add to subject response packet
+for KEY in $(jq -r '.exported_rows.archive[]' /tmp/dsar-lambda-response.json); do
+  AWS_PROFILE=myrecruiter-staging aws s3 cp "s3://picasso-archive-staging/${KEY}" - \
+    > /tmp/dsar-archive-$(basename "$KEY")
+done
+
+# Verify all keys fetched; package into subject response
+ls /tmp/dsar-archive-*
+```
+
+If `s3 cp` fails on any key (delete-marker race, transient throttle), retry; if persistent, surface in the operator's dsar-log entry as `archive_fetch_failed` with the key for follow-up.
+
+**Reference:** F-DSAR32 D5 row.
+
+### F-DSAR33: weekly PII subject-index alarm health check
+
+**Trigger:** preventive — operator's standing **weekly cadence** (every Monday post-stand-up). Catches the failure mode where subject-index write failures degrade silently between alarm fires.
+
+**Why weekly:** F-DSAR33 closing 2026-05-26 (lambda#163 + picasso#242) restored CloudWatch alarms on the no-dim aggregate `PII/SubjectIndex.IndexRaceUnresolved` + `.IndexUnavailable` series. Alarms fire on `Sum > 0 in any 1h window` → page on first failure. The weekly check is a **secondary confidence signal** (per `feedback_milestone_estimate_calibration` calendar-backstop pattern): if alarms haven't fired but the EMF metric stream is empty for >1 week, that's a meta-failure (e.g., BSH not invoked at all; metric emit broken).
+
+**Action:** run CloudWatch Logs Insights query against BSH Lambda log group, last 7 days:
+
+```bash
+AWS_PROFILE=myrecruiter-staging aws logs start-query \
+  --log-group-name "/aws/lambda/Bedrock_Streaming_Handler_Staging" \
+  --start-time $(date -v-7d +%s) \
+  --end-time $(date +%s) \
+  --query-string 'filter source = "pii_subject_emf" | stats count() by bin(1h)'
+```
+
+Wait ~5 sec then retrieve via `get-query-results`. Expected: nonzero count() rows for hours when BSH had pii_subject activity. **Pattern to flag**: zero rows for an entire 7-day window despite known DSAR or form-submission activity → metric emit may have broken; file an investigation row in the operator log.
+
+**Alarm state check** (compact secondary signal):
+
+```bash
+AWS_PROFILE=myrecruiter-staging aws cloudwatch describe-alarms \
+  --alarm-name-prefix "Bedrock_Streaming_Handler_Staging-pii-subject" \
+  --query 'MetricAlarms[].{Name:AlarmName,State:StateValue,Updated:StateUpdatedTimestamp}' \
+  --output table
+```
+
+Expected: both alarms `OK` (after first invocation populates the metric) or `INSUFFICIENT_DATA` (cold state — only acceptable in week 1 post-deploy).
+
+**Reference:** F-DSAR33 D5 row + closeout phase-completion-audit 2026-05-26 strong-rec #17 (Security-Reviewer).
+
 ---
 
 ## §8 — SLA timekeeping
@@ -373,22 +746,26 @@ AWS_PROFILE=myrecruiter-staging aws dynamodb scan \
 | D+30 | Internal deadline (conservative; legal SLA is 45) | — |
 | D+45 | Legal deadline (CCPA) — must have responded OR sent extension notice | — |
 
-### Manual SLA tracking (pre-M3 alarm)
+### Manual SLA tracking (secondary check + post-M9.G6 weekly reminder companion)
 
-Until EventBridge alarm ships (M3 done-bar #1), operator runs **weekly** (every Monday morning):
+Originally the operator-attested weekly Monday CLI; now also referenced by the M9.G6 weekly reminder Lambda's embedded snippet. Filter on the actual status the audit writer emits for intake events (`in_progress`, not `open` — the previous wording was a documentation bug surfaced by M9.G6 and fixed 2026-05-23):
 ```bash
 AWS_PROFILE=myrecruiter-staging aws dynamodb query \
   --table-name picasso-pii-dsar-audit-staging \
   --index-name StatusIndex \
-  --key-condition-expression "#s = :open" \
+  --key-condition-expression "#s = :s" \
   --expression-attribute-names '{"#s":"status"}' \
-  --expression-attribute-values '{":open":{"S":"open"}}' \
-  --query 'Items[].{dsar:dsar_id.S,ts:event_timestamp.S,details:details.M}'
+  --expression-attribute-values '{":s":{"S":"in_progress"}}' \
+  --query "Items[?event_type.S=='request_received' && !starts_with(dsar_id.S, 'smoke-')].{dsar:dsar_id.S,ts:event_timestamp.S}"
 ```
+
+The `?event_type.S=='request_received'` filter is defensive — `status="in_progress"` is only set on `request_received` events today, but the audit writer is general and may add other in-progress events later.
+
+The `!starts_with(dsar_id.S, 'smoke-')` filter (**M9.G7 / F-DSAR28**, added 2026-05-24) suppresses synthetic smoke-test rows from the operator's review. Smoke rows persist in the audit table permanently per the C2 4-action Deny resource policy (no DeleteItem allowed); without this filter, accumulated test artifacts would distort the operator's at-risk-DSAR view. Real DSARs use `dsar_id` values shaped by `Master_Function_Staging/form_handler.py`'s ID generator (or operator-chosen identifiers) — never the `smoke-` prefix.
 
 Manually compute age: `today - intake_date`. Any row > 25 days = at-risk; > 30 days = breach risk; > 45 days = legal breach.
 
-**Calendar reminder** (operator-configured): every Monday at 09:00 local — "DSAR SLA review."
+**Calendar reminder** (operator-configured): every Monday at 09:00 local — "DSAR SLA review." Plus the **M9.G6 weekly reminder Lambda** (Mondays 14:00 UTC) which emails this same instruction with embedded CLI snippets — an independent secondary control that fires regardless of the primary monitor's state.
 
 ### Fault-test for the EventBridge alarm — EXECUTED 2026-05-23, RESULT PASS
 
@@ -401,9 +778,11 @@ The alarm was fault-tested per M3 done-bar #2 using a **non-destructive FilterPo
 5. Secondary check (this section's weekly Monday CLI scan) executed in parallel — found `smoke-sla-faulttest-001` in its output ✅, confirming that even with the email channel down, the operator's secondary check detects the at-risk DSAR.
 6. Removed FilterPolicy (`set-subscription-attributes` with `{}`), inserted closing event for `smoke-sla-faulttest-001`. Subscription returned to normal-flow.
 
-**G-D closure conditions met:** alarm fires, SNS publish succeeds, delivery loss is detectable by secondary check, normal-flow restoration verified. Logged in master plan v0.7 (this commit's companion).
+**G-D closure conditions met:** alarm fires, SNS publish succeeds, delivery loss is detectable by secondary check, normal-flow restoration verified. Logged in master plan v0.7.
 
-**Re-run cadence:** annually (during quarterly D2/D3/D4 currency review per master plan §4) OR after any change to the SLA monitor Lambda / topic / subscription / IAM scope.
+**⚠️ ADVISOR CAVEAT 2026-05-23 (compliance 🔴-1+5, F-DSAR22):** the FilterPolicy approach above is **weaker** than the original done-bar wording ("disable SNS topic"). FilterPolicy blocks delivery at one subscription; it does NOT exercise the topic-level failure mode. Additionally, the secondary check "found the row" in the same hour because the operator knew to look — a real alarm miss happens when the operator is **unaware**. The weekly Monday 09:00 CLI is operator-attested only, not enforced by a recurring calendar/cron, and is vacation-fragile. M3 done-bar #2 is therefore re-classified to **PARTIAL** with **F-DSAR22** (D5) as the open gap. Three remediation options (tracked under **M9.G6**): (1) enforce Google Calendar recurring event with response checklist; (2) belt-and-suspenders cron — second EventBridge schedule that emails the operator weekly to remember the CLI scan (~0.5d); (3) re-do fault test with operator-blinded approach (operator commitment + brief ops-alarm blind window).
+
+**Re-run cadence:** quarterly (paired with D2/D3/D4 currency review per master plan §4) — replaces v0.7's "annually" per advisor review (compliance 🔴-1: "every change to operator email, calendar habits, vacation invalidates the secondary control more frequently than annually"). Plus: re-run after any change to the SLA monitor Lambda / topic / subscription / IAM scope.
 
 ---
 
