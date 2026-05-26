@@ -232,9 +232,20 @@ data "aws_iam_policy_document" "exec" {
 
   # Narrowed from `anthropic.claude-*` to specifically the Haiku family
   # used by the Bedrock streaming handler. v7 plan §"Decisions locked"
-  # specifies Claude 4.5 Haiku as default. InvokeModel (synchronous)
-  # removed — only Master_Function uses the synchronous variant for
-  # post-stream CTA selection.
+  # specifies Claude 4.5 Haiku as default.
+  #
+  # InvokeModel (synchronous) re-added 2026-05-24 to bring this module in
+  # sync with the runtime: `prompt_v4.js` invokes `InvokeModelCommand`
+  # synchronously from `classifyTopic` (V4.1 Step 3a topic classification)
+  # and `selectActionsV4` (V4.0 Action Selector). The earlier removal
+  # ("only Master_Function uses the synchronous variant") missed that BSH
+  # added these non-streaming calls when V4.0/V4.1 shipped. Without this
+  # action, V4.1 Step 3a degrades 100% in staging — the bug audit row R7
+  # (project_scheduling_subphase_a_phase_completion_audit_2026-05-24).
+  # The live policy in staging-525 was patched via `aws iam put-role-policy`
+  # on 2026-05-24 with operator authorization; this Terraform update brings
+  # IaC in sync so the next `terraform apply` does not silently revert.
+  #
   # Cross-region inference profile (Issue #5 INT1): MYR's tenant config uses
   # claude-haiku-4-5 which AWS only hosts in us-east-2 — requests flow through
   # the us-east-1 inference profile and AWS routes to the target region. The
@@ -244,8 +255,11 @@ data "aws_iam_policy_document" "exec" {
   # (https://docs.aws.amazon.com/bedrock/latest/userguide/cross-region-inference.html).
   # Inference-profile ARN itself stays scoped to the source region.
   statement {
-    sid     = "BedrockInvokeClaudeHaiku"
-    actions = ["bedrock:InvokeModelWithResponseStream"]
+    sid = "BedrockInvokeClaudeHaiku"
+    actions = [
+      "bedrock:InvokeModelWithResponseStream",
+      "bedrock:InvokeModel",
+    ]
     resources = [
       "arn:aws:bedrock:*::foundation-model/anthropic.claude-haiku-*",
       "arn:aws:bedrock:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:inference-profile/*",
