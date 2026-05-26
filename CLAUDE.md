@@ -53,6 +53,73 @@ Transform tasks into verifiable success criteria before coding. "Add validation"
 
 ---
 
+## 🏗️ Deployment Model & SOP (post-P0, established 2026-05-04)
+
+The platform runs across **3 isolated AWS accounts** under one Organization. Account boundaries enforce isolation — code in dev/staging cannot reach prod resources, period. New work goes into staging first, gets validated, then promotes to prod via a per-resource cutover decision.
+
+### Account topology
+
+Three AWS accounts under one Organization: **prod** (hand-managed legacy; receives new resources only via deliberate Phase 2 promotion), **staging** (where features live for demos + soak; PowerUserAccess, no IAM tampering), and **dev** (engineer + AI agent iteration; destructible; AdministratorAccess).
+
+**Account IDs, SSO profile names, and the SSO portal URL** live in the operator-local memory file `~/.claude/projects/-Users-chrismiller-Desktop-Working-Folder/memory/reference_aws_accounts.md` (operator-local, not in this repo). Agents with checkout access typically have access to that memory file; agents without it should ask the operator.
+
+### Deployment SOP
+
+1. **Develop locally or in dev account**. Engineers + AI agents have AdministratorAccess in dev; can do destructive things without risk.
+2. **Promote to staging via Terraform**. New resources defined in `infra/` directory. PR → CI runs `terraform plan` against staging and posts comment. Merge to `staging` long-lived branch (when created) → CI runs `apply`.
+3. **Soak in staging**. Demos run against `staging.chat.myrecruiter.ai`. Validate end-to-end including dashboards, alarms, etc.
+4. **Promote to prod via per-resource cutover**. NOT a `terraform import` of existing prod resources. Instead: deploy new clean-shape resources in prod alongside the existing hand-managed ones, switch traffic (tenant config, DNS, etc.), decommission old.
+
+### Hard rules (do not violate)
+
+- **Never `terraform apply` against the prod account during normal feature work.** Prod is hand-managed today. Phase 2 cutover decisions are explicit, gated, and rare.
+- **Never share IAM roles across Lambdas.** Each Lambda gets a dedicated execution role. (lambda#44 was the result of historical sharing — don't recreate that pattern.)
+- **Never share resources across environments.** No "single `picasso-X` table used by prod and staging." Use the `{name}-{env}` naming convention.
+- **Do not rotate the legacy operator IAM credentials used by legacy CI workflows.** Specific credential name + rotation policy in the operator-local `reference_aws_accounts.md` memory file.
+- **Always `unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN` before running terraform.** Stale exported credentials override AWS_PROFILE and trigger SSO 401 errors.
+
+### Local Terraform usage
+
+```bash
+aws sso login --profile myrecruiter-dev          # or staging/prod
+unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+cd infra
+AWS_PROFILE=myrecruiter-dev terraform init -reconfigure -backend-config=backend/dev.tfbackend
+AWS_PROFILE=myrecruiter-dev terraform plan -var-file=envs/dev.tfvars
+AWS_PROFILE=myrecruiter-dev terraform apply -var-file=envs/dev.tfvars
+```
+
+CI deploys via OIDC into per-account `GitHubActionsDeployRole`. See `.github/workflows/infra-deploy.yml`.
+
+### Adding a new resource
+
+1. Create or extend module under `infra/modules/<name>/`
+2. Reference from `infra/main.tf`
+3. Plan + apply in dev account first
+4. Plan + apply in staging account
+5. (Phase 2 only, with explicit gate) plan + apply in prod account
+
+### Where the legacy commands below fit
+
+The `Commands` section below documents direct AWS CLI deploys to prod-account resources via a legacy operator IAM profile. **Those are legacy operations against the hand-managed prod resources.** They continue to work for backward compatibility but new resources should be Terraform-managed via the SOP above. Existing prod resources stay manually managed until each is intentionally cut over.
+
+---
+
+## 🧬 Schema Discipline (forward-compatible reads)
+
+**Rule:** every reader of a stored record (DynamoDB row, tenant config section, request body, S3 object, etc.) must tolerate missing fields. New fields are additive — old data without them must not crash any reader.
+
+**How to apply:**
+- Python: `item.get('field', default)` — never `item['field']` for optional fields.
+- Node/TS: `item.field ?? default` or destructuring with defaults — never bracket access without nullish coalescing on optional fields.
+- When a PR adds a field to a stored record type, the PR MUST add a contract / fixture test that exercises the reader against an old-shape record (without the new field). If the reader crashes on the old shape, the PR fails CI.
+
+**Why:** dev/staging/prod are isolated by AWS account boundary; only customer data lives in prod. Code promotes forward; data does not. New code deployed to prod will encounter pre-existing prod data that lacks fields added during dev. Forward-compatible reads is the discipline that keeps account isolation safe — without it, a routine deploy can break prod.
+
+**Reference pattern:** Issue #5's `analytics_writer_contract.json` — both Python and Node writers produce identical wire format AND the test fixture covers `attribute_not_exists` initial-state cases. Replicate this pattern whenever a stored record type changes shape.
+
+---
+
 ## 🛡️ PII Governance Project
 
 **Goal (verbatim user quote, 2026-05-19):** *"Design MyRecruiter/Picasso so personal information is collected intentionally, stored minimally, protected by default, separated by tenant, retained only as long as needed, and easy to disclose, export, delete, or anonymize later."*
@@ -429,6 +496,33 @@ Per the Developer Playbook:
 - Use feature branches for all changes
 - main branch = production
 - Use Sandbox/ for temporary work
+
+### Branch routing for PRs (established 2026-05-25)
+
+Choose the PR base branch by **what the PR contains**, not by habit:
+
+| Contents | Base | Why |
+|---|---|---|
+| Pure docs that are self-contained or cite only main-promoted state (master plan revisions, D5 updates, CLAUDE.md edits, runbooks, methodology notes, SOP changes) | `main` | No production behavior change; no soak needed; routing through staging just accumulates drift. |
+| Pure docs that cite live staging-only state (decision docs naming staging Lambda CodeSha256s, staging IaC ARNs, etc.) | `staging` | Doc must co-locate with the artifact it references so a reader of the same branch can verify the citation. |
+| Code, IaC, or mixed (docs + code) | `staging` | Soak in staging acct 525 before promote-to-main per Deployment SOP §"Deployment SOP" above. |
+
+**Promote-to-main pattern (when code/IaC PRs accumulate on staging):**
+- Per `feedback_promote_pr_scope_discipline`: scoped promote-PRs per decision gate (e.g., "promote M9.G5 chain for prod cutover"), NOT multi-milestone bundles.
+- Cherry-pick the relevant commits onto a branch from main; do NOT merge staging into main wholesale.
+- A promote-PR's diff must be **reviewable as the work being promoted** — not "everything that's been accumulating since last promote."
+
+**Why this rule exists:** before 2026-05-25, all PII work uniformly targeted staging by habit. Pure-docs (master plan revisions, decision docs without staging citations) accumulated on staging with no production gate to trigger promotion, growing to a 30+ commit backlog. Routing docs directly to main when they don't depend on staging-only state shrinks the drift without losing soak discipline for code/IaC.
+
+**Operational prerequisite:** the `Deploy to Production` workflow at `.github/workflows/deploy-production.yml` has `paths-ignore: [docs/**, **/*.md]` on the `push.main` trigger (added in picasso#225/#226), so pure-docs PRs targeting main do NOT trigger the production deploy pipeline. Mixed-content PRs (docs + code) still trigger the workflow per GitHub paths-ignore semantics.
+
+### Force-push attestation convention (established 2026-05-25)
+
+When force-pushing to a PR branch after CI has already passed (e.g., rebase-to-update-with-main before merge), include in the PR description a one-line attestation that the only delta vs the pre-rebase tip is the rebase parent update (no substantive content change). Example:
+
+> **Force-push attestation 2026-05-25:** rebased onto `origin/main@<sha>` to satisfy branch-protection "up-to-date with base"; no content delta vs pre-rebase tip `<old-sha>`.
+
+**Why:** force-push-with-lease on a feature branch rewrites the pre-rebase tip from remote reflog. For docs-only PRs this is low risk, but the attestation makes the operator's intent explicit and recoverable. Established by `project_scheduling_subphase_b_opening_phase_completion_audit_2026-05-25` audit row 24.
 
 ## Card Extraction & Forms Workflow
 
