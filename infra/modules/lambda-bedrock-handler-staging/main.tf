@@ -85,6 +85,35 @@ variable "form_submissions_table_name" {
   default     = ""
 }
 
+# M1.G6 (master plan v0.12 / F-DSAR18 closure). BSH form_handler.js now mints
+# + indexes pii_subject_id via the same picasso-pii-subject-index-staging
+# table the Master_Function_Staging Python writer uses. Default empty keeps
+# the module backward-compatible — when the var is empty, the IAM statement
+# below + the env var entry are omitted; the Lambda's pii_subject.js falls
+# back to its UNINDEXED-candidate best-effort path (submission never fails).
+variable "pii_subject_index_table_arn" {
+  description = "ARN of picasso-pii-subject-index-staging (BSH pii_subject.js mints + indexes pii_subject_id). Empty = grant + env var omitted (backward-compatible fallback to UNINDEXED rows)."
+  type        = string
+  default     = ""
+}
+
+# Sprint F3 / audit-of-audit finding 2 (Security 🟡): ops SNS topic for the
+# PII subject-index EMF metric alarms. Sprint E2 added EMF emission for
+# IndexRaceUnresolved + IndexUnavailable but no alarms were provisioned —
+# metrics accumulated silently. Default empty keeps backward compat (no
+# alarms created if not provided).
+variable "pii_subject_index_alarm_sns_topic_arn" {
+  description = "ARN of the ops SNS topic for PII subject-index EMF metric alarms (IndexRaceUnresolved + IndexUnavailable). Empty = alarms not created (backward compat)."
+  type        = string
+  default     = ""
+}
+
+variable "pii_subject_index_table_name" {
+  description = "Name of the PII subject-index table (env var PII_SUBJECT_INDEX_TABLE). Must be paired with pii_subject_index_table_arn (both empty OR both set)."
+  type        = string
+  default     = ""
+}
+
 variable "notification_sends_table_arn" {
   description = "ARN of picasso-notification-sends-staging (BSH form_handler.js writes notification delivery log)."
   type        = string
@@ -303,6 +332,26 @@ data "aws_iam_policy_document" "exec" {
     }
   }
 
+  # M1.G6 (master plan v0.12 / F-DSAR18 closure). PII subject-index for BSH's
+  # pii_subject.js — least-privilege mirror of the MFS grant: get_item + a
+  # conditional put_item only (no Update/Delete/Query from BSH; the Phase-2
+  # delete service gets its own dedicated role). Wired atomically with the
+  # BSH form_handler code change so there is no interval where the code
+  # runs without permission (same gate as MFS B2). Conditional on the var
+  # being passed; empty preserves backward-compat with the existing
+  # UNINDEXED-fallback path in pii_subject.js.
+  dynamic "statement" {
+    for_each = var.pii_subject_index_table_arn != "" ? [1] : []
+    content {
+      sid = "DynamoDBPiiSubjectIndex"
+      actions = [
+        "dynamodb:GetItem",
+        "dynamodb:PutItem",
+      ]
+      resources = [var.pii_subject_index_table_arn]
+    }
+  }
+
   # Phase C analytics-events pipeline send grant. Conditional on the queue ARN
   # being passed (when empty, BSH's handleAnalyticsEvent no-ops per index.js:66-106
   # so no IAM grant is required). SendMessage + SendMessageBatch cover both
@@ -465,6 +514,13 @@ resource "aws_lambda_function" "this" {
       # (no same-account SMS_Sender Lambda).
       var.sms_sender_function_name != "" ? {
         SMS_SENDER_FUNCTION = var.sms_sender_function_name
+      } : {},
+      # M1.G6 (master plan v0.12 / F-DSAR18 closure). When set, BSH's
+      # pii_subject.js writes into this table; when empty, pii_subject.js
+      # falls back to its UNINDEXED-candidate path (submission never fails,
+      # but the row is not email-indexed).
+      var.pii_subject_index_table_name != "" ? {
+        PII_SUBJECT_INDEX_TABLE = var.pii_subject_index_table_name
       } : {}
     )
   }
@@ -559,6 +615,133 @@ resource "aws_lambda_function_url" "this" {
 
 output "function_name" {
   value = aws_lambda_function.this.function_name
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Sprint F3 / audit-of-audit finding 2 → F-DSAR33 closeout — PII subject-index
+# EMF metric alarms.
+#
+# History: Sprint F3 attempted to alarm on per-TenantId EMF metrics via
+# `metric_query { expression = "SUM(SEARCH(...))" }`. AWS rejected with
+# `SEARCH is not supported on Metric Alarms` (dashboard-only). picasso#237
+# REMOVED both alarms 2026-05-26 + spawned D5 row F-DSAR33 with 3 redesign
+# options.
+#
+# Closure 2026-05-26 (closeout phase-completion-audit #9 / tech-lead #3 /
+# F-DSAR33 option (a)): BSH Lambda `pii_subject.js` `_emitEmfMetric()` now
+# emits with `Dimensions: [['TenantId'], []]` — same metric, two series, the
+# no-dim series is alarmable as a plain metric. Lambda fix: lambda#163.
+#
+# These alarms target the no-dim series. Plain `metric_name` + `namespace`
+# (no metric_query, no SEARCH). Reads the aggregate metric across ALL
+# tenants. Sum > 0 in any 1h window fires the alarm on ops-alerts SNS.
+# ─────────────────────────────────────────────────────────────────────────────
+resource "aws_cloudwatch_metric_alarm" "pii_subject_index_race_unresolved" {
+  count             = var.pii_subject_index_alarm_sns_topic_arn != "" ? 1 : 0
+  alarm_name        = "${var.function_name}-pii-subject-index-race-unresolved"
+  alarm_description = "F-DSAR33 closeout: PII subject-index race exhausted 3 attempts. EMF metric PII/SubjectIndex.IndexRaceUnresolved (no-dim series) Sum>0 in any 1h window — aggregate across all tenants via Dimensions:[['TenantId'],[]] dual-emit per lambda#163. Investigate via CW Logs Insights filter 'source = pii_subject_emf' on BSH Lambda log group."
+
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  threshold           = 0
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [var.pii_subject_index_alarm_sns_topic_arn]
+
+  namespace   = "PII/SubjectIndex"
+  metric_name = "IndexRaceUnresolved"
+  statistic   = "Sum"
+  period      = 3600
+  # NO `dimensions` block — the no-dim series IS the alarmable one.
+
+  tags = {
+    Project = "pii-governance"
+    Owner   = "chris@myrecruiter.ai"
+    Source  = "F-DSAR33 closeout - lambda PR 163"
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "pii_subject_index_unavailable" {
+  count             = var.pii_subject_index_alarm_sns_topic_arn != "" ? 1 : 0
+  alarm_name        = "${var.function_name}-pii-subject-index-unavailable"
+  alarm_description = "F-DSAR33 closeout: PII subject-index DDB call failed (non-CCF error path). EMF metric PII/SubjectIndex.IndexUnavailable (no-dim series) Sum>0 in any 1h window. Catches index outages that the writer's best-effort fallback would otherwise hide."
+
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  threshold           = 0
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [var.pii_subject_index_alarm_sns_topic_arn]
+
+  namespace   = "PII/SubjectIndex"
+  metric_name = "IndexUnavailable"
+  statistic   = "Sum"
+  period      = 3600
+
+  tags = {
+    Project = "pii-governance"
+    Owner   = "chris@myrecruiter.ai"
+    Source  = "F-DSAR33 closeout - lambda PR 163"
+  }
+}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# M9.G8 / F-DSAR24: BSH form_handler silent-catch observability
+#
+# saveFormSubmission's catch is intentional (preserves consumer UX when DDB
+# is unreachable — see lambda#156 commit `7c140e7`) but was previously silent.
+# Empirical 2026-05-14T13:39:29Z staging incident proved 1 real lost
+# submission (AccessDeniedException due to env-var-table-name drift).
+#
+# Lambda-side fix (lambda#156): enrich the error log line with tenant_id +
+# submission_id + error_name + error_message; preserve "Error saving to
+# DynamoDB:" prefix as the metric-filter contract.
+#
+# IaC-side fix (this block): CW Logs metric filter on the literal prefix
+# pattern, plus alarm at ≥1 in any 5-min window → ops-alerts SNS. Closes
+# F-DSAR24 with "option 3 variant" (per master plan v0.18 §M9.G8): keep
+# the catch (preserves UX intent), make the silent catch no longer silent
+# at the alerting layer.
+# ─────────────────────────────────────────────────────────────────────────────
+resource "aws_cloudwatch_log_metric_filter" "form_handler_ddb_write_error" {
+  count          = var.pii_subject_index_alarm_sns_topic_arn != "" ? 1 : 0
+  name           = "${var.function_name}-form-handler-ddb-write-error"
+  log_group_name = aws_cloudwatch_log_group.lambda.name
+  # Literal-string match — quoted form in CW Logs metric-filter syntax means
+  # exact substring. lambda#156 keeps "Error saving to DynamoDB:" as the
+  # prefix verbatim; jest test
+  # `should log structured tenant_id + submission_id when DDB PutCommand fails`
+  # regression-guards the prefix contract.
+  pattern = "\"Error saving to DynamoDB:\""
+
+  metric_transformation {
+    name          = "FormSubmissionDDBWriteError"
+    namespace     = "Picasso/BSH/FormHandler"
+    value         = "1"
+    default_value = "0"
+    unit          = "Count"
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "form_handler_ddb_write_error" {
+  count             = var.pii_subject_index_alarm_sns_topic_arn != "" ? 1 : 0
+  alarm_name        = "${var.function_name}-form-handler-ddb-write-error"
+  alarm_description = "M9.G8 / F-DSAR24: BSH form_handler caught a DDB PutCommand failure (silent-catch path; submission still returned 'success' to consumer but row not persisted). Investigate via CW Logs Insights: filter @message like 'Error saving to DynamoDB:' | fields @timestamp, @message | sort @timestamp desc — extract tenant_id + submission_id + error_name from the structured log line. Empirical: 2026-05-14 incident was env-var-table-name drift."
+
+  namespace           = "Picasso/BSH/FormHandler"
+  metric_name         = "FormSubmissionDDBWriteError"
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = 0
+  comparison_operator = "GreaterThanThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [var.pii_subject_index_alarm_sns_topic_arn]
+
+  tags = {
+    Project = "pii-governance"
+    Owner   = "chris@myrecruiter.ai"
+    Source  = "M9.G8 / F-DSAR24"
+  }
 }
 
 output "function_arn" {

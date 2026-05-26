@@ -82,3 +82,13 @@ output "table_name" {
 output "table_arn" {
   value = aws_dynamodb_table.booking.arn
 }
+
+output "tenant_id_start_at_index_arn" {
+  description = "ARN of the (tenantId, start_at) GSI. Used by B5 onboarding hook, B11 stranded-booking, E9 reconciliation, OOO-overlap detection."
+  value       = "${aws_dynamodb_table.booking.arn}/index/tenantId-start_at-index"
+}
+
+output "tenant_id_coordinator_email_index_arn" {
+  description = "ARN of the (tenantId, coordinator_email) GSI. Used by B2 Calendar_Watch_Listener to find bookings owned by a coordinator when a calendar push arrives, and by B11 stranded-booking queries."
+  value       = "${aws_dynamodb_table.booking.arn}/index/tenantId-coordinator_email-index"
+}
