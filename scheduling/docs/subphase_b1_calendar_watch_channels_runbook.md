@@ -39,9 +39,9 @@
 
 **B2 implementation must choose one of:**
 1. **CMK item-level encryption** matching the `picasso-channel-mappings-staging` page-token precedent (KMS-encrypted at item level, table CMK on the new key).
-2. **Move `channel_token` to Secrets Manager** at path `picasso/scheduling/channel-tokens/{tenant_id}/{channel_id}` and store only a SHA-256 hash in DDB for lookup. Cleaner architecture (channel tokens are functionally webhook signing secrets).
+2. **Move `channel_token` to Secrets Manager** at path `picasso/scheduling/channel-tokens/{tenant_id}/{channel_id}` and store only a SHA-256 hash in DDB for lookup. **Tech-lead recommendation (per audit-of-audit 2026-05-25): prefer Option 2.** Rationale: channel tokens behave like webhook signing secrets (validated per-request via `hmac.compare_digest`, never bulk-read), so Secrets Manager + per-access IAM audit is the architecturally correct abstraction. The `picasso-channel-mappings-staging` precedent (item-level CMK on page tokens) is for the different pattern of bulk-readable OAuth refresh tokens.
 
-The decision is a B2 PR-level concern, NOT a B1 blocker — but the runbook fixes the gate: **B2's Security-Reviewer pass cannot close without addressing this choice.**
+The decision is a B2 PR-level concern, NOT a B1 blocker — but the runbook fixes the gate: **B2's Security-Reviewer pass cannot close without addressing this choice.** The B2 task row in `scheduling_implementation_plan.md` carries the same gate.
 
 ### IAM scope discipline note (B2/B3/B5/B6 implementation gate)
 

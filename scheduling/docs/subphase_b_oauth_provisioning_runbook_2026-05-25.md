@@ -85,18 +85,21 @@ set -euo pipefail
 
 # Substitute the four placeholders with your actual values from Steps 1+2.
 # Use single quotes — values containing $ or \ will not expand or escape.
-GOOGLE_CLIENT_ID='REPLACE_WITH_STEP_1_CLIENT_ID'
-GOOGLE_CLIENT_SECRET='REPLACE_WITH_STEP_1_CLIENT_SECRET'
-GOOGLE_REFRESH_TOKEN='REPLACE_WITH_STEP_2_REFRESH_TOKEN'
-COORDINATOR_EMAIL='REPLACE_WITH_TEST_COORDINATOR_GOOGLE_EMAIL'
+# CRITICAL: `export` is required — bare assignments are NOT inherited by the
+# python3 subprocess via os.environ. Without export, the heredoc raises
+# KeyError on every variable and writes an empty/absent /tmp/oauth-secret.json.
+export GOOGLE_CLIENT_ID='REPLACE_WITH_STEP_1_CLIENT_ID'
+export GOOGLE_CLIENT_SECRET='REPLACE_WITH_STEP_1_CLIENT_SECRET'
+export GOOGLE_REFRESH_TOKEN='REPLACE_WITH_STEP_2_REFRESH_TOKEN'
+export COORDINATOR_EMAIL='REPLACE_WITH_TEST_COORDINATOR_GOOGLE_EMAIL'
 
 # Compute timestamps in the parent shell (NOT inside the heredoc — avoids
 # silent-fail paths on macOS-vs-GNU date semantics inside an unquoted heredoc).
-CREATED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+export CREATED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 # 90-day rotation reminder. Hardcoded format avoids the macOS/GNU `date -v` vs
 # `date -d` fork (which both silently fall through to empty if either fails).
 # If you want a different rotation window, edit this literal:
-ROTATE_AFTER='2026-08-23T00:00:00Z'
+export ROTATE_AFTER='2026-08-23T00:00:00Z'
 
 # Use Python to safely build the JSON — handles any special chars in the
 # credentials (including $, \, ", newlines). This is more robust than a
@@ -134,8 +137,14 @@ else
     --profile myrecruiter-staging
 fi
 
-# Cross-platform secure cleanup: overwrite then delete (works on macOS APFS,
-# Linux ext4 — `shred` is not on macOS, `rm -P` was removed from recent macOS).
+# Cross-platform best-effort cleanup: overwrite then delete (works on macOS
+# APFS, Linux ext4 — `shred` is not on macOS, `rm -P` was removed from recent
+# macOS). NOTE: on APFS copy-on-write, overwriting at the same logical offset
+# may write to a fresh physical block (the original block survives until
+# TRIM/GC). This is materially better than `rm` alone but is NOT cryptographic
+# secure-erase. Acceptable for staging-only test credentials on a developer
+# laptop; for production secrets use hardware-backed keystore (macOS keychain
+# / Linux gnome-keyring) instead of a temp file.
 python3 -c "
 import os
 path = '/tmp/oauth-secret.json'
@@ -147,6 +156,9 @@ with open(path, 'r+b') as f:
 os.remove(path)
 "
 echo "Plaintext file overwritten with zeros and deleted."
+
+# Unset shell vars so credentials don't linger in this shell session
+unset GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET GOOGLE_REFRESH_TOKEN COORDINATOR_EMAIL CREATED_AT ROTATE_AFTER
 ```
 
 **If the original secret was previously stored with non-canonical keys** (e.g., uppercase `GOOGLE_CLIENT_ID` instead of lowercase `client_id`), the `put-secret-value` above creates a new AWSCURRENT version with the canonical schema. **Then demote the prior version from AWSPREVIOUS** so it cannot be retrieved without explicit VersionId knowledge:
@@ -279,3 +291,11 @@ After successful Step 5 verification, [`scheduling_implementation_plan.md` line 
 On 2026-05-25, this runbook was executed in collaborative mode: operator completed Steps 1–3 (Google Cloud Console + OAuth Playground + AWS Secrets Manager create); agent ran Steps 4–5 (gate verification). During Step 5, agent discovered the operator's stored payload used uppercase shell-variable-style keys (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`, `COORDINATOR_EMAIL`) instead of the canonical E11 lowercase schema. Agent rewrote the payload in-place via `aws secretsmanager update-secret` to add the canonical lowercase keys + metadata fields (`provider`, `scopes`, `token_endpoint`, `created_at`, `purpose`, `rotate_after`). The rewrite created a new AWSCURRENT version; the original uppercase version remained as AWSPREVIOUS until subsequently demoted via `update-secret-version-stage --remove-from-version-id` (audit row 11 closure).
 
 **Process improvement:** the Step 3 apply block above has been hardened to use Python-based JSON generation (avoids heredoc expansion bugs), to use put-secret-value-on-existing-secret for idempotent re-runs, and to include the AWSPREVIOUS-demotion step inline so re-runs of this runbook produce the canonical schema on the first try. Future agent-initiated credential mutations should require an explicit operator confirmation gate before execution (general convention being added to CLAUDE.md).
+
+## 2026-05-25 evening — Round-2 audit follow-up: credential rotation
+
+Audit-of-audit (3 reviewers, same date) re-tested the AWSPREVIOUS-demotion claim and found the prior version content was **still retrievable via `get-secret-value --version-id 3137a092...`** — the demotion only removed the stage label, not the version content. Closure required actual credential rotation, not just label cleanup.
+
+**Operator action (2026-05-25 ~23:12 local):** Google OAuth client_secret + refresh_token rotated at Google Cloud Console (new credentials invalidate the prior version content cryptographically). Operator ran `put-secret-value` to push the new payload as AWSCURRENT; agent ran `update-secret-version-stage --remove-from-version-id 9017aae0...` to demote the prior AWSPREVIOUS. Post-state: only one labeled version (`a3ae84a8...` AWSCURRENT) exists; all prior versions either cleaned by AWS or unlabeled (containing now-invalid credentials).
+
+**Process improvement (added to Step 3 apply block above):** `export` keyword added before each shell variable assignment so they reach the `python3` subprocess via `os.environ`. Bare assignments (`VAR='val'`) without `export` raise `KeyError` in the heredoc; the prior runbook had this latent bug which audit-of-audit caught. Verify per Step 5(b) BEFORE assuming the secret was correctly stored.
