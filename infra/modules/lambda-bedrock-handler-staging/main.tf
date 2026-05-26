@@ -606,71 +606,24 @@ output "function_name" {
 # ─────────────────────────────────────────────────────────────────────────────
 # Sprint F3 / audit-of-audit finding 2 — PII subject-index EMF metric alarms.
 #
-# Sprint E2 added CloudWatch Embedded Metric Format emission in
-# pii_subject.js (PII/SubjectIndex.IndexRaceUnresolved + .IndexUnavailable)
-# but no alarm was provisioned — the metrics accumulated silently in CW
-# without any operator-facing surface. Security-reviewer flagged this as
-# incomplete-fix.
+# REMOVED 2026-05-26: SEARCH expressions are not supported in CloudWatch
+# metric alarms (api error: "SEARCH is not supported on Metric Alarms"). The
+# original design — cross-tenant aggregation via SEARCH('Namespace="PII/...')
+# — is infeasible at the alarm layer. AWS only allows SEARCH in dashboards.
 #
-# These alarms use metric_query with a SEARCH expression to aggregate the
-# per-TenantId metric streams across ALL tenants (EMF emits with TenantId
-# dimension, so a plain alarm on the metric would only fire on a specific
-# tenant's stream). SUM over a 1-hour window catches index degradation;
-# any non-zero count fires the alarm via ops-alerts SNS.
+# The underlying observability gap (PII/SubjectIndex.IndexRaceUnresolved +
+# .IndexUnavailable EMF metrics accumulating silently with no operator-facing
+# alarm) is tracked as D5 row F-DSAR33 with redesign options enumerated:
+#   (a) BSH Lambda EMF emits the metric a second time WITHOUT TenantId
+#       dimension; alarm on the no-dimension series → simple
+#   (b) Per-tenant alarms via for_each over the tenant list → high cardinality
+#   (c) Lambda-based custom-metric aggregator → over-engineered
+#
+# Until F-DSAR33 is resolved, the SubjectIndex EMF metrics are visible in
+# CloudWatch but un-alarmed. Operator should check the CW namespace
+# PII/SubjectIndex weekly via the M3 playbook §7 (or dashboard if added).
 # ─────────────────────────────────────────────────────────────────────────────
-resource "aws_cloudwatch_metric_alarm" "pii_subject_index_race_unresolved" {
-  count             = var.pii_subject_index_alarm_sns_topic_arn != "" ? 1 : 0
-  alarm_name        = "${var.function_name}-pii-subject-index-race-unresolved"
-  alarm_description = "Sprint F3 / audit-of-audit finding 2: PII subject-index race exhausted 3 attempts. EMF metric IndexRaceUnresolved Sum>0 across all tenants in any 1h window. Fires on operator-facing ops-alerts SNS topic. Investigate via CW Logs Insights filter '_aws.CloudWatchMetrics' on Lambda log group."
 
-  comparison_operator = "GreaterThanThreshold"
-  evaluation_periods  = 1
-  threshold           = 0
-  treat_missing_data  = "notBreaching"
-  alarm_actions       = [var.pii_subject_index_alarm_sns_topic_arn]
-
-  # metric_query with SEARCH aggregates per-TenantId streams across ALL
-  # tenants (EMF dimension is TenantId; otherwise alarm would be per-tenant).
-  metric_query {
-    id          = "race_unresolved_sum"
-    expression  = "SUM(SEARCH('Namespace=\"PII/SubjectIndex\" MetricName=\"IndexRaceUnresolved\"', 'Sum', 3600))"
-    label       = "PII subject-index race unresolved (1h sum across all tenants)"
-    period      = 3600
-    return_data = true
-  }
-
-  tags = {
-    Project = "pii-governance"
-    Owner   = "chris@myrecruiter.ai"
-    Source  = "Sprint F3 / audit-of-audit finding 2"
-  }
-}
-
-resource "aws_cloudwatch_metric_alarm" "pii_subject_index_unavailable" {
-  count             = var.pii_subject_index_alarm_sns_topic_arn != "" ? 1 : 0
-  alarm_name        = "${var.function_name}-pii-subject-index-unavailable"
-  alarm_description = "Sprint F3 / audit-of-audit finding 2: PII subject-index DDB call failed (non-CCF error path). EMF metric IndexUnavailable Sum>0 across all tenants in any 1h window. Catches index outages that the writer's best-effort fallback would otherwise hide."
-
-  comparison_operator = "GreaterThanThreshold"
-  evaluation_periods  = 1
-  threshold           = 0
-  treat_missing_data  = "notBreaching"
-  alarm_actions       = [var.pii_subject_index_alarm_sns_topic_arn]
-
-  metric_query {
-    id          = "unavailable_sum"
-    expression  = "SUM(SEARCH('Namespace=\"PII/SubjectIndex\" MetricName=\"IndexUnavailable\"', 'Sum', 3600))"
-    label       = "PII subject-index unavailable (1h sum across all tenants)"
-    period      = 3600
-    return_data = true
-  }
-
-  tags = {
-    Project = "pii-governance"
-    Owner   = "chris@myrecruiter.ai"
-    Source  = "Sprint F3 / audit-of-audit finding 2"
-  }
-}
 
 # ─────────────────────────────────────────────────────────────────────────────
 # M9.G8 / F-DSAR24: BSH form_handler silent-catch observability
