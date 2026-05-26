@@ -28,10 +28,16 @@
 #
 # DELIBERATE ABSENCES (least-privilege design discipline — same convention as
 # Apply-1 module's "DELIBERATELY ABSENT" block):
-#   - NO s3:* grants on tenant-fulfillment buckets — Sprint D will add scoped
-#     s3:DeleteObject on `s3://{tenant-bucket}/submissions/{tenant_id}/*` ARN
-#     pattern per PII_DELETE_PIPELINE_DESIGN.md Arm 3. Sprint C added the
-#     ARCHIVE_BUCKET grants only (picasso-archive-staging; sessions/* prefix).
+#   - NO s3:* grants on tenant-fulfillment buckets by default — Sprint D (lambda
+#     PR #164 walker + lambda #166 writer) wired the `fulfillment_grants`
+#     variable below. Default `[]` = no grants today (empirical scan 2026-05-26:
+#     none of ATL642715/AUS123957/FOS402334/MYR384719 configures S3 fulfillment;
+#     they all use the default email path). When the first tenant enables S3
+#     fulfillment, append `{bucket=..., tenant_id=...}` to var.fulfillment_grants
+#     and re-apply. Until then, the walker fails-closed with AccessDenied →
+#     manual followup, by design (PII_DELETE_PIPELINE_DESIGN.md Arm 3).
+#     Sprint C added the ARCHIVE_BUCKET grants only (picasso-archive-staging;
+#     sessions/* prefix).
 #   - NO s3:GetObject on ARCHIVE_BUCKET — walker returns keys only, not bodies
 #     (operator pulls bodies via their own SSO role with `aws s3 cp`).
 #   - NO Scan on any surface except where unavoidable (subject-lookups go through GSI)
@@ -75,6 +81,47 @@ variable "pii_cmk_key_arn" {
 variable "dsar_audit_table_arn" {
   description = "ARN of picasso-pii-dsar-audit-staging (module.ddb_pii_dsar_audit_staging[0].table_arn, PR #157). DSAR role gets PutItem only — append-only audit, never read or delete its own audit trail."
   type        = string
+}
+
+# Sprint D follow-up: per-(bucket, tenant_id) S3 fulfillment grants. The
+# fulfillment walker (lambda picasso_pii_dsar_staging::_walk_fulfillment_s3,
+# PR lambda#164) chases per-row `fulfillment_path` values written by the form
+# handlers (lambda#166). Without an Allow on the specific `(bucket, tenant_id)`
+# pair the walker hits AccessDenied → row routes to walker manual followup
+# (fail-closed; design intent per PII_DELETE_PIPELINE_DESIGN.md Arm 3).
+#
+# Default `[]` — empirical scan 2026-05-26 found no tenant currently configures
+# `fulfillment.type='s3'`. When the first tenant turns it on, append the pair:
+#
+#   module "lambda_pii_dsar_staging" {
+#     # ...
+#     fulfillment_grants = [
+#       { bucket = "tenant-x-submissions", tenant_id = "TENANT_X" },
+#     ]
+#   }
+#
+# Then `terraform apply` (staging). One Allow statement is produced per pair,
+# scoped to `s3:DeleteObject` on `arn:aws:s3:::{bucket}/submissions/{tenant_id}/*`.
+# No `s3:GetObject` and no bucket-level `s3:ListBucket` — the walker reads the
+# exact key off the form-submission row (no enumeration), and the response
+# carries `objects_found` count only (no bodies). Matches the
+# `submissions/{tenant_id}/{form_type}/{submission_id}.json` key pattern written
+# by both form_handlers (Master_Function_Staging/form_handler.py line 984 +
+# Bedrock_Streaming_Handler_Staging/form_handler.js line 696).
+variable "fulfillment_grants" {
+  description = "List of {bucket, tenant_id} pairs granting the DSAR role s3:DeleteObject on submissions/{tenant_id}/* in each bucket. Default empty — populate per-tenant as tenants enable type='s3' fulfillment. See module header for the gate-trigger procedure."
+  type = list(object({
+    bucket    = string
+    tenant_id = string
+  }))
+  default = []
+  validation {
+    condition = alltrue([
+      for g in var.fulfillment_grants :
+      length(g.bucket) > 0 && length(g.tenant_id) > 0
+    ])
+    error_message = "Each fulfillment_grants entry must have non-empty `bucket` and `tenant_id` (otherwise the resulting ARN would contain `submissions//*` and over-grant)."
+  }
 }
 
 data "aws_caller_identity" "current" {}
@@ -265,6 +312,21 @@ data "aws_iam_policy_document" "dsar" {
     sid       = "ArchiveBucketDeleteVersions"
     actions   = ["s3:DeleteObject", "s3:DeleteObjectVersion"]
     resources = [local.s3_archive_sessions]
+  }
+
+  # Sprint D — per-tenant fulfillment-bucket DeleteObject. Renders one Allow
+  # statement per (bucket, tenant_id) entry in var.fulfillment_grants; renders
+  # ZERO statements when the variable is `[]` (default; current state). See
+  # the variable's description block above for the gate-trigger procedure.
+  # Sids are stable per pair so terraform plan diffs are readable on tenant
+  # adds/removes.
+  dynamic "statement" {
+    for_each = { for g in var.fulfillment_grants : "${g.bucket}-${g.tenant_id}" => g }
+    content {
+      sid       = "FulfillmentDelete${replace(replace(statement.key, "-", ""), "_", "")}"
+      actions   = ["s3:DeleteObject"]
+      resources = ["arn:aws:s3:::${statement.value.bucket}/submissions/${statement.value.tenant_id}/*"]
+    }
   }
 
   # picasso-pii-dsar-audit-staging — PutItem ONLY. Append-only event log;
