@@ -604,25 +604,70 @@ output "function_name" {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Sprint F3 / audit-of-audit finding 2 — PII subject-index EMF metric alarms.
+# Sprint F3 / audit-of-audit finding 2 → F-DSAR33 closeout — PII subject-index
+# EMF metric alarms.
 #
-# REMOVED 2026-05-26: SEARCH expressions are not supported in CloudWatch
-# metric alarms (api error: "SEARCH is not supported on Metric Alarms"). The
-# original design — cross-tenant aggregation via SEARCH('Namespace="PII/...')
-# — is infeasible at the alarm layer. AWS only allows SEARCH in dashboards.
+# History: Sprint F3 attempted to alarm on per-TenantId EMF metrics via
+# `metric_query { expression = "SUM(SEARCH(...))" }`. AWS rejected with
+# `SEARCH is not supported on Metric Alarms` (dashboard-only). picasso#237
+# REMOVED both alarms 2026-05-26 + spawned D5 row F-DSAR33 with 3 redesign
+# options.
 #
-# The underlying observability gap (PII/SubjectIndex.IndexRaceUnresolved +
-# .IndexUnavailable EMF metrics accumulating silently with no operator-facing
-# alarm) is tracked as D5 row F-DSAR33 with redesign options enumerated:
-#   (a) BSH Lambda EMF emits the metric a second time WITHOUT TenantId
-#       dimension; alarm on the no-dimension series → simple
-#   (b) Per-tenant alarms via for_each over the tenant list → high cardinality
-#   (c) Lambda-based custom-metric aggregator → over-engineered
+# Closure 2026-05-26 (closeout phase-completion-audit #9 / tech-lead #3 /
+# F-DSAR33 option (a)): BSH Lambda `pii_subject.js` `_emitEmfMetric()` now
+# emits with `Dimensions: [['TenantId'], []]` — same metric, two series, the
+# no-dim series is alarmable as a plain metric. Lambda fix: lambda#163.
 #
-# Until F-DSAR33 is resolved, the SubjectIndex EMF metrics are visible in
-# CloudWatch but un-alarmed. Operator should check the CW namespace
-# PII/SubjectIndex weekly via the M3 playbook §7 (or dashboard if added).
+# These alarms target the no-dim series. Plain `metric_name` + `namespace`
+# (no metric_query, no SEARCH). Reads the aggregate metric across ALL
+# tenants. Sum > 0 in any 1h window fires the alarm on ops-alerts SNS.
 # ─────────────────────────────────────────────────────────────────────────────
+resource "aws_cloudwatch_metric_alarm" "pii_subject_index_race_unresolved" {
+  count             = var.pii_subject_index_alarm_sns_topic_arn != "" ? 1 : 0
+  alarm_name        = "${var.function_name}-pii-subject-index-race-unresolved"
+  alarm_description = "F-DSAR33 closeout: PII subject-index race exhausted 3 attempts. EMF metric PII/SubjectIndex.IndexRaceUnresolved (no-dim series) Sum>0 in any 1h window — aggregate across all tenants via Dimensions:[['TenantId'],[]] dual-emit per lambda#163. Investigate via CW Logs Insights filter 'source = pii_subject_emf' on BSH Lambda log group."
+
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  threshold           = 0
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [var.pii_subject_index_alarm_sns_topic_arn]
+
+  namespace   = "PII/SubjectIndex"
+  metric_name = "IndexRaceUnresolved"
+  statistic   = "Sum"
+  period      = 3600
+  # NO `dimensions` block — the no-dim series IS the alarmable one.
+
+  tags = {
+    Project = "pii-governance"
+    Owner   = "chris@myrecruiter.ai"
+    Source  = "F-DSAR33 closeout / lambda#163"
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "pii_subject_index_unavailable" {
+  count             = var.pii_subject_index_alarm_sns_topic_arn != "" ? 1 : 0
+  alarm_name        = "${var.function_name}-pii-subject-index-unavailable"
+  alarm_description = "F-DSAR33 closeout: PII subject-index DDB call failed (non-CCF error path). EMF metric PII/SubjectIndex.IndexUnavailable (no-dim series) Sum>0 in any 1h window. Catches index outages that the writer's best-effort fallback would otherwise hide."
+
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  threshold           = 0
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [var.pii_subject_index_alarm_sns_topic_arn]
+
+  namespace   = "PII/SubjectIndex"
+  metric_name = "IndexUnavailable"
+  statistic   = "Sum"
+  period      = 3600
+
+  tags = {
+    Project = "pii-governance"
+    Owner   = "chris@myrecruiter.ai"
+    Source  = "F-DSAR33 closeout / lambda#163"
+  }
+}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
