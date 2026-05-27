@@ -162,6 +162,20 @@ module "lambda_pii_dsar_staging" {
 
   pii_cmk_key_arn      = module.kms_pii_staging[0].key_arn
   dsar_audit_table_arn = module.ddb_pii_dsar_audit_staging[0].table_arn
+
+  # M2 Sprint D Q3(c) — integration test synthetic-tenant fixture grant.
+  # Bucket `picasso-pii-dsar-int-staging` exists in staging acct 525 (created
+  # manually 2026-05-26 with AWS-default block-public-access ON). Used ONLY by
+  # `Lambdas/lambda/picasso_pii_dsar_staging/test_dsar_integration.py::test_k/l/m`
+  # (lambda#167) — never invoked by real DSAR traffic. Tenant id
+  # `TEN-SMOKE-FULFILL` is the convention chosen by the test scaffold so the
+  # grant scope matches the integration-test seed data exactly.
+  #
+  # When a real tenant turns on `fulfillment.type='s3'`, append a real
+  # `{bucket=..., tenant_id=...}` pair alongside this one (do NOT replace).
+  fulfillment_grants = [
+    { bucket = "picasso-pii-dsar-int-staging", tenant_id = "TEN-SMOKE-FULFILL" },
+  ]
 }
 
 # Consumer PII Remediation Path A, M3 done-bar #1 (master plan v0.3 §M3).
