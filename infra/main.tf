@@ -742,6 +742,31 @@ module "lambda_calendar_watch_listener_staging" {
 }
 
 # ──────────────────────────────────────────────────────────────────────
+# Scheduling sub-phase B Task B5 — Calendar_Watch_Onboarder Lambda.
+# Registers an initial Google Calendar push-notification watch channel for
+# a (tenant_id, coordinator_id, calendar_id) tuple. v1 pilot scale uses
+# direct invocation (aws lambda invoke); AdminEmployee DDB-stream trigger
+# named in the B5 plan-row lands later when sub-phase E13 UI / F2
+# onboarding populates `scheduling_tags`.
+# ──────────────────────────────────────────────────────────────────────
+module "lambda_calendar_watch_onboarder_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/lambda-calendar-watch-onboarder-staging"
+
+  # Calendar-watch-channels (runbook-provisioned PR #231; data source for now)
+  calendar_watch_channels_table_arn  = data.aws_dynamodb_table.calendar_watch_channels_staging[0].arn
+  calendar_watch_channels_table_name = data.aws_dynamodb_table.calendar_watch_channels_staging[0].name
+
+  # Listener Function URL — Google posts push notifications here once a
+  # channel is registered. Sourced from the Listener module output so the
+  # URL stays in lockstep with Listener provisioning.
+  listener_function_url = module.lambda_calendar_watch_listener_staging[0].listener_function_url
+
+  # Ops alerts SNS topic (shared with MFS + Meta — created by ops_alarms_master_function_staging)
+  ops_alerts_topic_arn = module.ops_alarms_master_function_staging[0].topic_arn
+}
+
+# ──────────────────────────────────────────────────────────────────────
 # Q5: staging widget edge migration (prod acct 614056832592 → staging
 # 525409062831). Plan: ~/.claude/plans/glistening-strolling-oasis.md.
 # Phase D moved the staging COMPUTE (MFS+BSH) to the staging account; the
