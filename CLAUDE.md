@@ -518,21 +518,23 @@ Choose the PR base branch by **what the PR contains**, not by habit:
 
 ### Drift hard-cap (established 2026-05-26)
 
-**Rule:** `origin/staging` ↔ `origin/main` divergence MUST NOT exceed **5 commits in either direction** at session close. If exceeded, the session ends with a promote-PR opened (and, if reverse drift also exceeds 5, a back-sync PR opened).
+**Rule:** `origin/staging` ↔ `origin/main` divergence MUST NOT exceed **5 merge commits (≈ 5 PRs of unpromoted work) in either direction** at session close. If exceeded, the session ends with a promote-PR opened (and, if reverse drift also exceeds 5, a back-sync PR opened).
 
 **Verifier (one command):**
 
 ```bash
-echo "staging → main: $(git rev-list --count origin/main..origin/staging)"
-echo "main → staging: $(git rev-list --count origin/staging..origin/main)"
+echo "staging → main: $(git rev-list --count --merges origin/main..origin/staging)"
+echo "main → staging: $(git rev-list --count --merges origin/staging..origin/main)"
 ```
+
+**Why `--merges` (changed 2026-05-28):** the prior verifier counted *all* commits, but feature PRs merged into staging with "Create a merge commit" each contribute **2** commits to a plain `rev-list --count` — the merge commit AND the feature commit(s) underneath it. That double-counting tripped the 5-cap after only ~2-3 logical PRs (e.g. 3 PRs showed as 7 commits on 2026-05-28). Counting `--merges` measures what the rule actually intends: number of PRs of unpromoted work, ~1 merge commit per PR. **Caveat:** a *squash*-merged feature→staging PR produces a single non-merge commit that `--merges` will NOT count — acceptable because this repo's convention is merge-commits for these PRs (and staging↔main PRs are merge-commit-mandated below). If squash-to-staging ever becomes common, revisit this metric.
 
 If either number > 5 at session close, the session-close hook is to:
 1. Open promote-PR `base=main head=staging` titled `promote(staging→main): <one-line summary of scope>`
 2. Open back-sync PR `base=staging head=main` after the promote-PR merges (or simultaneously if both drift directions exceed 5)
 3. PR descriptions must reference this rule + cite the pre-promote counts
 
-**MERGE STRATEGY:** staging↔main promote-PRs and back-sync PRs MUST be merged with **"Create a merge commit"** (NOT squash, NOT rebase). Squash collapses the 2-parent merge commit into a single commit, breaking history linkage so `rev-list --count` overcounts forever. Established by picasso#249 (squashed → broken linkage) → picasso#250 (recovery with merge-commit strategy).
+**MERGE STRATEGY:** staging↔main promote-PRs and back-sync PRs MUST be merged with **"Create a merge commit"** (NOT squash, NOT rebase). Squash collapses the 2-parent merge commit into a single non-merge commit, breaking parent linkage between the branches — under the old all-commits verifier this *overcounted* forever; under the `--merges` verifier it instead makes the promote *uncounted* (the metric can't see a promote that left no merge commit). Either way the metric breaks, so the merge-commit mandate stands. Established by picasso#249 (squashed → broken linkage) → picasso#250 (recovery with merge-commit strategy).
 
 **Why this rule exists:** before 2026-05-26 the divergence had grown to **41 staging-only + 36 main-only = 77 total**. Two patterns drove the drift:
 - Reflex-routing to staging from before the 2026-05-25 routing convention.
