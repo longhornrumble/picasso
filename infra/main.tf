@@ -766,6 +766,28 @@ module "lambda_calendar_watch_onboarder_staging" {
   ops_alerts_topic_arn = module.ops_alarms_master_function_staging[0].topic_arn
 }
 
+# Scheduling sub-phase B Task B3 (+ B4 schedule, B7 alarms) — Calendar_Watch_Renewer.
+# EventBridge-Scheduler-driven re-watch of Google Calendar push channels before
+# they expire (~7d). Reuses the same channels table + Listener URL + per-tenant
+# OAuth scope as the Onboarder.
+module "lambda_calendar_watch_renewer_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/lambda-calendar-watch-renewer-staging"
+
+  # Calendar-watch-channels (runbook-provisioned PR #231; data source for now).
+  # Renewer Queries the tenant-expiration-index GSI + Put/Update/Deletes rows.
+  calendar_watch_channels_table_arn  = data.aws_dynamodb_table.calendar_watch_channels_staging[0].arn
+  calendar_watch_channels_table_name = data.aws_dynamodb_table.calendar_watch_channels_staging[0].name
+
+  # Listener Function URL — the renewed channel posts here, same as the
+  # initial channel the Onboarder registers. Sourced from the Listener module
+  # output so the URL stays in lockstep.
+  listener_function_url = module.lambda_calendar_watch_listener_staging[0].listener_function_url
+
+  # Ops alerts SNS topic (shared with MFS + Meta — created by ops_alarms_master_function_staging)
+  ops_alerts_topic_arn = module.ops_alarms_master_function_staging[0].topic_arn
+}
+
 # ──────────────────────────────────────────────────────────────────────
 # Q5: staging widget edge migration (prod acct 614056832592 → staging
 # 525409062831). Plan: ~/.claude/plans/glistening-strolling-oasis.md.
