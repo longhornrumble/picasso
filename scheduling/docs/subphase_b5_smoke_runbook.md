@@ -1,5 +1,17 @@
 # Sub-phase B5 — `Calendar_Watch_Onboarder` smoke runbook
 
+> **⚠️ AMENDMENT 2026-05-29 (B5 phase-completion-audit, lambda#171 + picasso#271 / finding G6):**
+> The Onboarder **no longer stores a raw channel token** in Secrets Manager. The raw
+> token is handed to Google in `events.watch` and never persisted at rest; only its
+> SHA-256 hash lives in the DDB channel row (the Listener authenticates inbound pushes
+> by hashing `X-Goog-Channel-Token` and constant-time-comparing). Consequently:
+> - There is **no** `picasso/scheduling/channel-token/{channel_id}` secret to create or delete.
+> - The Onboarder response payload does **not** include a `secret_id` field.
+> - The `CHANNEL_TOKEN_SECRET_PREFIX` env var was removed.
+> - Teardown is **`channels.stop` + delete the DDB row only** — no `delete-secret` step.
+> The Step 1/2/3 examples below have been corrected; ignore any lingering raw-token-secret
+> references. Re-smoke verified against the post-G6 code 2026-05-29 (table left empty).
+
 **Purpose.** Operator-execute B5's "Concrete integration test" per [`scheduling_implementation_plan.md` B5 done-bar](scheduling_implementation_plan.md): direct-invoke the Onboarder Lambda end-to-end against the staging-525 test coordinator and verify channel registration. Closes the operator-driven smoke deferral noted in the B5 plan-row's matrix entry rationale.
 
 **Why operator-execute (not auto-CI):** the smoke exercises live Google Calendar API (`events.list` + `events.watch`) using OAuth credentials stored in Secrets Manager. The CI runner has no path to Google's auth surface. Same operator-execute pattern as [`subphase_b_oauth_provisioning_runbook_2026-05-25.md`](subphase_b_oauth_provisioning_runbook_2026-05-25.md) and [`subphase_b1_calendar_watch_channels_runbook.md`](subphase_b1_calendar_watch_channels_runbook.md).
@@ -16,8 +28,9 @@ AWS_PROFILE=myrecruiter-staging aws lambda get-function-configuration \
   --function-name Calendar_Watch_Onboarder \
   --query '{Handler:Handler,Runtime:Runtime,LastModified:LastModified,EnvKeys:Environment.Variables|keys(@)}'
 # Expected: Handler=index.handler, Runtime=nodejs20.x (or later), Environment includes
-#   CALENDAR_WATCH_CHANNELS_TABLE, LISTENER_URL, OAUTH_SECRET_PATH_PREFIX,
-#   CHANNEL_TOKEN_SECRET_PREFIX
+#   CALENDAR_WATCH_CHANNELS_TABLE, LISTENER_URL, OAUTH_SECRET_PATH_PREFIX
+# (NOTE: CHANNEL_TOKEN_SECRET_PREFIX was REMOVED by lambda#171 / B5-audit G6 —
+#  the Onboarder no longer stores the raw channel token. See the G6 banner at top.)
 
 # (b) Listener Function URL is non-empty
 AWS_PROFILE=myrecruiter-staging aws lambda get-function-configuration \
@@ -60,13 +73,12 @@ echo "=== Invocation result ==="
 cat "$INVOKE_OUT" | jq .
 ```
 
-**Expected response payload:**
+**Expected response payload** (post-G6 — no `secret_id`):
 ```json
 {
   "channel_id": "<UUID>",
   "expiration": <epoch_ms>,
-  "last_sync_token_seeded": true,
-  "secret_id": "picasso/scheduling/channel-token/<UUID>"
+  "last_sync_token_seeded": true
 }
 ```
 
@@ -141,55 +153,53 @@ test "$DELTA_DAYS" -gt 0 && test "$DELTA_DAYS" -le 7 && echo "OK: within 7 days"
 
 Leaving a watch registered means Google will deliver push notifications to the Listener for any change on the test calendar. Clean up immediately after assertions pass (or after triage if they fail):
 
+# (a) Stop the Google watch via channels.stop — eliminates push notifications.
+# Needs the resource_id from the DDB row (read it before deleting the row).
+# Python bridge (stdlib + boto3 only; no node_modules) — reads the OAuth secret
+# in-process, exchanges the refresh token, calls channels.stop. NOTE: this reads
+# ONLY the OAuth secret — there is no channel-token secret in the post-G6 design.
 ```bash
-# (a) Stop the Google watch via events.stop — eliminates push notifications
-# Use the Onboarder's OAuth client to call events.stop directly. The simplest
-# path is to invoke the Listener with a teardown payload, OR to delete the
-# DDB row + Secrets Manager secret + manually stop via the OAuth playground.
-#
-# For v1 pilot scale: until B6 Offboarder ships, manual stop via Node:
-node -e "
-const {google} = require('googleapis');
-const {SecretsManagerClient, GetSecretValueCommand} =
-  require('@aws-sdk/client-secrets-manager');
-(async () => {
-  const sm = new SecretsManagerClient({region:'us-east-1'});
-  const oauth = JSON.parse((await sm.send(new GetSecretValueCommand({
-    SecretId: 'picasso/scheduling/oauth/MYR384719/test-coordinator'
-  }))).SecretString);
-  const channelSecret = JSON.parse((await sm.send(new GetSecretValueCommand({
-    SecretId: 'picasso/scheduling/channel-token/$CHANNEL_ID'
-  }))).SecretString);
-  const oauth2 = new google.auth.OAuth2(oauth.client_id, oauth.client_secret);
-  oauth2.setCredentials({refresh_token: oauth.refresh_token});
-  const cal = google.calendar({version:'v3', auth: oauth2});
-  // Need the resource_id from the DDB row for the channels.stop call:
-  const resourceId = '<from DDB row above>';
-  await cal.channels.stop({requestBody: {id: '$CHANNEL_ID', resourceId}});
-  console.log('events.stop OK');
-})().catch(e => { console.error(e.message); process.exit(1); });
-"
-# Expected: 'events.stop OK' (HTTP 204 from Google).
+RESOURCE_ID=$(AWS_PROFILE=myrecruiter-staging aws dynamodb get-item \
+  --table-name picasso-calendar-watch-channels-staging \
+  --key "{\"channel_id\":{\"S\":\"$CHANNEL_ID\"}}" \
+  --query 'Item.resource_id.S' --output text)
+
+AWS_PROFILE=myrecruiter-staging CHANNEL_ID="$CHANNEL_ID" RESOURCE_ID="$RESOURCE_ID" python3 - <<'PY'
+import boto3, json, os, sys, urllib.request, urllib.parse, urllib.error
+sm = boto3.client("secretsmanager", region_name="us-east-1")
+o = json.loads(sm.get_secret_value(SecretId="picasso/scheduling/oauth/MYR384719/test-coordinator")["SecretString"])
+tr = urllib.request.Request("https://oauth2.googleapis.com/token",
+    data=urllib.parse.urlencode({"client_id":o["client_id"],"client_secret":o["client_secret"],
+        "refresh_token":o["refresh_token"],"grant_type":"refresh_token"}).encode(),
+    headers={"Content-Type":"application/x-www-form-urlencoded"})
+at = json.loads(urllib.request.urlopen(tr).read())["access_token"]
+sr = urllib.request.Request("https://www.googleapis.com/calendar/v3/channels/stop",
+    data=json.dumps({"id":os.environ["CHANNEL_ID"],"resourceId":os.environ["RESOURCE_ID"]}).encode(),
+    headers={"Authorization":f"Bearer {at}","Content-Type":"application/json"})
+try:
+    with urllib.request.urlopen(sr) as r: print(f"channels.stop HTTP {r.status} — stopped")
+except urllib.error.HTTPError as e:
+    print(f"channels.stop HTTP {e.code}" + (" — already absent (OK)" if e.code==404 else f": {e.read().decode()}"))
+    sys.exit(0 if e.code==404 else 1)
+PY
+# Expected: 'channels.stop HTTP 204 — stopped'.
 
 # (b) Delete the DDB row
 AWS_PROFILE=myrecruiter-staging aws dynamodb delete-item \
   --table-name picasso-calendar-watch-channels-staging \
   --key "{\"channel_id\":{\"S\":\"$CHANNEL_ID\"}}"
-# Expected: no output (success).
+# Expected: no output (success). Confirm the table is empty afterward:
+AWS_PROFILE=myrecruiter-staging aws dynamodb scan \
+  --table-name picasso-calendar-watch-channels-staging --select COUNT --query 'Count'
 
-# (c) Schedule the Secrets Manager channel-token secret for deletion (7-day window)
-AWS_PROFILE=myrecruiter-staging aws secretsmanager delete-secret \
-  --secret-id "picasso/scheduling/channel-token/$CHANNEL_ID" \
-  --recovery-window-in-days 7
-# Expected: returns DeletionDate ~7 days from now. (Force-delete is not used so
-# the secret can be restored if the next operator step needs it.)
-
-# (d) Clean up local tmp
+# (c) Clean up local tmp
 rm -f "$INVOKE_OUT"
-unset CHANNEL_ID INVOKE_OUT EXPIRATION_MS NOW_MS DELTA_DAYS
+unset CHANNEL_ID INVOKE_OUT EXPIRATION_MS NOW_MS DELTA_DAYS RESOURCE_ID
 ```
 
-**B6 note:** when B6 Offboarder ships, the cleanup above collapses to a single direct-invoke of the Offboarder with `{tenant_id, channel_id}`. This runbook is the bridge until then.
+**No secret to delete (post-G6):** there is no `picasso/scheduling/channel-token/{channel_id}` secret in the current design — the raw token is never stored at rest. Do NOT run `delete-secret`; it will return `ResourceNotFoundException`.
+
+**B6 note:** when B6 Offboarder ships, steps (a)+(b) collapse to a single direct-invoke of the Offboarder with `{tenant_id, channel_id}`. This runbook is the bridge until then.
 
 ---
 
