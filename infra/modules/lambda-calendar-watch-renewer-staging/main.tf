@@ -60,6 +60,12 @@ variable "metric_namespace" {
   default     = "Picasso/Scheduling"
 }
 
+variable "renewal_buffer_ms" {
+  description = "Renewal lookahead window in milliseconds (handler RENEWAL_BUFFER_MS). The cron renews any channel whose expiration is within this window of now. MUST be smaller than the Google channel lifetime (~7d) or every channel matches on every run = churn. Default 2 days: renews only in a channel's last ~2 days; the 6h cron gives ~8 attempts of margin."
+  type        = number
+  default     = 172800000
+}
+
 variable "log_retention_days" {
   description = "CloudWatch log retention. Phase C.2 default."
   type        = number
@@ -251,6 +257,10 @@ resource "aws_lambda_function" "renewer" {
       OAUTH_SECRET_PATH_PREFIX      = "picasso/scheduling/oauth"
       SCHEDULING_TENANT_IDS         = jsonencode(var.scheduling_oauth_tenant_ids)
       METRIC_NAMESPACE              = var.metric_namespace
+      # 2-day lookahead (must be < the ~7d Google channel lifetime, else the 6h
+      # cron renews every channel every run). The handler also defaults to 7d if
+      # this is unset, but staging sets it explicitly here.
+      RENEWAL_BUFFER_MS = tostring(var.renewal_buffer_ms)
     }
   }
 
