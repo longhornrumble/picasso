@@ -236,10 +236,14 @@ resource "aws_lambda_function" "renewer" {
   runtime       = "nodejs20.x"
   handler       = "index.handler"
   memory_size   = 256
-  # 120s: each expiring channel costs events.watch + events.stop + 2-3 DDB
-  # writes (a few Google round-trips). Ample for v1 pilot pool size; the
-  # canonical "100 channels < 60s" perf target is deferred until pool escalates.
-  timeout = 120
+  # 300s (audit G8): each expiring channel costs events.watch + events.stop +
+  # 2-3 DDB writes (a few Google round-trips, ~1.5s). At reserved-conc=1 the loop
+  # is sequential, so ~100 channels would exceed the prior 120s. 300s gives
+  # headroom for the v1 pilot pool; parallelizing per-tenant batches (and the
+  # canonical "100 channels < 60s" target) is deferred until the pool escalates.
+  # A timeout still correctly trips the dead-man's-switch (the heartbeat only
+  # fires on a completed run); the next successful run clears it.
+  timeout = 300
   # Concurrency 1: the cron must never run concurrently with itself - a
   # double-fire would let two runs renew the same expiring channel and create
   # duplicate Google channels (G7-adjacent). Single-flight by construction.
@@ -308,6 +312,13 @@ resource "aws_iam_role" "renewer_scheduler" {
         StringEquals = {
           "aws:SourceAccount" = data.aws_caller_identity.current.account_id
         }
+        # G13: also bind to THIS schedule's ARN (confused-deputy) so no other
+        # scheduler in the account can assume the role. The ARN is built from data
+        # sources + the known schedule name to avoid a circular dependency with
+        # aws_scheduler_schedule.renewer.
+        ArnEquals = {
+          "aws:SourceArn" = "arn:${data.aws_partition.current.partition}:scheduler:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:schedule/default/picasso-calendar-watch-renewer-staging"
+        }
       }
     }]
   })
@@ -350,14 +361,24 @@ resource "aws_scheduler_schedule" "renewer" {
     # from env on a cron invocation.
     input = jsonencode({})
 
+    # G7: no scheduler-side retries. With reserved_concurrent_executions=1 a retry
+    # of a throttled invocation would queue against an in-flight run (back-pressure
+    # / possible overlap). The 6h cron + 2-day renewal buffer already gives ~8
+    # attempts of margin, so the NEXT scheduled run is the retry.
     retry_policy {
-      maximum_retry_attempts = 2
+      maximum_retry_attempts = 0
     }
   }
 }
 
 # ==============================================================================
 # CloudWatch alarms (Task B7 - the three Renewer alarms, all to ops topic)
+#
+# NO DLQ on the Renewer (deliberate, audit G17): unlike the event-driven Listener
+# (which has an SQS DLQ), the Renewer is a 6h cron with idempotent re-query
+# behaviour - a terminal invocation failure is caught by the Errors alarm below
+# and the next scheduled run retries from the same DDB state. No per-event payload
+# is worth preserving in a queue.
 # ==============================================================================
 
 # B7.1 - Lambda errors on the Renewer.
@@ -407,13 +428,16 @@ resource "aws_cloudwatch_metric_alarm" "renewer_renewal_failed" {
 }
 
 # B7.3 - Cron dead-man's-switch. The handler emits a
-# CalendarWatchRenewerRunCompleted heartbeat (no dimensions) at the end of
-# every run. If no heartbeat lands within 7h (cron is every 6h, so 7h gives one
-# missed cycle of slack), the schedule or the Lambda has stopped firing.
-# treat_missing_data=breaching makes "no data point" trip the alarm.
+# CalendarWatchRenewerRunCompleted heartbeat (no dimensions) at the end of every
+# run. If no heartbeat lands within 9h, the schedule or the Lambda has stopped
+# firing. Window widened 7h->9h (audit G19): the cron is every 6h, but a run can
+# take up to the 300s timeout and the schedule itself can deliver slightly late,
+# so 7h risked false positives; 9h still catches a fully-missed 6h cycle with
+# slack. treat_missing_data=breaching makes "no data point" trip the alarm (so it
+# also fires on first deploy until the first run lands - expected/benign).
 resource "aws_cloudwatch_metric_alarm" "renewer_dead_mans_switch" {
   alarm_name          = "Calendar_Watch_Renewer-missed-run"
-  alarm_description   = "Calendar_Watch_Renewer has not logged a successful run in >7h (cron is every 6h). The EventBridge Scheduler or the Lambda has stopped firing; watch channels will silently lapse. Investigate the schedule picasso-calendar-watch-renewer-staging and /aws/lambda/Calendar_Watch_Renewer."
+  alarm_description   = "Calendar_Watch_Renewer has not logged a successful run in >9h (cron is every 6h). The EventBridge Scheduler or the Lambda has stopped firing; watch channels will silently lapse. Investigate the schedule picasso-calendar-watch-renewer-staging and /aws/lambda/Calendar_Watch_Renewer."
   comparison_operator = "LessThanThreshold"
   evaluation_periods  = 1
   threshold           = 1
@@ -421,7 +445,7 @@ resource "aws_cloudwatch_metric_alarm" "renewer_dead_mans_switch" {
 
   metric_name = "CalendarWatchRenewerRunCompleted"
   namespace   = var.metric_namespace
-  period      = 25200 # 7 hours
+  period      = 32400 # 9 hours
   statistic   = "Sum"
 
   alarm_actions = [var.ops_alerts_topic_arn]
