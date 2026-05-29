@@ -43,6 +43,12 @@ variable "listener_function_url" {
   type        = string
 }
 
+variable "scheduling_oauth_tenant_ids" {
+  description = "Tenant IDs whose OAuth secrets the Onboarder may read. The exec role's secretsmanager:GetSecretValue is scoped to picasso/scheduling/oauth/{tenant}/* for each — NOT a wildcard (closes B1 audit row 13). Adding tenant #2 = append here in a reviewed PR, not a silent wildcard grant."
+  type        = list(string)
+  default     = ["MYR384719"]
+}
+
 variable "ops_alerts_topic_arn" {
   description = "ARN of picasso-ops-alerts-staging SNS topic — receives Lambda errors alarm."
   type        = string
@@ -156,26 +162,28 @@ data "aws_iam_policy_document" "onboarder_exec" {
     resources = [var.calendar_watch_channels_table_arn]
   }
 
-  # Secrets Manager read on scheduling OAuth secrets.
-  # B1 audit row 13 carry-forward: wildcard ARN form is acceptable at v1 pilot
-  # scale (one tenant). Before tenant #2 enters staging, this MUST be
-  # parameterized to picasso/scheduling/oauth/${tenantId}/* via either
-  # per-Lambda Terraform parameterization OR tag-based ABAC.
+  # Secrets Manager read on scheduling OAuth secrets — scoped PER TENANT, not
+  # wildcard (closes B1 audit row 13 / phase-completion-audit G2). One ARN per
+  # entry in var.scheduling_oauth_tenant_ids. A compromised invocation can only
+  # reach the OAuth secrets of explicitly-listed tenants, not the whole
+  # picasso/scheduling/oauth/* namespace. Adding tenant #2 is a reviewed PR that
+  # appends to the var — there is no longer a silent "we'll tighten it later"
+  # wildcard.
   statement {
-    sid       = "SecretsReadSchedulingOAuth"
-    actions   = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
-    resources = ["arn:${data.aws_partition.current.partition}:secretsmanager:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:secret:picasso/scheduling/oauth/*"]
+    sid     = "SecretsReadSchedulingOAuth"
+    actions = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
+    resources = [
+      for t in var.scheduling_oauth_tenant_ids :
+      "arn:${data.aws_partition.current.partition}:secretsmanager:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:secret:picasso/scheduling/oauth/${t}/*"
+    ]
   }
 
-  # Secrets Manager write on channel-token secrets — one secret per channel
-  # at picasso/scheduling/channel-token/{channel_id}. CreateSecret only; the
-  # Listener reads via SHA-256-hash compare in DDB and never fetches the
-  # raw token. B6 offboarding (future) gets the DeleteSecret grant.
-  statement {
-    sid       = "SecretsCreateChannelTokens"
-    actions   = ["secretsmanager:CreateSecret", "secretsmanager:TagResource"]
-    resources = ["arn:${data.aws_partition.current.partition}:secretsmanager:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:secret:picasso/scheduling/channel-token/*"]
-  }
+  # NOTE: the Onboarder does NOT write channel-token secrets. The raw token is
+  # handed to Google in events.watch and never stored at rest; only its SHA-256
+  # hash lives in the DDB row (the Listener authenticates inbound pushes by
+  # hashing X-Goog-Channel-Token and constant-time-comparing). Removing the
+  # raw-token secret store (phase-completion-audit G6) eliminated the
+  # CreateSecret grant and the picasso/scheduling/channel-token/* namespace.
 }
 
 resource "aws_iam_role_policy" "onboarder_exec" {
@@ -200,10 +208,15 @@ resource "aws_lambda_function" "onboarder" {
   runtime       = "nodejs20.x"
   handler       = "index.handler"
   memory_size   = 256
-  # 30s allows events.list pagination + events.watch + DDB PutItem; a
-  # runaway calendar with >50 pages is bounded inside the handler.
-  timeout       = 30
-  architectures = ["x86_64"]
+  # 60s: events.list pages up to maxPages=50 (each a Google round-trip ~200-500ms)
+  # before events.watch + DDB PutItem. 30s was too tight for a long-lived
+  # coordinator calendar (phase-completion-audit G9/S1).
+  timeout = 60
+  # Cap concurrency: a future stream trigger or a scripted loop must NOT be able
+  # to register unbounded Google channels (each is a live push subscription).
+  # phase-completion-audit G18.
+  reserved_concurrent_executions = 2
+  architectures                  = ["x86_64"]
 
   filename         = data.archive_file.onboarder_placeholder.output_path
   source_code_hash = data.archive_file.onboarder_placeholder.output_base64sha256
@@ -214,7 +227,6 @@ resource "aws_lambda_function" "onboarder" {
       CALENDAR_WATCH_CHANNELS_TABLE = var.calendar_watch_channels_table_name
       LISTENER_URL                  = var.listener_function_url
       OAUTH_SECRET_PATH_PREFIX      = "picasso/scheduling/oauth"
-      CHANNEL_TOKEN_SECRET_PREFIX   = "picasso/scheduling/channel-token"
     }
   }
 
@@ -225,6 +237,18 @@ resource "aws_lambda_function" "onboarder" {
   lifecycle {
     # Real code lands via lambda-repo CI matrix (aws lambda update-function-code).
     # Env vars are Terraform-managed (NOT ignored — Phase D audit row #1).
+    #
+    # KNOWN HAZARD (phase-completion-audit G8): despite this ignore_changes, a
+    # `terraform apply` triggered by a change to a DEPENDED-ON resource (e.g.
+    # the IAM policy below, or appending a tenant to scheduling_oauth_tenant_ids)
+    # can re-deploy the placeholder zip OVER the real CI-deployed code — the
+    # same regression empirically hit lambda-pii-dsar-staging on 2026-05-26.
+    # AFTER ANY apply that touches this module, re-verify the live CodeSha256 is
+    # NOT the placeholder and re-run the CI deploy if it is:
+    #   aws lambda get-function-configuration --function-name Calendar_Watch_Onboarder \
+    #     --query CodeSha256
+    #   gh workflow run "Deploy Lambda — Staging" -f lambda=Calendar_Watch_Onboarder
+    # Placeholder CodeSha256 = base64sha256 of placeholder/index.js (503 stub).
     ignore_changes = [filename, source_code_hash]
   }
 
