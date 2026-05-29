@@ -2,13 +2,16 @@
 # verify-dsar-codesha.sh — guard against IaC placeholder overwriting the
 # real DSAR Lambda code on staging Terraform apply.
 #
-# Audit closure 2026-05-26 row #22 (Security-Reviewer 🟡): the
-# `lifecycle.ignore_changes = [filename, source_code_hash]` block on
+# Origin: 2026-05-26 row #22 (Security-Reviewer 🟡) suspected that
+# `lifecycle.ignore_changes = [filename, source_code_hash]` on
 # `aws_lambda_function "this"` (infra/modules/lambda-pii-dsar-staging/main.tf)
-# DOES NOT reliably prevent re-deploy when the surrounding IAM policy
-# document changes. Empirically: 2026-05-26T17:37Z apply re-wrote the
-# manual deploy from `nvWZ/fiAG...` (real source) to `DLAsbw3...`
-# (placeholder, 30411 bytes — silent capability degradation).
+# failed to prevent a placeholder re-deploy when the IAM policy doc changes.
+# 2026-05-29 empirical re-investigation (see that file's row-#22 comment)
+# DISPROVED the mechanism: `terraform plan` proves a policy-doc change does
+# NOT touch the function, and ignore_changes holds on function-config
+# updates. This script is RETAINED as cheap defense-in-depth for the genuine
+# residual — a function force-replacement or a wrong-zip manual deploy would
+# still leave inert placeholder/stale code running. It detects that case.
 #
 # This script:
 # 1. Reads the deployed CodeSha256 from staging acct 525.
