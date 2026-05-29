@@ -89,23 +89,44 @@
 # we explicitly enumerate. The env-guard is necessary but not sufficient
 # as an authZ control.
 #
-# AUDIT CLOSURE 2026-05-26 row #22 (Security-Reviewer 🟡): the
-# `lifecycle.ignore_changes = [filename, source_code_hash]` on the Lambda
-# resource below DOES NOT reliably prevent the placeholder re-deploy on
-# staging Terraform apply. Empirically: a 2026-05-26T17:37Z apply re-wrote
-# the manual DSAR deploy (CodeSha256 nvWZ/fiAG... → DLAsbw3..., size
-# 33883 → 30411) DESPITE the ignore_changes block. Tech-lead audit-of-audit
-# row #9 hypothesizes the policy-document refresh triggers a dependency-
-# chain rebuild that overrides ignore_changes. Forward protocol until root
-# cause is fixed:
-#   1. Operator runs `tools/verify-dsar-codesha.sh` after every staging
-#      apply that touches this module (script ships in this PR).
-#   2. If CodeSha256 != expected (real-source value), operator re-deploys
-#      via `aws lambda update-function-code` from the most recent zip.
-# Sprint E follow-up: move the `aws_lambda_function "this"` resource into
-# a SEPARATE module that has no IAM-policy dependency, so policy-document
-# changes never trigger function-resource refresh. Until that ships, the
-# verify-script is the durable mitigation.
+# 2026-05-26 row #22 (Security-Reviewer 🟡) ORIGINAL CLAIM: the
+# `lifecycle.ignore_changes = [filename, source_code_hash]` block was
+# believed to NOT reliably prevent a placeholder re-deploy on staging apply
+# — a 2026-05-26T17:37Z apply was recorded as having re-written the manual
+# DSAR deploy (CodeSha256 nvWZ/fiAG... → DLAsbw3..., size 33883 → 30411).
+# Tech-lead audit row #9 hypothesized a policy-document refresh triggers a
+# dependency-chain rebuild that overrides ignore_changes; the documented
+# Sprint-E follow-up was to split the function into a policy-independent
+# module.
+#
+# 2026-05-29 EMPIRICAL RE-INVESTIGATION — HYPOTHESIS DISPROVEN, FIX NOT
+# WARRANTED. Three `terraform plan` runs against acct 525 (this config,
+# unchanged since 2026-05-20) show:
+#   (a) Adding a fulfillment_grant (policy-doc change) → plan touches ONLY
+#       aws_iam_role_policy.dsar; aws_lambda_function.this is NOT in the
+#       changeset (targeted AND full plan). depends_on does NOT propagate an
+#       in-place policy update to the function.
+#   (b) A function-config change (timeout 60→61) → function updates in-place
+#       but source_code_hash/filename are NOT in the diff — ignore_changes
+#       holds.
+#   (c) The placeholder is 305 bytes; the 2026-05-26 note's "30411 bytes"
+#       cannot be this placeholder (a zip of a 305-byte file is ~300-500 B).
+#       No CI workflow deploys this function's code (infra-deploy.yml only
+#       RUNS verify-dsar-codesha.sh post-apply as a detection guard).
+# Conclusion: the 2026-05-26 CodeSha256 change was almost certainly a
+# stale/wrong manual deploy zip during that multi-zip session, NOT a
+# Terraform revert. The module-split would fix a mechanism the evidence
+# disproves, so it is NOT being built (Simplicity-First).
+#
+# RESIDUAL (cheap defense-in-depth, retained): a force-REPLACEMENT of the
+# function (rare — only a function_name change forces replace) or a
+# wrong-zip manual deploy would still leave inert code running. Mitigation:
+#   1. `tools/verify-dsar-codesha.sh` runs in CI post-apply (detection).
+#   2. If it flags placeholder/regression, operator re-deploys via
+#      `aws lambda update-function-code` from the known-good zip.
+# Re-open the module-split question ONLY if the verify-script ever flags a
+# genuine post-apply regression that bisects to a Terraform plan entry for
+# this function.
 
 variable "pii_cmk_key_arn" {
   description = "ARN of the scoped PII CMK (module.kms_pii_staging.key_arn). The DSAR role gets kms:Decrypt/GenerateDataKey/DescribeKey on it for the data-plane walk."
