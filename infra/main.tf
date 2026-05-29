@@ -731,6 +731,7 @@ module "lambda_calendar_watch_listener_staging" {
   # Booking table (Terraform-managed via ddb-booking module)
   booking_table_arn                   = module.ddb_booking_staging[0].table_arn
   booking_table_name                  = module.ddb_booking_staging[0].table_name
+  booking_start_at_index_arn          = module.ddb_booking_staging[0].tenant_id_start_at_index_arn
   booking_coordinator_email_index_arn = module.ddb_booking_staging[0].tenant_id_coordinator_email_index_arn
 
   # Tenant registry (Terraform-managed)

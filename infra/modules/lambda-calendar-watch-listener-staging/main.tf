@@ -38,7 +38,7 @@ variable "calendar_watch_channels_tenant_status_index_arn" {
 }
 
 variable "booking_table_arn" {
-  description = "ARN of picasso-booking-staging. Listener Query's the tenantId-coordinator_email-index GSI to find affected bookings for a given coordinator calendar_id."
+  description = "ARN of picasso-booking-staging. Listener GetItem's (tenantId, booking_id) for moved/reassigned/deleted derivations."
   type        = string
 }
 
@@ -47,7 +47,17 @@ variable "booking_table_name" {
 }
 
 variable "booking_coordinator_email_index_arn" {
-  description = "ARN of the tenantId-coordinator_email-index GSI on picasso-booking-staging — listener uses it to find bookings owned by a coordinator when a calendar push arrives."
+  description = "ARN of the tenantId-coordinator_email-index GSI on picasso-booking-staging. NOTE (Phase 2b audit 2026-05-29): NOT used by the current Listener code — the OOO path Queries the start_at index (var.booking_start_at_index_arn) with a coordinator_id FilterExpression. Retained for a possible future coordinator-keyed query path (e.g. B9); revisit for least-privilege removal if it stays unused."
+  type        = string
+}
+
+# Phase 2b audit row 11 (tech-lead): the OOO-overlap path
+# (queryBookedBookingsForOoo) Queries the tenantId-start_at-index GSI (env
+# BOOKING_TENANT_START_INDEX). Without Query on THIS index the OOO query hits
+# AccessDenied → caught → silent empty result (no overlap detected, no alarm).
+# Zero impact at v1 pilot scale (no bookings until C8) but a latent landmine.
+variable "booking_start_at_index_arn" {
+  description = "ARN of the tenantId-start_at-index GSI on picasso-booking-staging — the OOO-overlap path Queries it for booked bookings overlapping an out-of-office window."
   type        = string
 }
 
@@ -220,14 +230,16 @@ data "aws_iam_policy_document" "listener_exec" {
     ]
   }
 
-  # DDB read on booking (find bookings affected by a calendar push via the
-  # coordinator_email GSI; GetItem by (tenantId, booking_id) when event_type
-  # derivation needs the current state)
+  # DDB read on booking: GetItem by (tenantId, booking_id) for moved/reassigned/
+  # deleted derivations; Query the tenantId-start_at-index for OOO-overlap
+  # detection. The coordinator_email index is granted but not used by current
+  # code (see variable note) — retained for a possible future query path.
   statement {
     sid     = "DDBReadBooking"
     actions = ["dynamodb:GetItem", "dynamodb:Query"]
     resources = [
       var.booking_table_arn,
+      var.booking_start_at_index_arn,
       var.booking_coordinator_email_index_arn,
     ]
   }
