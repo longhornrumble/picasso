@@ -35,15 +35,15 @@
 
 **PITR:** ENABLED on both staging + dev. Per `pii-inventory.md` header invariant: "all PII-relevant tables have PITR enabled." Although the table is NOT-CONSUMER-tier for `calendar_id`, the embedded `channel_token` is a Tier-4 secret (max-tier rule per `data-classification.md`); PITR provides forensic reconstruction of which token was active at the time of any compromise.
 
-### `channel_token` encryption note (B2 implementation gate)
+### `channel_token` encryption note — RESOLVED 2026-05-29 (hash-only, no raw token at rest)
 
-`channel_token` is a 64-char hex secret per row (`secrets.token_hex(32)`). Per `data-classification.md` max-tier rule (Rule 4), an item-level Tier-4 secret elevates the entire row to Tier-4 classification. Staging v1 stores `channel_token` with SSE-DDB only.
+**Final design (B5 phase-completion-audit finding G6, lambda#171 + picasso#271):** the raw `channel_token` is **never stored at rest anywhere**. The Onboarder generates it (`crypto.randomBytes(32)` → 64 hex chars), hands it to Google in `events.watch`, and writes **only its SHA-256 hash** (`channel_token_sha256`) to the DDB row. The Listener authenticates inbound pushes by hashing the `X-Goog-Channel-Token` header and constant-time-comparing against the stored hash. There is therefore **no Tier-4 secret material in the DDB row** — the hash is not reversible — and no Secrets Manager channel-token store.
 
-**B2 implementation must choose one of:**
-1. **CMK item-level encryption** matching the `picasso-channel-mappings-staging` page-token precedent (KMS-encrypted at item level, table CMK on the new key).
-2. **Move `channel_token` to Secrets Manager** at path `picasso/scheduling/channel-tokens/{tenant_id}/{channel_id}` and store only a SHA-256 hash in DDB for lookup. **Tech-lead recommendation (per audit-of-audit 2026-05-25): prefer Option 2.** Rationale: channel tokens behave like webhook signing secrets (validated per-request via `hmac.compare_digest`, never bulk-read), so Secrets Manager + per-access IAM audit is the architecturally correct abstraction. The `picasso-channel-mappings-staging` precedent (item-level CMK on page tokens) is for the different pattern of bulk-readable OAuth refresh tokens.
+This supersedes the two options previously enumerated here:
+- ~~Option 1 (CMK item-level encryption on the raw token in DDB)~~ — not needed; no raw token in DDB.
+- ~~Option 2 (raw token in Secrets Manager + hash in DDB)~~ — initially shipped by the B5 Onboarder, then **removed by G6**: storing the raw token at rest was unnecessary attack surface since the Listener only ever needs to *compare a hash*, never *read the raw token back*. The `CreateSecret` grant + `picasso/scheduling/channel-token/*` namespace were dropped from the Onboarder exec role.
 
-The decision is a B2 PR-level concern, NOT a B1 blocker — but the runbook fixes the gate: **B2's Security-Reviewer pass cannot close without addressing this choice.** The B2 task row in `scheduling_implementation_plan.md` carries the same gate.
+**Net:** the DDB row's `channel_token_sha256` is not Tier-4 (one-way hash); the table's SSE-DDB-default is sufficient. The gate that previously blocked B2's Security-Reviewer pass is **closed** by the hash-only design.
 
 ### IAM scope discipline note (B2/B3/B5/B6 implementation gate)
 
