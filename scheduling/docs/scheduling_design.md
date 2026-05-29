@@ -749,7 +749,7 @@ AC #12 (*"Coordinator-side changes detected within 10 minutes"*) commits to oper
 
 - **DynamoDB table `picasso-calendar-watch-channels-{env}`** — schema `{ channel_id (pk), tenant_id (required attribute), calendar_id, calendar_provider, expiration, callback_url, last_renewed_at, status }`. One row per active watch channel. GSI: `(tenant_id, status)` for renewal queries scoped by tenant. `tenant_id` is required so the listener can scope its booking queries (§14.2) and so ops can query "all unwatched channels for tenant X" without a full-table scan. Net-new.
 
-- **`Calendar_Watch_Renewer` Lambda** on EventBridge cron (every ~6 hours) — queries for channels expiring within a ~7-day buffer; stops the expiring channel, creates a fresh one via `events.watch`, updates the row. Stable channel ID per calendar+purpose for idempotency. Net-new.
+- **`Calendar_Watch_Renewer` Lambda** on EventBridge cron (every ~6 hours) — queries for channels expiring within a **~2-day buffer** (corrected 2026-05-29: the renewal lookahead MUST be shorter than the ~7-day Google channel lifetime, or every live channel matches on every run = renew-every-6h churn; configurable via `RENEWAL_BUFFER_MS`); stops the expiring channel, creates a fresh one via `events.watch`, updates the row. v1 (B3) mints a fresh `channel_id` (UUID) per renewal rather than a stable id — zero-gap (new channel live before old is stopped) with `events.stop` compensation on partial failure. Net-new.
 
 - **Subscription-management hooks** at coordinator-calendar onboarding/offboarding — initial `events.watch` when a calendar enters the platform; `events.stop` + row delete when it leaves. Net-new.
 
