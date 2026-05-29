@@ -109,12 +109,14 @@ jobs:
           TF_VAR_messenger_verify_token: ${{ secrets.MESSENGER_VERIFY_TOKEN }}
         run: terraform apply -var-file=envs/staging.tfvars -auto-approve
 
-      # Audit closure 2026-05-26 row #22 (Security-Reviewer 🟡): detect the
-      # IaC-overwrites-Lambda regression that `lifecycle.ignore_changes` is
-      # supposed to prevent but empirically does NOT (2026-05-26T17:37Z apply
-      # re-wrote real DSAR code with placeholder). Fail CI on regression so
-      # the operator is forced to re-deploy real code rather than silently
-      # running the inert placeholder.
+      # Defense-in-depth post-apply guard (origin: 2026-05-26 row #22).
+      # NOTE: the originally-suspected "IaC overwrites the Lambda on policy
+      # change" mechanism was DISPROVEN 2026-05-29 (see verify-dsar-codesha.sh
+      # header + the module's row-#22 comment — terraform plan proves policy
+      # changes don't touch the function and ignore_changes holds). This check
+      # is retained for the genuine residual: a function force-replacement or a
+      # wrong-zip manual deploy leaving inert code running. Red status alerts
+      # the operator to re-deploy the known-good zip.
       - name: DSAR Lambda regression check
         if: github.event_name == 'push' && github.ref == 'refs/heads/staging'
         run: ../tools/verify-dsar-codesha.sh
