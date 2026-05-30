@@ -73,7 +73,9 @@ const TOKEN_PURPOSES = [
 //   post_application_recovery → iat + 14 days
 // HMAC-signed; custom claims: purpose, booking_id (nullable), tenant_id (+ form_submission_id for post_application_recovery) [§13.1].
 // One-time-use (§13.7): atomic conditional PutItem to the EXISTING `picasso-token-jti-blacklist-{env}` table
-//   (already shipped A6/PR#52 — DO NOT provision a new table) keyed by `jti`, ConditionExpression='attribute_not_exists(jti)',
+//   (already shipped A6/PR#52 — DO NOT provision a new table). The shipped table is COMPOSITE-keyed
+//   (`tenantId` PK · `jti` SK) — the conditional put writes Item={tenantId, jti, exp} with
+//   ConditionExpression='attribute_not_exists(jti)' (evaluated on the specific (tenantId,jti) item),
 //   TTL = token exp; ConditionalCheckFailed → 410 Gone, action does NOT execute.
 // URL purpose must match the token purpose claim (§13.8, defense-in-depth) — the endpoints are later-D infra, not D1a.
 ```
@@ -112,3 +114,4 @@ const TOKEN_PURPOSES = [
 |---|---|
 | 2026-05-30 | Created. §A frozen (shipped: 4 tables + C1 GSI + booking-status + dispatch-interface). §B proposed for Wave-1 lock. |
 | 2026-05-30 | **§B LOCKED** (pre-launch §4.0 step 1). Verified against canonical; **B4 corrected** — the 6 token purposes are `cancel`/`reschedule`/`post_application_recovery`/`attended_yes`/`no_show`/`didnt_connect` (§13.4), one-time-use reuses the EXISTING `picasso-token-jti-blacklist` table (§13.7), NOT a new table (the earlier draft enum was wrong); **B5 corrected** — the 4 verbatim §5.6 red-team cases + the 4 sanitization sub-steps added. B1/B2/B3 module paths aligned to `shared/scheduling/`. |
+| 2026-05-30 | **B4 wording precision** (WS-D1a #186 audit caught it): the blacklist table is COMPOSITE-keyed (`tenantId` PK · `jti` SK), not single-`jti`; the conditional put writes `{tenantId, jti, exp}` with `attribute_not_exists(jti)` on the specific item. The shipped table + the WS-D1a module are correct; only the §B4 prose said "keyed by jti". No contract behavior change. |
