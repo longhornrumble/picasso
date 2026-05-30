@@ -332,6 +332,16 @@ Stop semantics (the two B6 trigger paths both map here at v1):
 - `verify-before-commit` marker green.
 - phase-completion-audit gap matrix approved.
 
+#### Sub-phase B completion status (phase-completion-audit 2026-05-30) — INFRA-COMPLETE, NOT EXIT-COMPLETE
+A sub-phase-B-level `/phase-completion-audit` (4 reviewers) found the "effectively complete" framing **overstated**. Honest status against the exit criteria above:
+- **Channel-lifecycle infrastructure DONE + audited:** B0, B1 (🟡 prod-deferred by design), B2 (Listener), B3 (Renewer), B4 (Scheduler), B5 (Onboarder), B6 (Offboarder), B7 (alarms), B8 (token), CI-3b. Each individually phase-audited; remediations merged.
+- **NOT built — explicitly deferred, NOT silently waived:**
+  - **B9 (OOO consumer action), B10 (accept/decline consumer), B11 (stranded-booking)** → **deferred to sub-phase C** (all three need the C8 Booking write-path; the plan's B9 row anticipated their full E2E re-test in C). Even the plan's B-phase *fixture-test* minimum for B9/B11 was not built. The Listener (B2) *dispatches* deletion/move/reassign/OOO/accept-decline/private typed events, but to **placeholder consumers** — so **0 of 6 §14.2 cases are exercised end-to-end** (they exercise on first real push + C8). CI-3c is a vocabulary stub (transition table → C9); **CI-3d → D1**.
+  - **Alarms:** 1 of 3 fire-tested (Renewer dead-man's-switch ALARM→OK genuinely cycled); Errors + RenewalFailed waived "structurally correct" (B3 audit G10). **Renewal cycle** verified by operator smoke with a buffer-override (not natural near-expiry); scheduler-cron firing not observed (B3 G9). No automated cross-Lambda integration test — all Google-API coverage is operator-smoke.
+- **Live bug found + fixed (row B-1):** the Listener exec role was missing `dynamodb:UpdateItem`, so the **first real Google delta push would `AccessDenied` on `advanceSyncToken`** → syncToken never advances → retry-storm/re-dispatch. The sync-handshake-only smoke could not catch it. Fixed in this PR + lambda#180 (with code#2, the `singleEvents` 410-loop). Also fixed: SR-1 (Listener per-tenant OAuth scope — last wildcard holder), SR-3 (SQS attendee-email SSE), SR-5 (`auth_rejected` orphan/forgery alarm), code#1 (Listener secret-path-in-logs), SR-2 (Onboarder/Offboarder PII-in-logs).
+
+**Verdict: sub-phase B is INFRASTRUCTURE-COMPLETE (channel lifecycle + listener dispatch + alarms) but NOT exit-complete** — the booking-consumer listener cases (B9/B10/B11) + CI-3d are legitimately deferred to C/D. Do **not** mark sub-phase B "complete" at the phase gate until those land (C re-tests B9/B11 per plan). Audit record: [`project_scheduling_subphase_b_phase_completion_audit_2026-05-30`](../../../../.claude/projects/-Users-chrismiller-Desktop-Working-Folder/memory/project_scheduling_subphase_b_phase_completion_audit_2026-05-30.md).
+
 ---
 
 ## 5. Sub-phase C — Booking core

@@ -81,6 +81,12 @@ variable "log_retention_days" {
   default     = 90
 }
 
+variable "scheduling_oauth_tenant_ids" {
+  description = "Tenant IDs whose OAuth secrets the Listener may read. The exec role's secretsmanager:GetSecretValue is scoped to picasso/scheduling/oauth/{tenant}/* for each — NOT a wildcard (closes B1 audit row 13 for the Listener; matches Onboarder/Renewer/Offboarder, which were already per-tenant — sub-phase B audit row SR-1, 2026-05-30). Adding tenant #2 = append here in a reviewed PR, not a silent wildcard grant."
+  type        = list(string)
+  default     = ["MYR384719"]
+}
+
 # ------------------------------------------------------------------
 # Data sources
 # ------------------------------------------------------------------
@@ -101,6 +107,7 @@ resource "aws_sqs_queue" "events_dlq" {
   fifo_queue                  = true
   content_based_deduplication = false   # listener supplies MessageDeduplicationId explicitly
   message_retention_seconds   = 1209600 # 14 days
+  sqs_managed_sse_enabled     = true    # envelopes carry attendee_email (PII) — encrypt at rest like every other scheduling PII sink (sub-phase B audit SR-3)
 
   tags = {
     Name     = "picasso-calendar-watch-events-dlq-staging.fifo"
@@ -121,6 +128,7 @@ resource "aws_sqs_queue" "events" {
   message_retention_seconds   = 345600 # 4 days — consumer SLA per dispatch interface idempotency note
   visibility_timeout_seconds  = 60     # consumer Lambda timeout will be <60s
   receive_wait_time_seconds   = 20     # long-poll
+  sqs_managed_sse_enabled     = true   # envelopes carry attendee_email (PII) — encrypt at rest like every other scheduling PII sink (sub-phase B audit SR-3)
 
   redrive_policy = jsonencode({
     deadLetterTargetArn = aws_sqs_queue.events_dlq.arn
@@ -219,11 +227,16 @@ data "aws_iam_policy_document" "listener_exec" {
     resources = ["${aws_cloudwatch_log_group.listener.arn}:*"]
   }
 
-  # DDB read on calendar-watch-channels (channel lookup by channel_id PK +
-  # tenant-status GSI for ops paths)
+  # DDB read+update on calendar-watch-channels: GetItem by channel_id PK +
+  # tenant-status GSI for ops paths, PLUS UpdateItem — the Phase 2b handler
+  # advances `last_sync_token` (advanceSyncToken) on every successful delta push
+  # and REMOVEs it on a Google 410. WITHOUT UpdateItem the FIRST real push fails
+  # AccessDenied → the syncToken never advances → retry-storm + perpetual
+  # re-dispatch (sub-phase B audit row B-1, 2026-05-30; the sync-handshake-only
+  # operator smoke could not catch this).
   statement {
-    sid     = "DDBReadCalendarWatchChannels"
-    actions = ["dynamodb:GetItem", "dynamodb:Query"]
+    sid     = "DDBReadWriteCalendarWatchChannels"
+    actions = ["dynamodb:GetItem", "dynamodb:Query", "dynamodb:UpdateItem"]
     resources = [
       var.calendar_watch_channels_table_arn,
       var.calendar_watch_channels_tenant_status_index_arn,
@@ -251,17 +264,20 @@ data "aws_iam_policy_document" "listener_exec" {
     resources = [var.tenant_registry_table_arn]
   }
 
-  # Secrets Manager read on scheduling OAuth secrets.
-  # B1 audit row 13 carry-forward: wildcard ARN form is acceptable at v1 pilot
-  # scale (one tenant). Before tenant #2 enters staging, this MUST be
-  # parameterized to picasso/scheduling/oauth/${tenantId}/* via either
-  # per-Lambda Terraform parameterization OR tag-based ABAC
-  # (aws:PrincipalTag/tenantId). Tracked at plan B3/B5/B6 row level and on
-  # the runbook IAM scope discipline note.
+  # Secrets Manager read on scheduling OAuth secrets — scoped PER TENANT
+  # (sub-phase B audit row SR-1, 2026-05-30): the Listener is the only
+  # internet-facing scheduling Lambda and processes attacker-influenced input
+  # (Google headers + Onboarder-written channel rows), yet was the LAST holder of
+  # the wildcard `oauth/*` grant while Onboarder/Renewer/Offboarder were already
+  # per-tenant. Closing B1 audit row 13 here too — one ARN per entry in
+  # var.scheduling_oauth_tenant_ids, no wildcard. Adding tenant #2 = a reviewed PR.
   statement {
-    sid       = "SecretsReadSchedulingOAuth"
-    actions   = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
-    resources = ["arn:${data.aws_partition.current.partition}:secretsmanager:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:secret:picasso/scheduling/oauth/*"]
+    sid     = "SecretsReadSchedulingOAuth"
+    actions = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
+    resources = [
+      for t in var.scheduling_oauth_tenant_ids :
+      "arn:${data.aws_partition.current.partition}:secretsmanager:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:secret:picasso/scheduling/oauth/${t}/*"
+    ]
   }
 
   # SQS send to the FIFO events queue. SendMessage only — no Receive (consumer
@@ -430,6 +446,46 @@ resource "aws_cloudwatch_metric_alarm" "malformed_payload" {
   treat_missing_data  = "notBreaching"
 
   metric_name = "CalendarWatchListenerMalformedPayload"
+  namespace   = "Picasso/Scheduling"
+  period      = 300
+  statistic   = "Sum"
+
+  alarm_actions = [var.ops_alerts_topic_arn]
+  ok_actions    = [var.ops_alerts_topic_arn]
+}
+
+# Alarm 4: auth_rejected — the Listener returns 403 + logs event=auth_rejected for
+# unknown_channel_id (an orphaned Google channel still pushing after the Renewer's
+# failed-renewal row-delete OR the Offboarder's auth-revoked delete) and for
+# channel_token_mismatch (a forged/replayed push). This is the shared security
+# backstop for the B3 + B6 orphan residuals; a 403 is NOT a Lambda Error, so it
+# was previously invisible to alarming (sub-phase B audit SR-5, 2026-05-30). A
+# sustained pattern (threshold 5 / 5min) flags a forgery attempt or a stuck orphan
+# storm; the occasional orphan push (Google only pushes on calendar changes) stays
+# under the threshold.
+resource "aws_cloudwatch_log_metric_filter" "auth_rejected" {
+  name           = "Calendar_Watch_Listener-auth-rejected"
+  log_group_name = aws_cloudwatch_log_group.listener.name
+
+  pattern = "{ $.event = \"auth_rejected\" }"
+
+  metric_transformation {
+    name          = "CalendarWatchListenerAuthRejected"
+    namespace     = "Picasso/Scheduling"
+    value         = "1"
+    default_value = "0"
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "auth_rejected" {
+  alarm_name          = "Calendar_Watch_Listener-auth-rejected"
+  alarm_description   = "Calendar_Watch_Listener returned 403 (auth_rejected) >= 5 times in a 5-minute window. Either a forged/replayed push (channel_token_mismatch) or a stuck orphaned channel pushing after offboarding/failed-renewal (unknown_channel_id). Inspect /aws/lambda/Calendar_Watch_Listener structured logs for the reason field."
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  evaluation_periods  = 1
+  threshold           = 5
+  treat_missing_data  = "notBreaching"
+
+  metric_name = "CalendarWatchListenerAuthRejected"
   namespace   = "Picasso/Scheduling"
   period      = 300
   statistic   = "Sum"
