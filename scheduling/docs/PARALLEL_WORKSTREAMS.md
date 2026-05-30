@@ -131,6 +131,8 @@ Until provisioned, C8 builds **Meet-first** (`conferenceData.createRequest`, rid
 
 ## 8. How to launch a workstream session
 
+> **Operator step-by-step + all 8 ready-to-paste prompts: [`LAUNCH_THE_WORKFORCE.md`](LAUNCH_THE_WORKFORCE.md).**
+
 Paste into a fresh Claude Code session, in order:
 1. *"Read `scheduling/docs/workstreams/<WS>.md` — that is your work-order. Read the contracts it cites in `scheduling/docs/FROZEN_CONTRACTS.md`, the plan task it cites in `scheduling/docs/scheduling_implementation_plan.md`, and `CLAUDE.md`. Then build it within the ownership boundary. Open a PR per the work-order; do NOT touch any file outside your owned set or any shared doc."*
 2. The agent builds → opens its PR with the doc-snippet → reports to you.
