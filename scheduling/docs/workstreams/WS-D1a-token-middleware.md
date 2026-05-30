@@ -5,20 +5,20 @@
 **Quality gate:** `verify-before-commit` · weave audit = **FULL** (signed tokens / auth surface — mandatory Security review).
 
 ## Goal / done-bar
-- A signed-token lib: HMAC-signed tokens carrying a `purpose` from the frozen enum, **one-time-use** enforcement, **per-purpose TTL**. Mirrored signer + verifier (single SoT module).
-- **CI-3d contract test:** adding a purpose to the issuer without updating the verifier → red CI. Tamper / expiry / replay (one-time-use) tests all pass.
+- A signed-token lib: HMAC-signed tokens carrying a `purpose` from the **LOCKED 6-purpose enum** (§B4), **per-purpose expiry** (§13.6), and **one-time-use** via the **EXISTING** `picasso-token-jti-blacklist-{env}` table (atomic conditional `PutItem` on `attribute_not_exists(jti)` → 410 on reuse; §13.7 — DO NOT provision a new table). Mirrored signer + verifier (single SoT module).
+- **CI-3d contract test:** adding a purpose to the issuer without updating the verifier → red CI. Tamper / expiry / replay (reuse → 410) tests all pass.
 
-## You OWN (create/edit ONLY these) — [proposed; integrator confirms in §4.0]
+## You OWN (create/edit ONLY these) — `shared/scheduling/` is scaffolded (pre-launch §4.0 step 2)
 - `shared/scheduling/tokens.js` + `shared/scheduling/__tests__/tokens.test.js`
 
 ## You CONSUME (frozen — never modify; [FROZEN_CONTRACTS.md](../FROZEN_CONTRACTS.md))
-- §B4 the token-purpose enum — **confirm the exact 6 purposes against canonical §13 with the integrator before coding** (this is one of the §B contracts that locks at launch).
+- **§B4 (LOCKED):** the 6 purposes = `cancel` · `reschedule` · `post_application_recovery` · `attended_yes` · `no_show` · `didnt_connect`; the per-purpose expiry table; the existing jti-blacklist table for one-time-use. No "confirm" step — it's locked; build to it.
 
 ## You PRODUCE
-- §B4 `TOKEN_PURPOSES` + `sign(purpose, claims)` / `verify(token)` — the SoT every D consumer (reschedule/cancel/attendance/disposition endpoints) imports. Honor exactly.
+- §B4 `TOKEN_PURPOSES` (the 6, exactly) + `sign(purpose, claims)` / `verify(token)` — the SoT every D consumer (reschedule/cancel/attendance/disposition endpoints) imports. Honor exactly.
 
 ## OUT OF SCOPE / do NOT
-- Do NOT build the consumer endpoints (later D tasks). Do NOT invent a purpose not in canonical §13. The one-time-use ledger: confirm its store (a DDB table or the existing blacklist pattern) with the integrator — don't provision infra unilaterally.
+- Do NOT build the consumer endpoints or the `schedule.myrecruiter.ai` greenfield CloudFront (§13.8 — later-D infra). Do NOT add a purpose beyond the locked 6. Do NOT provision a jti table — it already exists (A6/PR#52); your lib just does the conditional PutItem against it.
 
 ## References
 - Canonical §13 (token format + the purposes). Plan D1a, CI-3d. `CLAUDE.md` (never-share-IAM, credential-mutation gate).

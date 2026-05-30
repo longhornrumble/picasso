@@ -54,15 +54,14 @@
 
 ## 4. Wave plan + dependency graph
 
-### 4.0 Pre-launch (integrator) — do these BEFORE forking Wave 1
-These three steps make the workstreams genuinely disjoint + lock the seam. ~½ day.
-1. **Confirm + lock the §B contracts** in `FROZEN_CONTRACTS.md` against the canonical design (the signatures there are integrator-proposed; verify the exact field names / the 6 token purposes / the 5 §5.6 red-team cases, then mark them LOCKED).
-2. **Confirm the C-phase module architecture + scaffold the shared lib.** The pure-logic C modules (C4 availability, C5 routing, C7 slots, C9 state machine, D1a tokens) are **proposed** to live as disjoint files under **`shared/scheduling/`** in the lambda repo (mirrors the existing `shared/booking-status.js`). Pre-scaffold `shared/scheduling/package.json` + jest config + any shared runtime deps (e.g. `@googleapis/calendar` for C4) **once**, so each Wave-1 session only ADDS its own `shared/scheduling/<module>.js` + test and never touches a shared file. Confirm where C2 (BSH), C8 (commit Lambda), and WS-EUI (frontend) live before assigning those work-orders.
-3. **Kick off the Zoom OAuth provisioning** (§6) in the background.
+### 4.0 Pre-launch (integrator) — ✅ DONE 2026-05-30
+1. ✅ **§B contracts LOCKED** in `FROZEN_CONTRACTS.md`. Verified against canonical; **B4 corrected** (the 6 token purposes were wrong in the draft — now `cancel`/`reschedule`/`post_application_recovery`/`attended_yes`/`no_show`/`didnt_connect` per §13.4; one-time-use reuses the *existing* jti-blacklist table) and **B5 corrected** (the 4 verbatim §5.6 red-team cases + sanitization sub-steps).
+2. ✅ **`shared/scheduling/` scaffolded** in the lambda repo ([lambda#181](https://github.com/longhornrumble/lambda/pull/181) — package.json + lockfile + jest + runtime deps pre-populated + README). Each Wave-1 pure-logic session (C4/C5/C7/C9/D1a) ADDS only its own `shared/scheduling/<module>.js` + `__tests__/<module>.test.js` and never touches `package.json`. C2 = BSH module; C8 = a Wave-2 commit Lambda; WS-EUI frontend home = **integrator confirms with the WS-EUI agent at launch** (the one remaining placement to settle).
+3. ✅ **Zoom OAuth runbook published** — [`runbooks/ZOOM_OAUTH_PROVISIONING.md`](runbooks/ZOOM_OAUTH_PROVISIONING.md). Operator runs it in the background (credential mutation; ~30 min) before C8's Zoom path.
 
-> The work-orders below cite **proposed** owned paths; the integrator finalizes them in step 2 so no two workstreams share a file (the one drift that breaks parallelism).
+**Wave 1 is now LAUNCHABLE.** Spin up one session per work-order (WS-FIX first).
 
-**Wave 1 — parallel (launch after 4.0; all owned modules are disjoint):**
+**Wave 1 — parallel (all owned modules are disjoint):**
 
 | WS | Work-order | Plan task | Repo / base | Independent because |
 |---|---|---|---|---|
@@ -98,6 +97,8 @@ These three steps make the workstreams genuinely disjoint + lock the seam. ~½ d
 ---
 
 ## 6. Operator gate — Zoom S2S OAuth (lever #3, do in background)
+
+> **Full runbook: [`runbooks/ZOOM_OAUTH_PROVISIONING.md`](runbooks/ZOOM_OAUTH_PROVISIONING.md)** (published pre-launch). Summary below.
 
 C8 is the only C task with an external gate. Provision ahead of reaching C8 so it's not a serial wait:
 
