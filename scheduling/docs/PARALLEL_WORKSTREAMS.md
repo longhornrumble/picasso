@@ -115,8 +115,8 @@ Until provisioned, C8 builds **Meet-first** (`conferenceData.createRequest`, rid
 
 | WS | Branch | PR | Status | Blockers |
 |---|---|---|---|---|
-| WS-FIX | — | — | NOT STARTED | — |
-| WS-C2 | feature/scheduling-ws-c2 | — | IN PROGRESS | shared-tree race: branch carries stray `0a999bc`(C5)+`42cd44d`(C4) — must be dropped before the WS-C2 PR; recommend isolated worktrees |
+| WS-FIX | feature/scheduling-ws-fix | [#301](https://github.com/longhornrumble/picasso/pull/301) | MERGED 2026-05-30 | fixture `TEN-SCHED-FIXTURE` now available (staging, read-only) — see note below |
+| WS-C2 | feature/scheduling-ws-c2 | [#184](https://github.com/longhornrumble/lambda/pull/184) | IN REVIEW — CHANGES REQUESTED | HIGH-RISK 3-reviewer audit done: (A) branch contaminated w/ C4's **unmerged** `availability.js`+test → must re-cut clean; (B) fix-now cluster: DDB-client `requestTimeout` (SSE-stall risk) + query `Limit:1` + mixed-case marker regex + key-sanitize + test gaps. Held for operator go-ahead post-re-cut. |
 | WS-C4 | feature/scheduling-ws-c4 | [#182](https://github.com/longhornrumble/lambda/pull/182) | IN REVIEW | external-surface (freeBusy) — integrator-reviewed clean, held for operator go-ahead |
 | WS-C5 | feature/scheduling-ws-c5 | [#183](https://github.com/longhornrumble/lambda/pull/183) | MERGED 2026-05-30 | — |
 | WS-C7 | — | — | NOT STARTED | — |
@@ -127,6 +127,8 @@ Until provisioned, C8 builds **Meet-first** (`conferenceData.createRequest`, rid
 | C8 (Wave 2) | — | — | BLOCKED on C6 + Zoom OAuth | — |
 
 **Status values:** NOT STARTED · IN PROGRESS · IN REVIEW (PR open) · MERGED · BLOCKED.
+
+**Shared fixture (WS-FIX #301, merged):** `TEN-SCHED-FIXTURE` (staging, read-only synthetic tenant) — appt types `appt_1to1_discovery_30`/`appt_1to1_interview_60`; routing policies `rp_round_robin`/`rp_first_available`; bookings `bk_fixture_001/002/003` (all `booked`). Seed/teardown scripts in `scheduling/fixtures/`; runbook `scheduling/docs/runbooks/SCHEDULING_TEST_FIXTURE.md`. Other workstreams' integration tests reference these keys read-only. **Seed is operator-gated** (credential mutation) — scripts delivered, not yet run.
 
 ---
 
