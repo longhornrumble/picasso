@@ -789,6 +789,24 @@ module "lambda_calendar_watch_renewer_staging" {
   ops_alerts_topic_arn = module.ops_alarms_master_function_staging[0].topic_arn
 }
 
+# Scheduling sub-phase B Task B6 — Calendar_Watch_Offboarder.
+# Tears down a coordinator's Google Calendar push channel(s) when they are no
+# longer bookable: channels.stop + delete the DDB row. Reuses the same channels
+# table + per-tenant OAuth scope as the Onboarder/Renewer. Needs NO Listener URL
+# (it never registers a watch).
+module "lambda_calendar_watch_offboarder_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/lambda-calendar-watch-offboarder-staging"
+
+  # Calendar-watch-channels (runbook-provisioned PR #231; data source for now).
+  # Offboarder GetItem/Query (tenant-expiration-index GSI) + DeleteItem.
+  calendar_watch_channels_table_arn  = data.aws_dynamodb_table.calendar_watch_channels_staging[0].arn
+  calendar_watch_channels_table_name = data.aws_dynamodb_table.calendar_watch_channels_staging[0].name
+
+  # Ops alerts SNS topic (shared with MFS + Meta — created by ops_alarms_master_function_staging)
+  ops_alerts_topic_arn = module.ops_alarms_master_function_staging[0].topic_arn
+}
+
 # ──────────────────────────────────────────────────────────────────────
 # Q5: staging widget edge migration (prod acct 614056832592 → staging
 # 525409062831). Plan: ~/.claude/plans/glistening-strolling-oasis.md.
