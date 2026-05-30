@@ -1,8 +1,8 @@
 # WS-EUI — Customer Portal UI surfaces (early E)
 
 **Plan task:** E10–E16 (the UI-plan surfaces integrated into sub-phase E). [plan](../scheduling_implementation_plan.md) §7.
-**Repo / branch / base:** `picasso` · `feature/scheduling-ws-eui` · base `staging`.
-**Quality gate:** `verify-before-commit` · weave audit = **light** (additive UI; no backend/auth change) — UNLESS it renders user-generated content, then add an XSS pass.
+**Repo / branch / base:** **`longhornrumble/picasso-analytics-dashboard`** (a SEPARATE repo — nested clone inside `Working_Folder/picasso-analytics-dashboard/`, NOT part of the picasso repo) · `feature/scheduling-ws-eui` · base **`main`** (this repo has NO `staging` branch). *(Corrected 2026-05-30: the original "picasso / base staging" was wrong — verified the dashboard is its own GitHub repo with `main` as the only long-lived branch.)*
+**Quality gate:** `verify-before-commit` · weave audit = **light** (additive UI; no backend/auth change) — UNLESS it renders user-generated content, then add an XSS pass. **⚠️ MERGE = PROD DEPLOY:** this repo deploys straight to prod (S3 `app-myrecruiter-ai` + CloudFront `EJ0Y6ZUIUBSAT`) on merge to `main` — there is NO staging buffer. The integrator therefore does **NOT** auto-merge the WS-EUI PR despite its low-risk classification — it **stops for explicit operator go-ahead** (a merge there is a live deploy). New pages must be additive/behind-route (low blast radius).
 
 ## Goal / done-bar — **SCOPED BY INTEGRATOR 2026-05-30 to E12 + E15 (render-only)**
 - **THIS slice = E12 + E15 only:** the **My Bookings** list/status views (E12) + the **operational-debt metrics** surface (E15) — net-new, render-only from §A Booking schema + 5-state status vocabulary + the WS-FIX fixture. These match the light-weave/additive-UI gate.
