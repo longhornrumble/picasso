@@ -1,0 +1,143 @@
+# Scheduling v1 — Parallel Workstreams (coordination)
+
+**Purpose.** Let several Claude sessions build the sub-phase C logic layer (and start the sub-phase E long pole) **in parallel** without the collision / churn / quality drift that uncoordinated parallel work produces. This doc is the operating model; it does not replace the [implementation plan](scheduling_implementation_plan.md) (the task spec) — it sits on top of it.
+
+> **Why this exists.** On 2026-05-29 three overlapping B6 remediation efforts (lambda #177/#178/#179 + picasso #290) collided — duplicate audits, merge conflicts on shared docs, rework. That is the failure mode this doc prevents. The rule that prevents it: **parallelize the *building*, single-thread the *integration*.**
+
+---
+
+## 1. The model
+
+```
+                 ┌─────────── parallel build (disjoint modules, one branch each) ───────────┐
+ FROZEN_CONTRACTS │  WS-C2   WS-C4   WS-C5   WS-C7   WS-C9   WS-EUI   WS-D1a   WS-FIX        │
+   (the seam) ────┤    │       │       │       │       │       │        │        │           │
+                 └────┼───────┼───────┼───────┼───────┼───────┼────────┼────────┼───────────┘
+                      └───────┴───────┴───────┴───────┴───────┴────────┴────────┘
+                                              │  PRs
+                                              ▼
+                            ┌──────── single integrator session ────────┐
+                            │ weave PRs (dep order) · run calibrated     │
+                            │ audits · own the shared docs · drift cap   │
+                            └────────────────────────────────────────────┘
+                                              │
+                                  sequential integration tasks
+                                     C6 (pool-at-commit) → C8 (commit, Zoom-gated)
+```
+
+- **Build = parallel.** Each workstream is one session, one feature branch, a **disjoint set of new modules** it exclusively owns. Agents never touch each other's files or the shared docs.
+- **Integration = single-threaded.** One integrator session weaves the PRs in dependency order, runs the risk-calibrated audit on the security-sensitive ones, updates the shared docs in one pass, and manages the drift-cap / promote cadence.
+- **The seam between workstreams = [FROZEN_CONTRACTS.md](FROZEN_CONTRACTS.md).** Agents code *against* the frozen contracts; they never redefine one. A contract change is escalated to the integrator, not edited unilaterally.
+
+---
+
+## 2. Roles
+
+| Role | Who | Does |
+|---|---|---|
+| **Integrator** | one designated session (default: the orchestrating/main session) | Authors + freezes contracts; weaves PRs in dep order; runs calibrated audits; **solely owns the shared docs** (the plan, `infra/main.tf`, `pii-inventory.md`, this kanban); resolves cross-workstream contract drift; runs the staging→main promote cadence + drift cap. |
+| **Workstream agent** | one session per work-order | Builds ONLY its owned modules on its own branch; runs `verify-before-commit`; opens a PR with a **doc-snippet** (the plan-row + any pii-inventory line) for the integrator to apply; reports status to the integrator (does NOT edit the kanban or shared docs). |
+
+---
+
+## 3. Hard rules (the drift killers)
+
+1. **Disjoint ownership.** Each work-order lists the files/modules it may touch. You may create + edit ONLY those. If you think you need a file outside your set, stop and escalate to the integrator — do not edit it.
+2. **Shared docs are integrator-only.** The plan, `infra/main.tf`, `pii-inventory.md`, this kanban, and `FROZEN_CONTRACTS.md` are edited **only by the integrator**, at weave time. Agents propose their plan-row / inventory updates as a **markdown snippet in the PR description**, not as a file edit.
+3. **Code against frozen contracts; never redefine them.** If a contract is wrong or missing, escalate — don't fork it.
+4. **One workstream, one branch, one PR.** Branch naming: `feature/scheduling-<ws-id>` (lambda code → base `main`; picasso code/IaC → base `staging`). No cross-workstream commits.
+5. **`verify-before-commit` on every commit** (the per-repo marker). No exceptions.
+6. **Risk-calibrated audit at weave time** (§5). The integrator runs the full `phase-completion-audit` on security-sensitive merges; light smoke-verify on low-risk ones.
+7. **Honor CLAUDE.md** — the SOP, the drift hard-cap (≤5 staging↔main merges; merge-commit strategy on promotes), the Living-Inventory PR rule, the schema-discipline (forward-compatible reads), the never-share-IAM-roles rule, the auto-mode credential-mutation gate.
+
+---
+
+## 4. Wave plan + dependency graph
+
+### 4.0 Pre-launch (integrator) — do these BEFORE forking Wave 1
+These three steps make the workstreams genuinely disjoint + lock the seam. ~½ day.
+1. **Confirm + lock the §B contracts** in `FROZEN_CONTRACTS.md` against the canonical design (the signatures there are integrator-proposed; verify the exact field names / the 6 token purposes / the 5 §5.6 red-team cases, then mark them LOCKED).
+2. **Confirm the C-phase module architecture + scaffold the shared lib.** The pure-logic C modules (C4 availability, C5 routing, C7 slots, C9 state machine, D1a tokens) are **proposed** to live as disjoint files under **`shared/scheduling/`** in the lambda repo (mirrors the existing `shared/booking-status.js`). Pre-scaffold `shared/scheduling/package.json` + jest config + any shared runtime deps (e.g. `@googleapis/calendar` for C4) **once**, so each Wave-1 session only ADDS its own `shared/scheduling/<module>.js` + test and never touches a shared file. Confirm where C2 (BSH), C8 (commit Lambda), and WS-EUI (frontend) live before assigning those work-orders.
+3. **Kick off the Zoom OAuth provisioning** (§6) in the background.
+
+> The work-orders below cite **proposed** owned paths; the integrator finalizes them in step 2 so no two workstreams share a file (the one drift that breaks parallelism).
+
+**Wave 1 — parallel (launch after 4.0; all owned modules are disjoint):**
+
+| WS | Work-order | Plan task | Repo / base | Independent because |
+|---|---|---|---|---|
+| **WS-FIX** | [synthetic fixture](workstreams/WS-FIX-synthetic-fixture.md) | (enabler) | picasso → staging | seeds a read-only test tenant; everyone's integ tests use it |
+| **WS-C2** | [form-data injection](workstreams/WS-C2-form-injection.md) | C2 | lambda → main | consumes the C1 GSI (frozen); no other WS dep |
+| **WS-C4** | [freeBusy availability](workstreams/WS-C4-freebusy.md) | C4 | lambda → main | produces `AvailabilitySource` (frozen); consumes Google OAuth (done) |
+| **WS-C5** | [routing eval](workstreams/WS-C5-routing-eval.md) | C5 | lambda → main | produces `evaluatePool` (frozen); consumes RoutingPolicy table (done) |
+| **WS-C7** | [slot generation](workstreams/WS-C7-slot-gen.md) | C7 | lambda → main | pure logic; produces slot-chip shape (frozen) |
+| **WS-C9** | [state machine](workstreams/WS-C9-state-machine.md) | C9 | lambda → main | consumes `booking-status` + ConvSchedSession table (done) |
+| **WS-D1a** | [token middleware](workstreams/WS-D1a-token-middleware.md) | D1a, CI-3d | lambda → main | security-isolated; produces token-purpose enum (frozen) |
+| **WS-EUI** | [Customer Portal UI](workstreams/WS-EUI-customer-portal.md) | E10–E16 | picasso → staging | builds against Booking schema + fixtures, not C8 internals |
+
+**Wave 2 — sequential integration (integrator or a dedicated session, AFTER its inputs land):**
+
+| Task | Plan | Depends on | Notes |
+|---|---|---|---|
+| **C6 pool-at-commit** | C6 | WS-C4 + WS-C5 + WS-C7 merged | integrates the three; full audit (race conditions) |
+| **C8 booking commit** | C8 | C6 + **Zoom OAuth provisioned** (§6) | the keystone; writes Booking rows → unblocks B9/B10/B11; full audit |
+| **B9 / B10 / B11** | (routed from B) | C8 (real Booking writes) | the consumer logic deferred from sub-phase B |
+
+**Recommended launch order:** WS-FIX **first** (others' integ tests want it), then WS-C4 / WS-C5 / WS-C7 / WS-C9 / WS-C2 / WS-D1a / WS-EUI in any order (all independent). Launch as many concurrently as you can supervise.
+
+---
+
+## 5. Risk-calibrated audit rule (lever #4)
+
+> **Full `phase-completion-audit`** (≥3 adversarial reviewers + remediation) at weave time for any workstream touching: **prompt-injection / LLM input (C2)**, **race conditions or money/commit paths (C6, C8)**, **signed tokens / auth (D1a)**, **IAM / external surface / PII**.
+>
+> **Light verify** (the agent's `verify-before-commit` + an integrator smoke) for: **config / IaC tables, pure-logic modules with full unit coverage and no external surface (C7), additive UI surfaces (WS-EUI early)**.
+>
+> Rationale: B6's audit found real account-suspended-path bugs the live smoke couldn't — worth it. The 3 C3 tables were smoke-verified without a full audit — also right. Calibrate; don't reflexively over- or under-audit.
+
+---
+
+## 6. Operator gate — Zoom S2S OAuth (lever #3, do in background)
+
+C8 is the only C task with an external gate. Provision ahead of reaching C8 so it's not a serial wait:
+
+1. In the Zoom Marketplace, create a **Server-to-Server OAuth** app for the pilot tenant; scopes: `meeting:write:admin` (+ `meeting:read:admin`).
+2. Store the creds in Secrets Manager at **`picasso/scheduling/zoom/{tenant_id}`** (mirror the Google OAuth secret shape — `account_id` / `client_id` / `client_secret`). Tag for the C8 exec role's per-tenant scope (no wildcard, per the never-share-IAM-roles + per-tenant-scope convention).
+3. Verifier: `aws secretsmanager list-secrets --profile myrecruiter-staging --query "SecretList[?starts_with(Name,'picasso/scheduling/zoom/')].Name"`.
+
+Until provisioned, C8 builds **Meet-first** (`conferenceData.createRequest`, rides the existing Google OAuth) + the `NullConferenceProvider` (no-op) per canonical §5.2 item 4; the `ZoomProvider` path lands once the secret exists.
+
+---
+
+## 7. Kanban (integrator-owned — agents report status in their PR, integrator updates here)
+
+| WS | Branch | PR | Status | Blockers |
+|---|---|---|---|---|
+| WS-FIX | — | — | NOT STARTED | — |
+| WS-C2 | — | — | NOT STARTED | — |
+| WS-C4 | — | — | NOT STARTED | — |
+| WS-C5 | — | — | NOT STARTED | — |
+| WS-C7 | — | — | NOT STARTED | — |
+| WS-C9 | — | — | NOT STARTED | — |
+| WS-D1a | — | — | NOT STARTED | — |
+| WS-EUI | — | — | NOT STARTED | — |
+| C6 (Wave 2) | — | — | BLOCKED on WS-C4/C5/C7 | — |
+| C8 (Wave 2) | — | — | BLOCKED on C6 + Zoom OAuth | — |
+
+**Status values:** NOT STARTED · IN PROGRESS · IN REVIEW (PR open) · MERGED · BLOCKED.
+
+---
+
+## 8. How to launch a workstream session
+
+Paste into a fresh Claude Code session, in order:
+1. *"Read `scheduling/docs/workstreams/<WS>.md` — that is your work-order. Read the contracts it cites in `scheduling/docs/FROZEN_CONTRACTS.md`, the plan task it cites in `scheduling/docs/scheduling_implementation_plan.md`, and `CLAUDE.md`. Then build it within the ownership boundary. Open a PR per the work-order; do NOT touch any file outside your owned set or any shared doc."*
+2. The agent builds → opens its PR with the doc-snippet → reports to you.
+3. The **integrator session** weaves: review → calibrated audit → apply the doc-snippets to the shared docs → merge → update this kanban → manage drift/promote.
+
+---
+
+## Change log
+| Date | Change |
+|---|---|
+| 2026-05-30 | Created — parallel-workstream coordination for the sub-phase C logic layer + early E. Companion: [FROZEN_CONTRACTS.md](FROZEN_CONTRACTS.md) + `workstreams/`. |
