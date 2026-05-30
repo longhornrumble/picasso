@@ -120,8 +120,8 @@ Until provisioned, C8 builds **Meet-first** (`conferenceData.createRequest`, rid
 | WS-C4 | feature/scheduling-ws-c4 | [#182](https://github.com/longhornrumble/lambda/pull/182) | MERGED 2026-05-30 | — |
 | WS-C5 | feature/scheduling-ws-c5 | [#183](https://github.com/longhornrumble/lambda/pull/183) | MERGED 2026-05-30 | — |
 | WS-C7 | — | — | NOT STARTED | — |
-| WS-C9 | — | — | NOT STARTED | — |
-| WS-D1a | — | — | NOT STARTED | — |
+| WS-C9 | feature/scheduling-ws-c9 | [#185](https://github.com/longhornrumble/lambda/pull/185) | MERGED 2026-05-30 | — |
+| WS-D1a | feature/scheduling-ws-d1a | [#186](https://github.com/longhornrumble/lambda/pull/186) | IN REVIEW — CHANGES REQUESTED | HIGH-RISK 3-reviewer audit done — strong impl (HS256 pinned, timing-safe, atomic one-time-use, no forgery/replay found). Fix-now: empty-key guard + jti guard + expectedPurpose/tenant params + fail-closed tests + SM-test isolation. Clean branch (no contamination). Held for operator go-ahead. |
 | WS-EUI | — | — | NOT STARTED | — |
 | C6 (Wave 2) | — | — | BLOCKED on WS-C7 | C4 ✅ + C5 ✅ merged; **needs only WS-C7** to start |
 | C8 (Wave 2) | — | — | BLOCKED on C6 + Zoom OAuth | — |
