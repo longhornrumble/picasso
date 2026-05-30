@@ -116,7 +116,7 @@ Until provisioned, C8 builds **Meet-first** (`conferenceData.createRequest`, rid
 | WS | Branch | PR | Status | Blockers |
 |---|---|---|---|---|
 | WS-FIX | feature/scheduling-ws-fix | [#301](https://github.com/longhornrumble/picasso/pull/301) | MERGED 2026-05-30 | fixture `TEN-SCHED-FIXTURE` now available (staging, read-only) — see note below |
-| WS-C2 | feature/scheduling-ws-c2 | [#184](https://github.com/longhornrumble/lambda/pull/184) | IN REVIEW — CHANGES REQUESTED | HIGH-RISK 3-reviewer audit done: (A) branch contaminated w/ C4's **unmerged** `availability.js`+test → must re-cut clean; (B) fix-now cluster: DDB-client `requestTimeout` (SSE-stall risk) + query `Limit:1` + mixed-case marker regex + key-sanitize + test gaps. Held for operator go-ahead post-re-cut. |
+| WS-C2 | feature/scheduling-ws-c2 | [#184](https://github.com/longhornrumble/lambda/pull/184) | MERGED 2026-05-30 | re-cut clean + all fix-now remediated (timeout/Limit+pickLatest/mixed-case regex/key-sanitize/tests), re-reviewed correct, operator-approved. **Named residual:** live-GSI integration test runs at first `TEN-SCHED-FIXTURE` seed (operator-gated). |
 | WS-C4 | feature/scheduling-ws-c4 | [#182](https://github.com/longhornrumble/lambda/pull/182) | MERGED 2026-05-30 | — |
 | WS-C5 | feature/scheduling-ws-c5 | [#183](https://github.com/longhornrumble/lambda/pull/183) | MERGED 2026-05-30 | — |
 | WS-C7 | — | — | NOT STARTED | — |
