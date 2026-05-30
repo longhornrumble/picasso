@@ -1,0 +1,108 @@
+{
+  "_comment": "Synthetic, READ-ONLY scheduling test fixture for staging. Drives the C/E integration tests. All PII-shaped fields are fabricated and use RFC-2606 reserved domains (example.invalid) + non-routable +1555 numbers so nothing is real. tenantId is injected by the seed script (FIXTURE_TENANT_ID, default TEN-SCHED-FIXTURE) and must NOT be a real tenant. Keys are coded against FROZEN_CONTRACTS.md SECTION A (LOCKED); non-key attributes follow scheduling_config_schema.md SECTION 5/6 (appointmentType / routingPolicy) so consumers read realistic shapes. Per schema discipline, consumers must still read defensively (tolerate missing optional fields).",
+  "tenantId": "TEN-SCHED-FIXTURE",
+  "tables": {
+    "appointmentType": {
+      "skAttribute": "appointment_type_id",
+      "items": [
+        {
+          "appointment_type_id": "appt_1to1_discovery_30",
+          "id": "appt_1to1_discovery_30",
+          "name": "Discovery Session (30 min)",
+          "duration_minutes": 30,
+          "location_mode": "virtual_meet",
+          "required_fields": ["name", "email"],
+          "routing_policy_id": "rp_round_robin",
+          "format": "one_to_one"
+        },
+        {
+          "appointment_type_id": "appt_1to1_interview_60",
+          "id": "appt_1to1_interview_60",
+          "name": "Volunteer Interview (60 min)",
+          "duration_minutes": 60,
+          "location_mode": "virtual_zoom",
+          "required_fields": ["name", "email", "phone"],
+          "routing_policy_id": "rp_first_available",
+          "format": "one_to_one"
+        }
+      ]
+    },
+    "routingPolicy": {
+      "skAttribute": "routing_policy_id",
+      "items": [
+        {
+          "routing_policy_id": "rp_round_robin",
+          "id": "rp_round_robin",
+          "tag_conditions": [],
+          "tie_breaker": "round_robin",
+          "candidate_resource_ids": ["res_maya", "res_alex"],
+          "last_assigned_resource_id": "res_maya",
+          "last_assigned_at": 1780315200000
+        },
+        {
+          "routing_policy_id": "rp_first_available",
+          "id": "rp_first_available",
+          "tag_conditions": [],
+          "tie_breaker": "first_available",
+          "candidate_resource_ids": ["res_maya", "res_alex"]
+        }
+      ]
+    },
+    "booking": {
+      "skAttribute": "booking_id",
+      "items": [
+        {
+          "booking_id": "bk_fixture_001",
+          "status": "booked",
+          "start_at": "2026-06-03T14:00:00Z",
+          "end_at": "2026-06-03T14:30:00Z",
+          "coordinator_email": "maya.fixture@example.invalid",
+          "resource_id": "res_maya",
+          "appointment_type_id": "appt_1to1_discovery_30",
+          "routing_policy_id": "rp_round_robin",
+          "attendee": {
+            "name": "Fixture Volunteer One",
+            "email": "vol1.fixture@example.invalid",
+            "phone": "+15555550001"
+          },
+          "created_at": "2026-06-01T09:00:00Z",
+          "last_calendar_mutation_at": "2026-06-01T09:00:00Z"
+        },
+        {
+          "booking_id": "bk_fixture_002",
+          "status": "booked",
+          "start_at": "2026-06-04T16:00:00Z",
+          "end_at": "2026-06-04T17:00:00Z",
+          "coordinator_email": "alex.fixture@example.invalid",
+          "resource_id": "res_alex",
+          "appointment_type_id": "appt_1to1_interview_60",
+          "routing_policy_id": "rp_first_available",
+          "attendee": {
+            "name": "Fixture Volunteer Two",
+            "email": "vol2.fixture@example.invalid",
+            "phone": "+15555550002"
+          },
+          "created_at": "2026-06-01T09:05:00Z",
+          "last_calendar_mutation_at": "2026-06-01T09:05:00Z"
+        },
+        {
+          "booking_id": "bk_fixture_003",
+          "status": "booked",
+          "start_at": "2026-06-05T18:00:00Z",
+          "end_at": "2026-06-05T18:30:00Z",
+          "coordinator_email": "maya.fixture@example.invalid",
+          "resource_id": "res_maya",
+          "appointment_type_id": "appt_1to1_discovery_30",
+          "routing_policy_id": "rp_round_robin",
+          "attendee": {
+            "name": "Fixture Volunteer Three",
+            "email": "vol3.fixture@example.invalid",
+            "phone": "+15555550003"
+          },
+          "created_at": "2026-06-01T09:10:00Z",
+          "last_calendar_mutation_at": "2026-06-01T09:10:00Z"
+        }
+      ]
+    }
+  }
+}
