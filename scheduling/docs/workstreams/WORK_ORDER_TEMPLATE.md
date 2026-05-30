@@ -29,5 +29,5 @@
 
 ## Report-back (in your PR)
 - PR title `feat(scheduling): <id> ...`, base per above.
-- Include a **doc-snippet** block: the plan-row status update + (if you touch a PII surface) the pii-inventory line — for the integrator to apply.
+- Include a **doc-snippet** block: the plan-row status update + (if you touch a PII surface) the pii-inventory line — for the integrator to apply. **Do not edit `pii-inventory.md` yourself** — it is shared with the separate PII Governance program; the integrator applies the snippet after coordinating with that program (see PARALLEL_WORKSTREAMS §3 rule 2).
 - Tell the integrator: branch, PR #, done-bar status, any contract issue.

@@ -256,6 +256,7 @@ FIRST: before building, ask the integrator to confirm WHERE the Customer-Portal 
 | Two workers seem to be editing the **same file** | They shouldn't be — tell the integrator; it'll reassign. |
 | A PR's **CI is red** | The integrator fixes it at weave time — just say "weave it" and it handles it. |
 | You're **not sure what's done** | Ask the integrator: "What's the workstream status?" — it keeps the tracker in `PARALLEL_WORKSTREAMS.md` §7. |
+| A scheduling PR and your **separate PII Governance session** both changed `pii-inventory.md` | They share that one file and will conflict. **Heads-up:** before the integrator merges any scheduling PR that edits `pii-inventory.md`, have it check with your PII session (take turns). The PII session owns the M1–M9 rows; the scheduling integrator owns the scheduling-table rows. |
 
 ---
 
