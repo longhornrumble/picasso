@@ -44,6 +44,7 @@
 
 1. **Disjoint ownership.** Each work-order lists the files/modules it may touch. You may create + edit ONLY those. If you think you need a file outside your set, stop and escalate to the integrator — do not edit it.
 2. **Shared docs are integrator-only.** The plan, `infra/main.tf`, `pii-inventory.md`, this kanban, and `FROZEN_CONTRACTS.md` are edited **only by the integrator**, at weave time. Agents propose their plan-row / inventory updates as a **markdown snippet in the PR description**, not as a file edit.
+   - **⚠️ Cross-project: `docs/roadmap/PII-Project/pii-inventory.md` is SHARED with the separate PII Governance program** (M1–M9), built in its own session, which also edits this file (per the CLAUDE.md Living-Inventory PR Rule — scheduling tables like `Booking` + `conversation-scheduling-session` hold consumer PII the PII program governs). The two programs WILL merge-conflict on it if they edit it at the same time (already happened once: scheduling #289 vs audit #290). **Rule:** before merging any scheduling PR that edits `pii-inventory.md`, the integrator **coordinates with the PII Governance session** (ping it / take turns) so the two never touch the file simultaneously. PII session owns the M1–M9 rows; the scheduling integrator owns the scheduling-surface rows; non-overlapping sections.
 3. **Code against frozen contracts; never redefine them.** If a contract is wrong or missing, escalate — don't fork it.
 4. **One workstream, one branch, one PR.** Branch naming: `feature/scheduling-<ws-id>` (lambda code → base `main`; picasso code/IaC → base `staging`). No cross-workstream commits.
 5. **`verify-before-commit` on every commit** (the per-repo marker). No exceptions.
@@ -54,15 +55,14 @@
 
 ## 4. Wave plan + dependency graph
 
-### 4.0 Pre-launch (integrator) — do these BEFORE forking Wave 1
-These three steps make the workstreams genuinely disjoint + lock the seam. ~½ day.
-1. **Confirm + lock the §B contracts** in `FROZEN_CONTRACTS.md` against the canonical design (the signatures there are integrator-proposed; verify the exact field names / the 6 token purposes / the 5 §5.6 red-team cases, then mark them LOCKED).
-2. **Confirm the C-phase module architecture + scaffold the shared lib.** The pure-logic C modules (C4 availability, C5 routing, C7 slots, C9 state machine, D1a tokens) are **proposed** to live as disjoint files under **`shared/scheduling/`** in the lambda repo (mirrors the existing `shared/booking-status.js`). Pre-scaffold `shared/scheduling/package.json` + jest config + any shared runtime deps (e.g. `@googleapis/calendar` for C4) **once**, so each Wave-1 session only ADDS its own `shared/scheduling/<module>.js` + test and never touches a shared file. Confirm where C2 (BSH), C8 (commit Lambda), and WS-EUI (frontend) live before assigning those work-orders.
-3. **Kick off the Zoom OAuth provisioning** (§6) in the background.
+### 4.0 Pre-launch (integrator) — ✅ DONE 2026-05-30
+1. ✅ **§B contracts LOCKED** in `FROZEN_CONTRACTS.md`. Verified against canonical; **B4 corrected** (the 6 token purposes were wrong in the draft — now `cancel`/`reschedule`/`post_application_recovery`/`attended_yes`/`no_show`/`didnt_connect` per §13.4; one-time-use reuses the *existing* jti-blacklist table) and **B5 corrected** (the 4 verbatim §5.6 red-team cases + sanitization sub-steps).
+2. ✅ **`shared/scheduling/` scaffolded** in the lambda repo ([lambda#181](https://github.com/longhornrumble/lambda/pull/181) — package.json + lockfile + jest + runtime deps pre-populated + README). Each Wave-1 pure-logic session (C4/C5/C7/C9/D1a) ADDS only its own `shared/scheduling/<module>.js` + `__tests__/<module>.test.js` and never touches `package.json`. C2 = BSH module; C8 = a Wave-2 commit Lambda; WS-EUI frontend home = **integrator confirms with the WS-EUI agent at launch** (the one remaining placement to settle).
+3. ✅ **Zoom OAuth runbook published** — [`runbooks/ZOOM_OAUTH_PROVISIONING.md`](runbooks/ZOOM_OAUTH_PROVISIONING.md). Operator runs it in the background (credential mutation; ~30 min) before C8's Zoom path.
 
-> The work-orders below cite **proposed** owned paths; the integrator finalizes them in step 2 so no two workstreams share a file (the one drift that breaks parallelism).
+**Wave 1 is now LAUNCHABLE.** Spin up one session per work-order (WS-FIX first).
 
-**Wave 1 — parallel (launch after 4.0; all owned modules are disjoint):**
+**Wave 1 — parallel (all owned modules are disjoint):**
 
 | WS | Work-order | Plan task | Repo / base | Independent because |
 |---|---|---|---|---|
@@ -99,6 +99,8 @@ These three steps make the workstreams genuinely disjoint + lock the seam. ~½ d
 
 ## 6. Operator gate — Zoom S2S OAuth (lever #3, do in background)
 
+> **Full runbook: [`runbooks/ZOOM_OAUTH_PROVISIONING.md`](runbooks/ZOOM_OAUTH_PROVISIONING.md)** (published pre-launch). Summary below.
+
 C8 is the only C task with an external gate. Provision ahead of reaching C8 so it's not a serial wait:
 
 1. In the Zoom Marketplace, create a **Server-to-Server OAuth** app for the pilot tenant; scopes: `meeting:write:admin` (+ `meeting:read:admin`).
@@ -129,6 +131,8 @@ Until provisioned, C8 builds **Meet-first** (`conferenceData.createRequest`, rid
 ---
 
 ## 8. How to launch a workstream session
+
+> **Operator step-by-step + all 8 ready-to-paste prompts: [`LAUNCH_THE_WORKFORCE.md`](LAUNCH_THE_WORKFORCE.md).**
 
 Paste into a fresh Claude Code session, in order:
 1. *"Read `scheduling/docs/workstreams/<WS>.md` — that is your work-order. Read the contracts it cites in `scheduling/docs/FROZEN_CONTRACTS.md`, the plan task it cites in `scheduling/docs/scheduling_implementation_plan.md`, and `CLAUDE.md`. Then build it within the ownership boundary. Open a PR per the work-order; do NOT touch any file outside your owned set or any shared doc."*
