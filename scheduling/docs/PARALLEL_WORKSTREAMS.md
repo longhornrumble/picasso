@@ -116,14 +116,14 @@ Until provisioned, C8 builds **Meet-first** (`conferenceData.createRequest`, rid
 | WS | Branch | PR | Status | Blockers |
 |---|---|---|---|---|
 | WS-FIX | feature/scheduling-ws-fix | [#301](https://github.com/longhornrumble/picasso/pull/301) | MERGED 2026-05-30 | fixture `TEN-SCHED-FIXTURE` now available (staging, read-only) — see note below |
-| WS-C2 | feature/scheduling-ws-c2 | [#184](https://github.com/longhornrumble/lambda/pull/184) | IN REVIEW — CHANGES REQUESTED | HIGH-RISK 3-reviewer audit done: (A) branch contaminated w/ C4's **unmerged** `availability.js`+test → must re-cut clean; (B) fix-now cluster: DDB-client `requestTimeout` (SSE-stall risk) + query `Limit:1` + mixed-case marker regex + key-sanitize + test gaps. Held for operator go-ahead post-re-cut. |
+| WS-C2 | feature/scheduling-ws-c2 | [#184](https://github.com/longhornrumble/lambda/pull/184) | MERGED 2026-05-30 | re-cut clean + all fix-now remediated (timeout/Limit+pickLatest/mixed-case regex/key-sanitize/tests), re-reviewed correct, operator-approved. **Named residual:** live-GSI integration test runs at first `TEN-SCHED-FIXTURE` seed (operator-gated). |
 | WS-C4 | feature/scheduling-ws-c4 | [#182](https://github.com/longhornrumble/lambda/pull/182) | MERGED 2026-05-30 | — |
 | WS-C5 | feature/scheduling-ws-c5 | [#183](https://github.com/longhornrumble/lambda/pull/183) | MERGED 2026-05-30 | — |
-| WS-C7 | — | — | NOT STARTED | — |
+| WS-C7 | feature/scheduling-ws-c7 | [#187](https://github.com/longhornrumble/lambda/pull/187) | MERGED 2026-05-30 | slot-gen; native-Intl DST (spring-forward skip + fall-back de-dup) verified. §C escalation resolved: optional `resourceId` input (caller supplies per-resource) — §B3 clarified. |
 | WS-C9 | feature/scheduling-ws-c9 | [#185](https://github.com/longhornrumble/lambda/pull/185) | MERGED 2026-05-30 | — |
 | WS-D1a | feature/scheduling-ws-d1a | [#186](https://github.com/longhornrumble/lambda/pull/186) | IN REVIEW — CHANGES REQUESTED | HIGH-RISK 3-reviewer audit done — strong impl (HS256 pinned, timing-safe, atomic one-time-use, no forgery/replay found). Fix-now: empty-key guard + jti guard + expectedPurpose/tenant params + fail-closed tests + SM-test isolation. Clean branch (no contamination). Held for operator go-ahead. |
-| WS-EUI | — | — | NOT STARTED | — |
-| C6 (Wave 2) | — | — | BLOCKED on WS-C7 | C4 ✅ + C5 ✅ merged; **needs only WS-C7** to start |
+| WS-EUI | feature/scheduling-ws-eui | — | IN PROGRESS (separate repo) | **Scope = E12 + E15 only** (render-only from §A + WS-FIX fixture). **Home = the SEPARATE repo `longhornrumble/picasso-analytics-dashboard`, base `main`** (no staging branch); net-new under `src/{pages,components}/scheduling/`. **⚠️ merge=PROD deploy → operator go-ahead required** (no staging buffer). Worker confirmed on `feature/scheduling-ws-eui`, dirs created. **E11/E13/E14/E16 deferred.** Integrator now sweeps this 3rd repo. |
+| C6 (Wave 2) | — | — | ✅ READY TO BUILD | **C4 ✅ + C5 ✅ + C7 ✅ all merged** — all three inputs in. Consumes availability.js + routing.js + slots.js; wires freeBusy into evaluatePool, supplies `resourceId` per-resource to generateSlots, owns the config→§B3-appointmentType field-shim. Next sequential task (integrator or dedicated session). |
 | C8 (Wave 2) | — | — | BLOCKED on C6 + Zoom OAuth | — |
 
 **Status values:** NOT STARTED · IN PROGRESS · IN REVIEW (PR open) · MERGED · BLOCKED.

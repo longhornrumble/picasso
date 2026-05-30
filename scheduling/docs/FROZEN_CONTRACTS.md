@@ -53,9 +53,17 @@ async function revertRoundRobin({ tenantId, routingPolicyId, previousResourceId,
 ### B3 — slot generation output (produced by WS-C7, consumed by C6 + WS-EUI) — canonical §9.3
 ```js
 // module: shared/scheduling/slots.js
-function generateSlots({ busyIntervals, appointmentType, userTimeZone, alreadyRejected })
+function generateSlots({ busyIntervals, appointmentType, userTimeZone, alreadyRejected, resourceId })
 //   → [ { slotId, start: ISO8601, end: ISO8601, label: "Tue, Jun 3 · 2:00 PM", resourceId } ]  // 3–5 chips
 // - user-timezone respect; DST spring-forward + fall-back safety; rejected-slot dedup. label is display-ready.
+// - resourceId CLARIFICATION (WS-C7 #187 §C escalation, resolved 2026-05-30): the output needs resourceId but
+//   a single call generates slots for ONE resource — so resourceId is an OPTIONAL INPUT supplied by the CALLER
+//   (C6) per-resource and threaded into each slot (+ seeds the deterministic slotId). The original 4-key call
+//   still works and yields resourceId:null. C6 calls generateSlots once per candidate resource and merges.
+// - C6 also owns the config→appointmentType field-shim: this module reads NORMALIZED names
+//   (duration_minutes / buffer_minutes / slot_granularity_minutes / min_lead_minutes / availability_windows /
+//   timezone); the v1 config schema's buffer_before/after_minutes etc. are mapped by C6's caller, NOT here.
+// - v1 uses native Intl.DateTimeFormat (no tz lib) for DST math (integrator decision: "whatever the repo uses").
 ```
 
 ### B4 — token purpose enum (produced by WS-D1a, consumed by D consumers + CI-3d) — canonical §13.4/§13.6/§13.7 — **LOCKED 2026-05-30**
@@ -115,3 +123,4 @@ const TOKEN_PURPOSES = [
 | 2026-05-30 | Created. §A frozen (shipped: 4 tables + C1 GSI + booking-status + dispatch-interface). §B proposed for Wave-1 lock. |
 | 2026-05-30 | **§B LOCKED** (pre-launch §4.0 step 1). Verified against canonical; **B4 corrected** — the 6 token purposes are `cancel`/`reschedule`/`post_application_recovery`/`attended_yes`/`no_show`/`didnt_connect` (§13.4), one-time-use reuses the EXISTING `picasso-token-jti-blacklist` table (§13.7), NOT a new table (the earlier draft enum was wrong); **B5 corrected** — the 4 verbatim §5.6 red-team cases + the 4 sanitization sub-steps added. B1/B2/B3 module paths aligned to `shared/scheduling/`. |
 | 2026-05-30 | **B4 wording precision** (WS-D1a #186 audit caught it): the blacklist table is COMPOSITE-keyed (`tenantId` PK · `jti` SK), not single-`jti`; the conditional put writes `{tenantId, jti, exp}` with `attribute_not_exists(jti)` on the specific item. The shipped table + the WS-D1a module are correct; only the §B4 prose said "keyed by jti". No contract behavior change. |
+| 2026-05-30 | **B3 `resourceId` clarification** (WS-C7 #187 §C escalation, integrator-resolved, NOT a fork): the output needs `resourceId` but one call serves one resource → `resourceId` is an OPTIONAL INPUT the CALLER (C6) supplies per-resource (threaded to output + slotId seed); the original 4-key call still works (yields `resourceId:null`). Also recorded: C6 owns the config→appointmentType field-shim; v1 DST math uses native `Intl` (no tz lib). Frozen 4-key signature unchanged → no consumer re-sync needed. |

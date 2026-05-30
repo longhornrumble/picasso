@@ -57,6 +57,16 @@ For **each** piece you want to build:
 - Then launch the rest (`WS-C2`, `WS-C4`, `WS-C5`, `WS-C7`, `WS-C9`, `WS-D1a`, `WS-EUI`) **in any order**.
 - Run **as many at once as you can keep an eye on.** All 7 of the rest together is fine — they're independent.
 
+> **⚠️ HARD RULE — each worker session gets its OWN git worktree (or clone). Never run two workers in the same checkout.**
+> Multiple sessions sharing one physical checkout race `git HEAD` across branches — this corrupted pushes for WS-C4/C5/C9 (commits landed on the wrong branch; one PR briefly carried another workstream's files) until each recovered by hand. Before a worker's first commit, give it an isolated tree:
+> ```bash
+> # lambda workstreams (C2/C4/C5/C7/C9/D1a):
+> git -C Lambdas/lambda worktree add -b feature/scheduling-<ws> /tmp/ws-<ws> origin/main
+> # picasso workstreams (WS-FIX/WS-EUI):
+> git worktree add -b feature/scheduling-<ws> /tmp/ws-<ws> origin/staging
+> ```
+> Then the worker works in `/tmp/ws-<ws>` only. The integrator prunes the worktree after merge.
+
 One special case: **`WS-EUI`** will ask you (or the integrator) one question first — *where the Customer-Portal screens should live*. Answer it, then it builds.
 
 ---
