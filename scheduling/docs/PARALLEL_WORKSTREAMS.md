@@ -116,14 +116,14 @@ Until provisioned, C8 builds **Meet-first** (`conferenceData.createRequest`, rid
 | WS | Branch | PR | Status | Blockers |
 |---|---|---|---|---|
 | WS-FIX | — | — | NOT STARTED | — |
-| WS-C2 | — | — | NOT STARTED | — |
-| WS-C4 | — | — | NOT STARTED | — |
-| WS-C5 | — | — | NOT STARTED | — |
+| WS-C2 | feature/scheduling-ws-c2 | — | IN PROGRESS | shared-tree race: branch carries stray `0a999bc`(C5)+`42cd44d`(C4) — must be dropped before the WS-C2 PR; recommend isolated worktrees |
+| WS-C4 | feature/scheduling-ws-c4 | [#182](https://github.com/longhornrumble/lambda/pull/182) | IN REVIEW | external-surface (freeBusy) — integrator-reviewed clean, held for operator go-ahead |
+| WS-C5 | feature/scheduling-ws-c5 | [#183](https://github.com/longhornrumble/lambda/pull/183) | MERGED 2026-05-30 | — |
 | WS-C7 | — | — | NOT STARTED | — |
 | WS-C9 | — | — | NOT STARTED | — |
 | WS-D1a | — | — | NOT STARTED | — |
 | WS-EUI | — | — | NOT STARTED | — |
-| C6 (Wave 2) | — | — | BLOCKED on WS-C4/C5/C7 | — |
+| C6 (Wave 2) | — | — | BLOCKED on WS-C4/C5/C7 | C5 ✅ merged; needs C4 + C7 |
 | C8 (Wave 2) | — | — | BLOCKED on C6 + Zoom OAuth | — |
 
 **Status values:** NOT STARTED · IN PROGRESS · IN REVIEW (PR open) · MERGED · BLOCKED.
