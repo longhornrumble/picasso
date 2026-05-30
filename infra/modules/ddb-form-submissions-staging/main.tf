@@ -44,6 +44,15 @@ resource "aws_dynamodb_table" "form_submissions" {
     type = "S"
   }
 
+  # Sub-phase C Task C1 — session_id GSI key. Already written on every form
+  # submission by BSH form_handler (`session_id`); the GSI provisions against the
+  # current item shape with no write-path change. Old items without session_id
+  # are simply not indexed (sparse GSI) — safe.
+  attribute {
+    name = "session_id"
+    type = "S"
+  }
+
   global_secondary_index {
     name            = "FormTypeIndex"
     hash_key        = "form_type"
@@ -74,6 +83,19 @@ resource "aws_dynamodb_table" "form_submissions" {
     name            = "tenant-pipeline-index"
     hash_key        = "tenant_pipeline_key"
     range_key       = "submitted_at"
+    projection_type = "ALL"
+  }
+
+  # Sub-phase C Task C1 — (tenant_id, session_id) GSI. C2 (Bedrock form-data
+  # injection, §5.6) queries this to find any form submissions tied to the
+  # current chat session and hydrate the prompt so the LLM can skip the
+  # qualifier. projection ALL = the submission content is returned by the GSI
+  # query with no second point-read. DynamoDB adds at most one GSI per
+  # UpdateTable; this is the only GSI added in this change.
+  global_secondary_index {
+    name            = "tenant-session-index"
+    hash_key        = "tenant_id"
+    range_key       = "session_id"
     projection_type = "ALL"
   }
 

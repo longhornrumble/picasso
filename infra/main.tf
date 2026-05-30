@@ -253,6 +253,29 @@ module "ddb_booking_staging" {
   env    = var.env
 }
 
+# Sub-phase C Task C3 — the three remaining scheduling-core tables (the Booking
+# table above shipped earlier in A8c so B5/B11 could query it). All follow the
+# ddb-booking convention: tenantId PK + per-table snake sort key (canonical §18),
+# PAY_PER_REQUEST, PITR on, no GSI (canonical §18 places GSIs only on Booking),
+# no TTL (retention is sub-phase F). C5/C6/C8/C9 read/write these.
+module "ddb_appointment_type_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/ddb-appointment-type"
+  env    = var.env
+}
+
+module "ddb_routing_policy_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/ddb-routing-policy"
+  env    = var.env
+}
+
+module "ddb_conversation_scheduling_session_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/ddb-conversation-scheduling-session"
+  env    = var.env
+}
+
 # B1 runbook-provisioned table (PR #231, 2026-05-25). Not yet under Terraform
 # state — bringing it in via `terraform import` is tracked as a follow-up to
 # close R1 fully for sub-phase B. This data source lets B2 reference the ARN
@@ -784,6 +807,24 @@ module "lambda_calendar_watch_renewer_staging" {
   # initial channel the Onboarder registers. Sourced from the Listener module
   # output so the URL stays in lockstep.
   listener_function_url = module.lambda_calendar_watch_listener_staging[0].listener_function_url
+
+  # Ops alerts SNS topic (shared with MFS + Meta — created by ops_alarms_master_function_staging)
+  ops_alerts_topic_arn = module.ops_alarms_master_function_staging[0].topic_arn
+}
+
+# Scheduling sub-phase B Task B6 — Calendar_Watch_Offboarder.
+# Tears down a coordinator's Google Calendar push channel(s) when they are no
+# longer bookable: channels.stop + delete the DDB row. Reuses the same channels
+# table + per-tenant OAuth scope as the Onboarder/Renewer. Needs NO Listener URL
+# (it never registers a watch).
+module "lambda_calendar_watch_offboarder_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/lambda-calendar-watch-offboarder-staging"
+
+  # Calendar-watch-channels (runbook-provisioned PR #231; data source for now).
+  # Offboarder GetItem/Query (tenant-expiration-index GSI) + DeleteItem.
+  calendar_watch_channels_table_arn  = data.aws_dynamodb_table.calendar_watch_channels_staging[0].arn
+  calendar_watch_channels_table_name = data.aws_dynamodb_table.calendar_watch_channels_staging[0].name
 
   # Ops alerts SNS topic (shared with MFS + Meta — created by ops_alarms_master_function_staging)
   ops_alerts_topic_arn = module.ops_alarms_master_function_staging[0].topic_arn
