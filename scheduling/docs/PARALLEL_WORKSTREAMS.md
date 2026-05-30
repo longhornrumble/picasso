@@ -117,13 +117,13 @@ Until provisioned, C8 builds **Meet-first** (`conferenceData.createRequest`, rid
 |---|---|---|---|---|
 | WS-FIX | feature/scheduling-ws-fix | [#301](https://github.com/longhornrumble/picasso/pull/301) | MERGED 2026-05-30 | fixture `TEN-SCHED-FIXTURE` now available (staging, read-only) — see note below |
 | WS-C2 | feature/scheduling-ws-c2 | [#184](https://github.com/longhornrumble/lambda/pull/184) | IN REVIEW — CHANGES REQUESTED | HIGH-RISK 3-reviewer audit done: (A) branch contaminated w/ C4's **unmerged** `availability.js`+test → must re-cut clean; (B) fix-now cluster: DDB-client `requestTimeout` (SSE-stall risk) + query `Limit:1` + mixed-case marker regex + key-sanitize + test gaps. Held for operator go-ahead post-re-cut. |
-| WS-C4 | feature/scheduling-ws-c4 | [#182](https://github.com/longhornrumble/lambda/pull/182) | IN REVIEW | external-surface (freeBusy) — integrator-reviewed clean, held for operator go-ahead |
+| WS-C4 | feature/scheduling-ws-c4 | [#182](https://github.com/longhornrumble/lambda/pull/182) | MERGED 2026-05-30 | — |
 | WS-C5 | feature/scheduling-ws-c5 | [#183](https://github.com/longhornrumble/lambda/pull/183) | MERGED 2026-05-30 | — |
 | WS-C7 | — | — | NOT STARTED | — |
 | WS-C9 | — | — | NOT STARTED | — |
 | WS-D1a | — | — | NOT STARTED | — |
 | WS-EUI | — | — | NOT STARTED | — |
-| C6 (Wave 2) | — | — | BLOCKED on WS-C4/C5/C7 | C5 ✅ merged; needs C4 + C7 |
+| C6 (Wave 2) | — | — | BLOCKED on WS-C7 | C4 ✅ + C5 ✅ merged; **needs only WS-C7** to start |
 | C8 (Wave 2) | — | — | BLOCKED on C6 + Zoom OAuth | — |
 
 **Status values:** NOT STARTED · IN PROGRESS · IN REVIEW (PR open) · MERGED · BLOCKED.
