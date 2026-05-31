@@ -19,7 +19,7 @@ These exist in code today; treat as immutable.
 | **form_submissions session GSI** | `tenant-session-index` — hash `tenant_id`, range `session_id`, projection ALL | `infra/modules/ddb-form-submissions-staging/main.tf` (C1) | WS-C2 (query) |
 | **Booking.status vocabulary** | `booked` · `canceled` · `completed` · `no_show` · `coordinator_no_show` (the ONLY 5; CI-3c locks them) | `shared/booking-status.js` (lambda repo); canonical §9.2/§11.2 | WS-C9, C8, WS-EUI |
 | **Listener dispatch interface** | 7 typed `booking.*` events; platform ownership via `extendedProperties.private.booking_id`; SQS FIFO `MessageGroupId=event_id`; dedupe `(event_id, last_calendar_mutation_at)` | `scheduling/docs/listener_dispatch_interface.md` (B0/B2) | C8 (writes `booking_id` into the calendar event), B9/B10/B11 |
-| **Booking → calendar-event ownership tag** | C8 MUST set `extendedProperties.private.booking_id = <Booking PK>` on every `events.insert` | `listener_dispatch_interface.md` "Delta Discovery" + §C8 | C8 (writes), B2 listener (reads) |
+| **Booking → calendar-event ownership tag** | C8 MUST set `extendedProperties.private.booking_id` = the **`booking_id` (the Booking SK)** — NOT the `tenantId` PK — on every `events.insert`, so the B2 listener resolves exactly one booking. (Corrected 2026-05-31 per WS-C8 #190 §C nit; C8 built to the SK.) | `listener_dispatch_interface.md` "Delta Discovery" + §C8 | C8 (writes), B2 listener (reads) |
 
 ---
 
@@ -78,6 +78,10 @@ const TOKEN_PURPOSES = [
 //   cancel                 → booking.start_at
 //   reschedule             → booking.start_at - cancellation_window_hours  (= start_at when window=0)
 //   attended_yes|no_show|didnt_connect → event_end + 24h
+// AMENDMENT OWED (WS-C8 #190 audit, 2026-05-31): apply a MIN-LIFETIME FLOOR — exp = max(computed, iat + 900s).
+//   Without it, same-day/near-term bookings mint cancel/reschedule links that are already expired by the time
+//   the confirmation email is delivered (cancel exp=start_at; reschedule exp can be < iat when window > lead time).
+//   Fix lives in tokens.js computeExpiry + this contract; integrator-owned follow-up (not yet applied in code).
 //   post_application_recovery → iat + 14 days
 // HMAC-signed; custom claims: purpose, booking_id (nullable), tenant_id (+ form_submission_id for post_application_recovery) [§13.1].
 // One-time-use (§13.7): atomic conditional PutItem to the EXISTING `picasso-token-jti-blacklist-{env}` table
