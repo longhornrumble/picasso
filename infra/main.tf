@@ -831,6 +831,34 @@ module "lambda_calendar_watch_offboarder_staging" {
 }
 
 # ──────────────────────────────────────────────────────────────────────
+# Scheduling sub-phase C Task C8 — Booking_Commit_Handler (the booking-commit
+# keystone). The single transactional commit path: live freeBusy re-check (C4)
+# → C6 pool.lockSlot → ConferenceProvider.createConference → Google Calendar
+# events.insert (extendedProperties.private.booking_id) → C5 round-robin advance
+# → Booking row write → confirmation email (.ics + signed cancel/reschedule
+# links) within the 60s SLA. Reads/writes the Booking table + UpdateItems the
+# RoutingPolicy table; per-tenant OAuth + Zoom + JWT-signing secrets. Dedicated
+# exec role; SNS DLQ for failed async invocations. Handler in lambda-repo PR
+# #190; deployed via deploy-staging.yml.
+# ──────────────────────────────────────────────────────────────────────
+module "lambda_booking_commit_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/lambda-booking-commit-staging"
+
+  # Booking table (Terraform-managed via ddb-booking): Get/Put/Update/DeleteItem.
+  booking_table_arn  = module.ddb_booking_staging[0].table_arn
+  booking_table_name = module.ddb_booking_staging[0].table_name
+
+  # RoutingPolicy table (Terraform-managed via ddb-routing-policy): UpdateItem
+  # only (C5 atomic round-robin cursor advance/revert).
+  routing_policy_table_arn  = module.ddb_routing_policy_staging[0].table_arn
+  routing_policy_table_name = module.ddb_routing_policy_staging[0].table_name
+
+  # Ops alerts SNS topic (shared with MFS + Meta — created by ops_alarms_master_function_staging)
+  ops_alerts_topic_arn = module.ops_alarms_master_function_staging[0].topic_arn
+}
+
+# ──────────────────────────────────────────────────────────────────────
 # Q5: staging widget edge migration (prod acct 614056832592 → staging
 # 525409062831). Plan: ~/.claude/plans/glistening-strolling-oasis.md.
 # Phase D moved the staging COMPUTE (MFS+BSH) to the staging account; the
