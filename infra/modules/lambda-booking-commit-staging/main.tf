@@ -62,7 +62,7 @@ variable "scheduling_oauth_tenant_ids" {
 }
 
 variable "ops_alerts_topic_arn" {
-  description = "ARN of picasso-ops-alerts-staging SNS topic. The handler publishes degrade / SLA / orphan-lock alerts here (OPS_ALERTS_TOPIC_ARN env), and the Errors + DeadLetterErrors alarms target it."
+  description = "ARN of picasso-ops-alerts-staging SNS topic. The handler publishes degrade / SLA / orphan-lock alerts here (OPS_ALERTS_TOPIC_ARN env), and the Errors alarm targets it."
   type        = string
 }
 
@@ -138,31 +138,22 @@ resource "aws_cloudwatch_log_group" "commit" {
 }
 
 # ==============================================================================
-# Dead-letter queue (SNS onFailure). The commit keystone has comprehensive
-# in-handler compensation, but a failed ASYNC invocation envelope is captured
-# here for forensic replay rather than being silently dropped. Dedicated topic
-# (NOT the ops-alerts paging topic) because the failed-invocation envelope
-# carries the booking request payload (attendee_email = PII) — encrypt at rest
-# per sub-phase B audit SR-3, and keep raw PII off the operator paging channel.
+# No dead-letter queue — by design. aws_lambda_function.dead_letter_config only
+# fires on ASYNCHRONOUS invocations. C8 is invoked SYNCHRONOUSLY: the handler is
+# called at the volunteer's "Confirm" and RETURNS a structured outcome the caller
+# acts on ({status:'COMMIT_FAILED',action:'graceful_error'} /
+# {status:'SLOT_UNAVAILABLE',action:'reoffer'}), and it catches its own errors
+# rather than throwing. A synchronous invoke never delivers to a DLQ — the error
+# surfaces directly in the caller's response. An async C8 is also incoherent by
+# design (you cannot 'reoffer' a slot to a user who is not awaiting the reply).
 #
-# NOTE for the integrator: aws_lambda_function.dead_letter_config only fires on
-# ASYNCHRONOUS invocations. If C8 is wired as a synchronous invoke from MFS/BSH,
-# this DLQ is inert (the caller surfaces the error directly) — it is cheap
-# insurance for any future async trigger (EventBridge / SQS / DDB stream).
-# ==============================================================================
-
-resource "aws_sns_topic" "commit_dlq" {
-  name = "picasso-booking-commit-dlq-staging"
-  # AWS-managed SNS key (no dedicated CMK needed); satisfies encrypt-at-rest for
-  # the PII-bearing failed-invocation envelope (sub-phase B audit SR-3).
-  kms_master_key_id = "alias/aws/sns"
-
-  tags = {
-    Name     = "picasso-booking-commit-dlq-staging"
-    Subphase = "C8"
-  }
-}
-
+# A DLQ topic + DeadLetterErrors alarm here would therefore be inert forever and,
+# worse, read as "DLQ coverage exists" on a dashboard (false confidence). Removed.
+# Failure observability is covered by: (1) the handler returning the failure to
+# its caller, (2) alertAdmin() -> ops-alerts on degrade/SLA/orphan-lock, and
+# (3) the Errors alarm below. If C8 is ever genuinely wired to an async trigger
+# (EventBridge / SQS / DDB stream), re-add a DLQ in THAT PR where it is exercised
+# and its alarm is testable.
 # ==============================================================================
 # IAM execution role (dedicated per CLAUDE.md "Never share IAM roles" rule)
 # ==============================================================================
@@ -256,27 +247,14 @@ data "aws_iam_policy_document" "commit_exec" {
     resources = ["*"]
   }
 
-  # SNS: publish degrade / SLA / orphan-lock alerts to the ops-alerts topic, AND
-  # publish to the dead-letter topic (the Lambda service uses THIS execution
-  # role to deliver failed async invocations to dead_letter_config's target).
+  # SNS: publish degrade / SLA / orphan-lock alerts to the ops-alerts topic
+  # (alertAdmin() -> OPS_ALERTS_TOPIC_ARN). No DLQ publish — C8 is synchronous,
+  # so there is no dead_letter_config target (see the "No dead-letter queue"
+  # note above). No KMS-for-DLQ grant for the same reason.
   statement {
-    sid     = "SNSPublishAlertsAndDlq"
-    actions = ["sns:Publish"]
-    resources = [
-      var.ops_alerts_topic_arn,
-      aws_sns_topic.commit_dlq.arn,
-    ]
-  }
-
-  # KMS: encrypt the PII-bearing DLQ envelope under the AWS-managed SNS key.
-  # dead_letter_config delivery to a KMS-encrypted SNS topic requires the
-  # execution role to GenerateDataKey under that key.
-  statement {
-    sid     = "KMSForDlqEncryption"
-    actions = ["kms:GenerateDataKey", "kms:Decrypt"]
-    resources = [
-      "arn:${data.aws_partition.current.partition}:kms:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:alias/aws/sns"
-    ]
+    sid       = "SNSPublishOpsAlerts"
+    actions   = ["sns:Publish"]
+    resources = [var.ops_alerts_topic_arn]
   }
 }
 
@@ -315,11 +293,8 @@ resource "aws_lambda_function" "commit" {
   filename         = data.archive_file.commit_placeholder.output_path
   source_code_hash = data.archive_file.commit_placeholder.output_base64sha256
 
-  # SNS dead-letter for failed ASYNC invocations (forensic replay). See the
-  # dedicated DLQ topic above.
-  dead_letter_config {
-    target_arn = aws_sns_topic.commit_dlq.arn
-  }
+  # No dead_letter_config — C8 is invoked synchronously; a DLQ would be inert
+  # (see the "No dead-letter queue" note above).
 
   environment {
     variables = {
@@ -386,31 +361,6 @@ resource "aws_cloudwatch_metric_alarm" "commit_errors" {
   ok_actions    = [var.ops_alerts_topic_arn]
 }
 
-# DeadLetterErrors >= 1: the Lambda service failed to deliver a failed async
-# invocation to the DLQ topic. A failure-to-DLQ means a lost commit envelope —
-# page on it. (Companion to the DLQ we added above; without this alarm a DLQ
-# delivery failure would be silent.)
-resource "aws_cloudwatch_metric_alarm" "commit_dlq_errors" {
-  alarm_name          = "Booking_Commit_Handler-dlq-errors"
-  alarm_description   = "Booking_Commit_Handler failed to deliver a failed async invocation to its SNS dead-letter topic (DeadLetterErrors >= 1). A lost commit envelope — investigate."
-  comparison_operator = "GreaterThanOrEqualToThreshold"
-  evaluation_periods  = 1
-  threshold           = 1
-  treat_missing_data  = "notBreaching"
-
-  metric_name = "DeadLetterErrors"
-  namespace   = "AWS/Lambda"
-  period      = 300
-  statistic   = "Sum"
-
-  dimensions = {
-    FunctionName = aws_lambda_function.commit.function_name
-  }
-
-  alarm_actions = [var.ops_alerts_topic_arn]
-  ok_actions    = [var.ops_alerts_topic_arn]
-}
-
 # ==============================================================================
 # Outputs
 # ==============================================================================
@@ -425,8 +375,4 @@ output "commit_function_arn" {
 
 output "commit_role_arn" {
   value = aws_iam_role.commit.arn
-}
-
-output "commit_dlq_topic_arn" {
-  value = aws_sns_topic.commit_dlq.arn
 }
