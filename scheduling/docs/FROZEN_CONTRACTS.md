@@ -20,6 +20,7 @@ These exist in code today; treat as immutable.
 | **Booking.status vocabulary** | `booked` · `canceled` · `completed` · `no_show` · `coordinator_no_show` (the ONLY 5; CI-3c locks them) | `shared/booking-status.js` (lambda repo); canonical §9.2/§11.2 | WS-C9, C8, WS-EUI |
 | **Listener dispatch interface** | 7 typed `booking.*` events; platform ownership via `extendedProperties.private.booking_id`; SQS FIFO `MessageGroupId=event_id`; dedupe `(event_id, last_calendar_mutation_at)` | `scheduling/docs/listener_dispatch_interface.md` (B0/B2) | C8 (writes `booking_id` into the calendar event), B9/B10/B11 |
 | **Booking → calendar-event ownership tag** | C8 MUST set `extendedProperties.private.booking_id` = the **`booking_id` (the Booking SK)** — NOT the `tenantId` PK — on every `events.insert`, so the B2 listener resolves exactly one booking. (Corrected 2026-05-31 per WS-C8 #190 §C nit; C8 built to the SK.) | `listener_dispatch_interface.md` "Delta Discovery" + §C8 | C8 (writes), B2 listener (reads) |
+| **Booking non-key attributes** (codified 2026-06-01 from the shipped C8/B9B10/B11 code — readers MUST tolerate absence per schema discipline) | `external_event_id` (Google event id, C8 writes / B11 reads for `events.move`/`delete`); `resource_id` + `coordinator_email`; `conference_id` / `channel_details` (join URL); `appointment_type_id`; `last_calendar_mutation_at`; `canceled_at` + `cancel_reason` (B10/B11); `ooo_conflict_status`/`_at`/`_mutation_at`/`_start_at`/`_end_at` (B9, additive non-key). **No `routing_policy_id` on the row** — re-pooling needs the (X) resolver, not a row field. | C8 `Booking_Commit_Handler/booking-store.js`; B9B10 `Calendar_Event_Consumer/booking-updates.js`; B11 `Stranded_Booking_Remediator/booking-store.js` | C8/B9B10/B11 (write), B11/EUI (read) |
 
 ---
 
@@ -78,11 +79,11 @@ const TOKEN_PURPOSES = [
 //   cancel                 → booking.start_at
 //   reschedule             → booking.start_at - cancellation_window_hours  (= start_at when window=0)
 //   attended_yes|no_show|didnt_connect → event_end + 24h
-// AMENDMENT OWED (WS-C8 #190 audit, 2026-05-31): apply a MIN-LIFETIME FLOOR — exp = max(computed, iat + 900s).
-//   Without it, same-day/near-term bookings mint cancel/reschedule links that are already expired by the time
-//   the confirmation email is delivered (cancel exp=start_at; reschedule exp can be < iat when window > lead time).
-//   Fix lives in tokens.js computeExpiry + this contract; integrator-owned follow-up (not yet applied in code).
 //   post_application_recovery → iat + 14 days
+// MIN-LIFETIME FLOOR (APPLIED lambda#192, 2026-05-31): exp = max(computed, iat + 900s) for ALL purposes.
+//   Without it a same-day/near-term booking mints a cancel/reschedule link already expired by the time the
+//   confirmation email is delivered (cancel exp=start_at; reschedule exp can be < iat when window > lead time).
+//   tokens.js computeExpiry applies the floor after the per-purpose switch; no-op for the common far-future case.
 // HMAC-signed; custom claims: purpose, booking_id (nullable), tenant_id (+ form_submission_id for post_application_recovery) [§13.1].
 // One-time-use (§13.7): atomic conditional PutItem to the EXISTING `picasso-token-jti-blacklist-{env}` table
 //   (already shipped A6/PR#52 — DO NOT provision a new table). The shipped table is COMPOSITE-keyed
@@ -128,3 +129,4 @@ const TOKEN_PURPOSES = [
 | 2026-05-30 | **§B LOCKED** (pre-launch §4.0 step 1). Verified against canonical; **B4 corrected** — the 6 token purposes are `cancel`/`reschedule`/`post_application_recovery`/`attended_yes`/`no_show`/`didnt_connect` (§13.4), one-time-use reuses the EXISTING `picasso-token-jti-blacklist` table (§13.7), NOT a new table (the earlier draft enum was wrong); **B5 corrected** — the 4 verbatim §5.6 red-team cases + the 4 sanitization sub-steps added. B1/B2/B3 module paths aligned to `shared/scheduling/`. |
 | 2026-05-30 | **B4 wording precision** (WS-D1a #186 audit caught it): the blacklist table is COMPOSITE-keyed (`tenantId` PK · `jti` SK), not single-`jti`; the conditional put writes `{tenantId, jti, exp}` with `attribute_not_exists(jti)` on the specific item. The shipped table + the WS-D1a module are correct; only the §B4 prose said "keyed by jti". No contract behavior change. |
 | 2026-05-30 | **B3 `resourceId` clarification** (WS-C7 #187 §C escalation, integrator-resolved, NOT a fork): the output needs `resourceId` but one call serves one resource → `resourceId` is an OPTIONAL INPUT the CALLER (C6) supplies per-resource (threaded to output + slotId seed); the original 4-key call still works (yields `resourceId:null`). Also recorded: C6 owns the config→appointmentType field-shim; v1 DST math uses native `Intl` (no tz lib). Frozen 4-key signature unchanged → no consumer re-sync needed. |
+| 2026-05-31 | **B4 min-lifetime floor APPLIED** (integrator-owned, lambda#192): `tokens.js computeExpiry` now returns `max(computed, iat + 900s)` — was the "AMENDMENT OWED" note from the WS-C8 #190 audit. Floors cancel/reschedule links so a same-day / large-window booking can't mint an already-expired link. No-op for the far-future case → existing per-purpose expiry behavior unchanged. **No consumer re-sync needed:** the only consumers of exp behavior are the D cancel/reschedule endpoints, not yet built. |
