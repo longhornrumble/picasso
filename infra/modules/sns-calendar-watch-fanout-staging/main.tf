@@ -114,9 +114,21 @@ data "aws_iam_policy_document" "events_topic" {
   }
 
   statement {
-    sid     = "AllowAccountAdmin"
-    effect  = "Allow"
-    actions = ["SNS:*"]
+    sid    = "AllowAccountAdmin"
+    effect = "Allow"
+    # NOT "SNS:*" — that expands to service-level actions (CreateTopic/ListTopics/…) that are
+    # invalid in a resource (topic) policy → apply fails with "action out of service scope"
+    # (the #328 partial-apply failure). Enumerate only the topic-scoped admin actions.
+    actions = [
+      "SNS:GetTopicAttributes",
+      "SNS:SetTopicAttributes",
+      "SNS:AddPermission",
+      "SNS:RemovePermission",
+      "SNS:DeleteTopic",
+      "SNS:Subscribe",
+      "SNS:ListSubscriptionsByTopic",
+      "SNS:Publish",
+    ]
     principals {
       type        = "AWS"
       identifiers = ["arn:${data.aws_partition.current.partition}:iam::${data.aws_caller_identity.current.account_id}:root"]
