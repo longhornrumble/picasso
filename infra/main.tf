@@ -831,6 +831,110 @@ module "lambda_calendar_watch_offboarder_staging" {
 }
 
 # ──────────────────────────────────────────────────────────────────────
+# Scheduling sub-phase C Task C8 — Booking_Commit_Handler (the booking-commit
+# keystone). The single transactional commit path: live freeBusy re-check (C4)
+# → C6 pool.lockSlot → ConferenceProvider.createConference → Google Calendar
+# events.insert (extendedProperties.private.booking_id) → C5 round-robin advance
+# → Booking row write → confirmation email (.ics + signed cancel/reschedule
+# links) within the 60s SLA. Reads/writes the Booking table + UpdateItems the
+# RoutingPolicy table; per-tenant OAuth + Zoom + JWT-signing secrets. Dedicated
+# exec role; SNS DLQ for failed async invocations. Handler in lambda-repo PR
+# #190; deployed via deploy-staging.yml.
+# ──────────────────────────────────────────────────────────────────────
+module "lambda_booking_commit_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/lambda-booking-commit-staging"
+
+  # Booking table (Terraform-managed via ddb-booking): Get/Put/Update/DeleteItem.
+  booking_table_arn  = module.ddb_booking_staging[0].table_arn
+  booking_table_name = module.ddb_booking_staging[0].table_name
+
+  # RoutingPolicy table (Terraform-managed via ddb-routing-policy): UpdateItem
+  # only (C5 atomic round-robin cursor advance/revert).
+  routing_policy_table_arn  = module.ddb_routing_policy_staging[0].table_arn
+  routing_policy_table_name = module.ddb_routing_policy_staging[0].table_name
+
+  # Ops alerts SNS topic (shared with MFS + Meta — created by ops_alarms_master_function_staging)
+  ops_alerts_topic_arn = module.ops_alarms_master_function_staging[0].topic_arn
+}
+
+# ══════════════════════════════════════════════════════════════════════════
+# WS-IAC (integrator-glue I4 + topology cutover I2-A) — booking-event consumers
+# + SNS fan-out. Provisions the deployed surface for the merged consumers
+# (lambda#195 Calendar_Event_Consumer + lambda#194 Stranded_Booking_Remediator)
+# and the SNS-FIFO fan-out that replaces the single bare events queue.
+#
+# >>> INTEGRATOR REVIEW: this is the scoped main.tf hunk for WS-IAC. Two coupled
+#     changes land in the lambda repo WITH the cutover (NOT in this PR):
+#       (1) Listener SQSClient SendMessage → SNSClient Publish (to fanout topic;
+#           MessageGroupId=event_id + MessageDeduplicationId preserved) + the
+#           Listener role sns:Publish grant + EVENTS_TOPIC_ARN env var
+#           (= module.sns_calendar_watch_fanout_staging[0].events_topic_arn).
+#           Topic MUST exist (this PR applied) before the Listener flips.
+#       (2) Calendar_Watch_Offboarder → async-invoke Stranded_Booking_Remediator
+#           ({tenant_id, coordinator_email, offboarding_time}) + the Offboarder
+#           role lambda:InvokeFunction grant on remediator_function_arn + a
+#           REMEDIATOR_FUNCTION_NAME env var on the Offboarder module.
+#     The bare picasso-calendar-watch-events-staging.fifo queue in the listener
+#     module is retired/repurposed by the integrator after cutover.
+# ══════════════════════════════════════════════════════════════════════════
+
+module "sns_calendar_watch_fanout_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/sns-calendar-watch-fanout-staging"
+  env    = var.env
+
+  # Ops alerts SNS topic (shared — created by ops_alarms_master_function_staging) for
+  # the DLQ-depth + lifecycle-backlog alarms.
+  ops_alerts_topic_arn = module.ops_alarms_master_function_staging[0].topic_arn
+
+  # B-1: the ONLY principal allowed to SNS:Publish to the fan-out topic is the
+  # Listener exec role. The role exists today; the Listener's own sns:Publish
+  # grant + EVENTS_TOPIC_ARN env (the SQS->SNS flip) land WITH the integrator's
+  # cutover — but the topic policy referencing the role is valid now.
+  listener_exec_role_arn = module.lambda_calendar_watch_listener_staging[0].listener_role_arn
+}
+
+# Calendar_Event_Consumer (lambda#195, MERGED) — owns booking.ooo_overlap_detected
+# (B9) + booking.attendee_declined (B10). Polls the fan-out event-consumer queue.
+module "lambda_calendar_event_consumer_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/lambda-calendar-event-consumer-staging"
+
+  # Booking table (Terraform-managed via ddb-booking): conditional UpdateItem only.
+  booking_table_arn  = module.ddb_booking_staging[0].table_arn
+  booking_table_name = module.ddb_booking_staging[0].table_name
+
+  # Fan-out event-consumer FIFO queue (event-source-mapping + IAM consume).
+  source_queue_arn = module.sns_calendar_watch_fanout_staging[0].event_consumer_queue_arn
+
+  # Ops alerts SNS topic (admin OOO-conflict alert publish + the Errors alarm).
+  ops_alerts_topic_arn = module.ops_alarms_master_function_staging[0].topic_arn
+}
+
+# Stranded_Booking_Remediator (lambda#194, MERGED) — B11 coordinator-offboarding
+# stranded-booking remediation. Invoked directly (offboarding-trigger wiring is the
+# integrator's coupled change — see the banner above); NOT a queue consumer.
+module "lambda_stranded_booking_remediator_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/lambda-stranded-booking-remediator-staging"
+
+  # Booking table (Terraform-managed via ddb-booking): UpdateItem + coordinator GSI Query.
+  booking_table_arn                   = module.ddb_booking_staging[0].table_arn
+  booking_table_name                  = module.ddb_booking_staging[0].table_name
+  booking_coordinator_email_index_arn = module.ddb_booking_staging[0].tenant_id_coordinator_email_index_arn
+
+  # AppointmentType + RoutingPolicy (Terraform-managed): GetItem only (routing-context).
+  appointment_type_table_arn  = module.ddb_appointment_type_staging[0].table_arn
+  appointment_type_table_name = module.ddb_appointment_type_staging[0].table_name
+  routing_policy_table_arn    = module.ddb_routing_policy_staging[0].table_arn
+  routing_policy_table_name   = module.ddb_routing_policy_staging[0].table_name
+
+  # Ops alerts SNS topic (Errors alarm only — the remediator does not publish to SNS).
+  ops_alerts_topic_arn = module.ops_alarms_master_function_staging[0].topic_arn
+}
+
+# ──────────────────────────────────────────────────────────────────────
 # Q5: staging widget edge migration (prod acct 614056832592 → staging
 # 525409062831). Plan: ~/.claude/plans/glistening-strolling-oasis.md.
 # Phase D moved the staging COMPUTE (MFS+BSH) to the staging account; the
