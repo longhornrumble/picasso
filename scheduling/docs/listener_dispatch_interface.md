@@ -143,6 +143,8 @@ These reconcile this spec with the shipped implementation (lambda#173) so C-phas
 
 ## Named Consumers
 
+> **Queue topology (RESOLVED 2026-06-01, operator I2-A).** The rows below are *logical* consumers (which behavior reacts to which event), NOT one SQS-consumer Lambda each. Deployed consumers: **`Calendar_Event_Consumer`** (lambda#195, MERGED) owns `ooo_overlap_detected` + `attendee_declined` (no-op on `attendee_accepted`); **`WS-CAL-LIFECYCLE`** (planned) will own `calendar_deleted`/`calendar_moved`/`calendar_reassigned`/`event_made_private` and do the §14.2 reconciliation (incl. `calendar_deleted`→`Booking.status=canceled`, which **B11's cancel path depends on**). **Wiring rule: a single FIFO consumer silently discards every type it does not own (no DLQ trace) — the integrator MUST wire a fan-out (SNS topic → per-consumer SQS subscriptions with `event_type` filter policies, or per-type queues), NOT one consumer on the single queue.** Until `WS-CAL-LIFECYCLE` deploys, the four calendar-lifecycle types have no consumer and B11-cancel is inert. C4/C5/C7/C9 shipped as shared libraries, not queue consumers — the rows describe the reconciliation logic `WS-CAL-LIFECYCLE` implements.
+
 | Consumer | Sub-phase | Event types consumed |
 |---|---|---|
 | **C4** freeBusy cache invalidation | C | `booking.calendar_moved`, `booking.calendar_deleted`, `booking.ooo_overlap_detected` |
