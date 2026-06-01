@@ -61,6 +61,11 @@ variable "event_consumer_visibility_timeout_seconds" {
   default     = 180
 }
 
+variable "listener_exec_role_arn" {
+  description = "ARN of the Calendar_Watch_Listener execution role — the ONLY principal allowed to SNS:Publish booking.* envelopes to this topic. Wired from main.tf via the listener module's listener_role_arn output. Without this lock-down the default SNS topic policy lets ANY same-account principal publish a forged envelope that the consumers would act on (review B-1)."
+  type        = string
+}
+
 # ------------------------------------------------------------------
 # Data sources
 # ------------------------------------------------------------------
@@ -78,10 +83,51 @@ resource "aws_sns_topic" "events" {
   fifo_topic                  = true
   content_based_deduplication = false # Listener supplies MessageDeduplicationId explicitly
 
+  # SR-1: envelopes carry attendee_email (PII). The SQS queues are SSE-encrypted;
+  # encrypt the SNS hop too. AWS-managed SNS key (no dedicated CMK needed) — its
+  # key policy lets account principals use it via SNS, so the Listener publish
+  # works without an extra kms grant.
+  kms_master_key_id = "alias/aws/sns"
+
   tags = {
     Name     = "picasso-calendar-watch-events-${var.env}.fifo"
     Subphase = "I4"
   }
+}
+
+# B-1: lock down SNS:Publish to the Listener exec role ONLY. Setting an explicit
+# topic policy REPLACES the permissive default (which lets any same-account
+# principal publish via AWS:SourceOwner) — without this, any same-account
+# principal could publish a forged booking.* envelope (e.g. a fabricated
+# attendee_declined that silently cancels a Booking). Root retains admin so
+# Terraform/operators can manage the topic + create the subscriptions below.
+data "aws_iam_policy_document" "events_topic" {
+  statement {
+    sid     = "AllowListenerPublishOnly"
+    effect  = "Allow"
+    actions = ["SNS:Publish"]
+    principals {
+      type        = "AWS"
+      identifiers = [var.listener_exec_role_arn]
+    }
+    resources = [aws_sns_topic.events.arn]
+  }
+
+  statement {
+    sid     = "AllowAccountAdmin"
+    effect  = "Allow"
+    actions = ["SNS:*"]
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:${data.aws_partition.current.partition}:iam::${data.aws_caller_identity.current.account_id}:root"]
+    }
+    resources = [aws_sns_topic.events.arn]
+  }
+}
+
+resource "aws_sns_topic_policy" "events" {
+  arn    = aws_sns_topic.events.arn
+  policy = data.aws_iam_policy_document.events_topic.json
 }
 
 # ==============================================================================

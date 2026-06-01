@@ -171,6 +171,13 @@ data "aws_iam_policy_document" "consumer_exec" {
     ]
     resources = [var.source_queue_arn]
   }
+
+  # SR-3: X-Ray write — required for tracing_config mode=Active to emit segments.
+  statement {
+    sid       = "XRayWrite"
+    actions   = ["xray:PutTraceSegments", "xray:PutTelemetryRecords"]
+    resources = ["*"]
+  }
 }
 
 resource "aws_iam_role_policy" "consumer_exec" {
@@ -211,8 +218,10 @@ resource "aws_lambda_function" "consumer" {
     }
   }
 
+  # SR-3: Active X-Ray tracing — PassThrough yields no traces under SQS-event
+  # invoke (SQS does not propagate a trace header).
   tracing_config {
-    mode = "PassThrough"
+    mode = "Active"
   }
 
   lifecycle {

@@ -211,11 +211,18 @@ data "aws_iam_policy_document" "remediator_exec" {
   # per-coordinator sub-path (picasso/scheduling/oauth/{tenant}/{coordinator}).
   statement {
     sid     = "SecretsReadSchedulingOAuth"
-    actions = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
+    actions = ["secretsmanager:GetSecretValue"]
     resources = [
       for t in var.scheduling_oauth_tenant_ids :
       "arn:${data.aws_partition.current.partition}:secretsmanager:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:secret:picasso/scheduling/oauth/${t}/*"
     ]
+  }
+
+  # SR-3: X-Ray write — required for tracing_config mode=Active to emit segments.
+  statement {
+    sid       = "XRayWrite"
+    actions   = ["xray:PutTraceSegments", "xray:PutTelemetryRecords"]
+    resources = ["*"]
   }
 }
 
@@ -263,8 +270,10 @@ resource "aws_lambda_function" "remediator" {
     }
   }
 
+  # SR-3: Active X-Ray tracing — PassThrough yields no traces under direct
+  # invoke (no upstream trace header to propagate).
   tracing_config {
-    mode = "PassThrough"
+    mode = "Active"
   }
 
   lifecycle {

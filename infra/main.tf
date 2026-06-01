@@ -887,6 +887,12 @@ module "sns_calendar_watch_fanout_staging" {
   # Ops alerts SNS topic (shared — created by ops_alarms_master_function_staging) for
   # the DLQ-depth + lifecycle-backlog alarms.
   ops_alerts_topic_arn = module.ops_alarms_master_function_staging[0].topic_arn
+
+  # B-1: the ONLY principal allowed to SNS:Publish to the fan-out topic is the
+  # Listener exec role. The role exists today; the Listener's own sns:Publish
+  # grant + EVENTS_TOPIC_ARN env (the SQS->SNS flip) land WITH the integrator's
+  # cutover — but the topic policy referencing the role is valid now.
+  listener_exec_role_arn = module.lambda_calendar_watch_listener_staging[0].listener_role_arn
 }
 
 # Calendar_Event_Consumer (lambda#195, MERGED) — owns booking.ooo_overlap_detected
