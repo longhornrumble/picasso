@@ -65,7 +65,9 @@ For **each** piece you want to build:
 > # picasso workstreams (WS-FIX/WS-EUI):
 > git worktree add -b feature/scheduling-<ws> /tmp/ws-<ws> origin/staging
 > ```
-> Then the worker works in `/tmp/ws-<ws>` only. The integrator prunes the worktree after merge.
+> Then the worker works in `/tmp/ws-<ws>` only.
+>
+> **⚠️ HARD RULE — branch cleanup after merge (no stale branches/worktrees).** Once a worker's PR is merged: the **worker** removes its worktree (`git worktree remove /tmp/ws-<ws>`) + deletes its local branch (`git branch -d feature/scheduling-<ws>`); the **integrator** merges with `gh pr merge --delete-branch` (kills the remote branch), prunes the worktree at weave-time, and **returns the primary checkout to the base branch** (`git switch main` — never leave the primary checkout parked on a worker branch, or the on-disk view goes stale and merged files appear "missing"). Clean each branch as its PR merges, not in a deferred sweep.
 
 One special case: **`WS-EUI`** will ask you (or the integrator) one question first — *where the Customer-Portal screens should live*. Answer it, then it builds.
 
