@@ -79,12 +79,19 @@ data "aws_iam_policy_document" "policy" {
     resources = ["${aws_cloudwatch_log_group.lambda.arn}:*"]
   }
 
-  # SES send — scoped to this account's verified identities only (no cross-account).
+  # SES send — scoped to this account's verified identities (no cross-account).
   # send_email uses ses:SendRawEmail (MIME w/ attachments); SendEmail kept for parity.
+  # A send that names a ConfigurationSet is authorized against BOTH the sending
+  # identity AND the config-set resource (smoke-confirmed 2026-06-02: AccessDenied
+  # on configuration-set/picasso-emails when only identity/* was granted), so the
+  # set ARN must be in the resource list too.
   statement {
-    sid       = "SesSend"
-    actions   = ["ses:SendRawEmail", "ses:SendEmail"]
-    resources = ["arn:aws:ses:${local.region}:${local.acct}:identity/*"]
+    sid     = "SesSend"
+    actions = ["ses:SendRawEmail", "ses:SendEmail"]
+    resources = [
+      "arn:aws:ses:${local.region}:${local.acct}:identity/*",
+      "arn:aws:ses:${local.region}:${local.acct}:configuration-set/${aws_ses_configuration_set.this.name}",
+    ]
   }
 }
 
