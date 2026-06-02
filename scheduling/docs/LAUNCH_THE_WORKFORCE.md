@@ -391,3 +391,69 @@ Do NOT flip Booking.status: the already-built cal-lifecycle listener flips statu
 the calendar_deleted push (one source of truth, no double-write race). Injected deps only; return the updated
 booking; do NOT validate tokens (WS-D4 owns that).
 ```
+
+---
+
+## B-minimal — C-chat integration (the recovery loop) prompts
+
+Lights the reschedule/cancel-from-email-link loop. Contracts **§B12–§B15 LOCKED**. **Launch WS-FACADE / WS-BINDING / WS-ZOOM / WS-WIDGET in parallel** (file-disjoint); **WS-CONVO is the keystone — launch ONLY after the first three (FACADE/BINDING/ZOOM) merge.** Same worktree + cleanup hard rules as above. The standard preamble (read the work-order → the §B contracts it cites in `scheduling/docs/FROZEN_CONTRACTS.md` [§ LOCKED] → the plan → `CLAUDE.md`; build ONLY your OWN files; verify-before-commit; PR with the report-back snippet; STOP+flag a wrong contract — don't fork) applies to each.
+
+### BM-1) WS-FACADE — auth-bound calendar facade
+```
+You are ONE workstream in a coordinated parallel build. Work-order:
+scheduling/docs/workstreams/WS-FACADE-calendar-facade.md. Read it + §B13/§B9 in
+scheduling/docs/FROZEN_CONTRACTS.md (LOCKED) + CLAUDE.md. Build in the lambda repo, branch
+feature/scheduling-ws-facade, base main, in your OWN worktree:
+  git -C Lambdas/lambda worktree add -b feature/scheduling-ws-facade /tmp/ws-facade origin/main
+OWN only shared/scheduling/calendarFacade.js + its test; `npm ci` in shared/scheduling/ first.
+verify-before-commit, then PR. The facade shape MUST match §B9 exactly (D6/D7 already inject it).
+Curry per-tenant OAuth (oauth-client.getOAuthClient) into calendar-events; no caller-supplied authClient.
+```
+
+### BM-2) WS-BINDING — session-binding resolution
+```
+You are ONE workstream in a coordinated parallel build. Work-order:
+scheduling/docs/workstreams/WS-BINDING-session-binding.md. Read it + §B12/§B10 (LOCKED) + CLAUDE.md.
+lambda repo, branch feature/scheduling-ws-binding, base main, OWN worktree:
+  git -C Lambdas/lambda worktree add -b feature/scheduling-ws-binding /tmp/ws-binding origin/main
+OWN only shared/scheduling/sessionBinding.js + its test; `npm ci` in shared/scheduling/ first.
+ENFORCE TTL IN CODE (expired → null). Tenant comes from the request context (PK), never untrusted input.
+verify-before-commit, then PR. Do NOT write/mutate bindings (WS-D4 owns the write).
+```
+
+### BM-3) WS-ZOOM — updateMeeting
+```
+You are ONE workstream in a coordinated parallel build. Work-order:
+scheduling/docs/workstreams/WS-ZOOM-update-meeting.md. Read it + §B15 (LOCKED) + CLAUDE.md.
+lambda repo, branch feature/scheduling-ws-zoom, base main, OWN worktree:
+  git -C Lambdas/lambda worktree add -b feature/scheduling-ws-zoom /tmp/ws-zoom origin/main
+OWN only Booking_Commit_Handler/zoom-client.js (ADD updateMeeting + export) + its tests. Mirror the
+existing createMeeting/getMeeting/deleteMeeting style (per-tenant getAccessToken, zoomFetch, eviction).
+verify-before-commit, then PR. Touch NO other C8 file.
+```
+
+### BM-4) WS-WIDGET — forward ?session=
+```
+You are ONE workstream in a coordinated parallel build. Work-order:
+scheduling/docs/workstreams/WS-WIDGET-session-forward.md. Read it + §B12 (LOCKED) + CLAUDE.md.
+picasso repo, branch feature/scheduling-ws-widget, base staging, OWN worktree:
+  git worktree add -b feature/scheduling-ws-widget /tmp/ws-widget origin/staging
+FIRST locate where the widget reads URL params + sends tenant_id to the backend (surface NOT pre-mapped) —
+if it differs materially from the work-order, STOP and flag it. Then forward the opaque ?session= value to
+the backend (tenant stays from config; the widget does NOT read the binding/tenant from the URL). OWN only the
+file(s) you confirm + their test. verify-before-commit, then PR listing the files you owned.
+```
+
+### BM-5) WS-CONVO — reschedule/cancel flow *(keystone — launch AFTER FACADE+BINDING+ZOOM merge)*
+```
+You are ONE workstream in a coordinated parallel build — the KEYSTONE. Work-order:
+scheduling/docs/workstreams/WS-CONVO-scheduling-flow.md. Read it + §B12/B13/B14/B15/B9/B3/B6 (LOCKED) +
+CLAUDE.md. lambda repo, branch feature/scheduling-ws-convo, base main, OWN worktree:
+  git -C Lambdas/lambda worktree add -b feature/scheduling-ws-convo /tmp/ws-convo origin/main
+OWN only Bedrock_Streaming_Handler_Staging/scheduling/schedulingFlow.js + scheduling/bindingContext.js +
+their tests, + MINIMAL surgical wiring in BSH index.js (mirror how injectFormContext is wired at :470/:907 —
+flag the call-sites). THE BOUNDARY (§B14): execute reschedule/cancel ONLY on a focused-post-stream structured
+action (V4.0-Action-Selector-style — BSH has no native tool-use), validated through stateMachine.transition();
+NEVER on free-text. Import the shipped executeReschedule/executeCancel/facade/binding (don't re-implement).
+Defer new-booking entry + C10-C13 (B-remainder). verify-before-commit, then PR. FULL audit at weave.
+```

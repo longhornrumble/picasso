@@ -214,6 +214,62 @@ is RESERVED now so D4's single-key call is forward-compatible (the wrapper is ad
 
 ---
 
+## B-minimal (C-chat integration) interfaces — **LOCKED 2026-06-02** (architect + tech-lead advised; PR #353 plan)
+
+The seams between the 5 B-minimal workstreams. Same convention as §B (Node 20, CommonJS, async, plain-object returns, DI-seam'd, `shared/scheduling/` for pure-logic modules).
+
+### B12 — `resolveBinding` (produced by WS-BINDING, consumed by WS-CONVO) — §13.4/§9.4 + the §B10 row
+```js
+// module: shared/scheduling/sessionBinding.js
+//   async resolveBinding({ tenantId, sessionId, deps }) → {
+//     intent: 'rescheduling_intent' | 'cancellation_intent' | 'recovery_intent',
+//     booking_id, coordinator_id?, form_submission_id?, expires_at, session_id,
+//   } | null
+// Reads the §B10 row from picasso-conversation-scheduling-session-{env} (PK tenantId · SK session_id,
+// the `binding#<uuid>` value WS-D4 writes). deps = { ddb, now }. ENFORCE TTL IN CODE (expired → return
+// null; do NOT trust DDB-TTL deletion timing for the gate — architect). Tenant comes from the
+// authenticated request context (NOT the URL); a bare sessionId from tenant A misses under tenant B (unforgeable).
+```
+
+### B13 — `buildCalendarFacade` (produced by WS-FACADE, consumed by WS-CONVO; mirrors the §B9 calendar-facade shape) — §B9
+```js
+// module: shared/scheduling/calendarFacade.js
+//   buildCalendarFacade({ tenantId, coordinatorId, deps }) → {
+//     buildEventBody(params) → requestBody,
+//     insertEvent(calendarId, requestBody) → event,        // authClient CURRIED in (not a param)
+//     deleteEvent(calendarId, eventId) → void,             // 404/410 idempotent
+//     extractMeetJoinUrl(event) → string | null,
+//   }
+// Thin wrapper over Booking_Commit_Handler/calendar-events.js (whose insert/deleteEvent take authClient FIRST),
+// currying the per-tenant client from Booking_Commit_Handler/oauth-client.js getOAuthClient({tenantId,coordinatorId}).
+// deps = { getOAuthClient, calendarEvents } (DI for tests). Built ONCE per conversation turn; reschedule/cancel
+// (and later C8) share the instance. This is exactly the §B9 `deps.calendar` the D6/D7 modules already consume.
+```
+
+### B14 — scheduling action-BOUNDARY (WS-CONVO internal; the rule is LOCKED) — architect's #1 contract + canonical §9.2
+```
+// THE BOUNDARY (lock before wiring BSH): the C9 stateMachine.js is AUTHORITATIVE; the LLM is ADVISORY.
+// WS-CONVO executes a state-changing op (executeReschedule/executeCancel/commit) ONLY on a discrete STRUCTURED
+// action signal — NEVER by parsing free-text the streaming LLM emits. BSH has no native Bedrock tool-use
+// (it uses InvokeModelWithResponseStream), so the structured signal is produced by a FOCUSED post-stream call
+// that mirrors the existing V4.0 Action Selector (a small Haiku call after the response streams) returning e.g.
+//   { action: 'select_slot'|'confirm_reschedule'|'confirm_cancel'|'none', slotId?, booking_id }
+// The handler validates that action against stateMachine.transition(session, toState) (SESSION_STATES:
+// qualifying→proposing→confirming→booked; reschedule starts in 'rescheduling'→proposing) and commits the
+// transition + the calendar op. An LLM-emitted "confirmed" in prose with no structured action → NO execution.
+// This is the one contract that, left informal, produces double-book / silent-drop bugs.
+```
+
+### B15 — Zoom `updateMeeting` (produced by WS-ZOOM, consumed by WS-CONVO's reschedule path) — §9.4 seam-3
+```js
+// module: Booking_Commit_Handler/zoom-client.js  (add ONE method; mirror createMeeting/getMeeting/deleteMeeting)
+//   async updateMeeting({ tenantId, meetingId, start, end, timezone }) → void   // PATCH the reused meeting's time
+// Reschedule reuses the meeting (createMeeting({existingMeetingId}) preserves the JOIN URL) but its START TIME
+// is stale until this PATCH. Per-tenant token via the existing getAccessToken(tenantId). Idempotent (re-PATCH same time = ok).
+```
+
+---
+
 ## C. Contract-change protocol
 1. A workstream that believes a contract is wrong/insufficient **stops and posts the issue to the integrator** (PR comment or status report) — it does NOT edit this file or fork the contract.
 2. The integrator decides: amend the contract (and notify every consuming workstream) or hold.
@@ -231,3 +287,4 @@ is RESERVED now so D4's single-key call is forward-compatible (the wrapper is ad
 | 2026-06-02 | **§B9 + §B10 LOCKED, §B11 reserved (Wave D-core launch).** §B9 = the two redemption execution modules (`reschedule.js` 4-outcome insert-first/delete-second; `cancel.js` events.delete, listener-flips-status — the cal-lifecycle consumer half is ALREADY BUILT). §B10 = the session-context binding row (WS-D4 writes to the EXISTING C3 conv-scheduling-session table; 30-min TTL; one-booking scope). §B11 (dual-key §13.10) DEFERRED with WS-D2 — D4 validates single-key via `tokens.js` (§B4) for now; env `JWT_SECRET_KEY_NAME_PREV` reserved. **Reconciled against §13.4** (token authenticates ENTRY only; the state-change runs in-chat after confirm) **+ §9.4**. Lean-core scope = D3+D4+D6+D7; D2/D5/D8 to Wave D-2. |
 | 2026-06-02 | **§B9 calendar-facade method shape AMENDED** (resolves WS-D7 [lambda#203](https://github.com/longhornrumble/lambda/pull/203) §C escalation — the worker flagged that §B9 froze `deps.calendar` but not its method shape, and coded a thin `deps.calendar.deleteEvent(booking)`; integrator-set, NOT a fork). Pinned the facade: `deleteEvent(booking)` (idempotent — 404/410 resolves, throws only on unreachable) [matches #203, no rework] + `insertEvent(booking, newSlot) → {external_event_id}` [WS-D6 builds to this]; auth/calendarId resolved INSIDE the integrator-wired facade (mirrors B11 calendar-ops), Zoom join-URL via `deps.conference` (§B6). Security note added: the facade wiring must be tenant/coordinator-scoped (modules pass only `booking`). No consumer re-sync needed — #203 already matches; WS-D6 not yet built. |
 | 2026-06-01 | **§A non-key Booking attributes — WS-CAL-LIFECYCLE (lambda#196) additions:** `cancel_reason` value set extended (`coordinator_deleted`, `coordinator_moved` join the existing B10 values), `reassigned_at` (on `calendar_reassigned`). The `calendar-watch-channels` row's `status` gains `event_body_private` (on `event_made_private`). **F2:** the `rescheduleOfBookingId` self-anchor was **dropped** (would have inverted the canonical NEW→original meaning); moved-not-rebooked rows are marked by `cancel_reason='coordinator_moved'`. All additive; readers tolerate absence. |
+| 2026-06-02 | **§B12–§B15 LOCKED (B-minimal / C-chat integration; architect + tech-lead advised, PR #353).** §B12 `resolveBinding` (WS-BINDING; TTL-in-code, tenant-from-context). §B13 `buildCalendarFacade` (WS-FACADE; curries per-tenant OAuth into calendar-events; = the §B9 `deps.calendar`). §B14 the action-BOUNDARY (state-machine authoritative / LLM advisory; execute only on a focused-post-stream structured action à la V4.0 Action Selector — BSH has no native tool-use). §B15 Zoom `updateMeeting` (WS-ZOOM; start-time PATCH). Decomposition: WS-FACADE/WS-BINDING/WS-WIDGET/WS-ZOOM parallel + WS-CONVO keystone (after the 4). |
