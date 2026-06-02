@@ -1117,6 +1117,12 @@ resource "aws_secretsmanager_secret_policy" "jwt_signing_key_staging" {
         Principal = { AWS = [
           module.lambda_master_function_staging[0].role_arn,
           module.lambda_analytics_dashboard_api_staging[0].role_arn,
+          # Scheduling §13.4 signed-token signers (same key; iss claim isolates from
+          # chat-session JWTs). Calendar_Event_Consumer mints the B9 reoffer link (gap C);
+          # Booking_Commit_Handler mints the C8 confirmation cancel/reschedule links (latent
+          # until its real zip deploys — the resource-policy Deny below would have blocked it).
+          module.lambda_calendar_event_consumer_staging[0].consumer_role_arn,
+          module.lambda_booking_commit_staging[0].commit_role_arn,
         ] }
         Action   = "secretsmanager:GetSecretValue"
         Resource = "*"
@@ -1137,6 +1143,8 @@ resource "aws_secretsmanager_secret_policy" "jwt_signing_key_staging" {
             "aws:PrincipalArn" = [
               module.lambda_master_function_staging[0].role_arn,
               module.lambda_analytics_dashboard_api_staging[0].role_arn,
+              module.lambda_calendar_event_consumer_staging[0].consumer_role_arn,
+              module.lambda_booking_commit_staging[0].commit_role_arn,
             ]
           }
         }
