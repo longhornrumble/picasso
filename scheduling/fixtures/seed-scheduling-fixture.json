@@ -115,6 +115,21 @@
           "last_calendar_mutation_at": "2026-06-01T09:10:00Z"
         }
       ]
+    },
+    "employeeRegistry": {
+      "skAttribute": "employeeId",
+      "items": [
+        {
+          "employeeId": "emp-fixture-maya",
+          "email": "maya.fixture@example.invalid",
+          "scheduling_tags": ["scheduling"]
+        },
+        {
+          "employeeId": "emp-fixture-alex",
+          "email": "alex.fixture@example.invalid",
+          "scheduling_tags": ["scheduling"]
+        }
+      ]
     }
   }
 }

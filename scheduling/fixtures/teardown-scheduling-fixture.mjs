@@ -32,9 +32,10 @@ if (!/fixture/i.test(TENANT)) {
 }
 
 const PLAN = [
-  ['appointmentType', process.env.APPOINTMENT_TYPE_TABLE || 'picasso-appointment-type-staging', 'appointment_type_id'],
-  ['routingPolicy',   process.env.ROUTING_POLICY_TABLE   || 'picasso-routing-policy-staging',   'routing_policy_id'],
-  ['booking',         process.env.BOOKING_TABLE          || 'picasso-booking-staging',          'booking_id'],
+  ['appointmentType',  process.env.APPOINTMENT_TYPE_TABLE  || 'picasso-appointment-type-staging',     'appointment_type_id'],
+  ['routingPolicy',    process.env.ROUTING_POLICY_TABLE    || 'picasso-routing-policy-staging',       'routing_policy_id'],
+  ['booking',          process.env.BOOKING_TABLE           || 'picasso-booking-staging',              'booking_id'],
+  ['employeeRegistry', process.env.EMPLOYEE_REGISTRY_TABLE || 'picasso-employee-registry-v2-staging', 'employeeId'],
 ];
 
 /** Query all SK values for the fixture tenant on one table (paginates defensively). */
