@@ -70,6 +70,17 @@ variable "routing_policy_table_name" {
   type = string
 }
 
+# gap C (X wire): the (X) candidate-resolver Queries the employee registry for the tenant's
+# scheduling-tagged roster (the reassignment candidate pool the loadCandidates seam now uses).
+variable "employee_registry_table_arn" {
+  description = "ARN of picasso-employee-registry-v2-staging. (X) resolveCandidates Queries it (PK tenantId) for the tenant's scheduling-tagged employees. Query on the table ARN only."
+  type        = string
+}
+
+variable "employee_registry_table_name" {
+  type = string
+}
+
 variable "scheduling_oauth_tenant_ids" {
   description = "Tenant IDs whose scheduling OAuth secrets the remediator may read. secretsmanager:GetSecretValue is scoped to picasso/scheduling/oauth/{tenant}/* for each — NOT a wildcard (matches the Listener/C8 per-tenant posture, sub-phase B audit SR-1). Adding tenant #2 = append here in a reviewed PR."
   type        = list(string)
@@ -206,6 +217,14 @@ data "aws_iam_policy_document" "remediator_exec" {
     ]
   }
 
+  # gap C (X wire): employee-registry Query — (X) resolveCandidates reads the tenant's
+  # scheduling-tagged roster (PK tenantId, no GSI). Query on the table ARN only.
+  statement {
+    sid       = "DDBQueryEmployeeRegistry"
+    actions   = ["dynamodb:Query"]
+    resources = [var.employee_registry_table_arn]
+  }
+
   # Secrets Manager: per-tenant scheduling OAuth secret (Google client for
   # events.move/delete). Per-tenant, NOT wildcard. The trailing /* matches the
   # per-coordinator sub-path (picasso/scheduling/oauth/{tenant}/{coordinator}).
@@ -276,6 +295,7 @@ resource "aws_lambda_function" "remediator" {
       BOOKING_TABLE            = var.booking_table_name
       APPOINTMENT_TYPE_TABLE   = var.appointment_type_table_name
       ROUTING_POLICY_TABLE     = var.routing_policy_table_name
+      EMPLOYEE_REGISTRY_TABLE  = var.employee_registry_table_name # gap C (X) roster source
       OAUTH_SECRET_PATH_PREFIX = "picasso/scheduling/oauth"
     }
   }

@@ -36,6 +36,37 @@ variable "booking_table_name" {
   type = string
 }
 
+# gap C (B9 reoffer = X + Y). The reoffer path reads the booking's attendee/appt context
+# (booking GetItem), re-resolves the pool (X: routing_policy + appointment_type GetItem +
+# employee-registry Query), mints a §13.4 reschedule token (jwt signing key), and sends the
+# notice via the send_email Lambda (Y).
+variable "appointment_type_table_arn" {
+  description = "ARN of picasso-appointment-type-staging. (X) resolveCandidates GetItem (resolve the booking's appointment type → routing policy)."
+  type        = string
+}
+variable "appointment_type_table_name" {
+  type = string
+}
+variable "routing_policy_table_arn" {
+  description = "ARN of picasso-routing-policy-staging. (X) resolveCandidates GetItem (tag_conditions)."
+  type        = string
+}
+variable "routing_policy_table_name" {
+  type = string
+}
+variable "employee_registry_table_arn" {
+  description = "ARN of picasso-employee-registry-v2-staging. (X) resolveCandidates Queries it (PK tenantId) for the scheduling-tagged roster. Query on the table ARN only."
+  type        = string
+}
+variable "employee_registry_table_name" {
+  type = string
+}
+variable "send_email_function_name" {
+  description = "Name of the reusable send_email Lambda the (Y) reoffer notice invokes (async). The exec role is granted lambda:InvokeFunction on exactly this function ARN."
+  type        = string
+  default     = "send_email"
+}
+
 variable "source_queue_arn" {
   description = "ARN of picasso-calendar-event-consumer-staging.fifo (from the fan-out module). The event-source-mapping polls it; the exec role consumes it."
   type        = string
@@ -146,11 +177,45 @@ data "aws_iam_policy_document" "consumer_exec" {
     resources = ["${aws_cloudwatch_log_group.consumer.arn}:*"]
   }
 
-  # Booking table: conditional UpdateItem only (flagOooConflict + cancelOnDecline).
+  # Booking table: conditional UpdateItem (flagOooConflict + cancelOnDecline) + GetItem
+  # (gap C reoffer: getReofferContext reads the attendee/appt fields the OOO envelope lacks).
   statement {
-    sid       = "DDBBookingUpdate"
-    actions   = ["dynamodb:UpdateItem"]
+    sid       = "DDBBookingReadWrite"
+    actions   = ["dynamodb:UpdateItem", "dynamodb:GetItem"]
     resources = [var.booking_table_arn]
+  }
+
+  # gap C (X wire): resolveCandidates GetItem on appointment_type + routing_policy, and
+  # Query on the employee registry (PK tenantId, no GSI) — the reoffer pool re-check.
+  statement {
+    sid     = "DDBReadRoutingContext"
+    actions = ["dynamodb:GetItem"]
+    resources = [
+      var.appointment_type_table_arn,
+      var.routing_policy_table_arn,
+    ]
+  }
+  statement {
+    sid       = "DDBQueryEmployeeRegistry"
+    actions   = ["dynamodb:Query"]
+    resources = [var.employee_registry_table_arn]
+  }
+
+  # gap C (Y wire): invoke the reusable send_email Lambda (async) for the reoffer notice.
+  # Scoped to EXACTLY the send_email function ARN (no wildcard).
+  statement {
+    sid       = "InvokeSendEmail"
+    actions   = ["lambda:InvokeFunction"]
+    resources = ["arn:${data.aws_partition.current.partition}:lambda:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:function:${var.send_email_function_name}"]
+  }
+
+  # gap C (token wire): read the shared JWT signing key to mint the §13.4 reschedule link
+  # (same secret + per-purpose token the C8 confirmation email uses; the iss claim isolates
+  # scheduling tokens from chat-session JWTs). Scoped to the signing-key secret only.
+  statement {
+    sid       = "SecretsReadJwtSigningKey"
+    actions   = ["secretsmanager:GetSecretValue"]
+    resources = ["arn:${data.aws_partition.current.partition}:secretsmanager:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:secret:picasso/jwt/signing-key-*"]
   }
 
   # SNS: best-effort admin alert on a newly-flagged OOO conflict.
@@ -215,6 +280,13 @@ resource "aws_lambda_function" "consumer" {
       ENVIRONMENT          = "staging"
       BOOKING_TABLE        = var.booking_table_name
       OPS_ALERTS_TOPIC_ARN = var.ops_alerts_topic_arn
+      # gap C reoffer (X + Y + §13.4 token)
+      APPOINTMENT_TYPE_TABLE  = var.appointment_type_table_name
+      ROUTING_POLICY_TABLE    = var.routing_policy_table_name
+      EMPLOYEE_REGISTRY_TABLE = var.employee_registry_table_name
+      SEND_EMAIL_FUNCTION     = var.send_email_function_name
+      JWT_SECRET_KEY_NAME     = "picasso/jwt/signing-key"
+      SCHEDULE_BASE_URL       = "https://schedule.myrecruiter.ai"
     }
   }
 
