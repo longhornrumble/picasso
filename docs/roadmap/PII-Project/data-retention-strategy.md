@@ -154,7 +154,7 @@ Plan-tiered retention as a **pricing lever** (Chatwoot model) is a viable *busin
 | CloudWatch staging → 7d | `infra/main.tf:438` 14→7 | 🔧 | M9 · **WS-A** |
 | **Remove** orphaned lake | drop `write_events_to_s3` (code:`Analytics_Event_Processor:335`; DDB already covers it) **+ purge** prod + staging `analytics/` | ✏️ **WS-B** + ops (prod purge, **gated**) | M1 + ops |
 | CW-logs S3/Glacier archive | already IA@30 → Glacier@90 → expire@365 | ✅ none | — |
-| Bedrock invocation-logging | verify OFF (read-only check) | 🔎 | `bedrock-invocation-logging-decision.md` |
+| Bedrock invocation-logging | ✅ verified OFF in both accts (2026-05-23, re-confirmed 2026-06-02) — not a retention surface | ✅ done | `bedrock-invocation-logging-decision.md` |
 | **Per-tenant offboarding purge** (30d churn → cascade) | net-new cascade across all surfaces incl. `picasso-archive` + the Glacier archive (latter **not tenant-partitioned** = hard) — the only genuine build; shared with the scheduling offboarding trigger | 🏗️ **build** | new capability |
 
 ---
