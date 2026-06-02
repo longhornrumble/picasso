@@ -941,6 +941,31 @@ module "lambda_calendar_event_consumer_staging" {
   ops_alerts_topic_arn = module.ops_alarms_master_function_staging[0].topic_arn
 }
 
+# Calendar_Lifecycle_Consumer (lambda#196 + gap-C Y wire lambda#201, MERGED) — §14.2
+# calendar-reconciliation consumer. Drains the fan-out lifecycle FIFO queue: event_deleted
+# → Booking.status=canceled + (Y) cancel_notice (the path B11's cancel depends on),
+# event_moved → (Y) move_optin_sms (SMS stub), channel-degrade → watch-channel row + alert.
+# Narrower than the event-consumer (NO candidate re-resolution): booking GetItem/UpdateItem +
+# channels UpdateItem + send_email invoke + jwt signing key + ops-alerts publish + SQS consume.
+module "lambda_calendar_lifecycle_consumer_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/lambda-calendar-lifecycle-consumer-staging"
+
+  # Booking table (Terraform-managed via ddb-booking): GetItem + conditional UpdateItem.
+  booking_table_arn  = module.ddb_booking_staging[0].table_arn
+  booking_table_name = module.ddb_booking_staging[0].table_name
+
+  # Watch-channels table (pre-existing, read via data source): channel-degrade UpdateItem.
+  channels_table_arn  = data.aws_dynamodb_table.calendar_watch_channels_staging[0].arn
+  channels_table_name = data.aws_dynamodb_table.calendar_watch_channels_staging[0].name
+
+  # Fan-out lifecycle-consumer FIFO queue (event-source-mapping + IAM consume).
+  source_queue_arn = module.sns_calendar_watch_fanout_staging[0].lifecycle_consumer_queue_arn
+
+  # Ops alerts SNS topic (channel-degrade alert publish + the Errors alarm).
+  ops_alerts_topic_arn = module.ops_alarms_master_function_staging[0].topic_arn
+}
+
 # Stranded_Booking_Remediator (lambda#194, MERGED) — B11 coordinator-offboarding
 # stranded-booking remediation. Invoked directly (offboarding-trigger wiring is the
 # integrator's coupled change — see the banner above); NOT a queue consumer.
@@ -1135,6 +1160,8 @@ resource "aws_secretsmanager_secret_policy" "jwt_signing_key_staging" {
           # until its real zip deploys — the resource-policy Deny below would have blocked it).
           module.lambda_calendar_event_consumer_staging[0].consumer_role_arn,
           module.lambda_booking_commit_staging[0].commit_role_arn,
+          # Calendar_Lifecycle_Consumer mints the §14.2 cancel_notice reschedule link (gap C Y).
+          module.lambda_calendar_lifecycle_consumer_staging[0].consumer_role_arn,
         ] }
         Action   = "secretsmanager:GetSecretValue"
         Resource = "*"
@@ -1157,6 +1184,7 @@ resource "aws_secretsmanager_secret_policy" "jwt_signing_key_staging" {
               module.lambda_analytics_dashboard_api_staging[0].role_arn,
               module.lambda_calendar_event_consumer_staging[0].consumer_role_arn,
               module.lambda_booking_commit_staging[0].commit_role_arn,
+              module.lambda_calendar_lifecycle_consumer_staging[0].consumer_role_arn,
             ]
           }
         }
