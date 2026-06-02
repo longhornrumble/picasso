@@ -224,6 +224,16 @@ data "aws_iam_policy_document" "remediator_exec" {
     actions   = ["xray:PutTraceSegments", "xray:PutTelemetryRecords"]
     resources = ["*"]
   }
+
+  # Async-invoke on_failure destination (gap B audit, sec SR-2): the
+  # aws_lambda_function_event_invoke_config below routes an exhausted-retry async
+  # failure event to ops-alerts, which requires the exec role to publish to that
+  # topic. Scoped to exactly the ops-alerts topic ARN (no wildcard).
+  statement {
+    sid       = "SNSPublishOpsAlertsOnAsyncFailure"
+    actions   = ["sns:Publish"]
+    resources = [var.ops_alerts_topic_arn]
+  }
 }
 
 resource "aws_iam_role_policy" "remediator_exec" {
@@ -289,6 +299,24 @@ resource "aws_lambda_function" "remediator" {
   }
 
   depends_on = [aws_cloudwatch_log_group.remediator, aws_iam_role_policy.remediator_exec]
+}
+
+# Async-invoke failure handling (gap B audit, sec SR-2). The Offboarder invokes this
+# function with InvocationType=Event (fire-and-forget) — so an internal throw is retried
+# by AWS and then SILENTLY DROPPED, invisible to the Offboarder (whose Invoke call already
+# got a 202). Cap retries (the remediation is idempotent + at-least-once safe, so 1 retry
+# is enough) and route the exhausted-retry event to ops-alerts so a dropped offboarding
+# remediation is observable — not just the 5-min Errors alarm.
+resource "aws_lambda_function_event_invoke_config" "remediator" {
+  function_name                = aws_lambda_function.remediator.function_name
+  maximum_retry_attempts       = 1
+  maximum_event_age_in_seconds = 300
+
+  destination_config {
+    on_failure {
+      destination = var.ops_alerts_topic_arn
+    }
+  }
 }
 
 # ==============================================================================
