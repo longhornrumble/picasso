@@ -178,6 +178,18 @@ module "lambda_pii_dsar_staging" {
   ]
 }
 
+# send_email — staging test-support deployment (operator-authorized 2026-06-02).
+# Stands up the bare-named `send_email` Lambda so the scheduling consumers'
+# best-effort volunteer-notice dispatch (shared/scheduling/notify ->
+# Event-invoke send_email; gap-C grant on function:send_email, picasso#336) can
+# be exercised E2E per scheduling/docs/e2e_staging_validation_plan.md. Real prod
+# code (Lambdas/lambda/send_email/) deploys over the placeholder via
+# update-function-code. Dedicated role + the picasso-emails SES config set.
+module "lambda_send_email_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/lambda-send-email-staging"
+}
+
 # Consumer PII Remediation Path A, M3 done-bar #1 (master plan v0.3 §M3).
 # Daily EventBridge-triggered Lambda that scans picasso-pii-dsar-audit-staging
 # StatusIndex for open DSARs past intake+25d (SLA-at-risk window) and publishes
