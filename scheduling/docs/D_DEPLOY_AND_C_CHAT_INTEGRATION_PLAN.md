@@ -6,6 +6,24 @@
 
 ---
 
+## ⭐ Recommendation (tech-lead + system-architect advised, 2026-06-02)
+
+**Sequence: B-minimal → A → B-remainder → E.** (Both advisors converged.)
+
+- **B-minimal BEFORE A**, not A-first. Deploying the redemption edge (A) while the conversation doesn't exist = a live edge fronting a dead conversation = *false confidence* — exactly the "deployed + CodeSha-verified ≠ works" failure this project already hit four times. The real integration bugs (the D4→D6/D7 session-context handoff, binding TTL, purpose→state routing) only surface when B exists; find them together. **Do A right after B-minimal works in staging**, so its smoke test actually means something.
+- **B-minimal slice** = binding-resolution + C7 slot presentation + C9 state machine + C8 commit + the `proposing→confirming` path + the reschedule/cancel execute call sites. **Defer** to B-remainder: new-booking-from-scratch entry, C10 output-sanitization, C11 idempotency, C12 chip rendering, C13 Zoom-outage paging. **Do NOT** gate B on the full sub-phase-C exit criteria (13 tasks, all §5.6 red-team cases, 50-concurrent perf) — that's the *production* bar, not the staging-happy-path bar. Minimal slice ≈ 2–3 days to a working recovery loop; full B ≈ 8–14d.
+- **E strictly last** — it has zero bearing on whether a booking can be made/rescheduled/canceled and recovers none of the D dead-end debt.
+
+**Architecture decisions (lock these as contracts before launching B):**
+1. **Extend the Bedrock streaming handler — do NOT build a separate scheduling-conversation Lambda.** The scheduling conversation is session-scoped context injection, structurally identical to the form-data injection BSH already does (one streaming lifecycle, one session store, one deploy unit). A pre-turn hook resolves the binding → injects `{intent, booking_id, coordinator_id, tenant_id}` into the prompt context.
+2. **Tenant resolution (RESOLVES the Q-B1 gotcha — no D4 follow-up):** the widget already sends `tenant_id` (it must, for KB/config routing); the redirect carries only `?session=<uuid>`. The backend queries the binding with `(tenant_id from the authenticated request context, session_uuid from the param)` → cross-tenant-unforgeable (a tenant-A uuid simply misses under tenant-B). Contract: `getBinding(tenant_id, session_uuid) → {intent, booking_id, coordinator_id, expires_at} | 404`; **the handler enforces the TTL itself** (don't rely on DynamoDB TTL precision for the gate). `?t=<tenant>` on the redirect is NOT needed.
+3. **`deps.calendar` facade = `shared/scheduling/calendarFacade.js`** — `buildCalendarFacade(tenantId, coordinatorId) → { buildEventBody, insertEvent, deleteEvent, extractMeetJoinUrl }` currying `oauth-client.getOAuthClient(...)`; DI-injected, built **once per turn**, shared by reschedule/cancel; C8 builds its own instance via the same factory. (Matches the §B9-pinned facade shape.)
+4. **The boundary to lock FIRST — "state machine is authoritative, LLM is advisory."** The handler executes reschedule/cancel/commit ONLY on a discrete structured signal (a tool-use response), NEVER on free-text the LLM emits. The `conversation-scheduling-session` row is ground truth; the LLM can only *propose* a transition, the handler validates+commits it. If left informal, this produces double-book / silent-drop bugs that are near-impossible to reproduce. This is the one contract to write before wiring BSH.
+
+**Biggest risk to avoid:** declaring Track A "done" as a milestone in isolation (false confidence), and over-scoping B to the full C-exit-criteria. Ship the minimal recovery loop, exercise it live, then add coverage.
+
+---
+
 ## 0. The finding (ground-truthed on lambda `main`, 2026-06-02)
 
 The reschedule/cancel email-link loop has **no chat side at all yet**:
@@ -71,15 +89,15 @@ B2/B1-backend/B4 launch in parallel (disjoint); B3 is the integrator-sequenced k
 
 ### Effort + sequencing
 - **Rough effort:** B ≈ **8–14 days** (B3 is the bulk; the conversation flow + LLM intent + slot-presentation reuse is the heavy part). This is comparable to a small sub-phase, NOT glue.
-- **Sequencing vs sub-phase E:** B and E both build on the merged C/D logic. B unblocks the *recovery loop* (the dead email links); E builds reminders/missed-event/portal. **Recommend:** Track A now (cheap, lights the edge), then decide B-vs-E ordering as a deliberate roadmap call — B if the email-link recovery loop is the priority demo; E if reminders/portal are.
+- **Sequencing (advisor-revised — see the ⭐ Recommendation up top):** **B-minimal → A → B-remainder → E.** NOT A-first: a live edge fronting a dead conversation is false confidence. B-minimal (≈2–3d) lights the recovery loop end-to-end; A (≈1–2d) follows so its smoke test is meaningful; B-remainder completes the C-chat integration; E (reminders/portal) last.
 
 ---
 
 ## Open questions for the operator
 
-- **Q-B1 (gating B1):** confirm the widget already knows its tenant on load + can read a `?session=` param (the frontend explorer couldn't run this session). If a bare uuid is all the redirect can carry, B1 needs a tenant-carrying redirect (D4 could append `&t=<tenant>` — a tiny D4 follow-up).
-- **Q-seq:** after Track A, build Track B next, or sub-phase E next? (Both are multi-day; B = recovery loop, E = reminders/portal.)
-- **Q-A-now:** is Track A authorized to **execute now** (it's deploy/IaC + a live apply touching the minters via G8), or also plan-only until the B-vs-E call?
+- ~~**Q-B1**~~ **RESOLVED (architect):** the widget already sends `tenant_id` (KB/config routing) → tenant comes from the request context, `session_uuid` from the param; no `&t=` D4 follow-up. *(Still worth a 1-line confirm that the widget forwards a `?session=` query param to the backend — but the tenant half is settled.)*
+- ~~**Q-seq**~~ **ADVISED:** B-minimal → A → B-remainder → E (tech-lead + architect). Remaining operator call: accept that sequence, or override (e.g., if a reminders/portal demo outranks the recovery loop, E could jump — but both advisors put E last).
+- **Q-go:** with the advised sequence, the next concrete step is **B-minimal**, not Track A. Authorize me to (a) write the Track-B contracts + work-orders (the 4 to lock + the WS decomposition) and bring them back, or (b) hold entirely. Track A executes right after B-minimal lands (so its smoke test is meaningful) — its live-apply/G8 authorization can wait until then.
 
 ---
 
