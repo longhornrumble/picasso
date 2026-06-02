@@ -40,7 +40,7 @@ So "the CloudWatch data is in DDB" is a **simultaneous dual-write from one sourc
 |---|---|---|---|
 | **Raw transcripts** | `picasso-session-events` (`content_preview`), `staging-recent-messages` | **90 days** | hard delete (no cold tier) |
 | **Pseudonymized session summary** | `picasso-session-summaries` (keyed by `pii_subject_id`; `first_question` redacted; counts / outcome / topic / timings) | **12 months** | hard delete; **powers dashboard metrics for the full 12-month window** |
-| **Form / lead records** | `picasso-form-submissions` | per-form_type: **contact 60d · donor 90d · volunteer 180d · default 365d** (F-DSAR23 matrix) | hard delete · **OPEN: donor/volunteer leads may warrant 2yr+ for relationship value — operator decision pending (§6)** |
+| **Form / lead records** | `picasso-form-submissions` | **365 days (uniform)** — operator decision 2026-06-02 (relationship value; supersedes the F-DSAR23 per-form_type minimization matrix) | hard delete; writer already sets 365d on the main submission row |
 | **Aggregate analytics** | dashboard metric rollups (no subject linkage) | retained | n/a — not PII |
 | **Notifications** | `picasso-notification-sends`, `picasso-notification-events` | **90 days** | delete; copy suppression *reason* to durable store before TTL |
 | **SMS consent (opt-in)** | `picasso-sms-consent` | **last-activity + 4–5 years** (deliberate floor) | retain to floor; integrity-protected |
@@ -50,7 +50,7 @@ So "the CloudWatch data is in DDB" is a **simultaneous dual-write from one sourc
 | **Audit** | `picasso-audit`, `picasso-pii-dsar-audit` | per audit policy (`retention_expires_at`, append-only) | existing carve-out |
 | **Operational logs** | CloudWatch (MFS / BSH / analytics Lambdas) | **7 days** (AWS retention) + redaction-at-source | auto-delete; *current staging = 14–30d — align to prod's 7d* |
 | **Log archive (S3/Glacier)** | `s3://myrecruiter-cloudwatch-logs` (weekly export by `CloudWatch-Log-Exporter`) | **365 days**, IA@30d → Glacier-IR@90d → expire | **already correctly shaped** — leave as-is; named here so churn-purge + DSAR account for it (redacted Q&A persists here past the DDB 90d) |
-| **Orphaned analytics lake** | `s3://picasso-analytics/analytics/` (raw NDJSON, no reader) | **stop writing OR 30-day lifecycle** (both envs) | unread liability — see §5 |
+| **Orphaned analytics lake** | `s3://picasso-analytics/analytics/` (raw NDJSON, no reader) | **REMOVE** — operator decision 2026-06-02 | stop the redundant write + purge existing data (zero consumer; redundant with DDB) — see §5 |
 
 ### Why this shape
 
@@ -96,14 +96,14 @@ These are *current* anti-minimization gaps surfaced during the M9 audit + this s
 4. **`picasso-sms-usage` TTL DISABLED** → rate-limit counters indefinite. Fix: 30-day TTL.
 5. **CloudWatch retention 14–30d (staging) vs 7d policy** → tighten to 7d.
 
-**Orphaned analytics lake decision (operator, §6):** since nothing reads `s3://picasso-analytics/analytics/` (no aggregator/Athena deployed — verified 2026-06-02; the `Analytics_Aggregator` zip in-repo was never deployed), the recommended action is **stop the redundant S3 write** at the source (the writer already persists to `session-events` DDB) OR, if the lake is wanted for future analytics, apply the staging 30-day lifecycle to prod.
+**Orphaned analytics lake decision — RESOLVED: REMOVE (operator, 2026-06-02).** Established **zero consumer** (verified 2026-06-02, prod acct 614): no aggregator Lambda deployed; **Athena never queried** (empty query history); **no Glue table or crawler** over the bucket; **no S3 event notifications**; the dashboard reads DDB, not the lake; and the data is a duplicate of `session-events` (which is the used store). Orphaned **and** not useful. **Action:** (1) remove the redundant `put_object` / `write_events_to_s3` in `Analytics_Event_Processor` (the DDB write already covers everything used) — staging-soak → prod; (2) purge the existing `analytics/` prefix in prod (`picasso-analytics`) + staging (`picasso-analytics-staging`) — deliberate prod-data deletion, operator-gated; removes accumulated raw user text that is not in the DSAR walk.
 
 ---
 
-## §6 — Open operator decisions
+## §6 — Operator decisions (RESOLVED 2026-06-02)
 
-1. **Form/lead retention tail:** keep the per-form_type matrix (60/90/180/365d), or extend **donor/volunteer leads to 2yr+** for relationship value? (Many orgs want leads longer than conversations.)
-2. **Orphaned analytics lake:** stop writing it, or keep + 30-day lifecycle? (§5)
+1. **Form/lead retention tail:** ✅ **365 days (uniform).** Supersedes the F-DSAR23 per-form_type minimization matrix; chosen for relationship value (leads outlive a single conversation). Writer already sets 365d on the main submission row.
+2. **Orphaned analytics lake:** ✅ **REMOVE** — stop the write + purge existing data. Established zero consumer (§5).
 
 ---
 
@@ -142,9 +142,9 @@ Plan-tiered retention as a **pricing lever** (Chatwoot model) is a viable *busin
 | `recent-messages` 90d | add `ttl{attribute_name="expires_at"}` IaC block (writer already sets it) + 1× backfill of existing rows (mirror M4.G2) | 🔧 + script | M4 |
 | Summary → **12 months** | change the `analytics_writer` TTL constant to 365d (table TTL already on) | 🔧 (1 constant) | M4/M9 |
 | Pseudonymized-summary shape | confirm `pii_subject_id` linkage for deletion; `first_question` already redacted, counts/outcome already present — **mostly already there** | ✏️ tiny | M9 |
-| Form/lead per-form_type | `form_handler`: `form_type` → {contact 60 / donor 90 / volunteer 180 / default 365}d (today flat 365d) | ✏️ | M4 (F-DSAR23) |
+| Form/lead **365d uniform** | writer already sets 365d on the main submission row — verify the 90d sub-rows (`form_handler.py:826/850`) aren't lead PII | ✅ ~none | M4 |
 | SMS consent 4–5yr + opt-out never-expire; `sms-usage` 30d | enable TTL on both tables; writer sets `last_activity+5y` (STOP rows: no TTL); usage 30d | 🔧 + writer | M9/comms |
-| Orphaned analytics lake | remove the redundant `put_object` in `Analytics_Event_Processor` (DDB write already covers it) — OR prod 30d lifecycle | ✏️ | M1 + ops |
+| **Remove** orphaned analytics lake | remove `put_object`/`write_events_to_s3` in `Analytics_Event_Processor` (DDB write already covers it) **+ purge** existing `analytics/` prefix in prod + staging | ✏️ + ops (prod-data deletion) | M1 + ops |
 | CloudWatch → 7d (staging) | set log-group retention 7d (prod already 7d) + redaction-at-source | 🔧 | M9 |
 | CW-logs S3/Glacier archive | already IA@30 → Glacier@90 → expire@365 | ✅ none | — |
 | Bedrock invocation-logging | verify OFF (read-only check) | 🔧 | `bedrock-invocation-logging-decision.md` |
