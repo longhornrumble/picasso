@@ -53,6 +53,7 @@
       "items": [
         {
           "booking_id": "bk_fixture_001",
+          "item_type": "booking",
           "status": "booked",
           "start_at": "2026-06-03T14:00:00Z",
           "end_at": "2026-06-03T14:30:00Z",
@@ -60,6 +61,9 @@
           "resource_id": "res_maya",
           "appointment_type_id": "appt_1to1_discovery_30",
           "routing_policy_id": "rp_round_robin",
+          "attendee_email": "vol1.fixture@example.invalid",
+          "attendee_name": "Fixture Volunteer One",
+          "attendee_phone": "+15555550001",
           "attendee": {
             "name": "Fixture Volunteer One",
             "email": "vol1.fixture@example.invalid",
@@ -70,6 +74,7 @@
         },
         {
           "booking_id": "bk_fixture_002",
+          "item_type": "booking",
           "status": "booked",
           "start_at": "2026-06-04T16:00:00Z",
           "end_at": "2026-06-04T17:00:00Z",
@@ -77,6 +82,9 @@
           "resource_id": "res_alex",
           "appointment_type_id": "appt_1to1_interview_60",
           "routing_policy_id": "rp_first_available",
+          "attendee_email": "vol2.fixture@example.invalid",
+          "attendee_name": "Fixture Volunteer Two",
+          "attendee_phone": "+15555550002",
           "attendee": {
             "name": "Fixture Volunteer Two",
             "email": "vol2.fixture@example.invalid",
@@ -87,6 +95,7 @@
         },
         {
           "booking_id": "bk_fixture_003",
+          "item_type": "booking",
           "status": "booked",
           "start_at": "2026-06-05T18:00:00Z",
           "end_at": "2026-06-05T18:30:00Z",
@@ -94,6 +103,9 @@
           "resource_id": "res_maya",
           "appointment_type_id": "appt_1to1_discovery_30",
           "routing_policy_id": "rp_round_robin",
+          "attendee_email": "vol3.fixture@example.invalid",
+          "attendee_name": "Fixture Volunteer Three",
+          "attendee_phone": "+15555550003",
           "attendee": {
             "name": "Fixture Volunteer Three",
             "email": "vol3.fixture@example.invalid",
