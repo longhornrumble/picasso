@@ -70,6 +70,17 @@ variable "routing_policy_table_name" {
   type = string
 }
 
+# gap C (X wire): the (X) candidate-resolver Queries the employee registry for the tenant's
+# scheduling-tagged roster (the reassignment candidate pool the loadCandidates seam now uses).
+variable "employee_registry_table_arn" {
+  description = "ARN of picasso-employee-registry-v2-staging. (X) resolveCandidates Queries it (PK tenantId) for the tenant's scheduling-tagged employees. Query on the table ARN only."
+  type        = string
+}
+
+variable "employee_registry_table_name" {
+  type = string
+}
+
 variable "scheduling_oauth_tenant_ids" {
   description = "Tenant IDs whose scheduling OAuth secrets the remediator may read. secretsmanager:GetSecretValue is scoped to picasso/scheduling/oauth/{tenant}/* for each — NOT a wildcard (matches the Listener/C8 per-tenant posture, sub-phase B audit SR-1). Adding tenant #2 = append here in a reviewed PR."
   type        = list(string)
@@ -206,6 +217,14 @@ data "aws_iam_policy_document" "remediator_exec" {
     ]
   }
 
+  # gap C (X wire): employee-registry Query — (X) resolveCandidates reads the tenant's
+  # scheduling-tagged roster (PK tenantId, no GSI). Query on the table ARN only.
+  statement {
+    sid       = "DDBQueryEmployeeRegistry"
+    actions   = ["dynamodb:Query"]
+    resources = [var.employee_registry_table_arn]
+  }
+
   # Secrets Manager: per-tenant scheduling OAuth secret (Google client for
   # events.move/delete). Per-tenant, NOT wildcard. The trailing /* matches the
   # per-coordinator sub-path (picasso/scheduling/oauth/{tenant}/{coordinator}).
@@ -223,6 +242,16 @@ data "aws_iam_policy_document" "remediator_exec" {
     sid       = "XRayWrite"
     actions   = ["xray:PutTraceSegments", "xray:PutTelemetryRecords"]
     resources = ["*"]
+  }
+
+  # Async-invoke on_failure destination (gap B audit, sec SR-2): the
+  # aws_lambda_function_event_invoke_config below routes an exhausted-retry async
+  # failure event to ops-alerts, which requires the exec role to publish to that
+  # topic. Scoped to exactly the ops-alerts topic ARN (no wildcard).
+  statement {
+    sid       = "SNSPublishOpsAlertsOnAsyncFailure"
+    actions   = ["sns:Publish"]
+    resources = [var.ops_alerts_topic_arn]
   }
 }
 
@@ -266,6 +295,7 @@ resource "aws_lambda_function" "remediator" {
       BOOKING_TABLE            = var.booking_table_name
       APPOINTMENT_TYPE_TABLE   = var.appointment_type_table_name
       ROUTING_POLICY_TABLE     = var.routing_policy_table_name
+      EMPLOYEE_REGISTRY_TABLE  = var.employee_registry_table_name # gap C (X) roster source
       OAUTH_SECRET_PATH_PREFIX = "picasso/scheduling/oauth"
     }
   }
@@ -289,6 +319,24 @@ resource "aws_lambda_function" "remediator" {
   }
 
   depends_on = [aws_cloudwatch_log_group.remediator, aws_iam_role_policy.remediator_exec]
+}
+
+# Async-invoke failure handling (gap B audit, sec SR-2). The Offboarder invokes this
+# function with InvocationType=Event (fire-and-forget) — so an internal throw is retried
+# by AWS and then SILENTLY DROPPED, invisible to the Offboarder (whose Invoke call already
+# got a 202). Cap retries (the remediation is idempotent + at-least-once safe, so 1 retry
+# is enough) and route the exhausted-retry event to ops-alerts so a dropped offboarding
+# remediation is observable — not just the 5-min Errors alarm.
+resource "aws_lambda_function_event_invoke_config" "remediator" {
+  function_name                = aws_lambda_function.remediator.function_name
+  maximum_retry_attempts       = 1
+  maximum_event_age_in_seconds = 300
+
+  destination_config {
+    on_failure {
+      destination = var.ops_alerts_topic_arn
+    }
+  }
 }
 
 # ==============================================================================

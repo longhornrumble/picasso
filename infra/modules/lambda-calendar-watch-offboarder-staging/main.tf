@@ -55,6 +55,19 @@ variable "log_retention_days" {
   default     = 90
 }
 
+# B11 offboarding trigger (gap B) — the Offboarder async-invokes the
+# Stranded_Booking_Remediator on the coordinator-offboarding path. Wired from the
+# remediator module's outputs in main.tf (offboarder -> remediator, one-way; no cycle).
+variable "remediator_function_name" {
+  description = "Function name of Stranded_Booking_Remediator (B11). Set as the Offboarder's REMEDIATOR_FUNCTION_NAME env so it can async-invoke (InvocationType=Event) the stranded-booking remediation on coordinator offboarding."
+  type        = string
+}
+
+variable "remediator_function_arn" {
+  description = "ARN of Stranded_Booking_Remediator (B11) — the Offboarder exec role is granted lambda:InvokeFunction on exactly this ARN (no wildcard)."
+  type        = string
+}
+
 # ------------------------------------------------------------------
 # Data sources
 # ------------------------------------------------------------------
@@ -188,6 +201,16 @@ data "aws_iam_policy_document" "offboarder_exec" {
   # needs only channel_id + resourceId (both in the DDB row) — no Secrets Manager
   # channel-token namespace, and no CloudWatch custom metrics (unlike the
   # Renewer, the Offboarder emits none).
+
+  # B11 offboarding trigger (gap B): async-invoke the Stranded_Booking_Remediator
+  # on the coordinator-offboarding path. Scoped to EXACTLY the remediator ARN (no
+  # wildcard). The invoke is InvocationType=Event (fire-and-forget) — the Offboarder
+  # does not block on B11's remediation and its return summary is independent.
+  statement {
+    sid       = "InvokeStrandedBookingRemediator"
+    actions   = ["lambda:InvokeFunction"]
+    resources = [var.remediator_function_arn]
+  }
 }
 
 resource "aws_iam_role_policy" "offboarder_exec" {
@@ -230,6 +253,9 @@ resource "aws_lambda_function" "offboarder" {
       ENVIRONMENT                   = "staging"
       CALENDAR_WATCH_CHANNELS_TABLE = var.calendar_watch_channels_table_name
       OAUTH_SECRET_PATH_PREFIX      = "picasso/scheduling/oauth"
+      # B11 offboarding trigger (gap B): the Offboarder async-invokes this function
+      # on the coordinator-offboarding path. Unset ⇒ the invoke is skipped (warn).
+      REMEDIATOR_FUNCTION_NAME = var.remediator_function_name
     }
   }
 
