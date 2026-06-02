@@ -215,7 +215,7 @@ data "aws_iam_policy_document" "consumer_exec" {
   statement {
     sid       = "SecretsReadJwtSigningKey"
     actions   = ["secretsmanager:GetSecretValue"]
-    resources = ["arn:${data.aws_partition.current.partition}:secretsmanager:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:secret:picasso/jwt/signing-key-*"]
+    resources = ["arn:${data.aws_partition.current.partition}:secretsmanager:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:secret:picasso/staging/jwt/signing-key-*"]
   }
 
   # SNS: best-effort admin alert on a newly-flagged OOO conflict.
@@ -285,7 +285,7 @@ resource "aws_lambda_function" "consumer" {
       ROUTING_POLICY_TABLE    = var.routing_policy_table_name
       EMPLOYEE_REGISTRY_TABLE = var.employee_registry_table_name
       SEND_EMAIL_FUNCTION     = var.send_email_function_name
-      JWT_SECRET_KEY_NAME     = "picasso/jwt/signing-key"
+      JWT_SECRET_KEY_NAME     = "picasso/staging/jwt/signing-key"
       SCHEDULE_BASE_URL       = "https://schedule.myrecruiter.ai"
     }
   }

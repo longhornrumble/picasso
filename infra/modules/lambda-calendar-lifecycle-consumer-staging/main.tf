@@ -193,7 +193,7 @@ data "aws_iam_policy_document" "consumer_exec" {
   statement {
     sid       = "SecretsReadJwtSigningKey"
     actions   = ["secretsmanager:GetSecretValue"]
-    resources = ["arn:${data.aws_partition.current.partition}:secretsmanager:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:secret:picasso/jwt/signing-key-*"]
+    resources = ["arn:${data.aws_partition.current.partition}:secretsmanager:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:secret:picasso/staging/jwt/signing-key-*"]
   }
 
   # SNS: channel-degrade best-effort ops alert.
@@ -259,7 +259,7 @@ resource "aws_lambda_function" "consumer" {
       CALENDAR_WATCH_CHANNELS_TABLE = var.channels_table_name
       OPS_ALERTS_TOPIC_ARN          = var.ops_alerts_topic_arn
       SEND_EMAIL_FUNCTION           = var.send_email_function_name
-      JWT_SECRET_KEY_NAME           = "picasso/jwt/signing-key"
+      JWT_SECRET_KEY_NAME           = "picasso/staging/jwt/signing-key"
       SCHEDULE_BASE_URL             = "https://schedule.myrecruiter.ai"
     }
   }

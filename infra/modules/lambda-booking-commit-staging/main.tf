@@ -235,7 +235,7 @@ data "aws_iam_policy_document" "commit_exec" {
     sid     = "SecretsReadJwtSigningKey"
     actions = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
     resources = [
-      "arn:${data.aws_partition.current.partition}:secretsmanager:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:secret:picasso/jwt/signing-key-*"
+      "arn:${data.aws_partition.current.partition}:secretsmanager:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:secret:picasso/staging/jwt/signing-key-*"
     ]
   }
 
@@ -307,7 +307,7 @@ resource "aws_lambda_function" "commit" {
       SES_CONFIGURATION_SET    = "picasso-emails"
       SCHEDULE_BASE_URL        = "https://staging.chat.myrecruiter.ai"
       OPS_ALERTS_TOPIC_ARN     = var.ops_alerts_topic_arn
-      JWT_SECRET_KEY_NAME      = "picasso/jwt/signing-key"
+      JWT_SECRET_KEY_NAME      = "picasso/staging/jwt/signing-key"
     }
   }
 
