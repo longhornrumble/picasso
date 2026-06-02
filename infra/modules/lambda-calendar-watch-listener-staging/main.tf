@@ -95,6 +95,23 @@ data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 data "aws_partition" "current" {}
 
+# ------------------------------------------------------------------
+# Locals
+# ------------------------------------------------------------------
+
+locals {
+  # I2-A cutover: SNS FIFO fan-out topic the Listener PUBLISHES typed booking.*
+  # events to (replacing the direct SQS SendMessage to aws_sqs_queue.events). The
+  # topic is created by infra/modules/sns-calendar-watch-fanout-staging as
+  # picasso-calendar-watch-events-staging.fifo. We CONSTRUCT its ARN here rather
+  # than wiring module.sns_calendar_watch_fanout_staging.events_topic_arn because
+  # that module already depends on THIS module's listener_role_arn output (for its
+  # publish-lockdown topic policy) — referencing it back would create a module
+  # cycle. Same construction style as the per-tenant Secrets ARNs below. The name
+  # MUST stay in sync with that module's aws_sns_topic.events.name.
+  events_topic_arn = "arn:${data.aws_partition.current.partition}:sns:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:picasso-calendar-watch-events-staging.fifo"
+}
+
 # ==============================================================================
 # SQS FIFO dispatch queue + DLQ
 # ==============================================================================
@@ -282,10 +299,27 @@ data "aws_iam_policy_document" "listener_exec" {
 
   # SQS send to the FIFO events queue. SendMessage only — no Receive (consumer
   # Lambdas in C-phase get their own dedicated role with Receive).
+  # RETAINED during the I2-A cutover window: the Listener code still SendMessages
+  # to this queue until the coupled lambda publish-flip lands. Retire this
+  # statement (and aws_sqs_queue.events) AFTER cutover is confirmed on staging.
   statement {
     sid       = "SQSSendCalendarWatchEvents"
     actions   = ["sqs:SendMessage", "sqs:GetQueueAttributes"]
     resources = [aws_sqs_queue.events.arn]
+  }
+
+  # I2-A cutover: SNS publish to the FIFO fan-out topic. The Listener flips from
+  # SQS SendMessage to SNS Publish; the topic fans out to the per-consumer FIFO
+  # queues by event_type filter policy. Identity-based grant complementing the
+  # topic's resource policy (AllowListenerPublishOnly), which already names this
+  # role — both sides reference the role so the grant is explicit on the role
+  # itself, not solely inherited from the topic policy. Publish only; the Listener
+  # never subscribes/receives. Applied BEFORE the lambda publish-flip per the
+  # cutover ordering (topic must exist + role must be granted before code flips).
+  statement {
+    sid       = "SNSPublishCalendarWatchEvents"
+    actions   = ["SNS:Publish"]
+    resources = [local.events_topic_arn]
   }
 }
 
@@ -319,11 +353,15 @@ resource "aws_lambda_function" "listener" {
 
   environment {
     variables = {
-      ENVIRONMENT                      = "staging"
-      CALENDAR_WATCH_CHANNELS_TABLE    = var.calendar_watch_channels_table_name
-      BOOKING_TABLE                    = var.booking_table_name
-      TENANT_REGISTRY_TABLE            = var.tenant_registry_table_name
-      EVENTS_QUEUE_URL                 = aws_sqs_queue.events.url
+      ENVIRONMENT                   = "staging"
+      CALENDAR_WATCH_CHANNELS_TABLE = var.calendar_watch_channels_table_name
+      BOOKING_TABLE                 = var.booking_table_name
+      TENANT_REGISTRY_TABLE         = var.tenant_registry_table_name
+      EVENTS_QUEUE_URL              = aws_sqs_queue.events.url
+      # I2-A cutover: the publish target after the SQS->SNS flip. Set NOW (this
+      # PR applies before the lambda flip) so the flipped code finds it. EVENTS_QUEUE_URL
+      # is retained until cutover is confirmed, then retired with aws_sqs_queue.events.
+      EVENTS_TOPIC_ARN                 = local.events_topic_arn
       OAUTH_SECRET_PATH_PREFIX         = "picasso/scheduling/oauth"
       REPLAY_WINDOW_SECONDS            = "300"
       RATE_LIMIT_NOTIFICATIONS_PER_MIN = "100"
