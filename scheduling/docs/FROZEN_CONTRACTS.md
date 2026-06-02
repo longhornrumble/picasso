@@ -115,6 +115,30 @@ const TOKEN_PURPOSES = [
 // GoogleMeetProvider (conferenceData.createRequest.requestId idempotency) · ZoomProvider (read-before-write idempotency) · NullConferenceProvider (no-op synthetic ids).
 ```
 
+### B7 — `resolveCandidates` (X) (produced by WS-SCHED-FOUNDATIONS, consumed by B9 reoffer + B11 roster-seam) — lambda#197, **LOCKED 2026-06-01**
+```js
+// module: shared/scheduling/candidate-resolver.js
+//   resolveCandidates({ tenantId, routingPolicyId | appointmentTypeId }, deps)
+//     → [{ resourceId, scheduling_tags, coordinatorEmail }]   (the eligible pool, fed straight into routing.evaluatePool/pool.select)
+// appointmentTypeId path resolves routing_policy_id off the AppointmentType row, then the policy; explicit routingPolicyId short-circuits that hop.
+// resourceId == coordinatorEmail (lower-cased registry email = v1 calendar id); carried as 2 fields for v2 divergence.
+// Reads picasso-routing-policy + picasso-appointment-type (GetItem) + employee-registry-v2 (Query, PK tenantId). DI-seam'd.
+// NOTE (§C): the tag-condition eligibility matcher is DUPLICATED here from routing.js (which does not export isEligible);
+//   signatures differ — routing.isEligible(candidate, conds) vs resolver isEligible(tags, conds). Change one → change both.
+```
+
+### B8 — `dispatchVolunteerNotice` (Y) (produced by WS-SCHED-FOUNDATIONS, consumed by WS-CAL-LIFECYCLE + B9) — lambda#197, **LOCKED 2026-06-01**
+```js
+// module: shared/scheduling/notify.js
+//   dispatchVolunteerNotice({ kind, tenantId, booking, channels }, deps) → { kind, suppressed, dispatched }
+//   kind ∈ { reschedule_link, reoffer, cancel_notice, move_optin_sms }
+// Agent-of-CoR §5.1 guarded (reassigned/plain-moved do NOT notify — Google's email covers them).
+// Email → send_email Lambda (lambda:InvokeFunction); action URLs are https-only via safeUrl(); STOP/unsubscribe injected.
+// move_optin_sms = TODO(SMS-E) no-send stub (returns {stub:true}); wire to SMS_Sender at sub-phase E.
+// CONTRACT NUANCE: buildEmailPayload THROWS on a missing required action URL (caller bug) — it is NOT a best-effort
+//   {dispatched:'failed'}; transport failures ARE best-effort. Consumers must guard their Booking rows carry the URL.
+```
+
 ---
 
 ## C. Contract-change protocol
@@ -130,3 +154,5 @@ const TOKEN_PURPOSES = [
 | 2026-05-30 | **B4 wording precision** (WS-D1a #186 audit caught it): the blacklist table is COMPOSITE-keyed (`tenantId` PK · `jti` SK), not single-`jti`; the conditional put writes `{tenantId, jti, exp}` with `attribute_not_exists(jti)` on the specific item. The shipped table + the WS-D1a module are correct; only the §B4 prose said "keyed by jti". No contract behavior change. |
 | 2026-05-30 | **B3 `resourceId` clarification** (WS-C7 #187 §C escalation, integrator-resolved, NOT a fork): the output needs `resourceId` but one call serves one resource → `resourceId` is an OPTIONAL INPUT the CALLER (C6) supplies per-resource (threaded to output + slotId seed); the original 4-key call still works (yields `resourceId:null`). Also recorded: C6 owns the config→appointmentType field-shim; v1 DST math uses native `Intl` (no tz lib). Frozen 4-key signature unchanged → no consumer re-sync needed. |
 | 2026-05-31 | **B4 min-lifetime floor APPLIED** (integrator-owned, lambda#192): `tokens.js computeExpiry` now returns `max(computed, iat + 900s)` — was the "AMENDMENT OWED" note from the WS-C8 #190 audit. Floors cancel/reschedule links so a same-day / large-window booking can't mint an already-expired link. No-op for the far-future case → existing per-purpose expiry behavior unchanged. **No consumer re-sync needed:** the only consumers of exp behavior are the D cancel/reschedule endpoints, not yet built. |
+| 2026-06-01 | **§B7 + §B8 LOCKED** (WS-SCHED-FOUNDATIONS lambda#197): `resolveCandidates` (X) + `dispatchVolunteerNotice` (Y) shipped + audited. §B7 carries the **isEligible-duplication §C note** (routing.js doesn't export it → matcher duplicated in candidate-resolver; divergent signatures; change one→both — gate before B9/B11 wire in). §B8 carries the **throw-vs-best-effort nuance** (buildEmailPayload throws on a missing action URL). |
+| 2026-06-01 | **§A non-key Booking attributes — WS-CAL-LIFECYCLE (lambda#196) additions:** `cancel_reason` value set extended (`coordinator_deleted`, `coordinator_moved` join the existing B10 values), `reassigned_at` (on `calendar_reassigned`). The `calendar-watch-channels` row's `status` gains `event_body_private` (on `event_made_private`). **F2:** the `rescheduleOfBookingId` self-anchor was **dropped** (would have inverted the canonical NEW→original meaning); moved-not-rebooked rows are marked by `cancel_reason='coordinator_moved'`. All additive; readers tolerate absence. |

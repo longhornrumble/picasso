@@ -31,3 +31,4 @@
 - PR title `feat(scheduling): <id> ...`, base per above.
 - Include a **doc-snippet** block: the plan-row status update + (if you touch a PII surface) the pii-inventory line — for the integrator to apply. **Do not edit `pii-inventory.md` yourself** — it is shared with the separate PII Governance program; the integrator applies the snippet after coordinating with that program (see PARALLEL_WORKSTREAMS §3 rule 2).
 - Tell the integrator: branch, PR #, done-bar status, any contract issue.
+- **Branch cleanup:** once your PR is merged, remove your worktree (`git worktree remove <dir>`) and delete your local branch (`git branch -d <branch>`). Leave no stale branch or worktree behind. (The integrator deletes the *remote* branch at merge via `--delete-branch`.)
