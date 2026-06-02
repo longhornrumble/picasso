@@ -828,6 +828,13 @@ module "lambda_calendar_watch_offboarder_staging" {
 
   # Ops alerts SNS topic (shared with MFS + Meta — created by ops_alarms_master_function_staging)
   ops_alerts_topic_arn = module.ops_alarms_master_function_staging[0].topic_arn
+
+  # B11 offboarding trigger (gap B): the Offboarder async-invokes the
+  # Stranded_Booking_Remediator on the coordinator-offboarding path. One-way
+  # dependency (offboarder -> remediator); the remediator module takes no offboarder
+  # input, so there is no module cycle.
+  remediator_function_name = module.lambda_stranded_booking_remediator_staging[0].remediator_function_name
+  remediator_function_arn  = module.lambda_stranded_booking_remediator_staging[0].remediator_function_arn
 }
 
 # ──────────────────────────────────────────────────────────────────────
