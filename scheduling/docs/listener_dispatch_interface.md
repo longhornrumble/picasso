@@ -83,7 +83,21 @@ Note: `booking_id` in the envelope is set to the first overlapping booking; the 
 }
 ```
 
-### booking.event_made_private — no additional fields
+### booking.event_made_private — additional fields
+
+```jsonc
+{
+  "channel_id": "string"   // the validated X-Goog-Channel-ID. Present on THIS event type
+                           // ONLY. The lifecycle consumer (WS-CAL-LIFECYCLE channel-degrade)
+                           // degrades the watch-channel row, which is keyed by channel_id,
+                           // and the channels table has no GSI to resolve it from
+                           // tenant_id/booking_id. Platform-controlled (validated header);
+                           // the consumer's degrade UpdateItem is tenant_id-guarded, so a
+                           // mismatched channel_id cannot cross-tenant degrade. Added by the
+                           // I2-A cutover (lambda#199). Forward-compat: a consumer reading an
+                           // older envelope without it falls back to alert-without-degrade.
+}
+```
 
 ---
 
@@ -110,7 +124,7 @@ No consumer may reject a message solely because it has already processed it — 
 
 ## Ordering Guarantees
 
-- Events for the same `event_id` (same booking) are sent to an **SQS FIFO queue** and processed in order. Message group key = `event_id`.
+- Events for the same `event_id` (same booking) are **published to an SNS FIFO topic** (`picasso-calendar-watch-events-{env}.fifo`, I2-A cutover lambda#199) with `MessageGroupId = event_id`. SNS FIFO propagates the `MessageGroupId` to each subscribed per-consumer FIFO SQS queue, so per-booking ordering holds within each consumer's queue. (Pre-I2-A this was a direct SQS FIFO `SendMessage` to a single queue.)
 - Events for different `event_id` values may be processed concurrently. Consumers must not assume cross-booking ordering.
 - Listener Lambda may coalesce multiple Google push notifications for the same calendar into a single `events.get` call before dispatching — this is an optimization detail internal to B2 and does not affect the dispatch contract.
 
@@ -163,3 +177,4 @@ These reconcile this spec with the shipped implementation (lambda#173) so C-phas
 | 2026-05-29 | **Phase 2b IMPLEMENTED** ([lambda#173](https://github.com/longhornrumble/lambda/pull/173), OPEN) — handler now runs delta-discovery + derives the 7 typed `booking.*` events + dispatches to SQS FIFO (`MessageGroupId=event_id`); replaces the Phase 1 `raw.calendar_push` envelope. Mandatory Security-Reviewer pass + remediation (cross-tenant booking-id guard, dispatch-before-advance ordering, 410 syncToken-expiry handling, channel_id in dedup basis, PII-log strip). 92 unit tests + CI-3b contract test. **NOT yet deployed/smoked/audited** — `booking_id` mapping via `extendedProperties.private.booking_id` is a forward-contract for sub-phase C8 (no real bookings exist yet; derivations tested against seeded fixtures). | Chris + Claude |
 | 2026-05-29 | **Phase 2b phase-completion-audit (code-reviewer + tech-lead + test-engineer + the prior Security pass).** Added the "Phase 2b implementation notes" section + OOO consumer-guidance note reconciling this spec with the implementation: (row 2) derivation reads the `events.list` delta payload, not per-event `events.get`; (row 8) OOO aggregate envelope's first-booking selection is non-deterministic — consumers must use `overlapping_booking_ids`; (row 9) all-day vs dateTime format contract for C8/derivation; (row 10) C8 must write `extendedProperties.private.booking_id`; (row 12) `workingLocation`-as-OOO flagged for canonical §14.2 review. Code/test/IaC audit fixes ship in lambda#173 + a picasso IaC PR (Booking start_at-index IAM grant). | Chris + Claude |
 | 2026-05-31 | **Audit row 12 RESOLVED (operator decision): `workingLocation` EXCLUDED from OOO-overlap** — only `outOfOffice` is absence. Integrator-owned Listener derivation change (drop `\|\| 'workingLocation'`) lands before/with the WS-B9B10 consumer build, so B9 receives only real-absence OOO. Wave-3 consumer work-orders authored: WS-B9B10 (OOO reoffer + accept/decline) + WS-B11 (stranded-booking). | Chris + Claude |
+| 2026-06-02 | **Gap A (I2-A cutover) IMPLEMENTED** ([lambda#199](https://github.com/longhornrumble/lambda/pull/199)) + IaC step 1 ([picasso#333](https://github.com/longhornrumble/picasso/pull/333), merged+applied to staging). Listener flips from direct SQS `SendMessage` to **SNS FIFO `Publish`** on `picasso-calendar-watch-events-{env}.fifo` (fan-out to per-consumer queues by `event_type` filter policy); `MessageGroupId=event_id` + explicit `MessageDeduplicationId` preserved. Spec updated to match: (1) Ordering Guarantees now describes the SNS FIFO topic; (2) `booking.event_made_private` now carries `channel_id` (the one-line integrator change the channel-degrade consumer anticipated — present on that type ONLY, platform-controlled, tenant-guarded). `workingLocation` exclusion (row 12) shipped in the same PR. Deploy is operator-gated (zip deploy after staging soak). | Chris + Claude |
