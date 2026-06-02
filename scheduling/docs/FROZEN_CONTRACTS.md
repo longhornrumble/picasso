@@ -147,14 +147,17 @@ const TOKEN_PURPOSES = [
 //
 // module: shared/scheduling/reschedule.js  (WS-D6)
 //   async executeReschedule({ booking, newSlot, deps }) → {
-//     outcome: 'success' | 'pending_calendar_sync' | 'canceled_insert_failed' | 'failed',  // the four §D6 outcomes
-//     booking,                          // updated row (caller persists)
-//     newEventId?, oldEventId?,         // bookkeeping for the reconciler / admin alert
+//     outcome: 'success' | 'pending_calendar_sync' | 'failed',  // ('canceled_insert_failed' is now UNREACHABLE — see B-1)
+//     booking,                          // MUTATED IN PLACE + returned (caller persists the same object — SR-3, lambda#204)
+//     newEventId?, oldEventId?,         // bookkeeping for the E9 reconciler
 //   }
 //   ORDER (locked, §D6): events.insert(new) FIRST, events.delete(old) SECOND. Zoom join URL preserved via PATCH where allowed.
+//   B-1 (operator-resolved 2026-06-02, lambda#204): the delete is GUARDED on insertOk — insert✗ NEVER deletes the old event.
 //   (i) insert✓+delete✓ → success.  (ii) insert✓+delete✗ → pending_calendar_sync=true + store oldEventId (E9 reconciler retries).
-//   (iii) insert✗ after delete✓ → status=canceled + alertAdmin (treat as cancel+manual rebook).  (iv) both✗ → no state change.
-//   deps = { calendar, conference /*§B6*/, ddb, alertAdmin, logger } — INJECTED; no module-level AWS/Google clients.
+//   (iv) insert✗ → 'failed', no state change, RETRYABLE (old event intact). (iii) canceled_insert_failed is UNREACHABLE
+//        (a transient insert hiccup must never strand the volunteer; the prior "delete✓+insert✗" framing was a delete-first vestige).
+//   deps = { calendar, conference /*§B6*/, ddb, alertAdmin, logger } — INJECTED; no module-level clients.
+//        ddb + alertAdmin are UNUSED/reserved (module persists nothing; post-B-1 there is no destructive cancel to alert on).
 //
 // module: shared/scheduling/cancel.js  (WS-D7)
 //   async executeCancel({ booking, deps }) → { outcome: 'deleted' | 'pending_calendar_sync', booking }
