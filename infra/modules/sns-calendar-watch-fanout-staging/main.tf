@@ -251,7 +251,7 @@ resource "aws_sqs_queue" "lifecycle_consumer" {
   fifo_queue                  = true
   content_based_deduplication = false
   message_retention_seconds   = 1209600 # 14 days — maximize the capture window pre-consumer
-  visibility_timeout_seconds  = 180     # placeholder; WS-CAL-LIFECYCLE retunes to 6x its Lambda timeout
+  visibility_timeout_seconds  = 180     # 6x the Calendar_Lifecycle_Consumer 30s Lambda timeout (consumer module now deployed)
   receive_wait_time_seconds   = 20
   sqs_managed_sse_enabled     = true
 
@@ -359,7 +359,7 @@ resource "aws_cloudwatch_metric_alarm" "lifecycle_consumer_dlq_depth" {
 # ApproximateNumberOfMessagesVisible is the simplest depth proxy at pilot scale).
 resource "aws_cloudwatch_metric_alarm" "lifecycle_consumer_backlog" {
   alarm_name          = "picasso-calendar-lifecycle-consumer-backlog"
-  alarm_description   = "picasso-calendar-lifecycle-consumer-${var.env}.fifo has >= 1 message. EXPECTED while WS-CAL-LIFECYCLE is undeployed (no consumer Lambda yet — events are retained up to 14 days then expire). Once WS-CAL-LIFECYCLE ships its consumer, a sustained backlog means the consumer is failing to drain."
+  alarm_description   = "picasso-calendar-lifecycle-consumer-${var.env}.fifo has >= 1 message for 1h. The Calendar_Lifecycle_Consumer IS deployed now, so a sustained backlog means the consumer is failing to drain - check its Errors alarm (Calendar_Lifecycle_Consumer-errors), /aws/lambda/Calendar_Lifecycle_Consumer logs, and the lifecycle-consumer DLQ. Brief transient depth during a burst is normal."
   comparison_operator = "GreaterThanOrEqualToThreshold"
   evaluation_periods  = 1
   threshold           = 1
