@@ -46,6 +46,7 @@ Interpretation: **logging is OFF in prod-614** — matches staging baseline. No 
 
 **Date verified (staging):** 2026-05-23
 **Date verified (prod):** 2026-05-23 (user-authorized prod read; M3 done-bar #4 closure)
+**Re-verified (both accounts):** 2026-06-02 — still **OFF** in 614 + 525, us-east-1 (`get-model-invocation-logging-configuration` → exit 0, empty response, no `loggingConfig`). Health-check re-confirmation per the Re-verify guidance below; assumption holds for the data-retention-strategy (no Bedrock-side prompt persistence surface).
 
 ## Interpretation guide
 
