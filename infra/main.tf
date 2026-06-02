@@ -435,7 +435,9 @@ module "lambda_master_function_staging" {
 
   # Phase 2 MFS cleanup R5 set staging MFS log retention to 14d. Codify so
   # `terraform apply` doesn't revert to the module default of 30.
-  log_retention_days = 14
+  # PII retention strategy (data-retention-strategy.md §5 #5): align staging chat-path
+  # log retention to prod's 7d. CloudWatch holds redacted QA_COMPLETE Q&A; 7d is the policy.
+  log_retention_days = 7
 }
 
 # Phase 4.1: staging-account Analytics_Dashboard_API. Bundles IAM exec
