@@ -966,6 +966,23 @@ module "lambda_calendar_lifecycle_consumer_staging" {
   ops_alerts_topic_arn = module.ops_alarms_master_function_staging[0].topic_arn
 }
 
+# Scheduling redemption edge — staging.schedule.myrecruiter.ai (WS-D3 #347, sub-phase D §13.8).
+# The public HTTPS edge that fronts the WS-D4 token-redemption Lambda (the six /cancel
+# /reschedule /resume /attended/* endpoints). The cancel/reschedule email links minted by
+# C8 + the cal-lifecycle consumer are dead until this resolves + serves.
+# Apply is OPERATOR-gated + two-phase (cert must reach ISSUED before the alias attaches):
+#   Apply 1 (enable_custom_domain = false, the default): cert PENDING_VALIDATION + dist on the
+#     default *.cloudfront.net cert. Operator adds the GoDaddy validation CNAME (myrecruiter.ai
+#     is at GoDaddy, NOT Route53 — same as the chat edge) → cert ISSUED.
+#   Apply 2 (enable_custom_domain = true): attaches the staging.schedule.myrecruiter.ai alias +
+#     the ISSUED cert. Operator then adds the GoDaddy alias CNAME → <distribution_domain_name>.
+# redemption_function_url_domain defaults to a placeholder until WS-D4's Function URL exists —
+# the integrator re-points it (and flips enable_custom_domain at Apply 2) when D4 lands.
+module "scheduling_redemption_domain_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/scheduling-redemption-domain-staging"
+}
+
 # Stranded_Booking_Remediator (lambda#194, MERGED) — B11 coordinator-offboarding
 # stranded-booking remediation. Invoked directly (offboarding-trigger wiring is the
 # integrator's coupled change — see the banner above); NOT a queue consumer.
