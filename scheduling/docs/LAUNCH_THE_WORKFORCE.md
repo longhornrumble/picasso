@@ -285,3 +285,175 @@ FIRST: before building, ask the integrator to confirm WHERE the Customer-Portal 
 | **WS-D1a** | Secure one-time links for cancel / reschedule / attendance | lambda | any |
 | **WS-EUI** | The customer's on-screen booking views | picasso | any (ask first) |
 | *C6 → C8* | *Combine the above into the actual "book it" step* | *lambda* | *integrator, after the wave* |
+
+---
+
+## Wave D-core — sub-phase D (token redemption) prompts
+
+This is a **second, later wave** (sub-phase D), independent of the C prompts above. It turns the secure one-tap links (WS-D1a) into working cancel/reschedule pages served from **`staging.schedule.myrecruiter.ai`**. **Operator decisions (2026-06-02):** staging-only host; lean-core scope = these 4 pieces only (D2 dual-key, D5 failure-page polish, D8 recovery deferred to Wave D-2). Contracts §B9 + §B10 are LOCKED.
+
+**Launch order: WS-D3 FIRST** (it requests an HTTPS certificate that can take hours to validate; everything else's end-to-end test waits on it). Then WS-D4 / WS-D6 / WS-D7 in any order — they're file-disjoint. Same worktree + cleanup hard rules as above (each worker its OWN `/tmp` worktree cut from `origin/<base>`).
+
+> **What stays with the integrator (don't give a worker):** wiring WS-D4's Lambda infra + Function URL and pointing WS-D3's origin at it; reconciling `SCHEDULE_BASE_URL` (today split between `staging.chat...` and the dead `schedule.myrecruiter.ai`) onto `https://staging.schedule.myrecruiter.ai`; and wiring the in-chat confirm step to call WS-D6/WS-D7's modules.
+
+### D-1) WS-D3 — redemption domain *(launch first)*
+```
+You are ONE workstream in a coordinated parallel build — you own a single, disjoint slice.
+Your work-order is scheduling/docs/workstreams/WS-D3-DOMAIN.md.
+
+Read, in order: (1) that work-order, (2) the contracts it cites in
+scheduling/docs/FROZEN_CONTRACTS.md — §B is LOCKED, code to it, never redefine it,
+(3) the plan task it cites in scheduling/docs/scheduling_implementation_plan.md (§6, D3),
+(4) CLAUDE.md (Deployment SOP, verify-before-commit, drift rules, the IAM string-charset gotcha).
+
+Then build it. HARD RULES: create/edit ONLY the files in the work-order's "You OWN" list
+(the new infra/modules/scheduling-redemption-domain-staging/ module) — nothing else, and NEVER a
+shared doc (the plan, infra/main.tf, pii-inventory, the kanban, FROZEN_CONTRACTS). Build in the
+picasso repo on branch feature/scheduling-ws-d3-domain, base staging, in your OWN isolated worktree:
+  git worktree add -b feature/scheduling-ws-d3-domain /tmp/ws-d3 origin/staging
+Run verify-before-commit before committing. Open a PR per the work-order with the report-back
+doc-snippet in the body. If a frozen contract looks wrong, STOP and flag it in the PR — do not fork it.
+
+Note: host is staging.schedule.myrecruiter.ai (staging-only, NOT prod). ACM cert MUST be in us-east-1
+(CloudFront). Do NOT terraform apply (operator-run) and do NOT edit infra/main.tf. If the myrecruiter.ai
+Route53 zone isn't creatable from the staging account, STOP and flag the hosted-zone placement — don't guess.
+```
+
+### D-2) WS-D4 — redemption endpoint handler
+```
+You are ONE workstream in a coordinated parallel build — you own a single, disjoint slice.
+Your work-order is scheduling/docs/workstreams/WS-D4-REDEMPTION.md.
+
+Read, in order: (1) that work-order, (2) the contracts it cites in
+scheduling/docs/FROZEN_CONTRACTS.md — §B4/§B10 are LOCKED, code to them, never redefine them,
+(3) the plan task it cites in scheduling/docs/scheduling_implementation_plan.md (§6, D4),
+(4) CLAUDE.md (never-share-IAM, credential-mutation gate, schema discipline, verify-before-commit).
+
+Then build it. HARD RULES: create/edit ONLY the files in the work-order's "You OWN" list
+(the new Scheduling_Redemption_Handler/ Lambda) — nothing else, and NEVER a shared doc. Build in
+the lambda repo on branch feature/scheduling-ws-d4-redemption, base main, in your OWN isolated worktree:
+  git -C Lambdas/lambda worktree add -b feature/scheduling-ws-d4-redemption /tmp/ws-d4 origin/main
+Run verify-before-commit before committing. Open a PR per the work-order with the report-back
+doc-snippet in the body. If a frozen contract looks wrong, STOP and flag it in the PR — do not fork it.
+
+Note: this is an AUTH + one-time-use surface (FULL audit at weave). Validate + atomically redeem via the
+SHIPPED shared/scheduling/tokens.js verify() — do NOT re-implement token validation or touch the jti table.
+The token authenticates ENTRY ONLY: for cancel/reschedule/resume you write the §B10 session binding and
+redirect to chat — you do NOT perform the calendar op (that's WS-D6/WS-D7, in-chat). /attended/* action =
+TODO(E6) stub (keep the security path real). esbuild must BUNDLE @smithy/node-http-handler, not externalize
+it (lambda#202 lesson). Do NOT write the Lambda's Terraform/Function URL/IAM — that's integrator glue;
+deliver code + a deploy note listing env vars + IAM verbs.
+```
+
+### D-3) WS-D6 — reschedule execution module
+```
+You are ONE workstream in a coordinated parallel build — you own a single, disjoint slice.
+Your work-order is scheduling/docs/workstreams/WS-D6-RESCHEDULE.md.
+
+Read, in order: (1) that work-order, (2) the contracts it cites in
+scheduling/docs/FROZEN_CONTRACTS.md — §B9 (your executeReschedule signature) + §B6 are LOCKED,
+code to them, never redefine them, (3) the plan task it cites in
+scheduling/docs/scheduling_implementation_plan.md (§6, D6), (4) CLAUDE.md (schema discipline, verify-before-commit).
+
+Then build it. HARD RULES: create/edit ONLY the files in the work-order's "You OWN" list
+(shared/scheduling/reschedule.js + its test) — nothing else, NEVER a shared doc, and do NOT touch
+shared/scheduling/package.json. Build in the lambda repo on branch feature/scheduling-ws-d6-reschedule,
+base main, in your OWN isolated worktree:
+  git -C Lambdas/lambda worktree add -b feature/scheduling-ws-d6-reschedule /tmp/ws-d6 origin/main
+Run `npm ci` in shared/scheduling/ before tests. Run verify-before-commit before committing. Open a PR per
+the work-order with the report-back doc-snippet in the body. If a frozen contract looks wrong, STOP and flag it.
+
+Note: calendar mutation (FULL audit at weave). Ordering is LOCKED: events.insert(new) FIRST, events.delete(old)
+SECOND; implement all four outcomes (i)-(iv) from the plan D6 row. Everything is via injected deps (no module-level
+clients). Return the updated booking — do NOT persist to DynamoDB yourself and do NOT validate tokens (WS-D4 owns that).
+```
+
+### D-4) WS-D7 — cancel execution module
+```
+You are ONE workstream in a coordinated parallel build — you own a single, disjoint slice.
+Your work-order is scheduling/docs/workstreams/WS-D7-CANCEL.md.
+
+Read, in order: (1) that work-order, (2) the contracts it cites in
+scheduling/docs/FROZEN_CONTRACTS.md — §B9 (your executeCancel signature) is LOCKED, code to it,
+never redefine it, (3) the plan task it cites in scheduling/docs/scheduling_implementation_plan.md (§6, D7),
+(4) CLAUDE.md (schema discipline, verify-before-commit).
+
+Then build it. HARD RULES: create/edit ONLY the files in the work-order's "You OWN" list
+(shared/scheduling/cancel.js + its test) — nothing else, NEVER a shared doc, and do NOT touch
+shared/scheduling/package.json. Build in the lambda repo on branch feature/scheduling-ws-d7-cancel,
+base main, in your OWN isolated worktree:
+  git -C Lambdas/lambda worktree add -b feature/scheduling-ws-d7-cancel /tmp/ws-d7 origin/main
+Run `npm ci` in shared/scheduling/ before tests. Run verify-before-commit before committing. Open a PR per
+the work-order with the report-back doc-snippet in the body. If a frozen contract looks wrong, STOP and flag it.
+
+Note: CRITICAL boundary — your module does Google events.delete + the pending_calendar_sync failure flag ONLY.
+Do NOT flip Booking.status: the already-built cal-lifecycle listener flips status=canceled + sends the notice on
+the calendar_deleted push (one source of truth, no double-write race). Injected deps only; return the updated
+booking; do NOT validate tokens (WS-D4 owns that).
+```
+
+---
+
+## B-minimal — C-chat integration (the recovery loop) prompts
+
+Lights the reschedule/cancel-from-email-link loop. Contracts **§B12–§B15 LOCKED**. **Launch WS-FACADE / WS-BINDING / WS-ZOOM / WS-WIDGET in parallel** (file-disjoint); **WS-CONVO is the keystone — launch ONLY after the first three (FACADE/BINDING/ZOOM) merge.** Same worktree + cleanup hard rules as above. The standard preamble (read the work-order → the §B contracts it cites in `scheduling/docs/FROZEN_CONTRACTS.md` [§ LOCKED] → the plan → `CLAUDE.md`; build ONLY your OWN files; verify-before-commit; PR with the report-back snippet; STOP+flag a wrong contract — don't fork) applies to each.
+
+### BM-1) WS-FACADE — auth-bound calendar facade
+```
+You are ONE workstream in a coordinated parallel build. Work-order:
+scheduling/docs/workstreams/WS-FACADE-calendar-facade.md. Read it + §B13/§B9 in
+scheduling/docs/FROZEN_CONTRACTS.md (LOCKED) + CLAUDE.md. Build in the lambda repo, branch
+feature/scheduling-ws-facade, base main, in your OWN worktree:
+  git -C Lambdas/lambda worktree add -b feature/scheduling-ws-facade /tmp/ws-facade origin/main
+OWN only shared/scheduling/calendarFacade.js + its test; `npm ci` in shared/scheduling/ first.
+verify-before-commit, then PR. The facade shape MUST match §B9 exactly (D6/D7 already inject it).
+Curry per-tenant OAuth (oauth-client.getOAuthClient) into calendar-events; no caller-supplied authClient.
+```
+
+### BM-2) WS-BINDING — session-binding resolution
+```
+You are ONE workstream in a coordinated parallel build. Work-order:
+scheduling/docs/workstreams/WS-BINDING-session-binding.md. Read it + §B12/§B10 (LOCKED) + CLAUDE.md.
+lambda repo, branch feature/scheduling-ws-binding, base main, OWN worktree:
+  git -C Lambdas/lambda worktree add -b feature/scheduling-ws-binding /tmp/ws-binding origin/main
+OWN only shared/scheduling/sessionBinding.js + its test; `npm ci` in shared/scheduling/ first.
+ENFORCE TTL IN CODE (expired → null). Tenant comes from the request context (PK), never untrusted input.
+verify-before-commit, then PR. Do NOT write/mutate bindings (WS-D4 owns the write).
+```
+
+### BM-3) WS-ZOOM — updateMeeting
+```
+You are ONE workstream in a coordinated parallel build. Work-order:
+scheduling/docs/workstreams/WS-ZOOM-update-meeting.md. Read it + §B15 (LOCKED) + CLAUDE.md.
+lambda repo, branch feature/scheduling-ws-zoom, base main, OWN worktree:
+  git -C Lambdas/lambda worktree add -b feature/scheduling-ws-zoom /tmp/ws-zoom origin/main
+OWN only Booking_Commit_Handler/zoom-client.js (ADD updateMeeting + export) + its tests. Mirror the
+existing createMeeting/getMeeting/deleteMeeting style (per-tenant getAccessToken, zoomFetch, eviction).
+verify-before-commit, then PR. Touch NO other C8 file.
+```
+
+### BM-4) WS-WIDGET — forward ?session=
+```
+You are ONE workstream in a coordinated parallel build. Work-order:
+scheduling/docs/workstreams/WS-WIDGET-session-forward.md. Read it + §B12 (LOCKED) + CLAUDE.md.
+picasso repo, branch feature/scheduling-ws-widget, base staging, OWN worktree:
+  git worktree add -b feature/scheduling-ws-widget /tmp/ws-widget origin/staging
+FIRST locate where the widget reads URL params + sends tenant_id to the backend (surface NOT pre-mapped) —
+if it differs materially from the work-order, STOP and flag it. Then forward the opaque ?session= value to
+the backend (tenant stays from config; the widget does NOT read the binding/tenant from the URL). OWN only the
+file(s) you confirm + their test. verify-before-commit, then PR listing the files you owned.
+```
+
+### BM-5) WS-CONVO — reschedule/cancel flow *(keystone — launch AFTER FACADE+BINDING+ZOOM merge)*
+```
+You are ONE workstream in a coordinated parallel build — the KEYSTONE. Work-order:
+scheduling/docs/workstreams/WS-CONVO-scheduling-flow.md. Read it + §B12/B13/B14/B15/B9/B3/B6 (LOCKED) +
+CLAUDE.md. lambda repo, branch feature/scheduling-ws-convo, base main, OWN worktree:
+  git -C Lambdas/lambda worktree add -b feature/scheduling-ws-convo /tmp/ws-convo origin/main
+OWN only Bedrock_Streaming_Handler_Staging/scheduling/schedulingFlow.js + scheduling/bindingContext.js +
+their tests, + MINIMAL surgical wiring in BSH index.js (mirror how injectFormContext is wired at :470/:907 —
+flag the call-sites). THE BOUNDARY (§B14): execute reschedule/cancel ONLY on a focused-post-stream structured
+action (V4.0-Action-Selector-style — BSH has no native tool-use), validated through stateMachine.transition();
+NEVER on free-text. Import the shipped executeReschedule/executeCancel/facade/binding (don't re-implement).
+Defer new-booking entry + C10-C13 (B-remainder). verify-before-commit, then PR. FULL audit at weave.
+```

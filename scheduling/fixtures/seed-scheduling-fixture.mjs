@@ -43,9 +43,10 @@ if (!/fixture/i.test(TENANT)) {
 }
 
 const TABLES = {
-  appointmentType: process.env.APPOINTMENT_TYPE_TABLE || 'picasso-appointment-type-staging',
-  routingPolicy:   process.env.ROUTING_POLICY_TABLE   || 'picasso-routing-policy-staging',
-  booking:         process.env.BOOKING_TABLE          || 'picasso-booking-staging',
+  appointmentType:  process.env.APPOINTMENT_TYPE_TABLE  || 'picasso-appointment-type-staging',
+  routingPolicy:    process.env.ROUTING_POLICY_TABLE    || 'picasso-routing-policy-staging',
+  booking:          process.env.BOOKING_TABLE           || 'picasso-booking-staging',
+  employeeRegistry: process.env.EMPLOYEE_REGISTRY_TABLE || 'picasso-employee-registry-v2-staging',
 };
 
 /** Recursively convert a plain JS value into a DynamoDB AttributeValue. */
@@ -82,9 +83,10 @@ function putItem(table, item) {
 }
 
 const PLAN = [
-  ['appointmentType', TABLES.appointmentType, data.tables.appointmentType],
-  ['routingPolicy',   TABLES.routingPolicy,   data.tables.routingPolicy],
-  ['booking',         TABLES.booking,         data.tables.booking],
+  ['appointmentType',  TABLES.appointmentType,  data.tables.appointmentType],
+  ['routingPolicy',    TABLES.routingPolicy,    data.tables.routingPolicy],
+  ['booking',          TABLES.booking,          data.tables.booking],
+  ['employeeRegistry', TABLES.employeeRegistry, data.tables.employeeRegistry],
 ];
 
 console.log(`Seeding synthetic scheduling fixture`);

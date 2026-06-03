@@ -18,6 +18,16 @@ resource "aws_dynamodb_table" "recent_messages" {
     enabled = true
   }
 
+  # Retention: the writer (Master_Function_Staging/conversation_handler.py) already sets
+  # expires_at = now + 24h on every message row, but with no ttl block that attribute was
+  # inert and rows accumulated unbounded (full message content). Enabling TTL on the
+  # existing attribute purges the 24h buffer as intended; existing rows (expires_at already
+  # in the past) auto-purge on enable. See docs/roadmap/PII-Project/data-retention-strategy.md §5 #1.
+  ttl {
+    attribute_name = "expires_at"
+    enabled        = true
+  }
+
   tags = {
     Name = "staging-recent-messages"
   }
