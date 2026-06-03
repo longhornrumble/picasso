@@ -178,6 +178,24 @@ module "lambda_pii_dsar_staging" {
   ]
 }
 
+# Per-tenant offboarding purge — P1 (Class A surfaces). Routes to
+# data-retention-strategy.md §9 "per-tenant offboarding purge"; design doc
+# docs/roadmap/PII-Project/tenant-offboarding-purge-design.md (picasso#361).
+# Lambda code: lambda#214 (picasso_pii_tenant_purge_staging). Dedicated audit
+# table (clean separation from DSAR per the design) defined ahead of the Lambda
+# so its GSI lands on an empty table (no online backfill).
+module "ddb_pii_tenant_purge_audit_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/ddb-pii-tenant-purge-audit-staging"
+}
+
+module "lambda_pii_tenant_purge_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/lambda-pii-tenant-purge-staging"
+
+  purge_audit_table_arn = module.ddb_pii_tenant_purge_audit_staging[0].table_arn
+}
+
 # send_email — staging test-support deployment (operator-authorized 2026-06-02).
 # Stands up the bare-named `send_email` Lambda so the scheduling consumers'
 # best-effort volunteer-notice dispatch (shared/scheduling/notify ->
