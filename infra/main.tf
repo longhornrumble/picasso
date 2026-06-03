@@ -371,6 +371,14 @@ module "lambda_bedrock_handler_staging" {
   booking_table_arn             = module.ddb_booking_staging[0].table_arn
   booking_table_name            = module.ddb_booking_staging[0].table_name
 
+  # Tier-2 ACTIVATION: grant BSH lambda:InvokeFunction on the Booking_Commit_Handler
+  # executor + set the env var (applied together so the grant and env never diverge), so an
+  # already-§B14-authorized reschedule/cancel is delegated to BCH (which has the Google
+  # OAuth + calendar/zoom modules BSH can't bundle). This is the line that turns the recovery
+  # loop's calendar mutation LIVE.
+  scheduling_executor_function_arn  = module.lambda_booking_commit_staging[0].commit_function_arn
+  scheduling_executor_function_name = module.lambda_booking_commit_staging[0].commit_function_name
+
   # M1.G6 (master plan v0.12 / F-DSAR18 closure). BSH form_handler.js port
   # of pii_subject.js needs the same picasso-pii-subject-index-staging
   # table the Master_Function_Staging Python writer uses; least-priv grant
