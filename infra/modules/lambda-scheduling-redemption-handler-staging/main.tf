@@ -244,13 +244,13 @@ resource "aws_lambda_function" "redemption" {
 
   environment {
     variables = {
-      ENVIRONMENT                          = "staging"
-      BOOKING_TABLE                        = var.booking_table_name
+      ENVIRONMENT                           = "staging"
+      BOOKING_TABLE                         = var.booking_table_name
       CONVERSATION_SCHEDULING_SESSION_TABLE = var.conversation_scheduling_session_table_name
-      JTI_BLACKLIST_TABLE                  = var.jti_blacklist_table_name
-      CHAT_REDIRECT_BASE_URL               = "https://staging.chat.myrecruiter.ai"
-      SESSION_BINDING_TTL_SECONDS          = "1800"
-      JWT_SECRET_KEY_NAME                  = "picasso/staging/jwt/signing-key"
+      JTI_BLACKLIST_TABLE                   = var.jti_blacklist_table_name
+      CHAT_REDIRECT_BASE_URL                = "https://staging.chat.myrecruiter.ai"
+      SESSION_BINDING_TTL_SECONDS           = "1800"
+      JWT_SECRET_KEY_NAME                   = "picasso/staging/jwt/signing-key"
     }
   }
 
