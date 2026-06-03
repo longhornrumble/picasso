@@ -166,24 +166,20 @@ const TOKEN_PURPOSES = [
 //   NOT flip status itself (no double-write race). API-unreachable → pending_calendar_sync=true (E9 reconciler retries).
 //   deps = { calendar, ddb, logger } — INJECTED.
 //
-// CALENDAR FACADE method shape (AMENDED 2026-06-02 — resolves the WS-D7 #203 §C escalation; integrator-set, NOT a fork):
-//   §B9 froze `deps.calendar` but not its method shape. The integrator wires ONE calendar facade injected into BOTH
-//   cancel.js + reschedule.js + the in-chat caller (mirrors the B11 Stranded_Booking_Remediator/calendar-ops.js pattern).
-//   The facade resolves auth + which-calendar + the event id INTERNALLY (from the booking) — these are NOT frozen deps:
-//     • deleteEvent(booking) → Promise<void>   [WS-D7]  IDEMPOTENT: already-deleted / 404 / 410 RESOLVES (no throw);
-//         throws ONLY on unreachable/transient → that throw is the cancel.js pending_calendar_sync path.
-//     • insertEvent(booking, newSlot) → Promise<{ external_event_id }>   [WS-D6]  the new event for a reschedule move.
-//   Zoom join-URL preservation is via deps.conference (§B6 ConferenceProvider), NOT the calendar facade.
-//   FACADE WIRING REQUIREMENTS (integrator-owned; per the WS-D7 #203 Security pass 2026-06-02):
-//     (a) PER-TENANT isolation [C-3]: the facade MUST derive the OAuth client + calendar id from `booking.tenantId`
-//         (mirroring availability.js's per-tenant OAuth) — NOT a process-level client or fixed calendarId. The modules
-//         pass only `booking`, so a mis-wired facade is the ONLY path to a wrong-tenant calendar delete. Covered by the
-//         integrator weave + the in-chat wiring review.
-//     (b) DUAL-CASING event-id resolution [SR-2]: the facade MUST read the event id honoring BOTH `externalEventId` and
-//         `external_event_id`, matching the modules' `pick()` semantics — else a camelCase-only booking passes the
-//         module's presence guard but fails inside the facade.
-//     (c) PII-FREE error messages [C-1]: the modules log `err.message` on the unreachable path; the facade MUST NOT embed
-//         attendee PII (email/phone/name) in thrown error messages (Google's own 404/410/503 messages are PII-free).
+// CALENDAR FACADE method shape — RECONCILED to the §B13 TWO-ARG shape 2026-06-03 (the 2026-06-02 `deleteEvent(booking)`
+//   single-arg wording was superseded — reschedule.js #204 + §B13 already used two-arg; cancel.js was re-synced #212):
+//   The §B13 facade `buildCalendarFacade({tenantId, coordinatorId, deps})` (WS-FACADE #209) is a THIN auth-currying wrapper
+//   over C8 calendar-events.js, returning:
+//     • buildEventBody(params) → requestBody                 // pass-through, no auth
+//     • insertEvent(calendarId, requestBody) → event         // authClient curried FIRST
+//     • deleteEvent(calendarId, eventId) → void              // authClient curried FIRST; idempotent (404/410 resolves)
+//     • extractMeetJoinUrl(event) → string | null            // pass-through, no auth
+//   CALLERS (reschedule.js, cancel.js, WS-CONVO) resolve calendarId (coordinator_email) + eventId (external_event_id)
+//   from the booking and pass them — they do NOT pass the whole booking. Zoom join-URL preservation via deps.conference
+//   (§B6); Zoom start-time PATCH via zoom-client.updateMeeting (§B15, #210).
+//   SECURITY (WS-FACADE #209): auth is bound to (tenantId, coordinatorId) at build time — NEVER caller-supplied. A facade
+//   built for tenant A cannot produce tenant-B auth; a mis-passed calendarId only reaches calendars that coordinator's
+//   grant already permits (Google rejects the rest). Errors surface Google's PII-free messages (no attendee PII embedded).
 ```
 
 ### B10 — session-context binding row (produced by WS-D4 at redemption, consumed by the in-chat reschedule/cancel/recovery flow) — canonical §9.4/§13.4 — **LOCKED 2026-06-02**
@@ -194,7 +190,7 @@ const TOKEN_PURPOSES = [
 // token (§13.4: "without this binding the live session has only tenant-level auth, no booking-owner enforcement").
 //   Item = {
 //     tenantId,                                 // PK
-//     session_binding_id,                       // SK — `binding#<session_id>`
+//     session_id,                               // SK — the table's REAL range_key (NOT `session_binding_id`); VALUE = `binding#<sessionId>` (corrected 2026-06-03, WS-BINDING #211)
 //     intent: 'rescheduling_intent' | 'cancellation_intent' | 'recovery_intent',
 //     booking_id,                               // the single booking this binding authorizes (cross-booking action → reject)
 //     form_submission_id?,                      // recovery_intent only (§13.3)
@@ -202,6 +198,11 @@ const TOKEN_PURPOSES = [
 //     created_at, ttl,                          // ttl = expires_at (table self-cleans)
 //   }
 // Bearer-token semantics (§13.5): the binding authorizes ONE action against ONE booking; not replayable across bookings.
+// SESSION-ID THREADING (locked 2026-06-03, WS-BINDING #211 flag): ONE opaque value threads end-to-end unchanged —
+//   WS-D4 mints sessionId (uuid) + writes SK `session_id = binding#<sessionId>` + redirects `?session=<sessionId>`;
+//   WS-WIDGET forwards the raw `?session=` value (no parse); WS-CONVO passes it to resolveBinding({ sessionId }) which
+//   reads SK `binding#<sessionId>`. A mismatch → resolveBinding returns null (FAIL-CLOSED, no auth-bypass) but the flow
+//   silently breaks — every hop MUST keep the value byte-identical.
 ```
 
 ### B11 — dual-key validator env/secret contract (WS-D2 + WS-D4 JS wrapper) — **DEFERRED to Wave D-2 (not locked)**
@@ -288,3 +289,4 @@ The seams between the 5 B-minimal workstreams. Same convention as §B (Node 20, 
 | 2026-06-02 | **§B9 calendar-facade method shape AMENDED** (resolves WS-D7 [lambda#203](https://github.com/longhornrumble/lambda/pull/203) §C escalation — the worker flagged that §B9 froze `deps.calendar` but not its method shape, and coded a thin `deps.calendar.deleteEvent(booking)`; integrator-set, NOT a fork). Pinned the facade: `deleteEvent(booking)` (idempotent — 404/410 resolves, throws only on unreachable) [matches #203, no rework] + `insertEvent(booking, newSlot) → {external_event_id}` [WS-D6 builds to this]; auth/calendarId resolved INSIDE the integrator-wired facade (mirrors B11 calendar-ops), Zoom join-URL via `deps.conference` (§B6). Security note added: the facade wiring must be tenant/coordinator-scoped (modules pass only `booking`). No consumer re-sync needed — #203 already matches; WS-D6 not yet built. |
 | 2026-06-01 | **§A non-key Booking attributes — WS-CAL-LIFECYCLE (lambda#196) additions:** `cancel_reason` value set extended (`coordinator_deleted`, `coordinator_moved` join the existing B10 values), `reassigned_at` (on `calendar_reassigned`). The `calendar-watch-channels` row's `status` gains `event_body_private` (on `event_made_private`). **F2:** the `rescheduleOfBookingId` self-anchor was **dropped** (would have inverted the canonical NEW→original meaning); moved-not-rebooked rows are marked by `cancel_reason='coordinator_moved'`. All additive; readers tolerate absence. |
 | 2026-06-02 | **§B12–§B15 LOCKED (B-minimal / C-chat integration; architect + tech-lead advised, PR #353).** §B12 `resolveBinding` (WS-BINDING; TTL-in-code, tenant-from-context). §B13 `buildCalendarFacade` (WS-FACADE; curries per-tenant OAuth into calendar-events; = the §B9 `deps.calendar`). §B14 the action-BOUNDARY (state-machine authoritative / LLM advisory; execute only on a focused-post-stream structured action à la V4.0 Action Selector — BSH has no native tool-use). §B15 Zoom `updateMeeting` (WS-ZOOM; start-time PATCH). Decomposition: WS-FACADE/WS-BINDING/WS-WIDGET/WS-ZOOM parallel + WS-CONVO keystone (after the 4). |
+| 2026-06-03 | **B-minimal weave reconciliation (FACADE/ZOOM/BINDING merged #209/#210/#211).** §B9 CALENDAR-FACADE shape **corrected to the §B13 TWO-arg** `deleteEvent(calendarId, eventId)` / `insertEvent(calendarId, requestBody)` — the 2026-06-02 `deleteEvent(booking)` single-arg wording was a thin-vs-fat error (reschedule.js + §B13 already used two-arg); **cancel.js re-synced** (lambda#212), the lone outlier. §B10 SK label **corrected `session_binding_id` → `session_id`** (the table's real range_key; value `binding#<sessionId>`) + **session-id threading invariant locked** (D4 mint → widget forward → resolveBinding, byte-identical, fail-closed on mismatch) — both per WS-BINDING #211. No consumer breakage (cancel.js unconsumed until WS-CONVO). |
