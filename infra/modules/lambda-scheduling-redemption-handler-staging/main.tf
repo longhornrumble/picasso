@@ -70,6 +70,16 @@ variable "log_retention_days" {
   default     = 90
 }
 
+variable "tenant_config_bucket_arn" {
+  description = "ARN of the staging tenant config S3 bucket. The scheduling feature gate reads tenants/{id}/config.json to check feature_flags.scheduling_enabled (fail-closed when unreadable)."
+  type        = string
+}
+
+variable "config_bucket_name" {
+  description = "Name of the staging tenant config S3 bucket (CONFIG_BUCKET env for the feature gate)."
+  type        = string
+}
+
 # ------------------------------------------------------------------
 # Data sources
 # ------------------------------------------------------------------
@@ -202,6 +212,14 @@ data "aws_iam_policy_document" "redemption_exec" {
       "arn:${data.aws_partition.current.partition}:secretsmanager:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:secret:picasso/staging/jwt/signing-key-*"
     ]
   }
+
+  # Scheduling feature gate: read the tenant config to check feature_flags.scheduling_enabled.
+  # Scoped to tenants/*/config.json (NOT the whole bucket) - the gate reads nothing else.
+  statement {
+    sid       = "ConfigBucketReadSchedulingGate"
+    actions   = ["s3:GetObject"]
+    resources = ["${var.tenant_config_bucket_arn}/tenants/*/config.json"]
+  }
 }
 
 resource "aws_iam_role_policy" "redemption_exec" {
@@ -251,6 +269,8 @@ resource "aws_lambda_function" "redemption" {
       CHAT_REDIRECT_BASE_URL                = "https://staging.chat.myrecruiter.ai"
       SESSION_BINDING_TTL_SECONDS           = "1800"
       JWT_SECRET_KEY_NAME                   = "picasso/staging/jwt/signing-key"
+      CONFIG_BUCKET                         = var.config_bucket_name
+      S3_CONFIG_BUCKET                      = var.config_bucket_name
     }
   }
 

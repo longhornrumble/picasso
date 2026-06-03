@@ -840,6 +840,10 @@ module "lambda_calendar_watch_onboarder_staging" {
 
   # Ops alerts SNS topic (shared with MFS + Meta — created by ops_alarms_master_function_staging)
   ops_alerts_topic_arn = module.ops_alarms_master_function_staging[0].topic_arn
+
+  # Tenant config bucket — the scheduling feature gate reads tenants/{id}/config.json.
+  tenant_config_bucket_arn = module.tenant_config_staging[0].bucket_arn
+  config_bucket_name       = module.tenant_config_staging[0].bucket_name
 }
 
 # Scheduling sub-phase B Task B3 (+ B4 schedule, B7 alarms) — Calendar_Watch_Renewer.
@@ -915,6 +919,10 @@ module "lambda_booking_commit_staging" {
 
   # Ops alerts SNS topic (shared with MFS + Meta — created by ops_alarms_master_function_staging)
   ops_alerts_topic_arn = module.ops_alarms_master_function_staging[0].topic_arn
+
+  # Tenant config bucket — the scheduling feature gate reads tenants/{id}/config.json.
+  tenant_config_bucket_arn = module.tenant_config_staging[0].bucket_arn
+  config_bucket_name       = module.tenant_config_staging[0].bucket_name
 }
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -1031,6 +1039,10 @@ module "lambda_scheduling_redemption_handler_staging" {
 
   # Ops alerts SNS topic (Errors alarm target only — the handler does not publish).
   ops_alerts_topic_arn = module.ops_alarms_master_function_staging[0].topic_arn
+
+  # Tenant config bucket — the scheduling feature gate reads tenants/{id}/config.json.
+  tenant_config_bucket_arn = module.tenant_config_staging[0].bucket_arn
+  config_bucket_name       = module.tenant_config_staging[0].bucket_name
 }
 
 # Scheduling redemption edge — staging.schedule.myrecruiter.ai (WS-D3 #347, sub-phase D §13.8).
