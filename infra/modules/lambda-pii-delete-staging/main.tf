@@ -26,6 +26,40 @@ variable "pii_cmk_key_arn" {
   type        = string
 }
 
+# Grant-ARN table names — single-sourced from the sibling ddb_* modules so a
+# table rename cascades to these delete-pipeline IAM grants automatically
+# (closes the hardcoded-ARN seam; see locals block). Wired in root main.tf from
+# `module.ddb_<table>_staging[0].table_name`. Required (no default) so a dropped
+# wire fails the plan loudly. IAM grants only — no Lambda env block (this module
+# creates IAM roles, not a function).
+variable "form_submissions_table_name" {
+  type = string
+}
+
+variable "notification_sends_table_name" {
+  type = string
+}
+
+variable "notification_events_table_name" {
+  type = string
+}
+
+variable "recent_messages_table_name" {
+  type = string
+}
+
+variable "conversation_summaries_table_name" {
+  type = string
+}
+
+variable "session_events_table_name" {
+  type = string
+}
+
+variable "subject_index_table_name" {
+  type = string
+}
+
 data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 
@@ -34,16 +68,18 @@ locals {
   region = data.aws_region.current.name
   ddb    = "arn:aws:dynamodb:${local.region}:${local.acct}:table"
 
-  # Live-verified table names (aws dynamodb list-tables + each ddb-*-staging
-  # module `name =`, 2026-05-19). recent-messages / conversation-summaries
-  # use the `staging-*` convention, NOT `picasso-*-staging` (design §0 / B6).
-  t_form_submissions   = "${local.ddb}/picasso-form-submissions-staging"
-  t_notification_sends = "${local.ddb}/picasso-notification-sends-staging"
-  t_notification_evts  = "${local.ddb}/picasso-notification-events-staging"
-  t_recent_messages    = "${local.ddb}/recent-messages"
-  t_conv_summaries     = "${local.ddb}/staging-conversation-summaries"
-  t_session_events     = "${local.ddb}/picasso-session-events-staging"
-  t_subject_index      = "${local.ddb}/picasso-pii-subject-index-staging"
+  # Grant-ARN table names are single-sourced from the sibling ddb_* modules
+  # (root main.tf wires `<table>_table_name = module.ddb_<table>_staging[0].table_name`).
+  # A table rename cascades to these IAM grants automatically — closing the
+  # hardcoded-ARN seam that silently broke recent-messages (picasso#377). Var
+  # values are the live names, so the rendered ARNs are byte-identical.
+  t_form_submissions   = "${local.ddb}/${var.form_submissions_table_name}"
+  t_notification_sends = "${local.ddb}/${var.notification_sends_table_name}"
+  t_notification_evts  = "${local.ddb}/${var.notification_events_table_name}"
+  t_recent_messages    = "${local.ddb}/${var.recent_messages_table_name}"
+  t_conv_summaries     = "${local.ddb}/${var.conversation_summaries_table_name}"
+  t_session_events     = "${local.ddb}/${var.session_events_table_name}"
+  t_subject_index      = "${local.ddb}/${var.subject_index_table_name}"
 
   # Forward references — these resources do not exist at Apply 1; an IAM
   # policy naming a not-yet-created ARN is valid (the grant is simply inert
