@@ -1032,6 +1032,14 @@ module "lambda_scheduling_redemption_handler_staging" {
 module "scheduling_redemption_domain_staging" {
   count  = var.env == "staging" ? 1 : 0
   source = "./modules/scheduling-redemption-domain-staging"
+
+  # A2: wire the live WS-D4 Function URL host as the CloudFront custom origin,
+  # and flip enable_custom_domain → true (Apply-2: attaches the
+  # staging.schedule.myrecruiter.ai alias + the ISSUED ACM cert). The cert is
+  # already ISSUED; after this applies the operator adds the GoDaddy CNAME #2
+  # (dns_alias_record output) to make the host resolve.
+  redemption_function_url_domain = module.lambda_scheduling_redemption_handler_staging[0].function_url_domain
+  enable_custom_domain           = true
 }
 
 # Stranded_Booking_Remediator (lambda#194, MERGED) — B11 coordinator-offboarding

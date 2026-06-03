@@ -291,14 +291,9 @@ resource "aws_lambda_function_url" "redemption" {
   authorization_type = "NONE"
 }
 
-# Resource-based permission that AUTHORIZES the public Function URL. Without this
-# statement an AuthType=NONE Function URL returns HTTP 403 to every caller
-# (CloudFront included). The supported Terraform mechanism is an
-# aws_lambda_permission with action = lambda:InvokeFunctionUrl +
-# function_url_auth_type = "NONE" + principal = "*" — this creates the single
-# `FunctionURLAllowPublicAccess` statement. (A1 audit B-2. NB: this is managed in
-# IaC here on purpose, avoiding the manual-Console-step debt the sibling
-# lambda-bedrock-handler-staging module carries.)
+# Resource-based permission #1 of 2 for the public Function URL. This creates
+# the `FunctionURLAllowPublicAccess` statement (action lambda:InvokeFunctionUrl,
+# condition lambda:FunctionUrlAuthType=NONE). (A1 audit B-2.)
 resource "aws_lambda_permission" "redemption_url" {
   statement_id           = "FunctionURLAllowPublicAccess"
   action                 = "lambda:InvokeFunctionUrl"
@@ -306,6 +301,36 @@ resource "aws_lambda_permission" "redemption_url" {
   principal              = "*"
   function_url_auth_type = "NONE"
 }
+
+# ──────────────────────────────────────────────────────────────────────
+# # MANUAL STEP REQUIRED — Function URL 2nd resource-policy statement
+# ──────────────────────────────────────────────────────────────────────
+# EMPIRICAL (2026-06-03, A1 live-verify): in THIS account, statement #1 above
+# is NECESSARY BUT NOT SUFFICIENT — the Function URL returns HTTP 403 until a
+# SECOND statement exists that the Terraform provider CANNOT express:
+#
+#   Sid:       FunctionURLAllowInvokeAction
+#   Action:    lambda:InvokeFunction              (NOT InvokeFunctionUrl)
+#   Principal: *
+#   Condition: Bool { lambda:InvokedViaFunctionUrl = "true" }
+#
+# (Same shape the working Bedrock_Streaming_Handler_Staging carries; likely an
+# Org SCP/RCP requires it.) aws_lambda_permission has no parameter for the
+# `lambda:InvokedViaFunctionUrl` condition, and `aws lambda add-permission`
+# cannot set it either without producing an UNCONDITIONED public-invoke (a
+# security hole). Only the AWS Console adds the correctly-conditioned statement.
+#
+# After Terraform first creates this Lambda + Function URL, add it ONCE:
+#   AWS Console → Lambda → Scheduling_Redemption_Handler → Configuration tab
+#     → Function URL → Edit → (no changes) → Save
+#   Verify: aws lambda get-policy --function-name Scheduling_Redemption_Handler
+#     | jq '.Statement[].Sid'  → TWO sids, incl. FunctionURLAllowInvokeAction
+#   Smoke:  curl <function-url>  → NOT 403 (placeholder 503 until A3 deploys code)
+#
+# DONE for staging 2026-06-03 (operator). The statement persists across future
+# `terraform apply` runs (aws_lambda_function_url does not manage individual
+# policy statements). It MUST be re-added if the Lambda is destroyed/recreated.
+# ──────────────────────────────────────────────────────────────────────
 
 # ==============================================================================
 # CloudWatch alarms
