@@ -151,6 +151,15 @@ module "lambda_pii_delete_staging" {
   source = "./modules/lambda-pii-delete-staging"
 
   pii_cmk_key_arn = module.kms_pii_staging[0].key_arn
+
+  # Single-source table names for the delete-pipeline IAM grants (renames cascade).
+  form_submissions_table_name       = module.ddb_form_submissions_staging[0].table_name
+  notification_sends_table_name     = module.ddb_notification_sends_staging[0].table_name
+  notification_events_table_name    = module.ddb_notification_events_staging[0].table_name
+  recent_messages_table_name        = module.ddb_recent_messages_staging[0].table_name
+  conversation_summaries_table_name = module.ddb_conversation_summaries_staging[0].table_name
+  session_events_table_name         = module.ddb_session_events_staging[0].table_name
+  subject_index_table_name          = module.ddb_pii_subject_index_staging[0].table_name
 }
 
 # Consumer PII Remediation Path A — capability-bundle item 1a (IAM half).
@@ -162,6 +171,17 @@ module "lambda_pii_dsar_staging" {
 
   pii_cmk_key_arn      = module.kms_pii_staging[0].key_arn
   dsar_audit_table_arn = module.ddb_pii_dsar_audit_staging[0].table_arn
+
+  # Single-source table names for the DSAR walker IAM grants (renames cascade).
+  form_submissions_table_name       = module.ddb_form_submissions_staging[0].table_name
+  notification_sends_table_name     = module.ddb_notification_sends_staging[0].table_name
+  notification_events_table_name    = module.ddb_notification_events_staging[0].table_name
+  recent_messages_table_name        = module.ddb_recent_messages_staging[0].table_name
+  conversation_summaries_table_name = module.ddb_conversation_summaries_staging[0].table_name
+  audit_table_name                  = module.ddb_audit_staging[0].table_name
+  subject_index_table_name          = module.ddb_pii_subject_index_staging[0].table_name
+  channel_mappings_table_name       = module.ddb_channel_mappings_staging[0].table_name
+  session_events_table_name         = module.ddb_session_events_staging[0].table_name
 
   # M2 Sprint D Q3(c) — integration test synthetic-tenant fixture grant.
   # Bucket `picasso-pii-dsar-int-staging` exists in staging acct 525 (created
