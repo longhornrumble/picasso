@@ -77,6 +77,15 @@ resource "aws_dynamodb_table" "sms_usage" {
     enabled = true
   }
 
+  # 30-day retention on the rate-limit counter (data-retention-strategy.md §2/§5 #4).
+  # The writer (BSH form_handler.js incrementSMSUsage) sets `ttl = now + 30d` on each
+  # increment; rows without the attribute are untouched (the enable is inert until the
+  # writer ships, so the two changes are order-independent).
+  ttl {
+    attribute_name = "ttl"
+    enabled        = true
+  }
+
   tags = {
     Name = "picasso-sms-usage-${var.env}"
   }
