@@ -40,7 +40,7 @@ locals {
   t_form_submissions   = "${local.ddb}/picasso-form-submissions-staging"
   t_notification_sends = "${local.ddb}/picasso-notification-sends-staging"
   t_notification_evts  = "${local.ddb}/picasso-notification-events-staging"
-  t_recent_messages    = "${local.ddb}/staging-recent-messages"
+  t_recent_messages    = "${local.ddb}/recent-messages"
   t_conv_summaries     = "${local.ddb}/staging-conversation-summaries"
   t_session_events     = "${local.ddb}/picasso-session-events-staging"
   t_subject_index      = "${local.ddb}/picasso-pii-subject-index-staging"
