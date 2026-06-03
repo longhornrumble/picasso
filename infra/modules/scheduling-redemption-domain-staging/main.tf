@@ -71,8 +71,11 @@ locals {
   # *.lambda-url host) — so the origin-request policy MUST be
   # AllViewerExceptHostHeader, never AllViewer. Redemption is fully dynamic
   # (one-time token reads/writes) → CachingDisabled.
-  all_methods  = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
-  read_methods = ["GET", "HEAD"]
+  # The redemption handler serves GET one-tap links only (+ OPTIONS preflight).
+  # Do NOT forward PUT/POST/PATCH/DELETE to the Lambda origin — unnecessary
+  # attack surface on a public endpoint (A2 audit S-3).
+  viewer_methods = ["GET", "HEAD", "OPTIONS"]
+  read_methods   = ["GET", "HEAD"]
 }
 
 resource "aws_cloudfront_distribution" "redemption" {
@@ -105,7 +108,7 @@ resource "aws_cloudfront_distribution" "redemption" {
   default_cache_behavior {
     target_origin_id         = local.origin_id
     viewer_protocol_policy   = "redirect-to-https"
-    allowed_methods          = local.all_methods
+    allowed_methods          = local.viewer_methods
     cached_methods           = local.read_methods
     cache_policy_id          = local.cache_disabled_id
     origin_request_policy_id = local.orp_all_viewer_xh_id
