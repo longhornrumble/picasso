@@ -363,6 +363,14 @@ module "lambda_bedrock_handler_staging" {
   sms_usage_table_arn           = module.picasso_form_tables.sms_usage_table_arn
   sms_usage_table_name          = module.picasso_form_tables.sms_usage_table_name
 
+  # Scheduling recovery loop (B-minimal deps-wiring). BSH resolves the §B10 binding
+  # + reads/writes the C9 state row (conversation-scheduling-session table) and
+  # loads the governed Booking. GetItem+PutItem on the session table, GetItem on Booking.
+  scheduling_session_table_arn  = module.ddb_conversation_scheduling_session_staging[0].table_arn
+  scheduling_session_table_name = module.ddb_conversation_scheduling_session_staging[0].table_name
+  booking_table_arn             = module.ddb_booking_staging[0].table_arn
+  booking_table_name            = module.ddb_booking_staging[0].table_name
+
   # M1.G6 (master plan v0.12 / F-DSAR18 closure). BSH form_handler.js port
   # of pii_subject.js needs the same picasso-pii-subject-index-staging
   # table the Master_Function_Staging Python writer uses; least-priv grant
