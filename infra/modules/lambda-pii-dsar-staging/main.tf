@@ -215,6 +215,10 @@ locals {
   # — surfaced + closed under Sprint C per the M2 Sprint A gap-routing rule.
   t_channel_mappings = "${local.ddb}/picasso-channel-mappings-staging"
   t_session_events   = "${local.ddb}/picasso-session-events-staging"
+  # F-DSAR31 (closed 2026-06-03): pseudonymized session-summaries surface,
+  # pk=TENANT#{tenant_hash}, filtered by pii_subject_id. NOT the operational
+  # `staging-conversation-summaries` (t_conv_summaries) — a distinct table.
+  t_session_summaries = "${local.ddb}/picasso-session-summaries-staging"
 
   # Forward references to GSIs (already exist in their respective ddb modules).
   gsi_form_subjectid    = "${local.t_form_submissions}/index/PiiSubjectIdIndex"
@@ -326,6 +330,16 @@ data "aws_iam_policy_document" "dsar" {
     sid       = "SessionEventsReadDelete"
     actions   = ["dynamodb:Query", "dynamodb:GetItem", "dynamodb:DeleteItem"]
     resources = [local.t_session_events]
+  }
+
+  # F-DSAR31 (closed): session-summaries walker. Query pk=TENANT#{tenant_hash}
+  # + FilterExpression on pii_subject_id; DeleteItem per (pk, sk) on delete.
+  # tenant_hash is operator-passed on the DSAR event; tenant isolation is by
+  # the tenant_hash-keyed partition (see F-DSAR2 — code-only isolation).
+  statement {
+    sid       = "SessionSummariesReadDelete"
+    actions   = ["dynamodb:Query", "dynamodb:GetItem", "dynamodb:DeleteItem"]
+    resources = [local.t_session_summaries]
   }
 
   # M2 Sprint C — ARCHIVE_BUCKET (picasso-archive-staging). Version-aware

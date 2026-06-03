@@ -71,6 +71,9 @@ locals {
   t_notification_evts  = "${local.ddb}/picasso-notification-events-staging"
   t_subject_index      = "${local.ddb}/picasso-pii-subject-index-staging"
   t_sms_usage          = "${local.ddb}/picasso-sms-usage-staging"
+  # Class C (F-DSAR31): session-summaries, pk=TENANT#{tenant_hash}. Purged as a
+  # whole-partition delete when the caller supplies tenant_hash.
+  t_session_summaries = "${local.ddb}/picasso-session-summaries-staging"
 
   # notification-events is queried via the ByMessageId GSI (chained from the
   # notification-sends message_ids). Query needs the GSI ARN; DeleteItem needs
@@ -139,6 +142,15 @@ data "aws_iam_policy_document" "purge" {
     sid       = "SmsUsageQueryDelete"
     actions   = ["dynamodb:Query", "dynamodb:DeleteItem"]
     resources = [local.t_sms_usage]
+  }
+
+  # Class C surface: session-summaries. Query pk=TENANT#{tenant_hash} (supplied
+  # by the caller/dashboard), whole-partition DeleteItem. Reaches the
+  # pseudonymized summary surface the Class-A grants don't cover (F-DSAR31).
+  statement {
+    sid       = "SessionSummariesQueryDelete"
+    actions   = ["dynamodb:Query", "dynamodb:DeleteItem"]
+    resources = [local.t_session_summaries]
   }
 
   # Purge audit table — PutItem ONLY. Append-only event log; the purge role
