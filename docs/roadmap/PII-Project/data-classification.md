@@ -89,7 +89,7 @@ Every D2 row + every D3-surfaced new node has a row below.
 | `staging-conversation-summaries` | **3** | AI-inferred summaries about subjects → Tier 3 explicit example (rule 3). |
 | `picasso-channel-mappings-staging` | **4** | Encrypted Meta page tokens (integration tokens) → Tier 4 inherited per rule 4; row body is Tier 2 (PSID + last_message_at). |
 | `picasso-webhook-dedup-staging` | **1** | Transient pseudonymous Meta `mid` only. Short-TTL dedup ledger. |
-| `picasso-session-events-staging` | **2** floor, **3** when sensitive-topic labels present | Tier 2 by analytics event payload baseline; **Tier 3 by rule 3a** when any row carries a sensitive-topic label (housing, crisis, health, immigration, legal, family, foster, abuse). Spot-audit (D2 Finding 3) determines presence, not tier. |
+| `picasso-session-events-staging` | **3** (rule 3a FIRED 2026-06-02) | Reclassified Tier 3 by the M9 done-bar #1 spot-audit (2026-06-02). Production `MESSAGE_SENT` events carry `content_preview = userInput.substring(0,500)` — up to 500 chars of raw, unredacted user message text — written verbatim (no allowlist in `Analytics_Event_Processor.enrich_event`) joined to `session_id`; CTA/chip/link labels can also name sensitive program areas. Already in the DSAR delete walk (`_walk_session_events`, M2 Sprint B). Staging suppresses `MESSAGE_SENT` (`if (!__IS_STAGING__)`), using the redacted server-side writer → session-summaries. |
 | `picasso-session-summaries-staging` | **3** | AI-inferred summaries → Tier 3 (rule 3). Only PII-adjacent table with DDB streams. |
 | `picasso-audit-staging` | **2** | Tier 2 operator audit events keyed by `tenant_hash`. Retain for audit integrity. |
 | `picasso-booking-staging` | **3** floor (when populated) — heterogeneous | Counseling / case-management / crisis-intake bookings = strongest Tier 3 (vulnerable population + crisis + free-text). Volunteer-orientation / event-RSVP bookings = closer to Tier 2 absent free-text. **D4 records Tier 3 floor; D5 / Step 10 must capture booking-type heterogeneity when first writer lands and the discriminator is known.** Living-inventory PR rule fires at that point. |
@@ -105,7 +105,7 @@ Every D2 row + every D3-surfaced new node has a row below.
 | Bucket / prefix | Tier | One-line justification |
 |---|---|---|
 | `s3://{tenant bucket}/submissions/.../{submission_id}.json` (conditional fulfillment) | **3** | Raw form responses incl. free-text → Tier 3 by rule 2. **Donor-class submissions additionally Tier 3 by rule 8 confidentiality** (distinct mitigation framing). Per-tenant bucket; posture opaque (D2 Finding 8). |
-| `s3://picasso-analytics-events-staging` | **2** | Tier 2 event batches; dedicated CMK. Reclassify to 3 if Finding 3 spot-audit confirms sensitive attrs in payloads. |
+| `s3://picasso-analytics-events-staging` | **3** (rule 3a FIRED 2026-06-02) | Reclassified Tier 3 by the M9 done-bar #1 spot-audit (2026-06-02): the same verbatim `event_payload` (incl. `content_preview` raw user text) lands here as NDJSON (`Analytics_Event_Processor.write_events_to_s3`) joined to `session_id`. Real bucket is **`picasso-analytics-staging`** (live `Analytics_Event_Processor.ANALYTICS_BUCKET` env 2026-06-02 — NOT `picasso-analytics-events-staging`, which is the SQS queue name; this row's heading is the foundation-doc name and is mislabeled); dedicated CMK; **30-day lifecycle `expire-raw-events-30d` on prefix `analytics/` (verified live)** → raw analytics PII self-expires ≤30d. ⚠ **NOT in the DSAR delete walk** (the DSAR Lambda has zero analytics-bucket references) → deferred-with-named-trigger walker scope-add routed to **M1**, deferral justified by the 30-day bounded retention (see master plan M9 done-bar #1 + D5 G-K). |
 | `s3://picasso-widget-staging` (+ prod) | **0** | Public static JS bundles. |
 | `s3://myrecruiter-picasso-staging` (+ prod, anonymously readable) | **2** | Tenant configs may contain Tier 2 operator emails + recipient lists. Tier 4 if any config historically embedded integration tokens — version-spot-audit row in D5. NOT-CONSUMER scope flag is independent of tier. |
 | Bedrock KB datasource bucket (per-tenant) | **1** floor, **3** for nonprofits with named-individual content patterns | Curated nonprofit content is Tier 1 by default; tenant misconfiguration (scrape including PII) or named-individual content patterns (volunteer rosters, donor lists, donor testimonials, beneficiary stories) push to Tier 3 floor. **D5 carries a per-tenant KB-hygiene row; tenant-onboarding gate (Step 10) is the per-tenant enumeration point — not D4.** Living-inventory PR rule fires on ingest changes. |
@@ -181,15 +181,15 @@ The strategy doc's Tier 3 controls are *"avoid collection where possible; redact
 
 | Surface | Tier | Strategy-doc control violated | Current state |
 |---|---|---|---|
-| `picasso-form-submissions-staging` | 3 | "shorter retention" | No `ttl` written; data effectively permanent (D2 Finding 1 + Step 5 verification). |
-| `staging-recent-messages` | 3 | "shorter retention" | Writer attempts `expires_at`; table has no `ttl{}` block (D3 closure + D2 Finding 1 inverse). |
+| `picasso-form-submissions-staging` | 3 | "shorter retention" | ~~No `ttl` written; data effectively permanent~~ **RESOLVED — verified 2026-06-02 (M9 done-bar #5 TTL audit):** table now has `ttl{attribute_name="ttl", enabled=true}` ([`ddb-form-submissions-staging/main.tf:102`]) AND both writers set it (MFS `form_handler.py:670` + BSH `form_handler.js:602`, 365-day; some sub-rows 90-day). Gap closed by M4/F-DSAR19+23. (Live `describe-time-to-live` CONFIRMED 2026-06-02: ENABLED on `ttl`.) |
+| `staging-recent-messages` | 3 | "shorter retention" | **CONFIRMED GAP — verified 2026-06-02 (M9 done-bar #5 TTL audit):** writer sets `expires_at` ([`conversation_handler.py:769`]) but the table has **no `ttl{}` block** ([`ddb-recent-messages-staging/main.tf`] has only PITR) → rows never expire. Remediation (add `ttl{attribute_name="expires_at"}` to the IaC module; writer already populates it) is **deferred-with-named-trigger → routed to M4** (Path-B writer/infra). Named owner: **Chris**. Trigger: next M4 IaC pass / first recent-messages retention complaint / 2026-08-22 quarterly review. |
 | `staging-conversation-summaries` | 3 | "shorter retention" + PITR adjacency | `expires_at` writer-set; PITR adds a 35-day recovery window (D2 Finding 10). |
 | `/aws/lambda/{MFS, BSH, Meta_*}` | 3 | "redact logs" | Logs carry PII at 14-day retention (D3 §10); no redaction-at-source in place. |
 | `/aws/lambda/{send_email, ses_event_handler}` | 3 (per rule 1 update above) | "redact logs" | Same — body may carry T3 form-data. |
 | All Tier 3 DDB tables | 3 | "restrict access" / encryption | SSE-DDB (AWS-owned key) on every Tier 3 table; Apply-1 created `kms-pii-staging` CMK but applied it to no Tier 3 table (D2 Finding 11). Apply-2 is gated. |
 | `picasso-channel-mappings-staging` | 4 | "secrets manager / env only" partial | Item-level CMK encrypts page tokens (good); table-level still SSE-DDB. |
 | Tier 4 token tables (`picasso-token-{,jti-}blacklist`) | 4 | "no logs" | Hashes not logged directly, but blacklist operations log to MFS CW group at 14 days. |
-| `picasso-session-events-staging` | 2 / 3 (rule 3a) | "avoid collection where possible" if 3a fires | Per Finding 3 spot-audit pending. |
+| `picasso-session-events-staging` | **3 (rule 3a FIRED 2026-06-02)** | "avoid collection where possible" — 3a fired (raw user text in prod payloads) | Spot-audit RAN 2026-06-02 (M9 done-bar #1); reclassified Tier 3. Delete-walk coverage present (`_walk_session_events`). |
 
 These are **D5 rows**, not D4 prescriptions. D4 records the tier and the gap; D5 weighs likelihood × impact and names owners.
 
@@ -215,7 +215,7 @@ These are **D5 rows**, not D4 prescriptions. D4 records the tier and the gap; D5
 |---|---|
 | Tier-1-vs-Tier-3 reclassification of `myrecruiter-picasso` historical config versions | Pending the version-spot-audit row in D5. |
 | Tier-1-vs-Tier-3 reclassification of KB datasource bucket per tenant | Per-tenant ingest hygiene; living-inventory PR rule fires on changes; tenant-onboarding gate (Step 10) is the per-tenant enumeration point. |
-| Tier 3 confirmation of `picasso-session-events-staging` rule 3a firings | Pending D2 Finding 3 spot-audit. |
+| Tier 3 confirmation of `picasso-session-events-staging` rule 3a firings | **RESOLVED 2026-06-02 (M9 done-bar #1 spot-audit): rule 3a FIRED → Tier 3.** Also reclassified `s3://picasso-analytics-events-staging` to Tier 3 (same verbatim payload as NDJSON; walker gap → M1). |
 | Booking-table heterogeneity (counseling vs orientation) | Pending first writer + booking-type discriminator. |
 
 ---
