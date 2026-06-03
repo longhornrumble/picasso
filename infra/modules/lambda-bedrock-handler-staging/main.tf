@@ -178,6 +178,26 @@ variable "sms_sender_function_name" {
 # IAM role + minimum-scope inline policy
 # ------------------------------------------------------------------
 
+variable "scheduling_session_table_arn" {
+  description = "ARN of picasso-conversation-scheduling-session-{env}. BSH resolves the §B10 binding (GetItem on the binding#<sid> SK) + reads/writes the C9 conversation-state row (Get/Put on the plain-<sid> SK). GetItem + PutItem."
+  type        = string
+}
+
+variable "scheduling_session_table_name" {
+  description = "Name of the conversation-scheduling-session table (env var SCHEDULING_SESSION_TABLE)."
+  type        = string
+}
+
+variable "booking_table_arn" {
+  description = "ARN of picasso-booking-{env}. BSH loadBooking GetItem only (the Booking the §B10 binding governs)."
+  type        = string
+}
+
+variable "booking_table_name" {
+  description = "Name of the Booking table (env var BOOKING_TABLE)."
+  type        = string
+}
+
 data "aws_iam_policy_document" "trust" {
   statement {
     actions = ["sts:AssumeRole"]
@@ -330,6 +350,25 @@ data "aws_iam_policy_document" "exec" {
         var.sms_usage_table_arn,
       ]
     }
+  }
+
+  # Scheduling recovery loop (B-minimal deps-wiring). BSH resolves the §B10 binding
+  # row (GetItem on the binding#<sid> SK) and reads/writes the C9 conversation-state
+  # row (Get/Put on the plain-<sid> SK) — both on the conversation-scheduling-session
+  # table. No GSI/Query (resolveBinding + loadState/saveState are single-item by key).
+  statement {
+    sid       = "SchedulingBindingStateAccess"
+    actions   = ["dynamodb:GetItem", "dynamodb:PutItem"]
+    resources = [var.scheduling_session_table_arn]
+  }
+
+  # loadBooking: GetItem only on the Booking the binding governs (PK tenantId, SK
+  # booking_id). No write — the §14.2 cal-lifecycle listener owns Booking.status;
+  # the calendar mutation itself is the Tier-2 executor's job (NOT BSH).
+  statement {
+    sid       = "SchedulingBookingRead"
+    actions   = ["dynamodb:GetItem"]
+    resources = [var.booking_table_arn]
   }
 
   # M1.G6 (master plan v0.12 / F-DSAR18 closure). PII subject-index for BSH's
@@ -496,6 +535,11 @@ resource "aws_lambda_function" "this" {
         NOTIFICATION_SENDS_TABLE = var.notification_sends_table_name
         SMS_CONSENT_TABLE        = var.sms_consent_table_name
         SMS_USAGE_TABLE          = var.sms_usage_table_name
+
+        # Scheduling recovery loop (B-minimal deps-wiring): the binding/state table
+        # (resolveBinding + loadState/saveState) and the Booking table (loadBooking).
+        SCHEDULING_SESSION_TABLE = var.scheduling_session_table_name
+        BOOKING_TABLE            = var.booking_table_name
       },
       var.cf_origin_secret_arn != "" ? {
         CF_ORIGIN_SECRET_NAME    = var.cf_origin_secret_name
