@@ -268,11 +268,15 @@ data "aws_iam_policy_document" "commit_exec" {
   }
 
   # Scheduling feature gate: read the tenant config to check feature_flags.scheduling_enabled.
-  # Scoped to tenants/*/config.json (NOT the whole bucket) - the gate reads nothing else.
+  # Scoped to tenants/*/config.json + tenants/*/{id}-config.json (both config-key
+  # conventions; NOT the whole bucket) - the gate reads nothing else.
   statement {
-    sid       = "ConfigBucketReadSchedulingGate"
-    actions   = ["s3:GetObject"]
-    resources = ["${var.tenant_config_bucket_arn}/tenants/*/config.json"]
+    sid     = "ConfigBucketReadSchedulingGate"
+    actions = ["s3:GetObject"]
+    resources = [
+      "${var.tenant_config_bucket_arn}/tenants/*/config.json",
+      "${var.tenant_config_bucket_arn}/tenants/*/*-config.json",
+    ]
   }
 }
 

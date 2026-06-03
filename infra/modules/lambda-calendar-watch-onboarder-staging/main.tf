@@ -196,11 +196,14 @@ data "aws_iam_policy_document" "onboarder_exec" {
   # CreateSecret grant and the picasso/scheduling/channel-token/* namespace.
 
   # Scheduling feature gate: read the tenant config to check feature_flags.scheduling_enabled
-  # before onboarding a coordinator. Scoped to tenants/*/config.json - nothing else.
+  # before onboarding a coordinator. Scoped to tenants/*/config.json + tenants/*/{id}-config.json (both conventions) - nothing else.
   statement {
-    sid       = "ConfigBucketReadSchedulingGate"
-    actions   = ["s3:GetObject"]
-    resources = ["${var.tenant_config_bucket_arn}/tenants/*/config.json"]
+    sid     = "ConfigBucketReadSchedulingGate"
+    actions = ["s3:GetObject"]
+    resources = [
+      "${var.tenant_config_bucket_arn}/tenants/*/config.json",
+      "${var.tenant_config_bucket_arn}/tenants/*/*-config.json",
+    ]
   }
 }
 
