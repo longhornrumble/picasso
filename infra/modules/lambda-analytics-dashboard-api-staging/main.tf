@@ -123,6 +123,12 @@ variable "archive_bucket_arn" {
   type        = string
 }
 
+variable "tenant_purge_function_arn" {
+  description = "ARN of picasso-pii-tenant-purge-staging. When set, the dashboard exec role gets lambda:InvokeFunction on it (the super-admin POST /admin/tenants/{id}/purge endpoint). Default empty renders ZERO grant — staging-only; the purge Lambda is staging-only (account guard refuses outside 525)."
+  type        = string
+  default     = ""
+}
+
 # ------------------------------------------------------------------
 # IAM role + minimum-scope inline policy (with explicit Denies on prod)
 # ------------------------------------------------------------------
@@ -269,6 +275,20 @@ data "aws_iam_policy_document" "exec" {
     effect    = "Deny"
     actions   = ["dynamodb:*"]
     resources = ["arn:aws:dynamodb:*:614056832592:*"]
+  }
+
+  # Super-admin tenant-purge trigger: invoke the picasso-pii-tenant-purge-staging
+  # Lambda from POST /admin/tenants/{id}/purge. Scoped to the single function
+  # ARN; renders ZERO statements when tenant_purge_function_arn == "" (default).
+  # Same-account (525->525) identity grant — no resource-policy entry needed on
+  # the purge function. Design: tenant-purge-ui-trigger-design.md §5.
+  dynamic "statement" {
+    for_each = var.tenant_purge_function_arn != "" ? [1] : []
+    content {
+      sid       = "InvokeTenantPurge"
+      actions   = ["lambda:InvokeFunction"]
+      resources = [var.tenant_purge_function_arn]
+    }
   }
 }
 

@@ -470,6 +470,10 @@ module "lambda_analytics_dashboard_api_staging" {
   tenant_config_bucket_arn = module.tenant_config_staging[0].bucket_arn
   config_bucket_name       = module.tenant_config_staging[0].bucket_name
 
+  # Super-admin tenant-purge trigger (POST /admin/tenants/{id}/purge): grant the
+  # dashboard role lambda:InvokeFunction on the purge Lambda. Staging-only.
+  tenant_purge_function_arn = module.lambda_pii_tenant_purge_staging[0].function_arn
+
   jwt_secret_arn    = module.secrets_jwt_staging[0].secret_arn
   jwt_secret_name   = module.secrets_jwt_staging[0].secret_name
   clerk_secret_arn  = module.secrets_clerk_staging[0].secret_arn
