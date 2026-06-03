@@ -629,7 +629,7 @@ module "ops_alarms_master_function_staging" {
 # prod-614 Meta_Webhook_Handler / Meta_Response_Processor / Meta_OAuth_Handler
 # + their DDB/KMS/secret/DLQ/alarms (Q3-parked prod residue). Stands the
 # integration up correctly in 525 per the staging-first SOP. Reuses what 525
-# already has: staging-recent-messages, the analytics SQS pipeline, the
+# already has: recent-messages, the analytics SQS pipeline, the
 # tenant-config bucket, the tenant registry, the cross-account KB retriever
 # role, and the ops SNS topic. Real Lambda code lands via the lambda-repo CI
 # matrix; this ships placeholder zips. Plan:
