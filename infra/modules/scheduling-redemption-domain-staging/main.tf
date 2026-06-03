@@ -141,9 +141,65 @@ resource "aws_cloudfront_distribution" "redemption" {
 # audit (canonical §13: log client IP + form_submission_id on redemption).
 # Mirrors cloudfront-widget-staging's CWL v2 delivery (NOT legacy S3 logging,
 # which needs an ACL-enabled bucket that conflicts with S3 account hardening).
+#
+# PII: these access logs hold client IP + the action-token suffix in the request
+# URL (canonical §13). KMS-encrypted at rest (A2 audit N-4) — dedicated per-group
+# CMK mirroring the Phase-C.2 per-Lambda-log-group pattern. Classified in
+# docs/roadmap/PII-Project/pii-inventory.md section D (Living-Inventory Rule).
+data "aws_caller_identity" "cf_logs" {}
+data "aws_region" "cf_logs" {}
+data "aws_partition" "cf_logs" {}
+
+resource "aws_kms_key" "cf_access_logs" {
+  description             = "KMS key for the scheduling-redemption CloudFront access-log group (client IP + token-in-URL). Phase C.2 per-log-group CMK pattern."
+  deletion_window_in_days = 30
+  enable_key_rotation     = true
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "EnableRootAccount"
+        Effect    = "Allow"
+        Principal = { AWS = "arn:${data.aws_partition.cf_logs.partition}:iam::${data.aws_caller_identity.cf_logs.account_id}:root" }
+        Action    = "kms:*"
+        Resource  = "*"
+      },
+      {
+        Sid       = "AllowCloudWatchLogsEncryption"
+        Effect    = "Allow"
+        Principal = { Service = "logs.${data.aws_region.cf_logs.name}.amazonaws.com" }
+        Action = [
+          "kms:Encrypt*",
+          "kms:Decrypt*",
+          "kms:ReEncrypt*",
+          "kms:GenerateDataKey*",
+          "kms:Describe*",
+        ]
+        Resource = "*"
+        Condition = {
+          ArnEquals = {
+            "kms:EncryptionContext:aws:logs:arn" = "arn:${data.aws_partition.cf_logs.partition}:logs:${data.aws_region.cf_logs.name}:${data.aws_caller_identity.cf_logs.account_id}:log-group:/aws/cloudfront/scheduling-redemption-staging"
+          }
+        }
+      },
+    ]
+  })
+
+  tags = {
+    Name = "picasso-scheduling-redemption-cflogs-staging"
+  }
+}
+
+resource "aws_kms_alias" "cf_access_logs" {
+  name          = "alias/picasso-scheduling-redemption-cflogs-staging"
+  target_key_id = aws_kms_key.cf_access_logs.key_id
+}
+
 resource "aws_cloudwatch_log_group" "cf_access" {
   name              = "/aws/cloudfront/scheduling-redemption-staging"
   retention_in_days = 30
+  kms_key_id        = aws_kms_key.cf_access_logs.arn
 }
 
 resource "aws_cloudwatch_log_delivery_source" "cf_access" {
