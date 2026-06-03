@@ -260,7 +260,7 @@ resource "aws_lambda_function" "consumer" {
       OPS_ALERTS_TOPIC_ARN          = var.ops_alerts_topic_arn
       SEND_EMAIL_FUNCTION           = var.send_email_function_name
       JWT_SECRET_KEY_NAME           = "picasso/staging/jwt/signing-key"
-      SCHEDULE_BASE_URL             = "https://schedule.myrecruiter.ai"
+      SCHEDULE_BASE_URL             = "https://staging.schedule.myrecruiter.ai"
     }
   }
 

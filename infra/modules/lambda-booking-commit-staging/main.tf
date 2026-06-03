@@ -305,7 +305,7 @@ resource "aws_lambda_function" "commit" {
       ZOOM_SECRET_PATH_PREFIX  = "picasso/scheduling/zoom"
       SES_FROM_EMAIL           = "notify@myrecruiter.ai"
       SES_CONFIGURATION_SET    = "picasso-emails"
-      SCHEDULE_BASE_URL        = "https://staging.chat.myrecruiter.ai"
+      SCHEDULE_BASE_URL        = "https://staging.schedule.myrecruiter.ai"
       OPS_ALERTS_TOPIC_ARN     = var.ops_alerts_topic_arn
       JWT_SECRET_KEY_NAME      = "picasso/staging/jwt/signing-key"
     }
