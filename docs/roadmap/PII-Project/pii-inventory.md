@@ -147,6 +147,7 @@ All Lambda log groups in IaC use `retention_in_days = var.log_retention_days` (r
 | `/aws/lambda/{analytics-event-processor,analytics-aggregator,analytics-function,aggregator-function}` | Analytics_* | event payloads (may carry identifying attrs) | `var.log_retention_days` (default 30 d) | LOG / TTL-ONLY (re-classify if Finding 3 finds identifying attrs in payloads) |
 | `/aws/lambda/{send_email, ses_event_handler}` | shared email Lambdas | recipient email, bounce / complaint payloads | `var.log_retention_days` (default 30 d) | LOG / TTL-ONLY |
 | `/aws/lambda/{deploy_tenant_stack, SSO_Token_Generator, Picasso_Config_Manager}` | operator-PII Lambdas | tenant admin emails, config payloads | `var.log_retention_days` (default 30 d) | LOG / NOT-CONSUMER (operator) |
+| `/aws/cloudfront/scheduling-redemption-staging` | CloudFront dist (`staging.schedule.myrecruiter.ai` redemption edge — scheduling sub-phase D; **not** a Lambda) | **client IP** + the request **URL incl. the action-token suffix** (canonical §13 anomaly-detection audit). CloudFront standard logging v2 → CWL. Token is single-use + jti-burned, so a logged token is spent; IP is the governing PII. | 30 d (literal, NOT `var.log_retention_days` — this is a CF vended-logs group, not a Lambda group) | LOG / **KMS-encrypted at rest** (dedicated CMK `alias/picasso-scheduling-redemption-cflogs-staging`, rotation on — A2 audit N-4). Path-B retention/redaction now-item like the sibling rows; redaction-at-source (drop the token query-string from the logged URL) flagged to D5. |
 
 ---
 
