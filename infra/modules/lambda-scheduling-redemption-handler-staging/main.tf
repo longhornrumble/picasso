@@ -193,10 +193,11 @@ data "aws_iam_policy_document" "redemption_exec" {
   # Shared HS256 JWT signing key for tokens.js verify()/redeem() (the signed
   # cancel/reschedule action links). Same secret chat-session JWTs use; the iss
   # claim distinguishes them. Single secret, NOT per-tenant. The -* matches the
-  # AWS-generated ARN suffix.
+  # AWS-generated ARN suffix. GetSecretValue ONLY — tokens.js never calls
+  # DescribeSecret (A1 audit S-1: drop the metadata-read grant; least-priv).
   statement {
     sid     = "SecretsReadJwtSigningKey"
-    actions = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
+    actions = ["secretsmanager:GetSecretValue"]
     resources = [
       "arn:${data.aws_partition.current.partition}:secretsmanager:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:secret:picasso/staging/jwt/signing-key-*"
     ]
@@ -290,6 +291,22 @@ resource "aws_lambda_function_url" "redemption" {
   authorization_type = "NONE"
 }
 
+# Resource-based permission that AUTHORIZES the public Function URL. Without this
+# statement an AuthType=NONE Function URL returns HTTP 403 to every caller
+# (CloudFront included). The supported Terraform mechanism is an
+# aws_lambda_permission with action = lambda:InvokeFunctionUrl +
+# function_url_auth_type = "NONE" + principal = "*" — this creates the single
+# `FunctionURLAllowPublicAccess` statement. (A1 audit B-2. NB: this is managed in
+# IaC here on purpose, avoiding the manual-Console-step debt the sibling
+# lambda-bedrock-handler-staging module carries.)
+resource "aws_lambda_permission" "redemption_url" {
+  statement_id           = "FunctionURLAllowPublicAccess"
+  action                 = "lambda:InvokeFunctionUrl"
+  function_name          = aws_lambda_function.redemption.function_name
+  principal              = "*"
+  function_url_auth_type = "NONE"
+}
+
 # ==============================================================================
 # CloudWatch alarms
 # ==============================================================================
@@ -306,6 +323,31 @@ resource "aws_cloudwatch_metric_alarm" "redemption_errors" {
   metric_name = "Errors"
   namespace   = "AWS/Lambda"
   period      = 300
+  statistic   = "Sum"
+
+  dimensions = {
+    FunctionName = aws_lambda_function.redemption.function_name
+  }
+
+  alarm_actions = [var.ops_alerts_topic_arn]
+  ok_actions    = [var.ops_alerts_topic_arn]
+}
+
+# Throttles >= 1 in any 1-minute period. SEPARATE from Errors (a throttle is NOT
+# a Lambda error and never trips the Errors alarm). On a PUBLIC endpoint with
+# reserved_concurrent_executions = 5, a token-scan flood throttles legitimate
+# email-link redemptions SILENTLY without this alarm. (A1 audit S-2.)
+resource "aws_cloudwatch_metric_alarm" "redemption_throttles" {
+  alarm_name          = "Scheduling_Redemption_Handler-throttles"
+  alarm_description   = "Scheduling_Redemption_Handler Lambda throttles >= 1 in any 1-minute period. The reserved-concurrency cap (5) is being hit — legitimate redemptions may be getting 429s. Investigate for a flood (token-scan) vs a genuine traffic spike."
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  evaluation_periods  = 1
+  threshold           = 1
+  treat_missing_data  = "notBreaching"
+
+  metric_name = "Throttles"
+  namespace   = "AWS/Lambda"
+  period      = 60
   statistic   = "Sum"
 
   dimensions = {
