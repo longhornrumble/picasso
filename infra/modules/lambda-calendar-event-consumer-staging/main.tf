@@ -286,7 +286,7 @@ resource "aws_lambda_function" "consumer" {
       EMPLOYEE_REGISTRY_TABLE = var.employee_registry_table_name
       SEND_EMAIL_FUNCTION     = var.send_email_function_name
       JWT_SECRET_KEY_NAME     = "picasso/staging/jwt/signing-key"
-      SCHEDULE_BASE_URL       = "https://schedule.myrecruiter.ai"
+      SCHEDULE_BASE_URL       = "https://staging.schedule.myrecruiter.ai"
     }
   }
 

@@ -123,6 +123,12 @@ variable "archive_bucket_arn" {
   type        = string
 }
 
+variable "tenant_purge_function_arn" {
+  description = "ARN of picasso-pii-tenant-purge-staging. When set, the dashboard exec role gets lambda:InvokeFunction on it (the super-admin POST /admin/tenants/{id}/purge endpoint). Default empty renders ZERO grant — staging-only; the purge Lambda is staging-only (account guard refuses outside 525)."
+  type        = string
+  default     = ""
+}
+
 # ------------------------------------------------------------------
 # IAM role + minimum-scope inline policy (with explicit Denies on prod)
 # ------------------------------------------------------------------
@@ -205,6 +211,19 @@ data "aws_iam_policy_document" "exec" {
     ]
   }
 
+  # Scan on the tenant-registry ONLY. handle_admin_tenants ->
+  # tenant_registry_ops.list_all_tenants() does a full Scan (acceptable at
+  # <50 tenants). Without it the super-admin tenant list 500s with
+  # AccessDeniedException on dynamodb:Scan. Deliberately a separate statement
+  # scoped to the registry table — NOT added to the mutating statement above,
+  # which also covers form-submissions (PII) and employee-registry; those must
+  # not become Scan-able.
+  statement {
+    sid       = "TenantRegistryScan"
+    actions   = ["dynamodb:Scan"]
+    resources = [var.tenant_registry_table_arn]
+  }
+
   # Read-only on the analytics fact tables — ADA queries these for
   # dashboard rendering but never writes.
   statement {
@@ -270,6 +289,20 @@ data "aws_iam_policy_document" "exec" {
     actions   = ["dynamodb:*"]
     resources = ["arn:aws:dynamodb:*:614056832592:*"]
   }
+
+  # Super-admin tenant-purge trigger: invoke the picasso-pii-tenant-purge-staging
+  # Lambda from POST /admin/tenants/{id}/purge. Scoped to the single function
+  # ARN; renders ZERO statements when tenant_purge_function_arn == "" (default).
+  # Same-account (525->525) identity grant — no resource-policy entry needed on
+  # the purge function. Design: tenant-purge-ui-trigger-design.md §5.
+  dynamic "statement" {
+    for_each = var.tenant_purge_function_arn != "" ? [1] : []
+    content {
+      sid       = "InvokeTenantPurge"
+      actions   = ["lambda:InvokeFunction"]
+      resources = [var.tenant_purge_function_arn]
+    }
+  }
 }
 
 resource "aws_iam_role_policy" "exec" {
@@ -312,8 +345,15 @@ resource "aws_lambda_function" "this" {
 
   environment {
     variables = {
-      ENVIRONMENT                = "staging"
-      S3_CONFIG_BUCKET           = var.config_bucket_name
+      ENVIRONMENT      = "staging"
+      S3_CONFIG_BUCKET = var.config_bucket_name
+      # get_tenant_hash() reads tenant_id->tenant_hash mappings from
+      # MAPPINGS_BUCKET (mappings/ prefix). Code default is the PROD bucket
+      # `myrecruiter-picasso`; unset in staging it fell back to prod ->
+      # s3:ListBucket AccessDenied -> /forms/summary 500 "Could not resolve
+      # tenant configuration". Pin it to the staging config bucket (same bucket
+      # as S3_CONFIG_BUCKET; the role already grants ListBucket mappings/* there).
+      MAPPINGS_BUCKET            = var.config_bucket_name
       JWT_SECRET_KEY_NAME        = var.jwt_secret_name
       CLERK_SECRET_KEY_SECRET_ID = var.clerk_secret_name
       CLERK_JWKS_URL             = var.clerk_jwks_url

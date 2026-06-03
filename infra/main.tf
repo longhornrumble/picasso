@@ -178,6 +178,24 @@ module "lambda_pii_dsar_staging" {
   ]
 }
 
+# Per-tenant offboarding purge — P1 (Class A surfaces). Routes to
+# data-retention-strategy.md §9 "per-tenant offboarding purge"; design doc
+# docs/roadmap/PII-Project/tenant-offboarding-purge-design.md (picasso#361).
+# Lambda code: lambda#214 (picasso_pii_tenant_purge_staging). Dedicated audit
+# table (clean separation from DSAR per the design) defined ahead of the Lambda
+# so its GSI lands on an empty table (no online backfill).
+module "ddb_pii_tenant_purge_audit_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/ddb-pii-tenant-purge-audit-staging"
+}
+
+module "lambda_pii_tenant_purge_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/lambda-pii-tenant-purge-staging"
+
+  purge_audit_table_arn = module.ddb_pii_tenant_purge_audit_staging[0].table_arn
+}
+
 # send_email — staging test-support deployment (operator-authorized 2026-06-02).
 # Stands up the bare-named `send_email` Lambda so the scheduling consumers'
 # best-effort volunteer-notice dispatch (shared/scheduling/notify ->
@@ -451,6 +469,10 @@ module "lambda_analytics_dashboard_api_staging" {
 
   tenant_config_bucket_arn = module.tenant_config_staging[0].bucket_arn
   config_bucket_name       = module.tenant_config_staging[0].bucket_name
+
+  # Super-admin tenant-purge trigger (POST /admin/tenants/{id}/purge): grant the
+  # dashboard role lambda:InvokeFunction on the purge Lambda. Staging-only.
+  tenant_purge_function_arn = module.lambda_pii_tenant_purge_staging[0].function_arn
 
   jwt_secret_arn    = module.secrets_jwt_staging[0].secret_arn
   jwt_secret_name   = module.secrets_jwt_staging[0].secret_name
@@ -968,6 +990,33 @@ module "lambda_calendar_lifecycle_consumer_staging" {
   ops_alerts_topic_arn = module.ops_alarms_master_function_staging[0].topic_arn
 }
 
+# Scheduling sub-phase D Task D4 — Scheduling_Redemption_Handler (lambda#205, MERGED).
+# The token-redemption Lambda + Function URL that the WS-D3 CloudFront dist (below)
+# fronts as its custom origin. Dedicated least-priv role: Booking GetItem, conv-session
+# PutItem, jti-blacklist conditional PutItem, jwt-signing-key GetSecretValue — no
+# calendar/Zoom/SES/SNS (those run in-chat, WS-D6/D7). Code ships via lambda-repo CI;
+# this is the integrator IaC (A1). Wiring the Function URL into the D3 origin +
+# enable_custom_domain = true is the SEPARATE Apply-2 step (A2).
+module "lambda_scheduling_redemption_handler_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/lambda-scheduling-redemption-handler-staging"
+
+  # Booking table (Terraform-managed via ddb-booking): GetItem only.
+  booking_table_arn  = module.ddb_booking_staging[0].table_arn
+  booking_table_name = module.ddb_booking_staging[0].table_name
+
+  # ConversationSchedulingSession table (Terraform-managed): PutItem only (§B10 binding write).
+  conversation_scheduling_session_table_arn  = module.ddb_conversation_scheduling_session_staging[0].table_arn
+  conversation_scheduling_session_table_name = module.ddb_conversation_scheduling_session_staging[0].table_name
+
+  # jti-blacklist table (Terraform-managed): conditional PutItem only (§13.7 one-time-redeem burn).
+  jti_blacklist_table_arn  = module.ddb_token_jti_blacklist_staging[0].table_arn
+  jti_blacklist_table_name = module.ddb_token_jti_blacklist_staging[0].table_name
+
+  # Ops alerts SNS topic (Errors alarm target only — the handler does not publish).
+  ops_alerts_topic_arn = module.ops_alarms_master_function_staging[0].topic_arn
+}
+
 # Scheduling redemption edge — staging.schedule.myrecruiter.ai (WS-D3 #347, sub-phase D §13.8).
 # The public HTTPS edge that fronts the WS-D4 token-redemption Lambda (the six /cancel
 # /reschedule /resume /attended/* endpoints). The cancel/reschedule email links minted by
@@ -983,6 +1032,14 @@ module "lambda_calendar_lifecycle_consumer_staging" {
 module "scheduling_redemption_domain_staging" {
   count  = var.env == "staging" ? 1 : 0
   source = "./modules/scheduling-redemption-domain-staging"
+
+  # A2: wire the live WS-D4 Function URL host as the CloudFront custom origin,
+  # and flip enable_custom_domain → true (Apply-2: attaches the
+  # staging.schedule.myrecruiter.ai alias + the ISSUED ACM cert). The cert is
+  # already ISSUED; after this applies the operator adds the GoDaddy CNAME #2
+  # (dns_alias_record output) to make the host resolve.
+  redemption_function_url_domain = module.lambda_scheduling_redemption_handler_staging[0].function_url_domain
+  enable_custom_domain           = true
 }
 
 # Stranded_Booking_Remediator (lambda#194, MERGED) — B11 coordinator-offboarding

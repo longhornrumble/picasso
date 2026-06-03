@@ -31,6 +31,7 @@ import { logger } from '../utils/logger';
 import { config as envConfig } from '../config/environment';
 import { streamingRegistry } from '../utils/streamingRegistry';
 import { createConversationManager } from '../utils/conversationManager';
+import { getBindingSessionId } from '../utils/bindingSession';
 import { MESSAGE_SENT, MESSAGE_RECEIVED } from '../analytics/eventConstants';
 
 /**
@@ -609,6 +610,10 @@ export default function StreamingChatProvider({ children }) {
       // Check for nocache URL param (bypasses Lambda config cache for testing)
       const nocacheParam = new URLSearchParams(window.location.search).has('nocache');
 
+      // Scheduling redemption: forward the opaque ?session=<uuid> binding id to the backend
+      // (§B12 — backend resolves the binding via tenant-from-context + this session value).
+      const bindingSessionId = getBindingSessionId();
+
       // Prepare request body - matching original ChatProvider structure
       const requestBody = {
         tenant_hash: tenantHashRef.current,
@@ -627,7 +632,9 @@ export default function StreamingChatProvider({ children }) {
         // Include CTA metadata for explicit routing - must be wrapped in routing_metadata object
         routing_metadata: metadata || {},
         // Cache bypass for config testing
-        ...(nocacheParam && { nocache: true })
+        ...(nocacheParam && { nocache: true }),
+        // Scheduling session-binding (opaque; omitted when absent so normal chat is unchanged)
+        ...(bindingSessionId && { session: bindingSessionId })
       };
 
       // Debug: Log session context and CTA metadata being sent

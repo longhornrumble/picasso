@@ -5,6 +5,7 @@
  */
 
 import { config as environmentConfig } from './config/environment.js';
+import { getBindingSessionId } from './utils/bindingSession.js';
 
 (function() {
   'use strict';
@@ -226,7 +227,14 @@ import { config as environmentConfig } from './config/environment.js';
       if (urlParams.has('nocache')) {
         iframeUrl += '&nocache';
       }
-      
+
+      // Scheduling redemption: forward the opaque ?session=<uuid> binding id from the host
+      // page into the iframe so the in-iframe chat request can carry it to the backend (§B12).
+      const bindingSessionId = getBindingSessionId(window.location.search);
+      if (bindingSessionId) {
+        iframeUrl += `&session=${encodeURIComponent(bindingSessionId)}`;
+      }
+
       console.log(`🌐 Loading iframe from: ${iframeUrl} (${isLocal ? 'LOCAL' : 'PROD'} mode)`);
       console.log(`💡 To use dev mode, add ?picasso-dev=true to URL or data-dev="true" to script tag`);
       
