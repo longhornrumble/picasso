@@ -1,5 +1,5 @@
 resource "aws_dynamodb_table" "audit" {
-  name         = "picasso-audit-staging"
+  name         = "picasso-audit"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "tenant_hash"
   range_key    = "timestamp_event_id"
@@ -36,7 +36,7 @@ resource "aws_dynamodb_table" "audit" {
   }
 
   tags = {
-    Name = "picasso-audit-staging"
+    Name = "picasso-audit"
   }
 }
 
