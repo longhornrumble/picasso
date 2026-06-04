@@ -364,6 +364,7 @@ resource "aws_lambda_function" "listener" {
       ENVIRONMENT                   = "staging"
       CALENDAR_WATCH_CHANNELS_TABLE = var.calendar_watch_channels_table_name
       BOOKING_TABLE                 = var.booking_table_name
+      BOOKING_TENANT_START_INDEX    = "tenantId-start_at-index"
       BOOKING_EXTERNAL_EVENT_INDEX  = "external_event_id-index"
       TENANT_REGISTRY_TABLE         = var.tenant_registry_table_name
       EVENTS_QUEUE_URL              = aws_sqs_queue.events.url
