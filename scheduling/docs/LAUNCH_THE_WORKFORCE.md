@@ -457,3 +457,63 @@ action (V4.0-Action-Selector-style — BSH has no native tool-use), validated th
 NEVER on free-text. Import the shipped executeReschedule/executeCancel/facade/binding (don't re-implement).
 Defer new-booking entry + C10-C13 (B-remainder). verify-before-commit, then PR. FULL audit at weave.
 ```
+
+---
+
+## B-remainder — new-booking (the OTHER half of the booking story) prompts
+
+The recovery loop (B-minimal) only CHANGES an existing booking. B-remainder lets a visitor book a NEW appointment
+in chat (`qualifying → proposing → confirming → booked`). Contracts **§B16 LOCKED 2026-06-03**.
+
+**Architecture:** `availability.js` (C4) + `pool.js` (C6) pull `googleapis`, which BSH cannot bundle — so the
+`proposing` (availability+slots) AND the `booked` commit both run in `Booking_Commit_Handler` and are reached
+from BSH by Lambda invoke. **BSH owns the conversation; BCH owns everything calendar-bound.**
+
+**Launch order:** **WS-NEWBOOK-PROPOSE + WS-C12 in parallel** (file-disjoint: BCH route vs picasso widget).
+**WS-NEWBOOK-FLOW is the keystone** — it consumes the §B16a propose route; start it against the frozen §B16
+any time, but the integrator weaves it only AFTER WS-NEWBOOK-PROPOSE merges. Same worktree + cleanup hard rules.
+
+### NB-1) WS-NEWBOOK-PROPOSE — scheduling_propose BCH route *(launch with NB-2)*
+```
+You are ONE workstream in a coordinated parallel build. Work-order:
+scheduling/docs/workstreams/WS-NEWBOOK-PROPOSE-scheduling-propose-route.md. Read it + §B16a/§B16c +
+§B1/B2/B3/B7 (LOCKED) in scheduling/docs/FROZEN_CONTRACTS.md + CLAUDE.md.
+lambda repo, branch feature/scheduling-ws-newbook-propose, base main, OWN worktree:
+  git -C Lambdas/lambda worktree add -b feature/scheduling-ws-newbook-propose /tmp/ws-newbook-propose origin/main
+OWN only Booking_Commit_Handler/scheduling-propose.js (new) + its test + the ONE dispatch block in
+Booking_Commit_Handler/index.js routing action 'scheduling_propose' (beside the existing 'scheduling_mutate').
+Mirror scheduling-mutate.js for structure. Reuse the SHIPPED C6 pool.select() (verify its return shape) +
+verify whether §B7 resolveCandidates fits the bookable-coordinator resolution (flag the gap if not — don't fork).
+READ-ONLY route: NO Booking write, NO round-robin advance, NO attendee identity, NO coordinator name in slots.
+Feature-gate fail-closed (reuse gateScheduling). verify-before-commit, then PR. FULL audit at weave.
+```
+
+### NB-2) WS-C12 — new-booking frontend (chips + start signal) *(launch with NB-1)*
+```
+You are ONE workstream in a coordinated parallel build. Work-order:
+scheduling/docs/workstreams/WS-C12-new-booking-frontend.md. Read it + §B16b/§B16d + §B3 (LOCKED) + CLAUDE.md.
+picasso repo, branch feature/scheduling-ws-c12, base staging, OWN worktree:
+  git worktree add -b feature/scheduling-ws-c12 /tmp/ws-c12 origin/staging
+Render the backend's scheduling_slots SSE event as GENERIC slot chips (label only — NO coordinator name;
+snapshot-test that). Tap → send the selection (reuse the existing CTA/action dispatch). Echo-back confirm step
+renders the coordinator identity the server reveals at confirming. Extend the start_scheduling handler in
+src/components/chat/MessageBubble.jsx (A2 stub) to send scheduling_intent:'new_booking'. Add a scheduling_notice
+inline render. FIRST locate where SSE events are consumed (provider not pre-mapped) — if a change would land in
+a shared/build/widget-bootstrap file, STOP and flag it. OWN only the files you confirm + tests; list them in the
+PR. verify-before-commit, then PR. LIGHT audit at weave.
+```
+
+### NB-3) WS-NEWBOOK-FLOW — in-chat new-booking flow *(keystone — launch AFTER NB-1 merges)*
+```
+You are ONE workstream in a coordinated parallel build — the KEYSTONE. Work-order:
+scheduling/docs/workstreams/WS-NEWBOOK-FLOW-new-booking-flow.md. Read it + §B16a/B16b/B16c/B16d + §B14 +
+C9 stateMachine (LOCKED) + CLAUDE.md. lambda repo, branch feature/scheduling-ws-newbook-flow, base main, OWN worktree:
+  git -C Lambdas/lambda worktree add -b feature/scheduling-ws-newbook-flow /tmp/ws-newbook-flow origin/main
+OWN only Bedrock_Streaming_Handler_Staging/scheduling/newBookingFlow.js (new) + its test. READ the shipped
+schedulingFlow.js end-to-end — your module is its new-booking twin. THE BOUNDARY (§B14): drive
+qualifying→proposing→confirming→booked, executing the commit ONLY on a focused-post-stream structured
+confirm_book (validated via stateMachine.transition), NEVER on free-text. Delegate proposing→§B16a and
+booked→§B16c via injected deps (deps.invokeProposal / deps.invokeBookingCommit) — import NO googleapis. Do NOT
+edit index.js — the integrator wires the entry-hook + live deps (§B16d). Double-fire guard: advance to booked
+on success/fallback. verify-before-commit, then PR. FULL audit at weave.
+```
