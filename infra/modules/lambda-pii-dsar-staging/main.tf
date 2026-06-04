@@ -266,8 +266,11 @@ locals {
   # F-DSAR31 (closed 2026-06-03): pseudonymized session-summaries surface,
   # pk=TENANT#{tenant_hash}, filtered by pii_subject_id. NOT the operational
   # `picasso-conversation-summaries` (t_conv_summaries) — a distinct table.
-  # Left as a literal: session-summaries is hand-managed (no ddb_* module to
-  # single-source from). Renamed manually when its alignment slice comes.
+  # Kept as a literal (not var-wired like the grants above): per F-DSAR29 the
+  # DSAR table names are code-managed constants, and this grant mirrors the
+  # Lambda's TABLE_SESSION_SUMMARIES constant. Both were set to
+  # picasso-session-summaries together in batch-3 of the naming-alignment program
+  # (the module.session_summaries table was renamed in the same change).
   t_session_summaries = "${local.ddb}/picasso-session-summaries"
 
   # Forward references to GSIs (already exist in their respective ddb modules).
