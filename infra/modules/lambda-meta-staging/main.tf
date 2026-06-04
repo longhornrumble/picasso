@@ -49,7 +49,7 @@ variable "webhook_dedup_table_name" {
 }
 
 variable "recent_messages_table_arn" {
-  description = "ARN of the EXISTING staging-recent-messages table (module.ddb_recent_messages_staging). Shared with core chat — schema-identical (sessionId/messageTimestamp). Response Processor Query's prior context + Put's the new Q&A pair."
+  description = "ARN of the EXISTING recent-messages table (module.ddb_recent_messages_staging). Shared with core chat — schema-identical (sessionId/messageTimestamp). Response Processor Query's prior context + Put's the new Q&A pair."
   type        = string
 }
 

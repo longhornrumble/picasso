@@ -138,6 +138,49 @@ variable "dsar_audit_table_arn" {
   type        = string
 }
 
+# Grant-ARN table names — single-sourced from the sibling ddb_* modules so a
+# table rename cascades to the DSAR IAM grants automatically (closes the
+# hardcoded-ARN seam; see locals block). Wired in root main.tf from
+# `module.ddb_<table>_staging[0].table_name`. Required (no default) so a dropped
+# wire fails the plan loudly rather than silently using a stale literal. These
+# feed IAM grants ONLY — table names remain hardcoded constants in the Lambda
+# code per F-DSAR29 (no Lambda env block here).
+variable "form_submissions_table_name" {
+  type = string
+}
+
+variable "notification_sends_table_name" {
+  type = string
+}
+
+variable "notification_events_table_name" {
+  type = string
+}
+
+variable "recent_messages_table_name" {
+  type = string
+}
+
+variable "conversation_summaries_table_name" {
+  type = string
+}
+
+variable "audit_table_name" {
+  type = string
+}
+
+variable "subject_index_table_name" {
+  type = string
+}
+
+variable "channel_mappings_table_name" {
+  type = string
+}
+
+variable "session_events_table_name" {
+  type = string
+}
+
 # Sprint D follow-up: per-(bucket, tenant_id) S3 fulfillment grants. The
 # fulfillment walker (lambda picasso_pii_dsar_staging::_walk_fulfillment_s3,
 # PR lambda#164) chases per-row `fulfillment_path` values written by the form
@@ -197,24 +240,35 @@ locals {
   region = data.aws_region.current.name
   ddb    = "arn:aws:dynamodb:${local.region}:${local.acct}:table"
 
-  # Live-verified table names (same source-of-truth as Apply-1 module locals).
-  # recent-messages / conversation-summaries use the `staging-*` convention,
-  # NOT `picasso-*-staging` (design §0 / B6).
-  t_form_submissions   = "${local.ddb}/picasso-form-submissions-staging"
-  t_notification_sends = "${local.ddb}/picasso-notification-sends-staging"
-  t_notification_evts  = "${local.ddb}/picasso-notification-events-staging"
-  t_recent_messages    = "${local.ddb}/staging-recent-messages"
-  t_conv_summaries     = "${local.ddb}/staging-conversation-summaries"
-  t_audit              = "${local.ddb}/picasso-audit-staging"
-  t_subject_index      = "${local.ddb}/picasso-pii-subject-index-staging"
+  # Grant-ARN table names are single-sourced from the sibling ddb_* modules
+  # (root main.tf wires `<table>_table_name = module.ddb_<table>_staging[0].table_name`).
+  # A table rename now cascades to these IAM grants automatically — closing the
+  # hardcoded-ARN seam that silently broke recent-messages (picasso#377). The
+  # wired values are the current live names, so the rendered ARNs are byte-identical.
+  # NOTE: table names stay hardcoded constants in the *Lambda code* per F-DSAR29
+  # (no env vars — code-change-gated prod promotion); this wiring is IaC-internal
+  # only and deliberately does NOT add a Lambda environment block.
+  t_form_submissions   = "${local.ddb}/${var.form_submissions_table_name}"
+  t_notification_sends = "${local.ddb}/${var.notification_sends_table_name}"
+  t_notification_evts  = "${local.ddb}/${var.notification_events_table_name}"
+  t_recent_messages    = "${local.ddb}/${var.recent_messages_table_name}"
+  t_conv_summaries     = "${local.ddb}/${var.conversation_summaries_table_name}"
+  t_audit              = "${local.ddb}/${var.audit_table_name}"
+  t_subject_index      = "${local.ddb}/${var.subject_index_table_name}"
   # M2 Sprint B IaC follow-up (added Sprint C, picasso PR):
   # channel-mappings is queried via TenantIndex GSI by the psid resolver
   # (_resolve_psid_subject); session-events is queried by SESSION#{sessionId}
   # by the Meta-path walker (_walk_session_events). Both surfaces were
   # added in Sprint B (lambda PR #157) without the corresponding IaC grants
   # — surfaced + closed under Sprint C per the M2 Sprint A gap-routing rule.
-  t_channel_mappings = "${local.ddb}/picasso-channel-mappings-staging"
-  t_session_events   = "${local.ddb}/picasso-session-events-staging"
+  t_channel_mappings = "${local.ddb}/${var.channel_mappings_table_name}"
+  t_session_events   = "${local.ddb}/${var.session_events_table_name}"
+  # F-DSAR31 (closed 2026-06-03): pseudonymized session-summaries surface,
+  # pk=TENANT#{tenant_hash}, filtered by pii_subject_id. NOT the operational
+  # `staging-conversation-summaries` (t_conv_summaries) — a distinct table.
+  # Left as a literal: session-summaries is hand-managed (no ddb_* module to
+  # single-source from). Renamed manually when its alignment slice comes.
+  t_session_summaries = "${local.ddb}/picasso-session-summaries-staging"
 
   # Forward references to GSIs (already exist in their respective ddb modules).
   gsi_form_subjectid    = "${local.t_form_submissions}/index/PiiSubjectIdIndex"
@@ -326,6 +380,16 @@ data "aws_iam_policy_document" "dsar" {
     sid       = "SessionEventsReadDelete"
     actions   = ["dynamodb:Query", "dynamodb:GetItem", "dynamodb:DeleteItem"]
     resources = [local.t_session_events]
+  }
+
+  # F-DSAR31 (closed): session-summaries walker. Query pk=TENANT#{tenant_hash}
+  # + FilterExpression on pii_subject_id; DeleteItem per (pk, sk) on delete.
+  # tenant_hash is operator-passed on the DSAR event; tenant isolation is by
+  # the tenant_hash-keyed partition (see F-DSAR2 — code-only isolation).
+  statement {
+    sid       = "SessionSummariesReadDelete"
+    actions   = ["dynamodb:Query", "dynamodb:GetItem", "dynamodb:DeleteItem"]
+    resources = [local.t_session_summaries]
   }
 
   # M2 Sprint C — ARCHIVE_BUCKET (picasso-archive-staging). Version-aware

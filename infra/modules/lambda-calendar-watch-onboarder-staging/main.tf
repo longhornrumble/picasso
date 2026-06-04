@@ -60,6 +60,16 @@ variable "log_retention_days" {
   default     = 90
 }
 
+variable "tenant_config_bucket_arn" {
+  description = "ARN of the staging tenant config S3 bucket. The scheduling feature gate reads tenants/{id}/config.json to check feature_flags.scheduling_enabled (fail-closed when unreadable)."
+  type        = string
+}
+
+variable "config_bucket_name" {
+  description = "Name of the staging tenant config S3 bucket (CONFIG_BUCKET env for the feature gate)."
+  type        = string
+}
+
 # ------------------------------------------------------------------
 # Data sources
 # ------------------------------------------------------------------
@@ -184,6 +194,17 @@ data "aws_iam_policy_document" "onboarder_exec" {
   # hashing X-Goog-Channel-Token and constant-time-comparing). Removing the
   # raw-token secret store (phase-completion-audit G6) eliminated the
   # CreateSecret grant and the picasso/scheduling/channel-token/* namespace.
+
+  # Scheduling feature gate: read the tenant config to check feature_flags.scheduling_enabled
+  # before onboarding a coordinator. Scoped to tenants/*/config.json + tenants/*/{id}-config.json (both conventions) - nothing else.
+  statement {
+    sid     = "ConfigBucketReadSchedulingGate"
+    actions = ["s3:GetObject"]
+    resources = [
+      "${var.tenant_config_bucket_arn}/tenants/*/config.json",
+      "${var.tenant_config_bucket_arn}/tenants/*/*-config.json",
+    ]
+  }
 }
 
 resource "aws_iam_role_policy" "onboarder_exec" {
@@ -227,6 +248,8 @@ resource "aws_lambda_function" "onboarder" {
       CALENDAR_WATCH_CHANNELS_TABLE = var.calendar_watch_channels_table_name
       LISTENER_URL                  = var.listener_function_url
       OAUTH_SECRET_PATH_PREFIX      = "picasso/scheduling/oauth"
+      CONFIG_BUCKET                 = var.config_bucket_name
+      S3_CONFIG_BUCKET              = var.config_bucket_name
     }
   }
 

@@ -151,6 +151,15 @@ module "lambda_pii_delete_staging" {
   source = "./modules/lambda-pii-delete-staging"
 
   pii_cmk_key_arn = module.kms_pii_staging[0].key_arn
+
+  # Single-source table names for the delete-pipeline IAM grants (renames cascade).
+  form_submissions_table_name       = module.ddb_form_submissions_staging[0].table_name
+  notification_sends_table_name     = module.ddb_notification_sends_staging[0].table_name
+  notification_events_table_name    = module.ddb_notification_events_staging[0].table_name
+  recent_messages_table_name        = module.ddb_recent_messages_staging[0].table_name
+  conversation_summaries_table_name = module.ddb_conversation_summaries_staging[0].table_name
+  session_events_table_name         = module.ddb_session_events_staging[0].table_name
+  subject_index_table_name          = module.ddb_pii_subject_index_staging[0].table_name
 }
 
 # Consumer PII Remediation Path A — capability-bundle item 1a (IAM half).
@@ -162,6 +171,17 @@ module "lambda_pii_dsar_staging" {
 
   pii_cmk_key_arn      = module.kms_pii_staging[0].key_arn
   dsar_audit_table_arn = module.ddb_pii_dsar_audit_staging[0].table_arn
+
+  # Single-source table names for the DSAR walker IAM grants (renames cascade).
+  form_submissions_table_name       = module.ddb_form_submissions_staging[0].table_name
+  notification_sends_table_name     = module.ddb_notification_sends_staging[0].table_name
+  notification_events_table_name    = module.ddb_notification_events_staging[0].table_name
+  recent_messages_table_name        = module.ddb_recent_messages_staging[0].table_name
+  conversation_summaries_table_name = module.ddb_conversation_summaries_staging[0].table_name
+  audit_table_name                  = module.ddb_audit_staging[0].table_name
+  subject_index_table_name          = module.ddb_pii_subject_index_staging[0].table_name
+  channel_mappings_table_name       = module.ddb_channel_mappings_staging[0].table_name
+  session_events_table_name         = module.ddb_session_events_staging[0].table_name
 
   # M2 Sprint D Q3(c) — integration test synthetic-tenant fixture grant.
   # Bucket `picasso-pii-dsar-int-staging` exists in staging acct 525 (created
@@ -362,6 +382,22 @@ module "lambda_bedrock_handler_staging" {
   sms_consent_table_name        = module.picasso_form_tables.sms_consent_table_name
   sms_usage_table_arn           = module.picasso_form_tables.sms_usage_table_arn
   sms_usage_table_name          = module.picasso_form_tables.sms_usage_table_name
+
+  # Scheduling recovery loop (B-minimal deps-wiring). BSH resolves the §B10 binding
+  # + reads/writes the C9 state row (conversation-scheduling-session table) and
+  # loads the governed Booking. GetItem+PutItem on the session table, GetItem on Booking.
+  scheduling_session_table_arn  = module.ddb_conversation_scheduling_session_staging[0].table_arn
+  scheduling_session_table_name = module.ddb_conversation_scheduling_session_staging[0].table_name
+  booking_table_arn             = module.ddb_booking_staging[0].table_arn
+  booking_table_name            = module.ddb_booking_staging[0].table_name
+
+  # Tier-2 ACTIVATION: grant BSH lambda:InvokeFunction on the Booking_Commit_Handler
+  # executor + set the env var (applied together so the grant and env never diverge), so an
+  # already-§B14-authorized reschedule/cancel is delegated to BCH (which has the Google
+  # OAuth + calendar/zoom modules BSH can't bundle). This is the line that turns the recovery
+  # loop's calendar mutation LIVE.
+  scheduling_executor_function_arn  = module.lambda_booking_commit_staging[0].commit_function_arn
+  scheduling_executor_function_name = module.lambda_booking_commit_staging[0].commit_function_name
 
   # M1.G6 (master plan v0.12 / F-DSAR18 closure). BSH form_handler.js port
   # of pii_subject.js needs the same picasso-pii-subject-index-staging
@@ -613,7 +649,7 @@ module "ops_alarms_master_function_staging" {
 # prod-614 Meta_Webhook_Handler / Meta_Response_Processor / Meta_OAuth_Handler
 # + their DDB/KMS/secret/DLQ/alarms (Q3-parked prod residue). Stands the
 # integration up correctly in 525 per the staging-first SOP. Reuses what 525
-# already has: staging-recent-messages, the analytics SQS pipeline, the
+# already has: recent-messages, the analytics SQS pipeline, the
 # tenant-config bucket, the tenant registry, the cross-account KB retriever
 # role, and the ops SNS topic. Real Lambda code lands via the lambda-repo CI
 # matrix; this ships placeholder zips. Plan:
@@ -824,6 +860,10 @@ module "lambda_calendar_watch_onboarder_staging" {
 
   # Ops alerts SNS topic (shared with MFS + Meta — created by ops_alarms_master_function_staging)
   ops_alerts_topic_arn = module.ops_alarms_master_function_staging[0].topic_arn
+
+  # Tenant config bucket — the scheduling feature gate reads tenants/{id}/config.json.
+  tenant_config_bucket_arn = module.tenant_config_staging[0].bucket_arn
+  config_bucket_name       = module.tenant_config_staging[0].bucket_name
 }
 
 # Scheduling sub-phase B Task B3 (+ B4 schedule, B7 alarms) — Calendar_Watch_Renewer.
@@ -899,6 +939,10 @@ module "lambda_booking_commit_staging" {
 
   # Ops alerts SNS topic (shared with MFS + Meta — created by ops_alarms_master_function_staging)
   ops_alerts_topic_arn = module.ops_alarms_master_function_staging[0].topic_arn
+
+  # Tenant config bucket — the scheduling feature gate reads tenants/{id}/config.json.
+  tenant_config_bucket_arn = module.tenant_config_staging[0].bucket_arn
+  config_bucket_name       = module.tenant_config_staging[0].bucket_name
 }
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -1015,6 +1059,10 @@ module "lambda_scheduling_redemption_handler_staging" {
 
   # Ops alerts SNS topic (Errors alarm target only — the handler does not publish).
   ops_alerts_topic_arn = module.ops_alarms_master_function_staging[0].topic_arn
+
+  # Tenant config bucket — the scheduling feature gate reads tenants/{id}/config.json.
+  tenant_config_bucket_arn = module.tenant_config_staging[0].bucket_arn
+  config_bucket_name       = module.tenant_config_staging[0].bucket_name
 }
 
 # Scheduling redemption edge — staging.schedule.myrecruiter.ai (WS-D3 #347, sub-phase D §13.8).

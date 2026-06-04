@@ -72,6 +72,16 @@ variable "log_retention_days" {
   default     = 90
 }
 
+variable "tenant_config_bucket_arn" {
+  description = "ARN of the staging tenant config S3 bucket. The scheduling feature gate reads tenants/{id}/config.json to check feature_flags.scheduling_enabled (fail-closed when unreadable)."
+  type        = string
+}
+
+variable "config_bucket_name" {
+  description = "Name of the staging tenant config S3 bucket (CONFIG_BUCKET env for the feature gate)."
+  type        = string
+}
+
 # ------------------------------------------------------------------
 # Data sources
 # ------------------------------------------------------------------
@@ -256,6 +266,18 @@ data "aws_iam_policy_document" "commit_exec" {
     actions   = ["sns:Publish"]
     resources = [var.ops_alerts_topic_arn]
   }
+
+  # Scheduling feature gate: read the tenant config to check feature_flags.scheduling_enabled.
+  # Scoped to tenants/*/config.json + tenants/*/{id}-config.json (both config-key
+  # conventions; NOT the whole bucket) - the gate reads nothing else.
+  statement {
+    sid     = "ConfigBucketReadSchedulingGate"
+    actions = ["s3:GetObject"]
+    resources = [
+      "${var.tenant_config_bucket_arn}/tenants/*/config.json",
+      "${var.tenant_config_bucket_arn}/tenants/*/*-config.json",
+    ]
+  }
 }
 
 resource "aws_iam_role_policy" "commit_exec" {
@@ -308,6 +330,8 @@ resource "aws_lambda_function" "commit" {
       SCHEDULE_BASE_URL        = "https://staging.schedule.myrecruiter.ai"
       OPS_ALERTS_TOPIC_ARN     = var.ops_alerts_topic_arn
       JWT_SECRET_KEY_NAME      = "picasso/staging/jwt/signing-key"
+      CONFIG_BUCKET            = var.config_bucket_name
+      S3_CONFIG_BUCKET         = var.config_bucket_name
     }
   }
 

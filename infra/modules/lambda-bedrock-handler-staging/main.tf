@@ -178,6 +178,38 @@ variable "sms_sender_function_name" {
 # IAM role + minimum-scope inline policy
 # ------------------------------------------------------------------
 
+variable "scheduling_session_table_arn" {
+  description = "ARN of picasso-conversation-scheduling-session-{env}. BSH resolves the §B10 binding (GetItem on the binding#<sid> SK) + reads/writes the C9 conversation-state row (Get/Put on the plain-<sid> SK). GetItem + PutItem."
+  type        = string
+}
+
+variable "scheduling_session_table_name" {
+  description = "Name of the conversation-scheduling-session table (env var SCHEDULING_SESSION_TABLE)."
+  type        = string
+}
+
+variable "booking_table_arn" {
+  description = "ARN of picasso-booking-{env}. BSH loadBooking GetItem only (the Booking the §B10 binding governs)."
+  type        = string
+}
+
+variable "booking_table_name" {
+  description = "Name of the Booking table (env var BOOKING_TABLE)."
+  type        = string
+}
+
+variable "scheduling_executor_function_arn" {
+  description = "ARN of the Tier-2 calendar-mutation executor (Booking_Commit_Handler). BSH gets lambda:InvokeFunction on it for an already-§B14-authorized reschedule/cancel. Empty string = activation deferred (no grant, no env → invoker stays dormant)."
+  type        = string
+  default     = ""
+}
+
+variable "scheduling_executor_function_name" {
+  description = "Name of the Tier-2 executor (env var SCHEDULING_EXECUTOR_FUNCTION_NAME). When set, BSH's invokeSchedulingExecutor activates; when empty the seam stays dormant (local skip path). Must be set ATOMICALLY with scheduling_executor_function_arn."
+  type        = string
+  default     = ""
+}
+
 data "aws_iam_policy_document" "trust" {
   statement {
     actions = ["sts:AssumeRole"]
@@ -329,6 +361,38 @@ data "aws_iam_policy_document" "exec" {
         "${var.sms_consent_table_arn}/index/*",
         var.sms_usage_table_arn,
       ]
+    }
+  }
+
+  # Scheduling recovery loop (B-minimal deps-wiring). BSH resolves the §B10 binding
+  # row (GetItem on the binding#<sid> SK) and reads/writes the C9 conversation-state
+  # row (Get/Put on the plain-<sid> SK) — both on the conversation-scheduling-session
+  # table. No GSI/Query (resolveBinding + loadState/saveState are single-item by key).
+  statement {
+    sid       = "SchedulingBindingStateAccess"
+    actions   = ["dynamodb:GetItem", "dynamodb:PutItem"]
+    resources = [var.scheduling_session_table_arn]
+  }
+
+  # loadBooking: GetItem only on the Booking the binding governs (PK tenantId, SK
+  # booking_id). No write — the §14.2 cal-lifecycle listener owns Booking.status;
+  # the calendar mutation itself is the Tier-2 executor's job (NOT BSH).
+  statement {
+    sid       = "SchedulingBookingRead"
+    actions   = ["dynamodb:GetItem"]
+    resources = [var.booking_table_arn]
+  }
+
+  # Tier-2 activation: invoke the calendar-mutation executor (Booking_Commit_Handler) for
+  # an already-§B14-authorized reschedule/cancel. Scoped to the one function ARN, NOT a
+  # wildcard. Conditional (dynamic) so the dormant default (empty arn) grants nothing —
+  # the grant + the SCHEDULING_EXECUTOR_FUNCTION_NAME env are applied atomically.
+  dynamic "statement" {
+    for_each = var.scheduling_executor_function_arn != "" ? [1] : []
+    content {
+      sid       = "SchedulingExecutorInvoke"
+      actions   = ["lambda:InvokeFunction"]
+      resources = [var.scheduling_executor_function_arn]
     }
   }
 
@@ -496,6 +560,16 @@ resource "aws_lambda_function" "this" {
         NOTIFICATION_SENDS_TABLE = var.notification_sends_table_name
         SMS_CONSENT_TABLE        = var.sms_consent_table_name
         SMS_USAGE_TABLE          = var.sms_usage_table_name
+
+        # Scheduling recovery loop (B-minimal deps-wiring): the binding/state table
+        # (resolveBinding + loadState/saveState) and the Booking table (loadBooking).
+        SCHEDULING_SESSION_TABLE = var.scheduling_session_table_name
+        BOOKING_TABLE            = var.booking_table_name
+
+        # Tier-2 activation: empty (default) → BSH's invokeSchedulingExecutor stays dormant
+        # (local skip path); set to the executor name → BSH invokes BCH for reschedule/cancel.
+        # Set ATOMICALLY with the SchedulingExecutorInvoke IAM grant above.
+        SCHEDULING_EXECUTOR_FUNCTION_NAME = var.scheduling_executor_function_name
       },
       var.cf_origin_secret_arn != "" ? {
         CF_ORIGIN_SECRET_NAME    = var.cf_origin_secret_name
