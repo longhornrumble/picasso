@@ -301,9 +301,10 @@ boundary). So the `proposing` step (availability + routing + slot-gen) AND the `
 //         tieBreaker?, roundRobinCursor?,   // carried forward into the §B16c commit (round-robin commits on success only)
 //         error? }
 // Impl: from appointmentTypeId resolve (a) the AppointmentType row, (b) its RoutingPolicy OBJECT, (c) the candidate
-// pool (bookable coordinators eligible for it). §B7 `resolveCandidates(appointmentTypeId)` returns the CANDIDATES
-// list (VERIFY shape) but does NOT return the RoutingPolicy object — read that separately (e.g. candidate-resolver's
-// policy read or the RoutingPolicy row directly). Then call the SHIPPED C6 `pool.select({tenantId, appointmentType,
+// pool (bookable coordinators eligible for it). §B7 `resolveCandidates({ tenantId, appointmentTypeId }, deps)`
+// (OBJECT arg, per §B7 — the bare-arg wording was a doc nit, confirmed against the shipped signature in #227)
+// returns the CANDIDATES list but does NOT return the RoutingPolicy object — read that separately (the
+// candidate-resolver's exported `defaultGetAppointmentType`/`defaultGetRoutingPolicy`, as #227 does). Then call the SHIPPED C6 `pool.select({tenantId, appointmentType,
 // routingPolicy, candidates, userTimeZone, alreadyRejected, windowStart, windowEnd})` and MAP its REAL return:
 //   pool.select → { status:'SLOTS_PROPOSED'|'SLOT_UNAVAILABLE', orderedPool, tieBreaker, roundRobinCursor, slots }
 //   mapping: status 'SLOTS_PROPOSED' → outcome 'ok' ; 'SLOT_UNAVAILABLE' → 'no_availability' ; throw → 'failed'.
