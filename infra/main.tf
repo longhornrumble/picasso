@@ -933,9 +933,16 @@ module "lambda_booking_commit_staging" {
   booking_table_name = module.ddb_booking_staging[0].table_name
 
   # RoutingPolicy table (Terraform-managed via ddb-routing-policy): UpdateItem
-  # only (C5 atomic round-robin cursor advance/revert).
+  # (C5 round-robin) + GetItem (§B16a propose route candidate-resolver read).
   routing_policy_table_arn  = module.ddb_routing_policy_staging[0].table_arn
   routing_policy_table_name = module.ddb_routing_policy_staging[0].table_name
+
+  # AppointmentType + employee-registry-v2 (§B16a propose route reads — lambda#227).
+  # candidate-resolver GetItems the appointment type and Querys the registry partition.
+  appointment_type_table_arn   = module.ddb_appointment_type_staging[0].table_arn
+  appointment_type_table_name  = module.ddb_appointment_type_staging[0].table_name
+  employee_registry_table_arn  = module.ddb_employee_registry_v2_staging[0].table_arn
+  employee_registry_table_name = module.ddb_employee_registry_v2_staging[0].table_name
 
   # Ops alerts SNS topic (shared with MFS + Meta — created by ops_alarms_master_function_staging)
   ops_alerts_topic_arn = module.ops_alarms_master_function_staging[0].topic_arn
