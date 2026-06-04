@@ -65,6 +65,8 @@ async function streamChat({
   onCtaButtons, // New callback for handling CTA buttons
   onShowcaseCard, // Callback for handling showcase cards
   onSuggestedChips, // v3.0 Evolution: callback for AI-generated follow-up chips
+  onSchedulingSlots, // Scheduling v1 (WS-C12): generic slot chips from `scheduling_slots`
+  onSchedulingNotice, // Scheduling v1 (WS-C12): inline notice from `scheduling_notice`
   onDone,
   onError,
   abortControllersRef,
@@ -237,6 +239,21 @@ async function streamChat({
           if (obj.type === 'suggested_chips' && obj.chips) {
             logger.info('Received suggested chips', { count: obj.chips.length });
             onSuggestedChips?.(obj.chips);
+            continue;
+          }
+
+          // Scheduling v1 (WS-C12): generic slot chips. Already emitted on the
+          // wire by the recovery loop (schedulingFlow.js) + new-booking proposing.
+          if (obj.type === 'scheduling_slots' && Array.isArray(obj.slots)) {
+            logger.info('Received scheduling slots', { count: obj.slots.length });
+            onSchedulingSlots?.(obj.slots);
+            continue;
+          }
+
+          // Scheduling v1 (WS-C12): "we'll confirm by email" inline notice fallback.
+          if (obj.type === 'scheduling_notice' && obj.notice) {
+            logger.info('Received scheduling notice', { notice: obj.notice });
+            onSchedulingNotice?.(obj.notice);
             continue;
           }
 
@@ -750,6 +767,34 @@ export default function StreamingChatProvider({ children }) {
           // Stage suggested chips for inclusion in onDone
           logger.info('Received suggested chips', { count: chips.length });
           pendingSuggestedChipsRef.current = chips;
+        },
+        onSchedulingSlots: (slots) => {
+          // Scheduling v1 (WS-C12): attach generic slot chips to the streaming
+          // message's metadata (mirrors onCards). onDone preserves them via
+          // `...msg.metadata`. MessageBubble renders <SchedulingSlots>.
+          logger.info('Received scheduling slots', { count: slots.length });
+          setMessages(prev => {
+            const updated = prev.map(msg =>
+              msg.id === streamingMessageId
+                ? { ...msg, metadata: { ...msg.metadata, schedulingSlots: slots } }
+                : msg
+            );
+            saveToSession('picasso_messages', updated);
+            return updated;
+          });
+        },
+        onSchedulingNotice: (notice) => {
+          // Scheduling v1 (WS-C12): attach the inline notice code to message metadata.
+          logger.info('Received scheduling notice', { notice });
+          setMessages(prev => {
+            const updated = prev.map(msg =>
+              msg.id === streamingMessageId
+                ? { ...msg, metadata: { ...msg.metadata, schedulingNotice: notice } }
+                : msg
+            );
+            saveToSession('picasso_messages', updated);
+            return updated;
+          });
         },
         onDone: async (fullText) => {
           const totalTime = Date.now() - startTime;

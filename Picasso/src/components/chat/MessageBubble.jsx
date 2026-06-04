@@ -11,6 +11,7 @@ import DOMPurify from 'dompurify';
 import CTAButton, { CTAButtonGroup } from './CTAButton';
 import FormCompletionCard from '../forms/FormCompletionCard';
 import ShowcaseCard from './ShowcaseCard';
+import SchedulingSlots, { SchedulingNotice } from './SchedulingSlots';
 import { ACTION_CHIP_CLICKED, LINK_CLICKED } from '../../analytics/eventConstants.js';
 
 /**
@@ -730,10 +731,21 @@ export default function MessageBubble({
     }
 
     if (cta.action === 'start_scheduling') {
-      // Placeholder dispatch — full wiring to pre-call form via FormModeContext lands in
-      // sub-phase C of the scheduling v1 plan (scheduling/docs/scheduling_implementation_plan.md).
-      // Branch exists in sub-phase A so V4 Action Selector emissions don't silently fall through.
+      // WS-C12 (§B16d): begin a NEW-booking session. Reuse the existing message
+      // dispatch (no new transport / no new cta.action — keeps CI-3a green) and
+      // ride an explicit `scheduling_intent: 'new_booking'` signal on the turn.
+      // The integrator-wired BSH entry-hook reads it to create the `qualifying`
+      // session. The signal is sent ONLY on start_scheduling — every other CTA
+      // path omits it.
       console.log('[MessageBubble] start_scheduling action received:', { cta_id: cta.id || cta.cta_id, label: cta.label });
+      if (sendMessage) {
+        sendMessage(cta.value || cta.query || cta.label, {
+          scheduling_intent: 'new_booking',
+          cta_triggered: true,
+          cta_id: cta.id || cta.cta_id,
+          cta_action: cta.action,
+        });
+      }
       return;
     } else if (cta.action === 'resume_scheduling') {
       // Placeholder dispatch — `resume_scheduling` is metadata-driven per schema spec §9
@@ -1012,6 +1024,17 @@ export default function MessageBubble({
             disabled={isTyping || anyButtonClicked}
             clickedButtonIds={clickedButtonIds}
           />
+        )}
+
+        {/* Scheduling slot chips (WS-C12) — generic, label-only; coordinator
+            identity is revealed only by the backend's confirm prose (§10.4). */}
+        {(role === "assistant" || role === "bot") && metadata?.schedulingSlots?.length > 0 && (
+          <SchedulingSlots slots={metadata.schedulingSlots} />
+        )}
+
+        {/* Scheduling inline notice (WS-C12) — "we'll confirm by email" fallback. */}
+        {(role === "assistant" || role === "bot") && metadata?.schedulingNotice && (
+          <SchedulingNotice notice={metadata.schedulingNotice} />
         )}
 
         {/* Showcase Card (assistant/bot only) */}

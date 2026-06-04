@@ -1,5 +1,5 @@
 resource "aws_dynamodb_table" "billing_events" {
-  name         = "picasso-billing-events-staging"
+  name         = "picasso-billing-events"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "pk"
   range_key    = "sk"
@@ -24,7 +24,7 @@ resource "aws_dynamodb_table" "billing_events" {
   }
 
   tags = {
-    Name = "picasso-billing-events-staging"
+    Name = "picasso-billing-events"
   }
 }
 

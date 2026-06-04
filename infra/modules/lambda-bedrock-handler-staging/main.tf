@@ -10,7 +10,7 @@ variable "tenant_config_bucket_arn" {
 }
 
 variable "session_summaries_table_arn" {
-  description = "ARN of picasso-session-summaries-staging."
+  description = "ARN of picasso-session-summaries."
   type        = string
 }
 
@@ -115,7 +115,7 @@ variable "pii_subject_index_table_name" {
 }
 
 variable "notification_sends_table_arn" {
-  description = "ARN of picasso-notification-sends-staging (BSH form_handler.js writes notification delivery log)."
+  description = "ARN of picasso-notification-sends (BSH form_handler.js writes notification delivery log)."
   type        = string
   default     = ""
 }
@@ -127,7 +127,7 @@ variable "notification_sends_table_name" {
 }
 
 variable "sms_consent_table_arn" {
-  description = "ARN of picasso-sms-consent-staging (BSH form_handler.js writes SMS opt-in records)."
+  description = "ARN of picasso-sms-consent (BSH form_handler.js writes SMS opt-in records)."
   type        = string
   default     = ""
 }
@@ -139,7 +139,7 @@ variable "sms_consent_table_name" {
 }
 
 variable "sms_usage_table_arn" {
-  description = "ARN of picasso-sms-usage-staging (BSH form_handler.js increments monthly SMS counter)."
+  description = "ARN of picasso-sms-usage (BSH form_handler.js increments monthly SMS counter)."
   type        = string
   default     = ""
 }

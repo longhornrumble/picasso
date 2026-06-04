@@ -41,7 +41,7 @@
 #   - NO s3:GetObject on ARCHIVE_BUCKET — walker returns keys only, not bodies
 #     (operator pulls bodies via their own SSO role with `aws s3 cp`).
 #   - NO Scan on any surface except where unavoidable (subject-lookups go through GSI)
-#   - NO DeleteItem on picasso-audit-staging (Art 17(3)(b) carve-out, D5 G-C)
+#   - NO DeleteItem on picasso-audit (Art 17(3)(b) carve-out, D5 G-C)
 #   - NO DeleteItem on picasso-channel-mappings (M2 Sprint B IaC follow-up:
 #     psid resolver is read-only; mapping rows are tenant-config, not subject PII)
 #   - NO writes to picasso-pii-subject-index UpdateItem (that grant belongs to
@@ -265,10 +265,13 @@ locals {
   t_session_events   = "${local.ddb}/${var.session_events_table_name}"
   # F-DSAR31 (closed 2026-06-03): pseudonymized session-summaries surface,
   # pk=TENANT#{tenant_hash}, filtered by pii_subject_id. NOT the operational
-  # `staging-conversation-summaries` (t_conv_summaries) — a distinct table.
-  # Left as a literal: session-summaries is hand-managed (no ddb_* module to
-  # single-source from). Renamed manually when its alignment slice comes.
-  t_session_summaries = "${local.ddb}/picasso-session-summaries-staging"
+  # `picasso-conversation-summaries` (t_conv_summaries) — a distinct table.
+  # Kept as a literal (not var-wired like the grants above): per F-DSAR29 the
+  # DSAR table names are code-managed constants, and this grant mirrors the
+  # Lambda's TABLE_SESSION_SUMMARIES constant. Both were set to
+  # picasso-session-summaries together in batch-3 of the naming-alignment program
+  # (the module.session_summaries table was renamed in the same change).
+  t_session_summaries = "${local.ddb}/picasso-session-summaries"
 
   # Forward references to GSIs (already exist in their respective ddb modules).
   gsi_form_subjectid    = "${local.t_form_submissions}/index/PiiSubjectIdIndex"
@@ -338,7 +341,7 @@ data "aws_iam_policy_document" "dsar" {
     ]
   }
 
-  # picasso-audit-staging — READ ONLY. Art 17(3)(b) carve-out (D5 G-C row,
+  # picasso-audit — READ ONLY. Art 17(3)(b) carve-out (D5 G-C row,
   # counsel-pending): audit-integrity reasoning means we surface audit rows
   # in an access-type DSAR but do NOT delete them on a delete-type DSAR.
   # If counsel later concludes deletion is required, this statement gets

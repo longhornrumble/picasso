@@ -4,7 +4,7 @@ variable "env" {
 }
 
 resource "aws_dynamodb_table" "token_blacklist" {
-  name         = "picasso-token-blacklist-${var.env}"
+  name         = "picasso-token-blacklist"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "token_hash"
 
@@ -23,7 +23,7 @@ resource "aws_dynamodb_table" "token_blacklist" {
   }
 
   tags = {
-    Name = "picasso-token-blacklist-${var.env}"
+    Name = "picasso-token-blacklist"
   }
 }
 

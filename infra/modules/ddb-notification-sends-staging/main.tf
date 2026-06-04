@@ -1,5 +1,5 @@
 resource "aws_dynamodb_table" "notification_sends" {
-  name         = "picasso-notification-sends-staging"
+  name         = "picasso-notification-sends"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "pk"
   range_key    = "sk"
@@ -24,7 +24,7 @@ resource "aws_dynamodb_table" "notification_sends" {
   }
 
   tags = {
-    Name = "picasso-notification-sends-staging"
+    Name = "picasso-notification-sends"
   }
 }
 

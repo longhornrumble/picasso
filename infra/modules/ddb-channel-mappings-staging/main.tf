@@ -1,4 +1,4 @@
-# Meta Messenger project — staging-account twin of picasso-channel-mappings-staging.
+# Meta Messenger project — staging-account twin of picasso-channel-mappings.
 #
 # Source-of-truth schema dumped from the prod-account (614056832592) original
 # 2026-05-18 via `aws dynamodb describe-table`:
@@ -15,7 +15,7 @@
 # rather than faithfully reproducing it.
 
 resource "aws_dynamodb_table" "channel_mappings" {
-  name         = "picasso-channel-mappings-staging"
+  name         = "picasso-channel-mappings"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "PK"
   range_key    = "SK"
@@ -57,7 +57,7 @@ resource "aws_dynamodb_table" "channel_mappings" {
   }
 
   tags = {
-    Name = "picasso-channel-mappings-staging"
+    Name = "picasso-channel-mappings"
   }
 }
 

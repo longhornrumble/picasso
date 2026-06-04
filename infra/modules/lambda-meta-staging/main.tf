@@ -26,7 +26,7 @@
 # ------------------------------------------------------------------
 
 variable "channel_mappings_table_arn" {
-  description = "ARN of picasso-channel-mappings-staging. OAuth writes Page tokens; Webhook reads tenant routing; Response Processor reads token + updates lastUserMessageAt."
+  description = "ARN of picasso-channel-mappings. OAuth writes Page tokens; Webhook reads tenant routing; Response Processor reads token + updates lastUserMessageAt."
   type        = string
 }
 
@@ -40,7 +40,7 @@ variable "channel_mappings_tenant_index_arn" {
 }
 
 variable "webhook_dedup_table_arn" {
-  description = "ARN of picasso-webhook-dedup-staging. Meta_Webhook_Handler Get/Put's inbound message `mid` for idempotency."
+  description = "ARN of picasso-webhook-dedup. Meta_Webhook_Handler Get/Put's inbound message `mid` for idempotency."
   type        = string
 }
 
@@ -49,7 +49,7 @@ variable "webhook_dedup_table_name" {
 }
 
 variable "recent_messages_table_arn" {
-  description = "ARN of the EXISTING recent-messages table (module.ddb_recent_messages_staging). Shared with core chat — schema-identical (sessionId/messageTimestamp). Response Processor Query's prior context + Put's the new Q&A pair."
+  description = "ARN of the EXISTING picasso-recent-messages table (module.ddb_recent_messages_staging). Shared with core chat — schema-identical (sessionId/messageTimestamp). Response Processor Query's prior context + Put's the new Q&A pair."
   type        = string
 }
 
