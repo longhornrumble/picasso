@@ -61,6 +61,11 @@ variable "booking_start_at_index_arn" {
   type        = string
 }
 
+variable "booking_external_event_id_index_arn" {
+  description = "ARN of the external_event_id-index GSI on picasso-booking-staging — the deletion path Queries it to resolve a booking from its Google event id when Google strips extendedProperties from a cancelled-event delta (env BOOKING_EXTERNAL_EVENT_INDEX)."
+  type        = string
+}
+
 variable "tenant_registry_table_arn" {
   description = "ARN of picasso-tenant-registry-staging. Listener resolves tenant config (e.g. tenant-level scheduling settings) when needed."
   type        = string
@@ -260,10 +265,12 @@ data "aws_iam_policy_document" "listener_exec" {
     ]
   }
 
-  # DDB read on booking: GetItem by (tenantId, booking_id) for moved/reassigned/
-  # deleted derivations; Query the tenantId-start_at-index for OOO-overlap
-  # detection. The coordinator_email index is granted but not used by current
-  # code (see variable note) — retained for a possible future query path.
+  # DDB read on booking: GetItem by (tenantId, booking_id) for moved/reassigned
+  # derivations; Query the tenantId-start_at-index for OOO-overlap detection; Query
+  # the external_event_id-index to resolve a booking from its Google event id on the
+  # deletion path (Google strips extendedProperties from cancelled-event deltas).
+  # The coordinator_email index is granted but not used by current code (see variable
+  # note) — retained for a possible future query path.
   statement {
     sid     = "DDBReadBooking"
     actions = ["dynamodb:GetItem", "dynamodb:Query"]
@@ -271,6 +278,7 @@ data "aws_iam_policy_document" "listener_exec" {
       var.booking_table_arn,
       var.booking_start_at_index_arn,
       var.booking_coordinator_email_index_arn,
+      var.booking_external_event_id_index_arn,
     ]
   }
 
@@ -356,6 +364,7 @@ resource "aws_lambda_function" "listener" {
       ENVIRONMENT                   = "staging"
       CALENDAR_WATCH_CHANNELS_TABLE = var.calendar_watch_channels_table_name
       BOOKING_TABLE                 = var.booking_table_name
+      BOOKING_EXTERNAL_EVENT_INDEX  = "external_event_id-index"
       TENANT_REGISTRY_TABLE         = var.tenant_registry_table_name
       EVENTS_QUEUE_URL              = aws_sqs_queue.events.url
       # I2-A cutover: the publish target after the SQS->SNS flip. Set NOW (this
