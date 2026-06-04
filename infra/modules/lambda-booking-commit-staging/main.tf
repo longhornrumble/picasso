@@ -27,11 +27,17 @@
 #     tokens.sign() (which does NO DynamoDB); tokens.redeem() (the only jti
 #     writer) is NOT reached by C8. OMITTED -> the PR itself flagged this as
 #     "deferrable". The cancel/reschedule REDEEM happens in a later workstream.
-#   - DynamoDB footprint is exactly TWO tables: Booking (Get/Put/Update/Delete,
-#     no GSI/Query) + RoutingPolicy (UpdateItem only — atomic round-robin
+#   - DynamoDB footprint at C8 was exactly TWO tables: Booking (Get/Put/Update/
+#     Delete, no GSI/Query) + RoutingPolicy (UpdateItem only — atomic round-robin
 #     cursor advance/revert).
-# If the integrator's live smoke surfaces a path that needs a table this role
-# lacks, that is a one-line reviewed grant — but the merged code shows none.
+# UPDATE (2026-06-04, lambda#227 propose route): the §B16a scheduling_propose route
+# was later added to this SAME function and brings candidate-resolver, which READS
+# two more tables (AppointmentType + employee-registry-v2) and ALSO GetItems
+# RoutingPolicy (read, not just the commit-route UpdateItem). Those grants were
+# missed in the #227 weave and the route AccessDenied on its first read until the
+# 2026-06-04 live UAT surfaced it. Added as DDBSchedulingProposeReads +
+# DDBEmployeeRegistryQuery (the S3 config-gate grant was already codified separately).
+# If a future live smoke surfaces another needed table, that is again a reviewed grant.
 
 # ------------------------------------------------------------------
 # Inputs
@@ -52,6 +58,30 @@ variable "routing_policy_table_arn" {
 }
 
 variable "routing_policy_table_name" {
+  type = string
+}
+
+# ── scheduling_propose route reads (added when the §B16a propose route landed on
+# BCH in lambda#227; the C8 commit-only scoping below predates it). candidate-resolver
+# (bundled via shared/scheduling) does GetItem on AppointmentType + RoutingPolicy and a
+# tenant-partition Query on the employee registry to resolve the candidate pool. Without
+# these the propose route AccessDenies on its first read — caught by the 2026-06-04 live
+# UAT (the route had never been invoked end-to-end on staging). ──
+variable "appointment_type_table_arn" {
+  description = "ARN of picasso-appointment-type-staging. §B16a propose route: candidate-resolver defaultGetAppointmentType GetItem (resolve the appointment type → its routing_policy_id)."
+  type        = string
+}
+
+variable "appointment_type_table_name" {
+  type = string
+}
+
+variable "employee_registry_table_arn" {
+  description = "ARN of picasso-employee-registry-v2-staging. §B16a propose route: candidate-resolver defaultQueryEmployees tenant-partition Query (scheduling-tagged employees → candidate pool; resourceId = email). Query on the base table by tenantId PK — no index."
+  type        = string
+}
+
+variable "employee_registry_table_name" {
   type = string
 }
 
@@ -219,6 +249,24 @@ data "aws_iam_policy_document" "commit_exec" {
     resources = [var.routing_policy_table_arn]
   }
 
+  # §B16a propose route reads (lambda#227): candidate-resolver does GetItem on the
+  # AppointmentType row (→ routing_policy_id) and the RoutingPolicy row (→ tag_conditions).
+  # GetItem ONLY — the propose route never writes these (the round-robin write stays the
+  # commit route's UpdateItem statement above). Precisely scoped per action↔resource.
+  statement {
+    sid       = "DDBSchedulingProposeReads"
+    actions   = ["dynamodb:GetItem"]
+    resources = [var.appointment_type_table_arn, var.routing_policy_table_arn]
+  }
+
+  # §B16a propose route: candidate-resolver Query of the employee registry's tenant
+  # partition (tenantId PK) for scheduling-tagged candidates. Query ONLY, base table (no index).
+  statement {
+    sid       = "DDBEmployeeRegistryQuery"
+    actions   = ["dynamodb:Query"]
+    resources = [var.employee_registry_table_arn]
+  }
+
   # Secrets Manager: per-tenant scheduling OAuth (Google) + Zoom S2S secrets,
   # plus the shared HS256 JWT signing key for the signed cancel/reschedule
   # links. Per-tenant, NOT wildcard (closes the B1 audit row 13 posture). The
@@ -323,6 +371,8 @@ resource "aws_lambda_function" "commit" {
       ENVIRONMENT              = "staging"
       BOOKING_TABLE            = var.booking_table_name
       ROUTING_POLICY_TABLE     = var.routing_policy_table_name
+      APPOINTMENT_TYPE_TABLE   = var.appointment_type_table_name
+      EMPLOYEE_REGISTRY_TABLE  = var.employee_registry_table_name
       OAUTH_SECRET_PATH_PREFIX = "picasso/scheduling/oauth"
       ZOOM_SECRET_PATH_PREFIX  = "picasso/scheduling/zoom"
       SES_FROM_EMAIL           = "notify@myrecruiter.ai"
