@@ -1476,3 +1476,43 @@ resource "aws_lambda_event_source_mapping" "picasso_session_archiver" {
     }
   }
 }
+
+# DDB-stream read + S3 archive-write grant for the (hand-managed) archiver role.
+# Brought under Terraform in batch-3 of the naming-alignment program: renaming
+# picasso-session-summaries-staging -> picasso-session-summaries replaced the
+# table's stream, and the hand-managed grant (pinned to the OLD stream ARN)
+# blocked the ESM with a 400. The DDBStreamRead resource is now wired from
+# module.session_summaries.table_arn so the grant cascades on any future rename
+# (the /stream/* wildcard already covers the per-replace stream timestamp).
+# No import block needed: create issues an idempotent PutRolePolicy that adopts
+# the existing identically-shaped inline policy. The role itself, the Lambda, and
+# the DLQ stay hand-managed (follow-up scope).
+resource "aws_iam_role_policy" "picasso_session_archiver_inline" {
+  count = var.env == "staging" ? 1 : 0
+
+  name = "picasso-session-archiver-inline"
+  role = "picasso-session-archiver-role"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "DDBStreamRead"
+        Effect = "Allow"
+        Action = [
+          "dynamodb:DescribeStream",
+          "dynamodb:GetRecords",
+          "dynamodb:GetShardIterator",
+          "dynamodb:ListStreams",
+        ]
+        Resource = "${module.session_summaries.table_arn}/stream/*"
+      },
+      {
+        Sid      = "S3ArchiveWrite"
+        Effect   = "Allow"
+        Action   = "s3:PutObject"
+        Resource = "arn:aws:s3:::picasso-archive-staging/sessions/*"
+      },
+    ]
+  })
+}
