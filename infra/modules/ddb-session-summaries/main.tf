@@ -4,7 +4,7 @@ variable "env" {
 }
 
 resource "aws_dynamodb_table" "session_summaries" {
-  name         = "picasso-session-summaries-${var.env}"
+  name         = "picasso-session-summaries"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "pk"
   range_key    = "sk"
@@ -36,7 +36,7 @@ resource "aws_dynamodb_table" "session_summaries" {
   stream_view_type = "OLD_IMAGE"
 
   tags = {
-    Name = "picasso-session-summaries-${var.env}"
+    Name = "picasso-session-summaries"
   }
 }
 

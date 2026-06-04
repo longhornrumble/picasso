@@ -268,7 +268,7 @@ locals {
   # `picasso-conversation-summaries` (t_conv_summaries) — a distinct table.
   # Left as a literal: session-summaries is hand-managed (no ddb_* module to
   # single-source from). Renamed manually when its alignment slice comes.
-  t_session_summaries = "${local.ddb}/picasso-session-summaries-staging"
+  t_session_summaries = "${local.ddb}/picasso-session-summaries"
 
   # Forward references to GSIs (already exist in their respective ddb modules).
   gsi_form_subjectid    = "${local.t_form_submissions}/index/PiiSubjectIdIndex"

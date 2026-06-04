@@ -4,7 +4,7 @@
 # chip-interaction events to BSH `?action=analytics`, which batches them to
 # SQS, where Analytics_Event_Processor consumes, decodes tenant_hash via the
 # tenant-config mappings bucket, writes raw NDJSON to S3, and (when
-# DYNAMODB_WRITE_ENABLED=true) per-event rows to picasso-session-events-staging.
+# DYNAMODB_WRITE_ENABLED=true) per-event rows to picasso-session-events.
 #
 # Path 1 (server-side direct DDB write to session-summaries via analytics_writer.py/js)
 # is unchanged by this module and remains fully operational in the twin.
@@ -17,17 +17,17 @@
 # ------------------------------------------------------------------
 
 variable "session_events_table_arn" {
-  description = "ARN of picasso-session-events-staging DDB table. Processor writes per-event rows here when DYNAMODB_WRITE_ENABLED=true."
+  description = "ARN of picasso-session-events DDB table. Processor writes per-event rows here when DYNAMODB_WRITE_ENABLED=true."
   type        = string
 }
 
 variable "session_events_table_name" {
-  description = "Name of picasso-session-events-staging (for SESSION_EVENTS_TABLE env var)."
+  description = "Name of picasso-session-events (for SESSION_EVENTS_TABLE env var)."
   type        = string
 }
 
 variable "session_summaries_table_name" {
-  description = "Name of picasso-session-summaries-staging. Read by the processor module-load even though it never writes (legacy code path in lambda_function.py); pass through for env-var parity with prod."
+  description = "Name of picasso-session-summaries. Read by the processor module-load even though it never writes (legacy code path in lambda_function.py); pass through for env-var parity with prod."
   type        = string
 }
 
