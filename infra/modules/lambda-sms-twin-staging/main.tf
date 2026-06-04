@@ -18,7 +18,7 @@
 # ------------------------------------------------------------------
 
 variable "notification_sends_table_arn" {
-  description = "ARN of picasso-notification-sends-staging. SMS_Sender writes per-send rows."
+  description = "ARN of picasso-notification-sends. SMS_Sender writes per-send rows."
   type        = string
 }
 
@@ -27,7 +27,7 @@ variable "notification_sends_table_name" {
 }
 
 variable "notification_events_table_arn" {
-  description = "ARN of picasso-notification-events-staging. SMS_Webhook_Handler writes delivery events from Telnyx webhooks."
+  description = "ARN of picasso-notification-events. SMS_Webhook_Handler writes delivery events from Telnyx webhooks."
   type        = string
 }
 
@@ -45,7 +45,7 @@ variable "sms_consent_table_name" {
 }
 
 variable "sms_usage_table_arn" {
-  description = "ARN of picasso-sms-usage-staging. SMS_Sender increments monthly per-tenant counter."
+  description = "ARN of picasso-sms-usage. SMS_Sender increments monthly per-tenant counter."
   type        = string
 }
 

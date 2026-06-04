@@ -36,7 +36,7 @@ module "session_summaries" {
 # (`project_staging_twin_resource_provisioning_backlog.md`). Provisions the 2
 # tables BSH form_handler.js references that didn't yet exist in either env:
 # `picasso-sms-consent-{env}` and `picasso-sms-usage-{env}`. The other 2
-# tables (`picasso-form-submissions-staging`, `picasso-notification-sends-staging`)
+# tables (`picasso-form-submissions-staging`, `picasso-notification-sends`)
 # are already managed by `ddb_form_submissions_staging` (lines 91-94) +
 # `ddb_notification_sends_staging` (lines 101-104) below — Phase A intentionally
 # does NOT redeclare them.
@@ -543,7 +543,7 @@ module "lambda_analytics_dashboard_api_staging" {
 # Phase C (BSH staging-twin): analytics-events pipeline.
 # Path 2 of the analytics architecture — browser POSTs to BSH `?action=analytics`
 # get batched to SQS, processed into S3 (raw NDJSON archive, 30d expiry) +
-# picasso-session-events-staging (per-event DDB rows). Path 1 (server-side direct
+# picasso-session-events (per-event DDB rows). Path 1 (server-side direct
 # write to session-summaries via analytics_writer.js/py) is unchanged.
 # Athena + Aggregator are intentionally NOT twinned — those are dead/dormant
 # in prod (zero invocations 5d; picasso-dashboard-aggregates empty); separate

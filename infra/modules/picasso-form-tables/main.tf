@@ -58,7 +58,7 @@ resource "aws_dynamodb_table" "sms_consent" {
 # would silently ResourceNotFoundException there. Staging twin provisions it correctly.
 # Schema derived from BSH form_handler.js:891-960 (Key={tenant_id, month}, attrs count/updated_at).
 resource "aws_dynamodb_table" "sms_usage" {
-  name         = "picasso-sms-usage-${var.env}"
+  name         = "picasso-sms-usage"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "tenant_id"
   range_key    = "month"
@@ -87,7 +87,7 @@ resource "aws_dynamodb_table" "sms_usage" {
   }
 
   tags = {
-    Name = "picasso-sms-usage-${var.env}"
+    Name = "picasso-sms-usage"
   }
 }
 

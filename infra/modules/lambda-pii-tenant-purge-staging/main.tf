@@ -67,13 +67,13 @@ locals {
   # Live-verified table names (same source-of-truth as the DSAR module + the
   # Lambda's constants).
   t_form_submissions   = "${local.ddb}/picasso-form-submissions-staging"
-  t_notification_sends = "${local.ddb}/picasso-notification-sends-staging"
-  t_notification_evts  = "${local.ddb}/picasso-notification-events-staging"
+  t_notification_sends = "${local.ddb}/picasso-notification-sends"
+  t_notification_evts  = "${local.ddb}/picasso-notification-events"
   t_subject_index      = "${local.ddb}/picasso-pii-subject-index-staging"
-  t_sms_usage          = "${local.ddb}/picasso-sms-usage-staging"
+  t_sms_usage          = "${local.ddb}/picasso-sms-usage"
   # Class C (F-DSAR31): session-summaries, pk=TENANT#{tenant_hash}. Purged as a
   # whole-partition delete when the caller supplies tenant_hash.
-  t_session_summaries = "${local.ddb}/picasso-session-summaries-staging"
+  t_session_summaries = "${local.ddb}/picasso-session-summaries"
 
   # notification-events is queried via the ByMessageId GSI (chained from the
   # notification-sends message_ids). Query needs the GSI ARN; DeleteItem needs

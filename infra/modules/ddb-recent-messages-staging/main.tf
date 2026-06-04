@@ -1,5 +1,5 @@
 resource "aws_dynamodb_table" "recent_messages" {
-  name         = "recent-messages"
+  name         = "picasso-recent-messages"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "sessionId"
   range_key    = "messageTimestamp"
@@ -29,7 +29,7 @@ resource "aws_dynamodb_table" "recent_messages" {
   }
 
   tags = {
-    Name = "recent-messages"
+    Name = "picasso-recent-messages"
   }
 }
 
