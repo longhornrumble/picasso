@@ -265,7 +265,7 @@ locals {
   t_session_events   = "${local.ddb}/${var.session_events_table_name}"
   # F-DSAR31 (closed 2026-06-03): pseudonymized session-summaries surface,
   # pk=TENANT#{tenant_hash}, filtered by pii_subject_id. NOT the operational
-  # `staging-conversation-summaries` (t_conv_summaries) — a distinct table.
+  # `picasso-conversation-summaries` (t_conv_summaries) — a distinct table.
   # Left as a literal: session-summaries is hand-managed (no ddb_* module to
   # single-source from). Renamed manually when its alignment slice comes.
   t_session_summaries = "${local.ddb}/picasso-session-summaries-staging"

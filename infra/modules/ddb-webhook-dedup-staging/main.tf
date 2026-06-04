@@ -1,4 +1,4 @@
-# Meta Messenger project — staging-account twin of picasso-webhook-dedup-staging.
+# Meta Messenger project — staging-account twin of picasso-webhook-dedup.
 #
 # Webhook idempotency table: Meta_Webhook_Handler PutItem's the inbound message
 # `mid` (with a short `ttl`) before async-invoking Meta_Response_Processor, and
@@ -14,7 +14,7 @@
 # DDB convention (cost is negligible at PAY_PER_REQUEST idle).
 
 resource "aws_dynamodb_table" "webhook_dedup" {
-  name         = "picasso-webhook-dedup-staging"
+  name         = "picasso-webhook-dedup"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "mid"
 
@@ -33,7 +33,7 @@ resource "aws_dynamodb_table" "webhook_dedup" {
   }
 
   tags = {
-    Name = "picasso-webhook-dedup-staging"
+    Name = "picasso-webhook-dedup"
   }
 }
 

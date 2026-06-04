@@ -40,7 +40,7 @@ variable "channel_mappings_tenant_index_arn" {
 }
 
 variable "webhook_dedup_table_arn" {
-  description = "ARN of picasso-webhook-dedup-staging. Meta_Webhook_Handler Get/Put's inbound message `mid` for idempotency."
+  description = "ARN of picasso-webhook-dedup. Meta_Webhook_Handler Get/Put's inbound message `mid` for idempotency."
   type        = string
 }
 

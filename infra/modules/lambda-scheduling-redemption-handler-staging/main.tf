@@ -51,7 +51,7 @@ variable "conversation_scheduling_session_table_name" {
 }
 
 variable "jti_blacklist_table_arn" {
-  description = "ARN of picasso-token-jti-blacklist-staging. PutItem only, conditional attribute_not_exists(jti) — the §13.7 one-time-redeem burn via tokens.js:378."
+  description = "ARN of picasso-token-jti-blacklist. PutItem only, conditional attribute_not_exists(jti) — the §13.7 one-time-redeem burn via tokens.js:378."
   type        = string
 }
 
