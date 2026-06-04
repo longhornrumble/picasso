@@ -271,6 +271,123 @@ The seams between the 5 B-minimal workstreams. Same convention as §B (Node 20, 
 
 ---
 
+## B-remainder (new-booking in-chat flow) interfaces — **LOCKED 2026-06-03** (integrator; B-remainder keystone)
+
+The seams for booking a NEW appointment from scratch in chat (`qualifying → proposing → confirming → booked`).
+The recovery loop (§B9–§B15) only CHANGES an existing booking; this is the other half. Same convention as §B
+(Node 20, CommonJS, async, plain-object returns, DI-seam'd).
+
+**Architecture (load-bearing — the reason this is a 3-slice wave):** `availability.js` (C4) + `pool.js` (C6)
+require `googleapis` / `google-auth-library`, which BSH cannot bundle (the lambda#222 `MODULE_NOT_FOUND` crash
+boundary). So the `proposing` step (availability + routing + slot-gen) AND the `booked` commit BOTH run in
+`Booking_Commit_Handler` and are reached from BSH by Lambda invoke — exactly as the Tier-2 executor
+(`scheduling_mutate`) already is. **BSH owns the CONVERSATION; BCH owns everything calendar-bound.**
+
+### B16a — `scheduling_propose` BCH route (produced by WS-NEWBOOK-PROPOSE, consumed by WS-NEWBOOK-FLOW)
+```js
+// Booking_Commit_Handler/index.js: a THIRD action route (alongside the default commit + `scheduling_mutate`),
+// dispatched in handler() BEFORE validate(). The feature gate runs IN index.js before dispatch — exactly like the
+// `scheduling_mutate` block (index.js ~L461–471 calls gateScheduling(event.tenantId, injected) → returns disabled,
+// no calendar I/O) — the propose SUB-handler does NOT gate itself. camelCase keys (matches `scheduling_mutate`,
+// NOT the snake_case commit route): the dispatch reads `event.tenantId`.
+//   IN  { action: 'scheduling_propose', tenantId, sessionId,
+//         appointmentTypeId,               // BSH knows it from qualifying; propose resolves the rest from DDB
+//         userTimeZone, alreadyRejected?: [slotId], windowStart?, windowEnd? }
+//   OUT { outcome: 'ok' | 'no_availability' | 'failed',                     // 'ok' iff slots.length > 0
+//         slots: [ { slotId, start, end, label, candidateResourceIds: [resourceId,...] } ],   // §B3 chips, GENERIC
+//         poolSize,                         // = pool.select().orderedPool.length (the ROUTING pool size, TOP-LEVEL,
+//                                           //   NOT per-slot candidateResourceIds.length — commit's §5.5 solo-vs-
+//                                           //   pool branch depends on this; getting it wrong mis-flags the booking)
+//         tieBreaker?, roundRobinCursor?,   // carried forward into the §B16c commit (round-robin commits on success only)
+//         error? }
+// Impl: from appointmentTypeId resolve (a) the AppointmentType row, (b) its RoutingPolicy OBJECT, (c) the candidate
+// pool (bookable coordinators eligible for it). §B7 `resolveCandidates({ tenantId, appointmentTypeId }, deps)`
+// (OBJECT arg, per §B7 — the bare-arg wording was a doc nit, confirmed against the shipped signature in #227)
+// returns the CANDIDATES list but does NOT return the RoutingPolicy object — read that separately (the
+// candidate-resolver's exported `defaultGetAppointmentType`/`defaultGetRoutingPolicy`, as #227 does). Then call the SHIPPED C6 `pool.select({tenantId, appointmentType,
+// routingPolicy, candidates, userTimeZone, alreadyRejected, windowStart, windowEnd})` and MAP its REAL return:
+//   pool.select → { status:'SLOTS_PROPOSED'|'SLOT_UNAVAILABLE', orderedPool, tieBreaker, roundRobinCursor, slots }
+//   mapping: status 'SLOTS_PROPOSED' → outcome 'ok' ; 'SLOT_UNAVAILABLE' → 'no_availability' ; throw → 'failed'.
+//   pool.select's chips ALREADY carry {slotId,start,end,label,candidateResourceIds} — pass them through unchanged;
+//   set the TOP-LEVEL poolSize = orderedPool.length (do NOT derive it per-slot). Slots stay GENERIC (label only,
+//   NO coordinator name, §10.4) — coordinator is revealed at confirm by the FLOW + bound at commit by pool.lockSlot().
+// READ-ONLY: no Booking write, no round-robin advance (the commit owns that). PII: the propose payload carries NO
+// attendee identity (it stays in the BSH flow until commit); never log identity here.
+```
+
+### B16b — new-booking action vocabulary + the §B14 boundary (WS-NEWBOOK-FLOW internal; the rule is LOCKED)
+```
+// The new-booking flow REUSES the §B14 BOUNDARY verbatim (C9 stateMachine authoritative; LLM advisory; execute
+// ONLY on a discrete structured action from a focused post-stream call; free text NEVER commits; unparseable→'none').
+// Its action vocabulary (distinct from the recovery loop's select_slot/confirm_reschedule/confirm_cancel):
+//   { action: 'select_slot' | 'confirm_book' | 'none', slotId? }
+// Transitions (each validated through stateMachine.transition — IllegalStateTransition → rejected, no op):
+//   qualifying  --(routing+availability resolved; slots presented)-->  proposing   // on entry, after propose returns
+//   proposing   --select_slot----------------------------------------> confirming  // user picks a chip
+//   proposing   --none ("more times")-------------------------------->  proposing   // self-loop, re-propose w/ alreadyRejected
+//   confirming  --confirm_book---------------------------------------> booked       // §B16c commit invoked HERE only
+// confirm_book from any non-confirming state → IllegalStateTransition (rejected). On commit SUCCESS or the
+// "we'll confirm by email" fallback, advance to 'booked' so a later turn cannot re-fire commit (booked→booked is
+// illegal) — mirrors the recovery loop's SR-2 double-execute guard. Data-layer idempotency is the commit's C11
+// gate; this is the conversation-layer guard. SLOT_UNAVAILABLE from commit → return to 'proposing' (re-offer).
+//
+// QUALIFYING→PROPOSING ORDERING (strand-prevention, the load-bearing rule): advance qualifying→proposing ONLY
+// AFTER `invokeProposal` returns `outcome:'ok'`, in the SAME saveState that persists the slots (mirror the shipped
+// `schedulingFlow._presentSlots`). On `outcome:'no_availability'` do NOT advance — STAY in 'qualifying' (offer to
+// widen the window / pick another type). Advancing optimistically before the propose succeeds strands a slot-less
+// session permanently in 'proposing'.
+// ALREADY-REJECTED ACCUMULATION: the proposing 'none' self-loop ("more times") must ACCUMULATE previously-presented
+// slotIds in saveState and pass them as `alreadyRejected` to the next `invokeProposal` (mirror how schedulingFlow
+// persists `candidate_slots`) — so re-propose returns FRESH times, not the same ones.
+```
+
+### B16c — BSH → BCH commit invoke seam (FREEZE of the already-shipped C8 commit route, as consumed by new-booking)
+```js
+// The 'booked' transition delegates to the EXISTING C8 commit route — Booking_Commit_Handler DEFAULT action
+// (NOT scheduling_mutate / scheduling_propose) — via the same Lambda-invoke seam (deps.invokeBookingCommit,
+// mirroring deps.invokeSchedulingExecutor). Its input is the SHIPPED validate() contract; frozen here so the
+// propose route's carried-forward fields line up with what commit consumes:
+//   IN  { tenant_id, session_id,
+//         slot: { start, end, candidateResourceIds: [resourceId,...] },   // the SELECTED slot's pool (≥1)
+//         attendee: { email, first_name?, last_name?, name?, phone? },     // identity from §B5 form-injection or chat
+//         conference_type: 'google_meet' | 'zoom' | 'null',
+//         pool_size: <number ≥1>,                                          // = the propose response's TOP-LEVEL
+//                                                                          //   poolSize (orderedPool.length) — NOT
+//                                                                          //   slot.candidateResourceIds.length
+//         appointment_type: {...}, coordinator_emails?: {...}, coordinator_name?, org_name?,
+//         deep_link_base?, user_time_zone?, tie_breaker?, round_robin_cursor? }
+//   OUT { status: 'BOOKED'         → { bookingId, resourceId, booking }    // success (the assigned coordinator = resourceId)
+//       | 'ALREADY_CONFIRMED'      → { bookingId, booking }                // C11 idempotent re-confirm
+//       | 'SLOT_UNAVAILABLE'       → { action:'reoffer', reason }          // lost the race → FLOW re-proposes
+//       | 'COMMIT_FAILED'          → { action:'graceful_error', reason }   // → "confirm by email" fallback notice
+//       | 'SCHEDULING_DISABLED'    → { reason } }                          // gate (defense-in-depth; BSH gates first)
+// `pool.lockSlot()` inside commit atomically assigns ONE resourceId from candidateResourceIds + advances round-robin
+// on success. The FLOW reveals the returned resourceId's coordinator in its confirmation message. Do NOT re-run the
+// state machine in BCH — the FLOW already gated confirming→booked (§B14). This payload is ALREADY SHIPPED; the
+// worker FREEZES against it, it does not modify the commit route.
+```
+
+### B16d — new-booking session bootstrap (integrator-owned BSH entry-hook + WS-C12 signal)
+```
+// New-booking ENTRY has NO §B10 token binding (that is recovery-only). A fresh chat with a `start_scheduling`
+// CTA (A1/A2 shipped: BSH emits the CTA; MessageBubble dispatches it) begins the flow. WS-C12 (widget) sends an
+// explicit `scheduling_intent: 'new_booking'` signal on the CTA-dispatched turn; the integrator-wired BSH
+// entry-hook (mirrors injectSchedulingContext / bindingContext) creates the ConversationSchedulingSession row in
+// 'qualifying' (frozen §A: PK tenantId · SK session_id) and resolves: appointment_type + RoutingPolicy (from the
+// tenant `scheduling` config block; if the tenant offers >1 appt-type, qualifying ASKS which) + attendee identity
+// (from §B5 form-injection context when present, else collected in chat). The WS-NEWBOOK-FLOW state machine then
+// drives qualifying→proposing→confirming→booked. GATED by feature_flags.scheduling_enabled (shipped backend gate).
+// ATTENDEE NOT-YET-KNOWN: when form-injection carries no attendee email, the flow STAYS in 'qualifying' and the LLM
+// collects identity; the integrator entry-hook RE-LOADS the form/identity context on EACH turn (not just at
+// bootstrap) and re-supplies `deps.qualifyingContext`. `invokeProposal` MAY run before identity is known
+// (availability doesn't need it), but the §B16c commit requires `attendee.email` — so `confirm_book` is only offered
+// once identity is resolved. Multi-appt-type tenants: 'qualifying' ASKS which type (LLM free-text) before routing.
+// OWNERSHIP: WS-C12 owns the widget signal + chip render; WS-NEWBOOK-FLOW owns newBookingFlow.js; the INTEGRATOR
+// owns the index.js entry-hook wiring + the qualifying-context resolution glue (NOT a worker slice).
+```
+
+---
+
 ## C. Contract-change protocol
 1. A workstream that believes a contract is wrong/insufficient **stops and posts the issue to the integrator** (PR comment or status report) — it does NOT edit this file or fork the contract.
 2. The integrator decides: amend the contract (and notify every consuming workstream) or hold.
@@ -290,3 +407,5 @@ The seams between the 5 B-minimal workstreams. Same convention as §B (Node 20, 
 | 2026-06-01 | **§A non-key Booking attributes — WS-CAL-LIFECYCLE (lambda#196) additions:** `cancel_reason` value set extended (`coordinator_deleted`, `coordinator_moved` join the existing B10 values), `reassigned_at` (on `calendar_reassigned`). The `calendar-watch-channels` row's `status` gains `event_body_private` (on `event_made_private`). **F2:** the `rescheduleOfBookingId` self-anchor was **dropped** (would have inverted the canonical NEW→original meaning); moved-not-rebooked rows are marked by `cancel_reason='coordinator_moved'`. All additive; readers tolerate absence. |
 | 2026-06-02 | **§B12–§B15 LOCKED (B-minimal / C-chat integration; architect + tech-lead advised, PR #353).** §B12 `resolveBinding` (WS-BINDING; TTL-in-code, tenant-from-context). §B13 `buildCalendarFacade` (WS-FACADE; curries per-tenant OAuth into calendar-events; = the §B9 `deps.calendar`). §B14 the action-BOUNDARY (state-machine authoritative / LLM advisory; execute only on a focused-post-stream structured action à la V4.0 Action Selector — BSH has no native tool-use). §B15 Zoom `updateMeeting` (WS-ZOOM; start-time PATCH). Decomposition: WS-FACADE/WS-BINDING/WS-WIDGET/WS-ZOOM parallel + WS-CONVO keystone (after the 4). |
 | 2026-06-03 | **B-minimal weave reconciliation (FACADE/ZOOM/BINDING merged #209/#210/#211).** §B9 CALENDAR-FACADE shape **corrected to the §B13 TWO-arg** `deleteEvent(calendarId, eventId)` / `insertEvent(calendarId, requestBody)` — the 2026-06-02 `deleteEvent(booking)` single-arg wording was a thin-vs-fat error (reschedule.js + §B13 already used two-arg); **cancel.js re-synced** (lambda#212), the lone outlier. §B10 SK label **corrected `session_binding_id` → `session_id`** (the table's real range_key; value `binding#<sessionId>`) + **session-id threading invariant locked** (D4 mint → widget forward → resolveBinding, byte-identical, fail-closed on mismatch) — both per WS-BINDING #211. No consumer breakage (cancel.js unconsumed until WS-CONVO). |
+| 2026-06-03 | **§B16 tech-lead-proofed + AMENDED before launch** (3 BLOCKERS + 5 strong-recs, all ground-truthed vs live `pool.js`/`index.js`). **B16a output corrected:** `poolSize` moved from per-slot → **TOP-LEVEL = `pool.select().orderedPool.length`** (it's the ROUTING pool size per `lockSlot`'s contract; per-slot was both nonexistent in `pool.select` AND would mis-flag §5.5 solo-vs-pool) + the `SLOTS_PROPOSED→ok`/`SLOT_UNAVAILABLE→no_availability` status mapping made explicit + IN changed `appointmentType`/`routingPolicy` objects → `appointmentTypeId` (propose resolves appt-type row + policy object + candidates; §B7 returns candidates NOT policy) + camelCase `event.tenantId` pinned + gate-in-index.js (not the sub-handler) clarified. **B16b:** the qualifying→proposing ordering rule (advance only after `outcome:'ok'`, same saveState; `no_availability`→stay — else slot-less strand) + `alreadyRejected` accumulation. **B16c:** `pool_size` = the propose response's top-level `poolSize`. **B16d:** attendee-not-yet-known → stay in qualifying, entry-hook re-loads context per turn. Work-orders updated to match. No re-lock needed (corrected before any worker launched). |
+| 2026-06-03 | **§B16 LOCKED (B-remainder / new-booking in-chat wave; integrator).** The other half of the booking story — booking a NEW appointment in chat (`qualifying→proposing→confirming→booked`), vs §B9–§B15 which only change an existing one. §B16a `scheduling_propose` (a 3rd BCH route — availability+routing+slot-gen, reuses shipped C6 `pool.select`, READ-ONLY, generic slots). §B16b new-booking action vocab `select_slot`/`confirm_book`/`none` under the §B14 boundary. §B16c FREEZE of the already-shipped C8 commit route's `validate()` payload as the BSH→BCH commit seam (status `BOOKED`/`ALREADY_CONFIRMED`/`SLOT_UNAVAILABLE`/`COMMIT_FAILED`/`SCHEDULING_DISABLED`). §B16d the CTA→`qualifying` bootstrap (no §B10 binding; WS-C12 `scheduling_intent:'new_booking'` signal + integrator entry-hook). **Architecture decision (load-bearing):** C4/C6 pull googleapis → BSH can't bundle them → `proposing` + commit BOTH delegate to BCH via Lambda invoke (mirrors the Tier-2 executor). Decomposition: WS-NEWBOOK-PROPOSE + WS-C12 parallel; WS-NEWBOOK-FLOW keystone (weaves after PROPOSE). C10/C11 already shipped (calendar-events.js / commit C11 gate); C13 deferred to E (SMS-blocked). |
