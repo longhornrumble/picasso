@@ -1451,15 +1451,14 @@ resource "aws_kms_key_policy" "pii_staging" {
 # ------------------------------------------------------------------
 # picasso-session-archiver — Event Source Mapping (Phase 2 audit row G)
 # ------------------------------------------------------------------
-# Imports the live ESM into Terraform state so future StartingPosition or
-# config changes flow via the IaC SOP rather than direct CLI. The Lambda
-# itself + its IAM + the DLQ are still hand-created — bringing them under
-# Terraform is follow-up scope. UUID below is the post-B9 fix recreate.
-import {
-  to = aws_lambda_event_source_mapping.picasso_session_archiver[0]
-  id = "9132fb62-9eb0-43cc-bb91-e15e75429752"
-}
-
+# The ESM is Terraform-managed (resource below). The Lambda itself + its IAM
+# + the DLQ are still hand-created — bringing them under Terraform is follow-up
+# scope. (A prior `import {}` block pinning the live ESM UUID was removed in
+# batch-3 of the naming-alignment program: renaming
+# picasso-session-summaries-staging -> picasso-session-summaries replaced the
+# table's stream, which destroyed the imported ESM; Terraform now recreates the
+# ESM against the new stream ARN. The hand-managed archiver role's DDBStreamRead
+# grant was also repointed to the new stream ARN out-of-band -- see runbook.)
 resource "aws_lambda_event_source_mapping" "picasso_session_archiver" {
   count = var.env == "staging" ? 1 : 0
 
