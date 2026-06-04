@@ -41,7 +41,7 @@
 #   - NO s3:GetObject on ARCHIVE_BUCKET — walker returns keys only, not bodies
 #     (operator pulls bodies via their own SSO role with `aws s3 cp`).
 #   - NO Scan on any surface except where unavoidable (subject-lookups go through GSI)
-#   - NO DeleteItem on picasso-audit-staging (Art 17(3)(b) carve-out, D5 G-C)
+#   - NO DeleteItem on picasso-audit (Art 17(3)(b) carve-out, D5 G-C)
 #   - NO DeleteItem on picasso-channel-mappings (M2 Sprint B IaC follow-up:
 #     psid resolver is read-only; mapping rows are tenant-config, not subject PII)
 #   - NO writes to picasso-pii-subject-index UpdateItem (that grant belongs to
@@ -338,7 +338,7 @@ data "aws_iam_policy_document" "dsar" {
     ]
   }
 
-  # picasso-audit-staging — READ ONLY. Art 17(3)(b) carve-out (D5 G-C row,
+  # picasso-audit — READ ONLY. Art 17(3)(b) carve-out (D5 G-C row,
   # counsel-pending): audit-integrity reasoning means we surface audit rows
   # in an access-type DSAR but do NOT delete them on a delete-type DSAR.
   # If counsel later concludes deletion is required, this statement gets
