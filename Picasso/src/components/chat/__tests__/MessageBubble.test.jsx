@@ -267,7 +267,10 @@ describe('MessageBubble - scheduling dispatch branches', () => {
       (call) => typeof call[0] === 'string' && call[0].includes(`${action} action received`)
     );
 
-  it('logs and short-circuits on start_scheduling without firing form or chat handlers', () => {
+  // WS-C12 (§B16d): start_scheduling no longer short-circuits — it dispatches a
+  // new-booking turn carrying `scheduling_intent: 'new_booking'`. It must still
+  // log and must NOT fire any form handler.
+  it('dispatches a new_booking turn on start_scheduling (without firing form handlers)', () => {
     const ctaButtons = [
       {
         id: 'book_intake',
@@ -294,7 +297,12 @@ describe('MessageBubble - scheduling dispatch branches', () => {
     expect(mockFormModeContext.startFormWithConfig).not.toHaveBeenCalled();
     expect(mockFormModeContext.resumeForm).not.toHaveBeenCalled();
     expect(mockFormModeContext.cancelForm).not.toHaveBeenCalled();
-    expect(mockChatContext.sendMessage).not.toHaveBeenCalled();
+
+    // Sends the new-booking signal on this turn (label is the fallback turn text).
+    expect(mockChatContext.sendMessage).toHaveBeenCalledTimes(1);
+    const [text, metadata] = mockChatContext.sendMessage.mock.calls[0];
+    expect(text).toBe('Schedule a call');
+    expect(metadata).toMatchObject({ scheduling_intent: 'new_booking' });
   });
 
   it('logs and short-circuits on resume_scheduling without firing form or chat handlers', () => {

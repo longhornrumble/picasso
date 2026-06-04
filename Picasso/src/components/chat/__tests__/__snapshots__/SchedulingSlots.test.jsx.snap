@@ -1,0 +1,19 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`SchedulingSlots — generic chips snapshot: chip markup contains the label and no coordinator field 1`] = `
+<div
+  class="scheduling-slots"
+  data-testid="scheduling-slots"
+>
+  <div
+    class="suggested-chips"
+  >
+    <button
+      class="suggested-chip scheduling-slot-chip"
+      type="button"
+    >
+      Tue, Jun 3 · 2:00 PM
+    </button>
+  </div>
+</div>
+`;
