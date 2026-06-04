@@ -21,7 +21,7 @@ variable "env" {
 # Distinct from ddb-token-blacklist (the single-key session-token blacklist,
 # different purpose).
 resource "aws_dynamodb_table" "token_jti_blacklist" {
-  name         = "picasso-token-jti-blacklist-${var.env}"
+  name         = "picasso-token-jti-blacklist"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "tenantId"
   range_key    = "jti"
@@ -49,7 +49,7 @@ resource "aws_dynamodb_table" "token_jti_blacklist" {
   }
 
   tags = {
-    Name = "picasso-token-jti-blacklist-${var.env}"
+    Name = "picasso-token-jti-blacklist"
   }
 }
 

@@ -127,7 +127,7 @@ variable "notification_sends_table_name" {
 }
 
 variable "sms_consent_table_arn" {
-  description = "ARN of picasso-sms-consent-staging (BSH form_handler.js writes SMS opt-in records)."
+  description = "ARN of picasso-sms-consent (BSH form_handler.js writes SMS opt-in records)."
   type        = string
   default     = ""
 }

@@ -1,5 +1,5 @@
 resource "aws_dynamodb_table" "conversation_summaries" {
-  name         = "staging-conversation-summaries"
+  name         = "picasso-conversation-summaries"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "sessionId"
 
@@ -29,7 +29,7 @@ resource "aws_dynamodb_table" "conversation_summaries" {
   }
 
   tags = {
-    Name = "staging-conversation-summaries"
+    Name = "picasso-conversation-summaries"
   }
 }
 

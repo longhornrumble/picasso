@@ -17,7 +17,7 @@ variable "env" {
 
 # SMS opt-in / consent records (staging-only twin of prod `picasso-sms-consent`).
 resource "aws_dynamodb_table" "sms_consent" {
-  name         = "picasso-sms-consent-${var.env}"
+  name         = "picasso-sms-consent"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "pk"
   range_key    = "sk"
@@ -49,7 +49,7 @@ resource "aws_dynamodb_table" "sms_consent" {
   }
 
   tags = {
-    Name = "picasso-sms-consent-${var.env}"
+    Name = "picasso-sms-consent"
   }
 }
 

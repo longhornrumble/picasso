@@ -36,7 +36,7 @@ variable "notification_events_table_name" {
 }
 
 variable "sms_consent_table_arn" {
-  description = "ARN of picasso-sms-consent-staging. SMS_Sender reads consent records; SMS_Webhook_Handler queries phone-lookup GSI + updates consent on STOP/HELP keywords."
+  description = "ARN of picasso-sms-consent. SMS_Sender reads consent records; SMS_Webhook_Handler queries phone-lookup GSI + updates consent on STOP/HELP keywords."
   type        = string
 }
 
