@@ -10,7 +10,7 @@ import ChatWidget from './components/chat/ChatWidget.jsx';
 import { CSSVariablesProvider } from './components/chat/useCSSVariables.js';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
 import { config as environmentConfig } from './config/environment.js';
-import { _storeGet, _storeSet, getFromSession } from './context/shared/messageHelpers.js';
+import { _storeGet, _storeSet, getFromSession, saveToSession } from './context/shared/messageHelpers.js';
 import { setHostViewportWidth } from './utils/resolveWidgetBehavior.js';
 import { setupGlobalErrorHandling, performanceMonitor } from './utils/errorHandling.js';
 import { performanceTracker } from './utils/performanceTracking.js';
@@ -47,13 +47,21 @@ function generateSessionId() {
   return `sess_${timestamp}_${random}`;
 }
 
-// Initialize session ID immediately.
+// Initialize session ID + step counter immediately.
 // On reload of an existing conversation the chat path restores picasso_session_id
-// from sessionStorage; restore the SAME id here so analytics events and the chat
-// summary stay under one session_id (otherwise a reload splits the conversation
-// across two ids and the dashboard transcript stops lining up with the log entry).
-analyticsState.sessionId = getFromSession('picasso_session_id') || generateSessionId();
-console.log('📊 Analytics session initialized:', analyticsState.sessionId);
+// from sessionStorage; restore the SAME id AND the step counter here so post-reload
+// analytics events keep one session_id and continue at the next step_number. Restoring
+// only the id (and letting stepCounter reset to 0) re-uses low step numbers under the
+// unified session → the conversation log (keyed SESSION#id + STEP#n) mis-orders the
+// post-reload turn and can overwrite pre-reload events at the same STEP#.
+const resumedSessionId = getFromSession('picasso_session_id');
+if (resumedSessionId) {
+  analyticsState.sessionId = resumedSessionId;
+  analyticsState.stepCounter = Number(getFromSession('picasso_step_counter')) || 0;
+} else {
+  analyticsState.sessionId = generateSessionId();
+}
+console.log('📊 Analytics session initialized:', analyticsState.sessionId, '@ step', analyticsState.stepCounter);
 
 /**
  * iframe-main.jsx
@@ -173,6 +181,9 @@ function notifyParentReady() {
 function notifyParentEvent(eventType, payload = {}) {
   // Always increment step counter for event ordering
   analyticsState.stepCounter++;
+  // Persist so a reload resumes the counter (see session-init block) instead of
+  // restarting step_number at 1 and colliding with pre-reload events.
+  saveToSession('picasso_step_counter', analyticsState.stepCounter);
 
   // Build analytics envelope (schema versioning pattern)
   const analyticsEvent = {
