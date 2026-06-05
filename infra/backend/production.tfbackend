@@ -1,0 +1,13 @@
+bucket       = "myrecruiter-tfstate-production"
+key          = "terraform.tfstate"
+region       = "us-east-1"
+encrypt      = true
+kms_key_id   = "arn:aws:kms:us-east-1:614056832592:key/896db4c8-1f01-46b6-9668-89d1d6bee486"
+use_lockfile = true
+# AWS credentials sourced from AWS_PROFILE (chris-admin for local import; OIDC role in CI).
+# Do NOT add a `profile = "..."` line — it conflicts with Terraform's SSO handling.
+# Locking via S3 native (use_lockfile=true), not DynamoDB — same as staging.
+# Bucket + CMK created out-of-band by docs/runbooks/prod-iac-bootstrap.sh (Phase 2 Step 1).
+# Bucket name mirrors the env value (`myrecruiter-tfstate-production`, like
+# `myrecruiter-tfstate-staging`) — state buckets must carry a suffix (S3 names are global),
+# so the suffix matches the live env value, not a translated "prod".
