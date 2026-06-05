@@ -1,0 +1,78 @@
+{
+  "_comment": "PROD (614) inline policy for picasso-pii-dsar-role. Companion to pii-prod-cutover-runbook.md §P2.1. form-submissions (G-B/D2), archive (D3), fulfillment grants OMITTED. Remove the PiiCmkDataPlane statement if prod data tables use default/AWS-owned SSE (see Prereq 6).",
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "Logs",
+      "Effect": "Allow",
+      "Action": ["logs:CreateLogStream", "logs:PutLogEvents"],
+      "Resource": "arn:aws:logs:us-east-1:614056832592:log-group:/aws/lambda/picasso-pii-dsar:*"
+    },
+    {
+      "Sid": "MfsScopedReadDelete",
+      "Effect": "Allow",
+      "Action": ["dynamodb:Query", "dynamodb:GetItem", "dynamodb:DeleteItem"],
+      "Resource": [
+        "arn:aws:dynamodb:us-east-1:614056832592:table/picasso-notification-sends",
+        "arn:aws:dynamodb:us-east-1:614056832592:table/picasso-notification-events",
+        "arn:aws:dynamodb:us-east-1:614056832592:table/picasso-notification-events/index/ByMessageId",
+        "arn:aws:dynamodb:us-east-1:614056832592:table/picasso-recent-messages",
+        "arn:aws:dynamodb:us-east-1:614056832592:table/picasso-conversation-summaries"
+      ]
+    },
+    {
+      "Sid": "AuditReadOnly",
+      "Effect": "Allow",
+      "Action": ["dynamodb:Query", "dynamodb:GetItem"],
+      "Resource": "arn:aws:dynamodb:us-east-1:614056832592:table/picasso-audit"
+    },
+    {
+      "Sid": "SubjectIndexReadDelete",
+      "Effect": "Allow",
+      "Action": ["dynamodb:Query", "dynamodb:GetItem", "dynamodb:DeleteItem"],
+      "Resource": [
+        "arn:aws:dynamodb:us-east-1:614056832592:table/picasso-pii-subject-index",
+        "arn:aws:dynamodb:us-east-1:614056832592:table/picasso-pii-subject-index/index/PiiSubjectIdIndex"
+      ]
+    },
+    {
+      "Sid": "ChannelMappingsReadOnly",
+      "Effect": "Allow",
+      "Action": ["dynamodb:Query", "dynamodb:GetItem"],
+      "Resource": [
+        "arn:aws:dynamodb:us-east-1:614056832592:table/picasso-channel-mappings",
+        "arn:aws:dynamodb:us-east-1:614056832592:table/picasso-channel-mappings/index/TenantIndex"
+      ]
+    },
+    {
+      "Sid": "SessionEventsReadDelete",
+      "Effect": "Allow",
+      "Action": ["dynamodb:Query", "dynamodb:GetItem", "dynamodb:DeleteItem"],
+      "Resource": "arn:aws:dynamodb:us-east-1:614056832592:table/picasso-session-events"
+    },
+    {
+      "Sid": "SessionSummariesReadDelete",
+      "Effect": "Allow",
+      "Action": ["dynamodb:Query", "dynamodb:GetItem", "dynamodb:DeleteItem"],
+      "Resource": "arn:aws:dynamodb:us-east-1:614056832592:table/picasso-session-summaries"
+    },
+    {
+      "Sid": "DsarAuditPutOnly",
+      "Effect": "Allow",
+      "Action": ["dynamodb:PutItem"],
+      "Resource": "arn:aws:dynamodb:us-east-1:614056832592:table/picasso-pii-dsar-audit"
+    },
+    {
+      "Sid": "PiiCmkDataPlaneOPTIONAL_REMOVE_IF_DEFAULT_SSE",
+      "Effect": "Allow",
+      "Action": ["kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"],
+      "Resource": "<PROD_PII_CMK_ARN_OR_DELETE_THIS_STATEMENT>"
+    },
+    {
+      "Sid": "StsCallerIdentity",
+      "Effect": "Allow",
+      "Action": ["sts:GetCallerIdentity"],
+      "Resource": "*"
+    }
+  ]
+}

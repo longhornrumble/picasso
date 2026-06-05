@@ -1,0 +1,57 @@
+{
+  "_comment": "PROD (614) inline policy for picasso-pii-tenant-purge-role. Companion to pii-prod-cutover-runbook.md §P2.2. form-submissions OMITTED (G-B/D2 — prod path needs a Scan-filter, not Query; ships with the D2 code). Remove SmsUsageQueryDelete if D4 = no.",
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "Logs",
+      "Effect": "Allow",
+      "Action": ["logs:CreateLogStream", "logs:PutLogEvents"],
+      "Resource": "arn:aws:logs:us-east-1:614056832592:log-group:/aws/lambda/picasso-pii-tenant-purge:*"
+    },
+    {
+      "Sid": "NotificationSendsQueryDelete",
+      "Effect": "Allow",
+      "Action": ["dynamodb:Query", "dynamodb:DeleteItem"],
+      "Resource": "arn:aws:dynamodb:us-east-1:614056832592:table/picasso-notification-sends"
+    },
+    {
+      "Sid": "NotificationEventsQueryDelete",
+      "Effect": "Allow",
+      "Action": ["dynamodb:Query", "dynamodb:DeleteItem"],
+      "Resource": [
+        "arn:aws:dynamodb:us-east-1:614056832592:table/picasso-notification-events",
+        "arn:aws:dynamodb:us-east-1:614056832592:table/picasso-notification-events/index/ByMessageId"
+      ]
+    },
+    {
+      "Sid": "SubjectIndexQueryDelete",
+      "Effect": "Allow",
+      "Action": ["dynamodb:Query", "dynamodb:DeleteItem"],
+      "Resource": "arn:aws:dynamodb:us-east-1:614056832592:table/picasso-pii-subject-index"
+    },
+    {
+      "Sid": "SmsUsageQueryDelete_REMOVE_IF_D4_NO",
+      "Effect": "Allow",
+      "Action": ["dynamodb:Query", "dynamodb:DeleteItem"],
+      "Resource": "arn:aws:dynamodb:us-east-1:614056832592:table/picasso-sms-usage"
+    },
+    {
+      "Sid": "SessionSummariesQueryDelete",
+      "Effect": "Allow",
+      "Action": ["dynamodb:Query", "dynamodb:DeleteItem"],
+      "Resource": "arn:aws:dynamodb:us-east-1:614056832592:table/picasso-session-summaries"
+    },
+    {
+      "Sid": "PurgeAuditPutOnly",
+      "Effect": "Allow",
+      "Action": ["dynamodb:PutItem"],
+      "Resource": "arn:aws:dynamodb:us-east-1:614056832592:table/picasso-pii-tenant-purge-audit"
+    },
+    {
+      "Sid": "StsCallerIdentity",
+      "Effect": "Allow",
+      "Action": ["sts:GetCallerIdentity"],
+      "Resource": "*"
+    }
+  ]
+}
