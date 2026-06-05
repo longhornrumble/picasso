@@ -1,5 +1,5 @@
 {
-  "_comment": "PROD (614) inline policy for picasso-pii-tenant-purge-role. Companion to pii-prod-cutover-runbook.md §P2.2. form-submissions OMITTED (G-B/D2 — prod path needs a Scan-filter, not Query; ships with the D2 code). Remove SmsUsageQueryDelete if D4 = no.",
+  "_comment": "PROD (614) inline policy for picasso-pii-tenant-purge-role. Companion to pii-prod-cutover-runbook.md §P2.2. form-submissions INCLUDED (D2 schema-adaptive code: Query via tenant-timestamp-index GSI + DescribeTable + DeleteItem on the single-key prod table picasso_form_submissions — NOT a full-table Scan). Remove SmsUsageQueryDelete if D4 = no.",
   "Version": "2012-10-17",
   "Statement": [
     {
@@ -7,6 +7,15 @@
       "Effect": "Allow",
       "Action": ["logs:CreateLogStream", "logs:PutLogEvents"],
       "Resource": "arn:aws:logs:us-east-1:614056832592:log-group:/aws/lambda/picasso-pii-tenant-purge:*"
+    },
+    {
+      "Sid": "FormSubmissionsQueryDelete",
+      "Effect": "Allow",
+      "Action": ["dynamodb:Query", "dynamodb:DeleteItem", "dynamodb:DescribeTable"],
+      "Resource": [
+        "arn:aws:dynamodb:us-east-1:614056832592:table/picasso_form_submissions",
+        "arn:aws:dynamodb:us-east-1:614056832592:table/picasso_form_submissions/index/tenant-timestamp-index"
+      ]
     },
     {
       "Sid": "NotificationSendsQueryDelete",
