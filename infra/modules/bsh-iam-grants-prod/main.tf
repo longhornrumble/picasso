@@ -24,6 +24,34 @@
 # Gated to production; imported, so the post-import plan is no-op beyond
 # default_tags. Production applies stay -target-scoped (see main.tf header +
 # docs/runbooks/prod-iac-tier1-bsh-iam.md).
+#
+# ── NOT modeled here (deferred — do not assume this file = the role's effective
+#    permissions). Phase-completion-audit 2026-06-05 surfaced these; faithful
+#    import mirrors live as-is, remediation is deferred to Tier 2: ──
+#   • Managed-policy ATTACHMENTS on this role are NOT managed here:
+#       - AmazonBedrockFullAccess  (OVER-BROAD — BSH needs only InvokeModel/
+#         InvokeModelWithResponseStream + bedrock-agent-runtime:Retrieve; the
+#         staging module already scopes this. Tier-2 remediation: replace with a
+#         scoped inline grant.)
+#       - AmazonS3ReadOnlyAccess   (read-all-buckets; should be scoped to the
+#         tenant-config bucket — Tier-2 remediation.)
+#       - Bedrock-Streaming-Handler-Production-Logs-Policy (custom; logs).
+#     The role's effective permissions are therefore BROADER than the 7 inline
+#     policies below. The role resource + trust policy + these attachments stay
+#     hand-managed (don't churn); Tier 2 brings them in with the function import.
+#   • picasso-sms-consent: ACTIVE prod table that BSH form_handler.js writes, but
+#     NO inline grant covers it (only sms-usage + notification-sends are in
+#     DynamoDBFormSubmissions). Pre-existing gap — any prod sms-consent write path
+#     AccessDenies today. Add the grant at Tier 2; not introduced here.
+#   • SES-SendEmail uses Resource:"*" (pre-existing) — can send as any verified
+#     identity. Faithful import mirrors it; scope to the actual sender identity at Tier 2.
+#   • Clerk secret ARN below hardcodes the version suffix `-IVjCkY`. Secrets-Manager
+#     rotation is OFF today; it MUST stay off until this ARN is widened to
+#     `secret:prod/clerk/picasso/secret_key-*`, else a rotated ARN AccessDenies
+#     every Clerk auth → BSH chat outage.
+#   • DynamoDBFormSubmissions bundles 3 unrelated tables (form_submissions +
+#     sms-usage + notification-sends) under a form-named policy — mirrors live;
+#     a future editor searching "sms" finds it bundled. Un-bundle at Tier 3.
 # ─────────────────────────────────────────────────────────────────────────────
 
 variable "role_name" {
