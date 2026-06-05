@@ -24,6 +24,7 @@ import {
   saveToSession,
   getFromSession,
   clearSession,
+  trimHistoryForSend,
   _storeGet,
   _storeKeys
 } from './shared/messageHelpers';
@@ -637,12 +638,15 @@ export default function StreamingChatProvider({ children }) {
         user_input: userInput,
         session_id: sessionIdRef.current,
         streaming_message_id: streamingMessageId,
-        conversation_context: conversationContext,
+        conversation_context: conversationContext
+          ? { ...conversationContext, recentMessages: trimHistoryForSend(conversationContext.recentMessages) }
+          : conversationContext,
         conversation_id: conversationManagerRef.current?.conversationId,
         turn: conversationManagerRef.current?.turn,
         stream: true,
-        // Include these for compatibility
-        conversation_history: conversationContext?.recentMessages || [],
+        // conversation_history field removed: it was a byte-identical duplicate of
+        // conversation_context.recentMessages and bloated the body past the 8KB WAF
+        // SizeRestrictions_BODY limit. BSH falls back to conversation_context.recentMessages.
         original_user_input: userInput,
         // Include session context for form tracking - read from sessionStorage to get latest value
         session_context: getFromSession('picasso_session_context') || sessionContext,

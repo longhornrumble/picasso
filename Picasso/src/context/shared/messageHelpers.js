@@ -277,5 +277,28 @@ export const clearSession = () => {
   }
 };
 
+/**
+ * Trim conversation history for the request payload sent to the backend.
+ *
+ * Keeps every user message (these carry conversation memory — name, intent,
+ * facts) but only the last `maxAssistant` assistant responses. This mirrors the
+ * backend prompt builders (BSH prompt_v4.js + Master_Function), which already
+ * keep all user turns and only the last ~2 assistant turns, so answer quality is
+ * unchanged while the POST body stays under the 8KB WAF SizeRestrictions_BODY
+ * limit. The on-screen transcript (picasso_messages) is independent and unaffected.
+ *
+ * Order is preserved. Non-user/non-assistant entries are dropped.
+ */
+export const trimHistoryForSend = (messages, { maxUserTurns = 20, maxAssistant = 2 } = {}) => {
+  if (!Array.isArray(messages) || messages.length === 0) return messages || [];
+  const keepAssistant = new Set();
+  for (let i = messages.length - 1, n = 0; i >= 0 && n < maxAssistant; i--) {
+    if (messages[i]?.role === 'assistant') { keepAssistant.add(i); n++; }
+  }
+  const userIdx = messages.map((m, i) => (m?.role === 'user' ? i : -1)).filter(i => i >= 0);
+  const keepUser = new Set(userIdx.slice(-maxUserTurns));
+  return messages.filter((_, i) => keepUser.has(i) || keepAssistant.has(i));
+};
+
 // Export storage helpers for direct callers that bypass saveToSession/getFromSession
 export { _storeGet, _storeSet, _storeRemove, _storeKeys };
