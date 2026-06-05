@@ -500,6 +500,21 @@ export default function StreamingChatProvider({ children }) {
             logger.info('Streaming Provider: Conversation manager initialized', {
               tenantHash: tenantHashRef.current.slice(0, 8) + '...'
             });
+
+            // Reload rehydration: the message buffer is in-memory only, so on reload
+            // it starts empty and conversation_history sent to the backend is 0 — the
+            // bot "forgets" the conversation. Replay the restored transcript into the
+            // buffer (pure push, no server/persist side effects) so memory survives a
+            // reload. Same UI-message shape the live path buffers via addMessage.
+            if (existingSession) {
+              const priorMessages = getFromSession('picasso_messages') || [];
+              priorMessages
+                .filter(m => m && m.id !== 'welcome' && (m.role === 'user' || m.role === 'assistant') && m.content)
+                .forEach(m => conversationManagerRef.current.addMessageToBuffer(m));
+              logger.info('Streaming Provider: Rehydrated conversation buffer on reload', {
+                restored: conversationManagerRef.current.messageBuffer?.length || 0
+              });
+            }
           }
         } catch (cmErr) {
           logger.warn('Streaming Provider: Conversation manager initialization failed (non-critical)', cmErr);
