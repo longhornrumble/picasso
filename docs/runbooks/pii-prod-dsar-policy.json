@@ -1,5 +1,5 @@
 {
-  "_comment": "PROD (614) inline policy for picasso-pii-dsar-role. Companion to pii-prod-cutover-runbook.md §P2.1. form-submissions (G-B/D2), archive (D3), fulfillment grants OMITTED. Remove the PiiCmkDataPlane statement if prod data tables use default/AWS-owned SSE (see Prereq 6).",
+  "_comment": "PROD (614) inline policy for picasso-pii-dsar-role. Companion to pii-prod-cutover-runbook.md §P2.1. form-submissions INCLUDED (D2 schema-adaptive code: Query via tenant-timestamp-index GSI + DescribeTable + DeleteItem on the single-key prod table picasso_form_submissions). archive (D3) + fulfillment grants OMITTED. Remove the PiiCmkDataPlane statement if prod data tables use default/AWS-owned SSE (see Prereq 6).",
   "Version": "2012-10-17",
   "Statement": [
     {
@@ -7,6 +7,15 @@
       "Effect": "Allow",
       "Action": ["logs:CreateLogStream", "logs:PutLogEvents"],
       "Resource": "arn:aws:logs:us-east-1:614056832592:log-group:/aws/lambda/picasso-pii-dsar:*"
+    },
+    {
+      "Sid": "FormSubmissionsReadDelete",
+      "Effect": "Allow",
+      "Action": ["dynamodb:Query", "dynamodb:GetItem", "dynamodb:DeleteItem", "dynamodb:DescribeTable"],
+      "Resource": [
+        "arn:aws:dynamodb:us-east-1:614056832592:table/picasso_form_submissions",
+        "arn:aws:dynamodb:us-east-1:614056832592:table/picasso_form_submissions/index/tenant-timestamp-index"
+      ]
     },
     {
       "Sid": "MfsScopedReadDelete",
