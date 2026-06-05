@@ -22,7 +22,7 @@ on:
   workflow_dispatch:
     inputs:
       target:
-        description: "Optional -target to scope the apply (e.g. module.ops_alarms_bsh_prod). Blank = full root (NOT safe until naming reconciliation — see workflow header)."
+        description: "REQUIRED until naming reconciliation: -target to scope the apply (e.g. module.ops_alarms_bsh_prod). A blank value is rejected (the apply fails closed) so a full-root apply can't create orphan '-production' tables."
         required: false
         type: string
 
@@ -119,10 +119,13 @@ jobs:
       - name: Terraform apply
         run: |
           TARGET="${{ inputs.target }}"
-          if [ -n "$TARGET" ]; then
-            echo "Applying scoped to -target=$TARGET"
-            terraform apply -var-file=envs/production.tfvars -auto-approve -target="$TARGET"
-          else
-            echo "Applying full root (ensure naming reconciliation is done — see header)"
-            terraform apply -var-file=envs/production.tfvars -auto-approve
+          # FAIL-CLOSED: a full-root prod apply would create orphan '-production'-suffixed
+          # tables via the un-gated stateful modules (form_tables, session_summaries, ...),
+          # because prod uses BARE names. Refuse until the naming reconciliation lands and
+          # this guard is intentionally removed. Until then every prod apply MUST be -target-scoped.
+          if [ -z "$TARGET" ]; then
+            echo "::error::Refusing a full-root production apply: un-gated modules would create orphan '-production'-suffixed tables (prod uses bare names). Pass a -target (e.g. module.ops_alarms_bsh_prod). See this workflow's header + infra/README.md."
+            exit 1
           fi
+          echo "Applying scoped to -target=$TARGET"
+          terraform apply -var-file=envs/production.tfvars -auto-approve -target="$TARGET"
