@@ -10,7 +10,7 @@ import ChatWidget from './components/chat/ChatWidget.jsx';
 import { CSSVariablesProvider } from './components/chat/useCSSVariables.js';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
 import { config as environmentConfig } from './config/environment.js';
-import { _storeGet, _storeSet } from './context/shared/messageHelpers.js';
+import { _storeGet, _storeSet, getFromSession } from './context/shared/messageHelpers.js';
 import { setHostViewportWidth } from './utils/resolveWidgetBehavior.js';
 import { setupGlobalErrorHandling, performanceMonitor } from './utils/errorHandling.js';
 import { performanceTracker } from './utils/performanceTracking.js';
@@ -47,8 +47,12 @@ function generateSessionId() {
   return `sess_${timestamp}_${random}`;
 }
 
-// Initialize session ID immediately
-analyticsState.sessionId = generateSessionId();
+// Initialize session ID immediately.
+// On reload of an existing conversation the chat path restores picasso_session_id
+// from sessionStorage; restore the SAME id here so analytics events and the chat
+// summary stay under one session_id (otherwise a reload splits the conversation
+// across two ids and the dashboard transcript stops lining up with the log entry).
+analyticsState.sessionId = getFromSession('picasso_session_id') || generateSessionId();
 console.log('📊 Analytics session initialized:', analyticsState.sessionId);
 
 /**
