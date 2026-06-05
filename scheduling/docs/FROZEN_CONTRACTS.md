@@ -388,9 +388,9 @@ boundary). So the `proposing` step (availability + routing + slot-gen) AND the `
 
 ---
 
-## E. Sub-phase E interfaces — **PROPOSED 2026-06-05** (integrator M0; LOCKS after a verification pass)
+## E. Sub-phase E interfaces — **LOCKED 2026-06-05** (integrator M0; verified — Security-Reviewer + tech-lead informed pass)
 
-These are NEW interfaces sub-phase E produces/consumes. **PROPOSED, not yet locked** — they lock after a verification pass (esp. §E3 TCPA/channel — HIGH-risk), mirroring how §B was proposed → verified → LOCKED. Authoritative inputs: the [path-to-launch plan](SCHEDULING_PATH_TO_LAUNCH_PLAN.md), [UX decisions](SCHEDULING_UX_DECISIONS.md) D1–D8, canonical §9/§11/§12/§15, and the **already-shipped** SMS/notification stack (cited inline — workers CONSUME these, never rebuild them).
+These are NEW interfaces sub-phase E produces/consumes. **LOCKED** after a verification pass — Security-Reviewer on §E3 (TCPA) + tech-lead on the set, read against the ACTUAL text — with 7 amendments folded in (§E1 calendar_moved=cancel correction + scheduled-messages write shape + Scheduler IAM role; §E3 quiet-hours fire-time source + STOP-text test-gate + consent-TTL implementation-gap; §E4 attendance_state-not-status; §E7 bounded admin window). Mirrors how §B was proposed → verified → LOCKED. A change now requires the integrator to re-sync consumers (§C). Authoritative inputs: the [path-to-launch plan](SCHEDULING_PATH_TO_LAUNCH_PLAN.md), [UX decisions](SCHEDULING_UX_DECISIONS.md) D1–D8, canonical §9/§11/§12/§15, and the **already-shipped** SMS/notification stack (cited inline — workers CONSUME these, never rebuild them).
 
 > Convention: same as §B (Node 20 CommonJS, async, plain-object returns, `shared/scheduling/` for pure logic). **The dispatch primitives all exist** — E adds the per-booking EventBridge rule lifecycle + a channel model, not new senders.
 
@@ -412,10 +412,17 @@ These are NEW interfaces sub-phase E produces/consumes. **PROPOSED, not yet lock
 // Deterministic, idempotent rule names:  reminder → `sched-reminder-{tier}-{booking_id}` (tier ∈ t24h|t4h|t1h|t15m);  attendance → `sched-attendance-{booking_id}`
 // Rule target = Scheduled_Message_Sender; rule input payload = { pk, sk, message_id }  (EXACT shipped consumer shape).
 // At commit: (a) write N picasso-scheduled-messages rows (status:'pending'), (b) create N EventBridge schedules → consumer.
-// UPSERT on reschedule/move: booking.calendar_moved (carries new_start_at) OR token-reschedule → DELETE old schedules+rows,
-//   recompute tiers vs NEW start_at, CREATE fresh.  ◀ WS-E-REMIND EXIT CRITERION: a named seam test that a booking.calendar_moved
-//   event re-derives the schedule (this is the silent-failure class the listener work just closed — test it here, not only in CI-6).
-// DELETE on cancel: status→canceled → delete all schedules; consumer ALSO status-gates (surviving rule → safe no-op, defense in depth).
+//   picasso-scheduled-messages WRITE SHAPE (match the shipped consumer): PK `TENANT#{tenantId}` · SK `SCHEDULED#{start_at_iso}#{message_id}`;
+//   fields { tenant_id, channel:'sms'|'email', recipient_phone (E.164, COPIED from Booking.attendee_phone), recipient_email, body, template,
+//            template_vars, appointment_id = booking_id, message_id, from_number, status:'pending' }. (Scheduled_Message_Sender reads recipient_phone.)
+// RE-BIND (token-reschedule ONLY — same booking_id, start_at updated IN PLACE, §B9 executeReschedule): DELETE old schedules+rows, recompute tiers
+//   vs NEW start_at, CREATE fresh.  ◀ WS-E-REMIND EXIT CRITERION: a named seam test that a TOKEN-RESCHEDULE re-derives the schedule.
+// DELETE (any cancel, INCLUDING booking.calendar_moved): the cal-lifecycle consumer CANCELS on a coordinator move (cancel_reason=coordinator_moved —
+//   it does NOT move in place), so calendar_moved → status→canceled → DELETE all schedules+rows. A rebook is a NEW booking → fresh reminders.
+//   (Corrected from an earlier "calendar_moved re-binds" draft — move=cancel per shipped reconcileMoved.) Consumer ALSO status-gates (a surviving
+//   rule whose row is no longer 'pending' → safe no-op, defense in depth).
+// EventBridge Scheduler IAM (integrator-owned glue): a DEDICATED execution role — trust `scheduler.amazonaws.com`,
+//   `lambda:InvokeFunction` on Scheduled_Message_Sender ONLY — passed as RoleArn on every CreateSchedule. NOT the Lambda's own role.
 // is_synthetic / CI-6 time-compression (LOCKED at M0, SR-3): STAGING_TEST_MODE=true AND booking.is_synthetic=true →
 //   tiers computed as start_at = now + N_min (lead-time rules fire immediately). DOUBLE-gated → real bookings never affected.
 //   PROD GUARD: handler init refuses to start if STAGING_TEST_MODE=true AND ENVIRONMENT=production.
@@ -439,16 +446,23 @@ async function selectChannels({ tenantId, attendee, moment, nowLocal, tenantPref
 //   sms = tenantPrefs.notificationPrefs.sms === true              // org-level
 //      && consentGiven(tenantId, attendee.phone)                 // recipient-level — FAIL-CLOSED (absent → false)
 //      && !inQuietHours(nowLocal, tenantPrefs.sms_quiet_hours)   // 8pm–8am local: reminders DEFER to window-end, confirmation SKIPS sms
-// Every SMS body carries a STOP/HELP affordance; SMS_Webhook_Handler already handles STOP/HELP/UNSTOP. SMS send via SMS_Sender (shipped).
+// QUIET-HOURS: nowLocal is computed AT FIRE TIME (NOT schedule-creation) from Booking.timezone (captured at booking; fallback tenant scheduling.timezone, else UTC).
+//   Fire-time enforcement only — a creation-time check would suppress on the wrong clock. SMS dropped in-window; email always sends.
+// SMS send via SMS_Sender with sendType:'contact' — THE field that activates the shipped consent gate (internal/staff sends use 'internal' and bypass it).
+//   consentGiven FAIL-CLOSED: absent record OR consent_given!==true OR opted_out_at present → false (absent opted_out_at = still opted-in). SMS_Webhook_Handler handles STOP/HELP/UNSTOP.
+// Every SMS body carries STOP/HELP opt-out TEXT as a MANDATORY, TEST-ENFORCED template field (rendered body without STOP = test failure); carrier auto-reply is NOT sufficient.
+// ⚠ IMPLEMENTATION GAP (WS-E-TCPA bring-up, BEFORE building E3): the shipped form_handler.js consent writer OMITS the `ttl` field AND the
+//   picasso-sms-consent IaC has NO ttl attribute. WS-E-TCPA MUST patch both first — write `ttl = epoch(now+4yr+30d)` + add the IaC TTL attribute.
 // SMS delivery failure → email already sent (backstop). Transactional only — never marketing.
 ```
 
 ### E4 — missed-event disposition + escalation (produced by WS-E-ATTEND/E10) — canonical §9.2/§11
 ```js
-// Attendance check fires at event_end + 30min → Booking.status booked → pending_attendance; sends the 3-option interviewer prompt
-//   via the SHIPPED D4 /attended/* endpoints (security path live, action stubbed — E6 wires the action). Tokens = §B4 attended_yes/no_show/didnt_connect.
-// Dispositions: attended_yes → completed · no_show → no_show + auto-message volunteer w/ reschedule link · didnt_connect → coordinator_no_show (no outbound).
-// NO auto-completion (§11.1): stays pending_attendance until human disposition or admin close.
+// Attendance check fires at event_end + 30min → set a NON-KEY attribute attendance_state='pending_attendance' (NOT Booking.status — §A locks status to
+//   the 5 values; pending_attendance is a flow/session label, never a status value). Booking.status STAYS 'booked' until disposition. Sends the 3-option
+//   interviewer prompt via the SHIPPED D4 /attended/* endpoints (security path live, action stubbed — E6 wires the action). Tokens = §B4 attended_yes/no_show/didnt_connect.
+// Dispositions set the VALID Booking.status: attended_yes → completed · no_show → no_show + auto-message volunteer w/ reschedule link · didnt_connect → coordinator_no_show (no outbound).
+// NO auto-completion (§11.1): attendance_state stays 'pending_attendance' (status stays 'booked') until human disposition or admin close.
 // Silence-cadence (E10): T+24h resend + admin cc · T+72h urgent + Customer-Portal inbox alert · T+7d weekly digest (recurs until resolved).
 ```
 
@@ -470,7 +484,8 @@ async function selectChannels({ tenantId, attendee, moment, nowLocal, tenantPref
 // GET /scheduling/bookings?scope=<staff|admin>   (Analytics_Dashboard_API; Clerk-authed)
 //   → { bookings: [ <projection> ], nextCursor? }
 // projection = { booking_id, tenantId, status, start_at, end_at, coordinator_email, resource_id, appointment_type_id, attendee{name,email,phone}, created_at, last_calendar_mutation_at, html_link }
-// admin scope → query tenantId-start_at-index (whole tenant); staff scope → tenantId-coordinator_email-index (own email only). Pagination via LastEvaluatedKey → nextCursor.
+// admin scope → query tenantId-start_at-index BOUNDED: KeyConditionExpression `start_at BETWEEN now-90d AND now+90d` (default window — NO unbounded full-tenant scan);
+//   staff scope → tenantId-coordinator_email-index (own email only). Pagination via LastEvaluatedKey → opaque nextCursor.
 ```
 
 > **E13/E13b note (D4, no new §B contract needed):** Teams + Appointment Types map onto the SHIPPED tag routing with ZERO backend change — a "Team" = a `scheduling_tag`; an Appointment Type → a RoutingPolicy whose `tag_conditions` = the team, `tie_breaker` = round_robin. Add `modified_at` (timestamp + last-modifier) to AppointmentType/RoutingPolicy rows (additive; SR-1/Q5 dual-write guard). E13b writes the EXISTING `AppointmentType`/`RoutingPolicy` tables (§A).
@@ -499,3 +514,4 @@ async function selectChannels({ tenantId, attendee, moment, nowLocal, tenantPref
 | 2026-06-03 | **§B16 tech-lead-proofed + AMENDED before launch** (3 BLOCKERS + 5 strong-recs, all ground-truthed vs live `pool.js`/`index.js`). **B16a output corrected:** `poolSize` moved from per-slot → **TOP-LEVEL = `pool.select().orderedPool.length`** (it's the ROUTING pool size per `lockSlot`'s contract; per-slot was both nonexistent in `pool.select` AND would mis-flag §5.5 solo-vs-pool) + the `SLOTS_PROPOSED→ok`/`SLOT_UNAVAILABLE→no_availability` status mapping made explicit + IN changed `appointmentType`/`routingPolicy` objects → `appointmentTypeId` (propose resolves appt-type row + policy object + candidates; §B7 returns candidates NOT policy) + camelCase `event.tenantId` pinned + gate-in-index.js (not the sub-handler) clarified. **B16b:** the qualifying→proposing ordering rule (advance only after `outcome:'ok'`, same saveState; `no_availability`→stay — else slot-less strand) + `alreadyRejected` accumulation. **B16c:** `pool_size` = the propose response's top-level `poolSize`. **B16d:** attendee-not-yet-known → stay in qualifying, entry-hook re-loads context per turn. Work-orders updated to match. No re-lock needed (corrected before any worker launched). |
 | 2026-06-03 | **§B16 LOCKED (B-remainder / new-booking in-chat wave; integrator).** The other half of the booking story — booking a NEW appointment in chat (`qualifying→proposing→confirming→booked`), vs §B9–§B15 which only change an existing one. §B16a `scheduling_propose` (a 3rd BCH route — availability+routing+slot-gen, reuses shipped C6 `pool.select`, READ-ONLY, generic slots). §B16b new-booking action vocab `select_slot`/`confirm_book`/`none` under the §B14 boundary. §B16c FREEZE of the already-shipped C8 commit route's `validate()` payload as the BSH→BCH commit seam (status `BOOKED`/`ALREADY_CONFIRMED`/`SLOT_UNAVAILABLE`/`COMMIT_FAILED`/`SCHEDULING_DISABLED`). §B16d the CTA→`qualifying` bootstrap (no §B10 binding; WS-C12 `scheduling_intent:'new_booking'` signal + integrator entry-hook). **Architecture decision (load-bearing):** C4/C6 pull googleapis → BSH can't bundle them → `proposing` + commit BOTH delegate to BCH via Lambda invoke (mirrors the Tier-2 executor). Decomposition: WS-NEWBOOK-PROPOSE + WS-C12 parallel; WS-NEWBOOK-FLOW keystone (weaves after PROPOSE). C10/C11 already shipped (calendar-events.js / commit C11 gate); C13 deferred to E (SMS-blocked). |
 | 2026-06-05 | **§E PROPOSED (sub-phase E; integrator M0; NOT yet locked).** E0 access flags (scheduling_enabled + calendar_integration_enabled). E1 per-booking EventBridge Scheduler rule lifecycle (the only new backend surface — consumer `Scheduled_Message_Sender` is shipped + its email branch is a `// Future` stub E must implement; rule payload `{pk,sk,message_id}`; calendar_moved re-bind seam test = named exit criterion; is_synthetic double-gated time-compression locked for CI-6). E2 cadence tiers. **E3 channel-selection + TCPA gate (HIGH-RISK)** — email-floor/SMS-supplement, consent fail-closed, quiet-hours, one-opt-in-covers-all-four. E4 missed-event disposition+escalation. E5 text_en. E6 additive Booking attrs (is_synthetic). E7 `/scheduling/bookings` read API. E13/E13b Teams+Appointment-Types map onto shipped tag routing (zero backend change) + `modified_at` dual-write guard. **Locks after a verification pass (esp. §E3 TCPA).** Inputs: SCHEDULING_PATH_TO_LAUNCH_PLAN + SCHEDULING_UX_DECISIONS (D1–D8). |
+| 2026-06-05 | **§E LOCKED** (verification pass — Security-Reviewer on §E3 TCPA + tech-lead on the set, re-run against the ACTUAL text after a first pass mistakenly read a tree without §E). The informed pass found most "blockers" were false-misses; **7 real amendments folded before lock:** (1) §E1 **calendar_moved=CANCEL** correction — the cal-lifecycle consumer cancels on a coordinator move (`reconcileMoved`→cancel_reason=coordinator_moved), so calendar_moved→DELETE reminders; RE-BIND is token-reschedule ONLY (the earlier "calendar_moved re-binds" draft was wrong; M1 exit-criterion test re-pointed to token-reschedule); (2) §E1 `picasso-scheduled-messages` **write shape** pinned (SK `SCHEDULED#{iso}#{id}`, recipient_phone E.164 from Booking.attendee_phone, channel, status:'pending', …); (3) §E1 **EventBridge Scheduler IAM role** (trust scheduler.amazonaws.com + lambda:InvokeFunction, RoleArn at CreateSchedule); (4) §E3 **quiet-hours** nowLocal = Booking.timezone at FIRE-TIME; (5) §E3 `sendType:'contact'` = the gate-activating field + STOP/HELP as a test-enforced template field; (6) §E3 **consent-TTL implementation gap** — shipped form_handler.js omits ttl + IaC has no TTL attr → WS-E-TCPA patches both before building; (7) §E4 **attendance_state** is a non-key attribute, NOT a Booking.status value (status stays the §A-locked 5); + §E7 admin query bounded to start_at±90d. Workers may now build against §E. |
