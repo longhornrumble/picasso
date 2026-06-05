@@ -245,9 +245,14 @@ locals {
   # A table rename now cascades to these IAM grants automatically — closing the
   # hardcoded-ARN seam that silently broke recent-messages (picasso#377). The
   # wired values are the current live names, so the rendered ARNs are byte-identical.
-  # NOTE: table names stay hardcoded constants in the *Lambda code* per F-DSAR29
-  # (no env vars — code-change-gated prod promotion); this wiring is IaC-internal
-  # only and deliberately does NOT add a Lambda environment block.
+  # NOTE: most table names stay hardcoded constants in the *Lambda code* (they
+  # were canonicalized to identical names across accounts), so this wiring is
+  # IaC-internal only. The EXCEPTION is form-submissions (D2): its name diverges
+  # across accounts (staging picasso-form-submissions-staging vs prod
+  # picasso_form_submissions — the table-rename program's held carve-out), so the
+  # Lambda reads it from the FORM_SUBMISSIONS_TABLE env var set in the environment
+  # block below (the account-divergent-value-as-env pattern D1 established for
+  # EXPECTED_ACCOUNT, superseding the original F-DSAR29 no-env rule).
   t_form_submissions   = "${local.ddb}/${var.form_submissions_table_name}"
   t_notification_sends = "${local.ddb}/${var.notification_sends_table_name}"
   t_notification_evts  = "${local.ddb}/${var.notification_events_table_name}"
@@ -274,7 +279,11 @@ locals {
   t_session_summaries = "${local.ddb}/picasso-session-summaries"
 
   # Forward references to GSIs (already exist in their respective ddb modules).
-  gsi_form_subjectid    = "${local.t_form_submissions}/index/PiiSubjectIdIndex"
+  # D2: the live tenant-scoped read path for the prod single-key form-submissions
+  # table is the tenant-timestamp-index GSI (PK=tenant_id), present on BOTH the
+  # staging + prod tables. (The never-created PiiSubjectIdIndex grant was dropped
+  # in D2 — least-privilege; the walker uses tenant-timestamp-index.)
+  gsi_form_tenant_ts    = "${local.t_form_submissions}/index/tenant-timestamp-index"
   gsi_notif_bymessageid = "${local.t_notification_evts}/index/ByMessageId"
   gsi_subject_id        = "${local.t_subject_index}/index/PiiSubjectIdIndex"
   gsi_chmap_tenantindex = "${local.t_channel_mappings}/index/TenantIndex"
@@ -318,12 +327,15 @@ data "aws_iam_policy_document" "dsar" {
     resources = ["arn:aws:logs:${local.region}:${local.acct}:log-group:/aws/lambda/picasso-pii-dsar-staging:*"]
   }
 
-  # form-submissions — Arm-1 spine. Query via PiiSubjectIdIndex (subject→rows),
-  # GetItem for direct row reads, DeleteItem for delete-type requests.
+  # form-submissions — Arm-1 spine. Query (base table on staging; the
+  # tenant-timestamp-index GSI on the prod single-key table), GetItem for direct
+  # row reads, DeleteItem for delete-type requests. DescribeTable lets the walker
+  # discover the table key schema once (cached) to adapt query+delete shape
+  # across the account-divergent key schema (D2).
   statement {
     sid       = "FormSubmissionsReadDelete"
-    actions   = ["dynamodb:Query", "dynamodb:GetItem", "dynamodb:DeleteItem"]
-    resources = [local.t_form_submissions, local.gsi_form_subjectid]
+    actions   = ["dynamodb:Query", "dynamodb:GetItem", "dynamodb:DeleteItem", "dynamodb:DescribeTable"]
+    resources = [local.t_form_submissions, local.gsi_form_tenant_ts]
   }
 
   # MFS-scoped surfaces — Query to enumerate, GetItem to read, DeleteItem to
@@ -552,11 +564,15 @@ resource "aws_lambda_function" "this" {
   # data.aws_caller_identity.account_id — so a staging module accidentally
   # instantiated in the prod account still REFUSES (525 ≠ 614). The prod module
   # sets "614056832592". This is the prod-promotion gate that replaces the former
-  # code-constant friction ("Decision A — FLIP" retired by D1). Table names remain
-  # code constants until the canonical-naming change lands.
+  # code-constant friction ("Decision A — FLIP" retired by D1). Canonicalized
+  # table names remain code constants; form-submissions is the lone exception
+  # (its name diverges across accounts — D2) so it is passed here.
   environment {
     variables = {
       EXPECTED_ACCOUNT = "525409062831"
+      # D2: account-divergent name (carve-out). Default in code = the staging
+      # name; the prod runbook sets this to picasso_form_submissions.
+      FORM_SUBMISSIONS_TABLE = var.form_submissions_table_name
     }
   }
 
