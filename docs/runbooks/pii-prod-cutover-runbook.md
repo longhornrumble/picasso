@@ -21,11 +21,11 @@
 | Gap | Status | Effect on this cutover |
 |---|---|---|
 | **G-A** subject-index (table + writer + backfill) | **handled by §P1 + §P5** | Without it prod DSAR-by-email resolves nothing. §P5 is mandatory, not optional. |
-| **G-B** form-submissions schema divergence (= **D2**, undecided) | **CODE gap — NOT closed by this runbook** | Prod `picasso_form_submissions` is single-key (`submission_id`) + underscore name + **no `PiiSubjectIdIndex` GSI**. The deployed walkers issue `Query(KeyConditionExpression=tenant_id)` → **`ValidationException` on prod**. **⇒ prod DSAR + purge are PARTIAL until D2 ships a prod-specific form-submissions code path.** This runbook deliberately does **NOT** grant or wire form-submissions. All OTHER surfaces work. |
+| **G-B** form-submissions schema divergence (= **D2**) | **CLOSED by D2 (schema-adaptive code)** | Prod `picasso_form_submissions` is single-key (`submission_id`) + underscore name. The walkers now discover the key schema via cached `DescribeTable` and query the `tenant-timestamp-index` GSI (PK=tenant_id, present on both accounts, ProjectionType=ALL, prod 47/47 coverage) instead of the base table; DeleteItem uses `submission_id` alone. The name is set via `FORM_SUBMISSIONS_TABLE` env (§P4). Grants + env are now INCLUDED below. **Residual:** an *email-path* DSAR still needs §P5 G-A backfill so legacy rows carry `pii_subject_id`; whole-tenant purge needs no backfill. |
 | **D3** archive bucket | **omitted (no-op)** | Prod has no archive bucket; the DSAR archive walker is a graceful no-op. Create one only if S3 archive retention is wanted in prod. |
 | **D4** prod `picasso-sms-usage` | **recommend create (§P1.4)** | Absent in prod; prod BSH `SMS_USAGE_TABLE` points at it (latent write bug). Creating it gives the purge a real surface AND fixes the latent bug. |
 
-**Headline:** this runbook stands up a **functional prod DSAR + purge for every surface except form-submissions**. form-submissions (the primary nonprofit PII surface) is gated on **D2** — surface that to the operator and decide D2 before relying on prod DSAR for a real subject request.
+**Headline:** this runbook stands up a **functional prod DSAR + purge for every surface, including form-submissions** (D2 schema-adaptive code shipped + grants/env included here). The only residual on form-submissions is the §P5 G-A `pii_subject_id` backfill for *email-path DSAR* on legacy rows (whole-tenant purge is fully covered without it).
 
 ---
 
@@ -43,7 +43,7 @@
 | `picasso-pii-tenant-purge` Lambda | ❌ absent | **CREATE** §P4.2 |
 | subject-index writer in prod BSH/MFS | ❌ not deployed (`PII_SUBJECT_INDEX_TABLE` unset) | **DEPLOY** §P5 |
 | data surfaces (notification-*, recent-messages, channel-mappings, session-*) | ✅ canonical (naming-alignment Phase B) | grant in §P2 |
-| `picasso_form_submissions` | ⚠️ single-key, underscore, no PiiSubjectIdIndex | **D2 carve-out — not actioned** |
+| `picasso_form_submissions` | ✅ exists (single-key, underscore) + `tenant-timestamp-index` GSI (47/47) | grant + `FORM_SUBMISSIONS_TABLE` env in §P2/§P4 (D2) |
 
 ---
 
@@ -171,11 +171,12 @@ aws iam create-role --profile myrecruiter-prod \
   --assume-role-policy-document file://dsar-trust.json \
   --description "Dedicated exec role for the prod DSAR Lambda. Read/Delete on the in-scope MFS surfaces + PutItem on the dsar-audit table. Never-share-roles."
 ```
-Inline policy `picasso-pii-dsar-policy` — statements (replace `<CMK_ARN>` per Prereq 6, **omit `PiiCmkDataPlane` if default SSE**; **form-submissions + archive + fulfillment grants OMITTED** — G-B/D3):
+Inline policy `picasso-pii-dsar-policy` — statements (replace `<CMK_ARN>` per Prereq 6, **omit `PiiCmkDataPlane` if default SSE**; **archive + fulfillment grants OMITTED** — D3):
 
 | Sid | Actions | Resources (arn:aws:dynamodb:us-east-1:614056832592:table/…) |
 |---|---|---|
 | Logs | `logs:CreateLogStream,logs:PutLogEvents` | `…:614…:log-group:/aws/lambda/picasso-pii-dsar:*` |
+| FormSubmissionsReadDelete *(D2)* | `Query,GetItem,DeleteItem,DescribeTable` | `picasso_form_submissions` (underscore — prod carve-out name) + `/index/tenant-timestamp-index` |
 | MfsScopedReadDelete | `Query,GetItem,DeleteItem` | `picasso-notification-sends`; `picasso-notification-events` + `/index/ByMessageId`; `picasso-recent-messages`; `picasso-conversation-summaries` |
 | AuditReadOnly | `Query,GetItem` | `picasso-audit` |
 | SubjectIndexReadDelete | `Query,GetItem,DeleteItem` | `picasso-pii-subject-index` + `/index/PiiSubjectIdIndex` |
@@ -186,7 +187,7 @@ Inline policy `picasso-pii-dsar-policy` — statements (replace `<CMK_ARN>` per 
 | PiiCmkDataPlane *(only if CMK SSE)* | `kms:Decrypt,kms:GenerateDataKey,kms:DescribeKey` | `<CMK_ARN>` |
 | StsCallerIdentity | `sts:GetCallerIdentity` | `*` |
 
-> **Deferred (D2):** `FormSubmissionsReadDelete` (+ PiiSubjectIdIndex GSI) — add when D2 ships the prod form-submissions path. **Deferred (D3):** the 3 `ArchiveBucket*` S3 statements.
+> **D2 (shipped):** `FormSubmissionsReadDelete` is now INCLUDED. The prod read path is the existing `tenant-timestamp-index` GSI (PK=tenant_id, ProjectionType=ALL — NOT the never-created `PiiSubjectIdIndex`); `DescribeTable` lets the walker discover the single-key shape. Note: the subject-scoped DSAR matches only rows carrying `pii_subject_id`, so legacy prod rows still need the §P5 G-A backfill to be reachable by an *email-path DSAR* (the whole-tenant *purge* needs no backfill). **Deferred (D3):** the 3 `ArchiveBucket*` S3 statements.
 
 ```bash
 aws iam put-role-policy --profile myrecruiter-prod \
@@ -201,11 +202,12 @@ aws iam create-role --profile myrecruiter-prod \
   --assume-role-policy-document file://purge-trust.json \
   --description "Dedicated exec role for the prod per-tenant offboarding purge Lambda. Query+DeleteItem on the tenant-partitioned surfaces + PutItem on the purge audit table. Never-share-roles."
 ```
-Inline policy `picasso-pii-tenant-purge-policy` (**form-submissions OMITTED — G-B/D2**):
+Inline policy `picasso-pii-tenant-purge-policy`:
 
 | Sid | Actions | Resources |
 |---|---|---|
 | Logs | `logs:CreateLogStream,logs:PutLogEvents` | `…:614…:log-group:/aws/lambda/picasso-pii-tenant-purge:*` |
+| FormSubmissionsQueryDelete *(D2)* | `Query,DeleteItem,DescribeTable` | `picasso_form_submissions` (underscore — prod carve-out name) + `/index/tenant-timestamp-index` |
 | NotificationSendsQueryDelete | `Query,DeleteItem` | `picasso-notification-sends` |
 | NotificationEventsQueryDelete | `Query,DeleteItem` | `picasso-notification-events` + `/index/ByMessageId` |
 | SubjectIndexQueryDelete | `Query,DeleteItem` | `picasso-pii-subject-index` |
@@ -214,7 +216,7 @@ Inline policy `picasso-pii-tenant-purge-policy` (**form-submissions OMITTED — 
 | PurgeAuditPutOnly | `PutItem` | `picasso-pii-tenant-purge-audit` |
 | StsCallerIdentity | `sts:GetCallerIdentity` | `*` |
 
-> **Deferred (D2):** `FormSubmissionsQueryDelete` — and note the prod path needs a **Scan-filter** (single-key table), not the staging Query. Both code + grant land together under D2.
+> **D2 (shipped):** `FormSubmissionsQueryDelete` is now INCLUDED. The prod path queries the `tenant-timestamp-index` GSI (PK=tenant_id) — NOT a full-table Scan: the GSI exists on both accounts with ProjectionType=ALL and full row coverage (verified prod 47/47). `DescribeTable` discovers the single-key shape so DeleteItem uses `submission_id` alone. Whole-tenant purge needs no `pii_subject_id` backfill.
 
 **Verify §P2:** `aws iam get-role-policy` on each shows the statements; every resource ARN is `arn:aws:dynamodb:us-east-1:614056832592:table/picasso-…` (no `-staging`, no `525`).
 
@@ -251,9 +253,10 @@ aws lambda create-function --profile myrecruiter-prod \
   --runtime python3.11 --handler lambda_function.lambda_handler \
   --role arn:aws:iam::614056832592:role/picasso-pii-dsar-role \
   --memory-size 256 --timeout 120 --architectures x86_64 \
-  --environment 'Variables={EXPECTED_ACCOUNT=614056832592}' \
+  --environment 'Variables={EXPECTED_ACCOUNT=614056832592,FORM_SUBMISSIONS_TABLE=picasso_form_submissions}' \
   --zip-file fileb:///tmp/dsar.zip
 ```
+> **D2:** `FORM_SUBMISSIONS_TABLE=picasso_form_submissions` sets the account-divergent table name (the prod underscore name vs the staging `picasso-form-submissions-staging`). The schema-adaptive walker then discovers the prod single-key shape via `DescribeTable` (cached) and queries the `tenant-timestamp-index` GSI. Omitting this var would point the walker at the non-existent staging table name → `ResourceNotFoundException`.
 
 ### §P4.2 — `picasso-pii-tenant-purge` (reserved concurrency = 1, single-flight)
 ```bash
@@ -262,7 +265,7 @@ aws lambda create-function --profile myrecruiter-prod \
   --runtime python3.11 --handler lambda_function.lambda_handler \
   --role arn:aws:iam::614056832592:role/picasso-pii-tenant-purge-role \
   --memory-size 256 --timeout 120 --architectures x86_64 \
-  --environment 'Variables={EXPECTED_ACCOUNT=614056832592}' \
+  --environment 'Variables={EXPECTED_ACCOUNT=614056832592,FORM_SUBMISSIONS_TABLE=picasso_form_submissions}' \
   --zip-file fileb:///tmp/purge.zip
 aws lambda put-function-concurrency --profile myrecruiter-prod \
   --function-name picasso-pii-tenant-purge --reserved-concurrent-executions 1
@@ -324,13 +327,13 @@ Flip the `POST /admin/tenants/{id}/purge` env-block in `Analytics_Dashboard_API`
 - **§P5 writer:** revert BSH/MFS env var + role grant; the backfilled `pii_subject_id` attributes are additive (forward-compatible) and safe to leave.
 
 ## Known gaps / deferred
-- **G-B / D2 (form-submissions):** prod DSAR + purge do NOT cover form-submissions until a prod-specific code path ships (DSAR: resolve subject → `submission_id`s via index → GetItem; purge: full-table Scan filtered on the `tenant_id` attribute). This is the primary remaining blocker for COMPLETE prod DSAR. Until then, form-submissions is a documented manual-fallback (operator runs an email-keyed Scan per the playbook).
+- **G-B / D2 (form-submissions): CLOSED.** The schema-adaptive walkers (cached `DescribeTable` → `tenant-timestamp-index` GSI Query + single-key delete) cover prod form-submissions for both DSAR and purge; grants + `FORM_SUBMISSIONS_TABLE` env are wired above. **Residual:** an email-path DSAR matches only rows carrying `pii_subject_id`, so legacy prod rows still need the §P5 G-A backfill to be reachable by email (whole-tenant purge needs no backfill).
 - **D3 (archive):** DSAR archive walker is a permanent no-op in prod unless an archive bucket + the 3 S3 grants are added.
 
 ## Decisions to confirm before running
 | ID | Decision | Recommended default |
 |---|---|---|
-| **D2** | form-submissions: reconcile prod schema to composite-key, OR ship a prod-specific single-key code path, OR defer | **ship the prod-specific path** (smaller than a data migration; unblocks the primary surface) — coordinate with the form-submissions naming carve-out |
+| **D2** | ~~form-submissions: reconcile schema / ship a prod-specific path / defer~~ | **RESOLVED — schema-adaptive code shipped** (account-agnostic: cached `DescribeTable` → `tenant-timestamp-index` GSI, no data migration, no account branch). Grants + env included above. |
 | **D3** | create a prod archive bucket? | **no** — accept the archive walker no-op unless S3 archive retention is wanted in prod |
 | **D4** | create prod `picasso-sms-usage`? | **yes** (§P1.4) — gives the purge a real surface + fixes the latent BSH write bug |
 
@@ -339,4 +342,4 @@ Flip the `POST /admin/tenants/{id}/purge` env-block in `Analytics_Dashboard_API`
 - Prod purge dry-run on a synthetic tenant reports every in-scope surface, 0 unexpected AccessDenied/NotFound.
 - Prod purge real-delete on the synthetic tenant empties its partition rows; audit rows written + DeleteItem denied even to admin.
 - Both Lambdas refuse when `EXPECTED_ACCOUNT` ≠ caller (fail-closed when unset).
-- form-submissions explicitly tracked as D2-gated (NOT silently assumed covered).
+- form-submissions covered by the D2 schema-adaptive path (purge fully; email-path DSAR after the §P5 G-A backfill).
