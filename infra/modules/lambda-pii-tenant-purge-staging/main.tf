@@ -212,9 +212,18 @@ resource "aws_lambda_function" "this" {
   filename         = data.archive_file.placeholder.output_path
   source_code_hash = data.archive_file.placeholder.output_base64sha256
 
-  # No env vars — table names + expected account are constants in the Lambda
-  # code (config-only prod promotion intentionally impossible; the account
-  # guard is pinned in code).
+  # #1a (prod-cutover D1, 2026-06-04): the account guard reads EXPECTED_ACCOUNT
+  # from the env (fail-closed: unset ⇒ refuse). A LITERAL per-module value — NOT
+  # data.aws_caller_identity.account_id — so a staging module accidentally
+  # instantiated in the prod account still REFUSES (525 ≠ 614). The prod module
+  # sets "614056832592". This is the prod-promotion gate that replaces the former
+  # code-constant friction. Table names remain code constants until the
+  # canonical-naming change lands.
+  environment {
+    variables = {
+      EXPECTED_ACCOUNT = "525409062831"
+    }
+  }
 
   tracing_config {
     mode = "PassThrough"

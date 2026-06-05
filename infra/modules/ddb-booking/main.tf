@@ -9,9 +9,15 @@ variable "env" {
 # uniqueness rule from canonical §5.2 is a write-time constraint enforced in
 # C6 — it is NOT the table key.
 #
-# Both GSIs MUST exist at table-creation time (DynamoDB cannot add a GSI
-# without a table rebuild). Round-robin needs no GSI — its state lives on
-# RoutingPolicy, atomically updated at booking commit (canonical §10.1/§10.2).
+# Round-robin needs no GSI — its state lives on RoutingPolicy, atomically
+# updated at booking commit (canonical §10.1/§10.2).
+#
+# GSI 3 (external_event_id-index) was added 2026-06-04 to recover a booking from
+# its Google Calendar event id on the deletion path: Google strips
+# extendedProperties from cancelled-event delta items, so the Listener cannot read
+# booking_id off a hard-deleted event and must query by event id instead. Adding a
+# single GSI to the existing table is an online in-place UpdateTable (backfill), NOT
+# a table rebuild — verify `terraform plan` shows update-in-place before applying.
 #
 # v1 hot-partition acceptance: tenantId is the PK on all scheduling tables.
 # Fine at single-tenant pilot scale; the v2 mitigation (composite-PK shard
@@ -44,6 +50,12 @@ resource "aws_dynamodb_table" "booking" {
     type = "S"
   }
 
+  # GSI 3 key attribute — the Google Calendar event id (C8 writes it on every booking).
+  attribute {
+    name = "external_event_id"
+    type = "S"
+  }
+
   # GSI 1 — (tenantId, start_at): tenant-scoped time-range queries.
   # B5 onboarding hook, B11 stranded-booking detection, E9 nightly
   # reconciliation, OOO-overlap detection (canonical §5.2 item 5 / §14.2).
@@ -61,6 +73,16 @@ resource "aws_dynamodb_table" "booking" {
     name            = "tenantId-coordinator_email-index"
     hash_key        = "tenantId"
     range_key       = "coordinator_email"
+    projection_type = "ALL"
+  }
+
+  # GSI 3 — (external_event_id): resolve a booking from its Google Calendar event
+  # id on the §14.2 deletion path. The hash key has no tenant element, so the
+  # Listener validates the resolved booking's tenantId against the channel tenant
+  # (cross-tenant guard). HASH-only (no range key) — event ids are unique per event.
+  global_secondary_index {
+    name            = "external_event_id-index"
+    hash_key        = "external_event_id"
     projection_type = "ALL"
   }
 
@@ -91,4 +113,9 @@ output "tenant_id_start_at_index_arn" {
 output "tenant_id_coordinator_email_index_arn" {
   description = "ARN of the (tenantId, coordinator_email) GSI. Used by B2 Calendar_Watch_Listener to find bookings owned by a coordinator when a calendar push arrives, and by B11 stranded-booking queries."
   value       = "${aws_dynamodb_table.booking.arn}/index/tenantId-coordinator_email-index"
+}
+
+output "external_event_id_index_arn" {
+  description = "ARN of the (external_event_id) GSI. Used by B2 Calendar_Watch_Listener to resolve a booking from its Google event id on the deletion path (Google strips extendedProperties from cancelled-event deltas)."
+  value       = "${aws_dynamodb_table.booking.arn}/index/external_event_id-index"
 }
