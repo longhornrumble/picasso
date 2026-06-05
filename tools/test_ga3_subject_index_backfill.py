@@ -126,7 +126,7 @@ def no_aws(monkeypatch):
 
 def _plan(row, cache=None, get_log=None):
     return bf.plan_row(row, cache if cache is not None else {},
-                       "picasso-pii-subject-index", apply=False,
+                       "picasso-pii-subject-index",
                        log_get=(get_log or (lambda: None)))
 
 
@@ -195,3 +195,67 @@ def test_plan_khash_is_non_pii_and_stable():
     t2 = bf._khash("T1", "abc@gmail.com")
     assert t1 == t2 and len(t1) == 12
     assert "abc" not in t1 and "gmail" not in t1
+
+
+# ─── WRITE PATH: get_or_create_index bounded loop (get_index/put_index mocked) ─
+
+def test_goci_returns_existing_without_put(monkeypatch):
+    monkeypatch.setattr(bf, "get_index", lambda *a, **k: "psub_EXISTING")
+    put_calls = {"n": 0}
+    monkeypatch.setattr(bf, "put_index",
+                        lambda *a: put_calls.__setitem__("n", put_calls["n"] + 1) or "put")
+    sid, outcome = bf.get_or_create_index("tbl", "T1", "a@b.com", "psub_CAND")
+    assert (sid, outcome) == ("psub_EXISTING", "existing")
+    assert put_calls["n"] == 0  # never attempted a PUT when an entry exists
+
+
+def test_goci_creates_when_absent(monkeypatch):
+    monkeypatch.setattr(bf, "get_index", lambda *a, **k: None)
+    monkeypatch.setattr(bf, "put_index", lambda *a: "put")
+    sid, outcome = bf.get_or_create_index("tbl", "T1", "a@b.com", "psub_CAND")
+    assert (sid, outcome) == ("psub_CAND", "created")
+
+
+def test_goci_race_then_adopts_winner(monkeypatch):
+    # 1st GET None → PUT races (someone won) → 2nd consistent GET returns winner.
+    seq = iter([None, "psub_WINNER"])
+    monkeypatch.setattr(bf, "get_index", lambda *a, **k: next(seq))
+    monkeypatch.setattr(bf, "put_index", lambda *a: "race")
+    sid, outcome = bf.get_or_create_index("tbl", "T1", "a@b.com", "psub_CAND")
+    assert (sid, outcome) == ("psub_WINNER", "existing")  # adopted, NOT our candidate
+
+
+def test_goci_unresolved_returns_none_no_phantom(monkeypatch):
+    # Pathological: every GET None and every PUT races → never resolves. The
+    # contract: return (None, 'unresolved') so the caller does NOT stamp a phantom.
+    monkeypatch.setattr(bf, "get_index", lambda *a, **k: None)
+    monkeypatch.setattr(bf, "put_index", lambda *a: "race")
+    sid, outcome = bf.get_or_create_index("tbl", "T1", "a@b.com", "psub_CAND", attempts=3)
+    assert sid is None and outcome == "unresolved"
+
+
+def test_goci_propagates_put_error(monkeypatch):
+    monkeypatch.setattr(bf, "get_index", lambda *a, **k: None)
+    monkeypatch.setattr(bf, "put_index", lambda *a: "error: AccessDenied")
+    sid, outcome = bf.get_or_create_index("tbl", "T1", "a@b.com", "psub_CAND")
+    assert sid is None and outcome.startswith("error")
+
+
+# ─── WRITE PATH: _tally_results result-string parsing ─────────────────────────
+
+def test_tally_results_classifies_every_outcome():
+    results = [
+        "skip_already_has_subject_id", "skip_no_submission_id",
+        "index_create:stamped", "index_existing:stamped",
+        "unindexed_no_email:stamped", "unindexed_no_tenant:already_stamped",
+        "index_cache_hit:already_stamped",
+        "index_race_unresolved",
+        "index_error: AccessDenied",
+    ]
+    t = bf._tally_results(results)
+    assert t["skipped"] == 2
+    assert t["stamped"] == 3           # 3 ":stamped"
+    assert t["unindexed"] == 1         # the unindexed_*:stamped one
+    assert t["already_stamped"] == 2
+    assert t["unresolved"] == 1
+    assert t["errors"] == 1

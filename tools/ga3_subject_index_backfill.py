@@ -245,8 +245,31 @@ def mint_pii_subject_id():
 
 
 def _now():
-    return datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S.') \
-        + f'{datetime.now(timezone.utc).microsecond // 1000:03d}Z'
+    now = datetime.now(timezone.utc)  # single call — ms + seconds from one instant
+    return now.strftime('%Y-%m-%dT%H:%M:%S.') + f'{now.microsecond // 1000:03d}Z'
+
+
+def get_or_create_index(index_table, tenant_id, normalized, candidate, attempts=3):
+    """Bounded get → conditional-put loop on the subject index (faithful port of
+    the writer's pii_subject.py:get_or_create_pii_subject_id loop).
+
+    Returns (sid, outcome): outcome in {'existing', 'created', 'unresolved',
+    'error: …'}. On 'unresolved' (a writer keeps winning the conditional-PUT but
+    our strongly-consistent re-read still can't see its row — a pathological race)
+    the caller MUST NOT stamp a phantom id; the row is left for a re-run so the
+    post-condition surfaces it (loud, never a silent orphan)."""
+    for attempt in range(attempts):
+        existing = get_index(index_table, tenant_id, normalized,
+                             consistent=(attempt > 0))
+        if existing:
+            return existing, 'existing'
+        put = put_index(index_table, tenant_id, normalized, candidate)
+        if put == 'put':
+            return candidate, 'created'
+        if put == 'race':
+            continue  # someone won the conditional-PUT; loop re-reads consistently
+        return None, put  # 'error: …'
+    return None, 'unresolved'
 
 
 def _khash(tenant_id, normalized):
@@ -264,11 +287,12 @@ def email_for_row(row):
     return extract_email(row.get('form_data') or {})
 
 
-def plan_row(row, index_cache, index_table, apply, log_get):
-    """Resolve one row to an action plan dict (no row-stamp write here).
+def plan_row(row, index_cache, index_table, log_get):
+    """Resolve one row to an action plan dict (read-only — no writes here).
 
-    Mirrors the writer's UNINDEXED rules. In dry-run, index lookups still run
-    read-only (so the dry-run plan is accurate) but no writes occur.
+    Mirrors the writer's UNINDEXED rules. The index lookup runs read-only so the
+    plan is accurate in dry-run; the actual conditional-PUT happens only in the
+    apply phase (_execute), gated by main()'s `if apply:`.
     """
     sid_existing = row.get('pii_subject_id')
     submission_id = row.get('submission_id')
@@ -348,7 +372,7 @@ def main():
         gets['n'] += 1
 
     # Pass 1: build the plan (read-only).
-    plans = [plan_row(r, index_cache, index_table, apply, log_get) for r in rows]
+    plans = [plan_row(r, index_cache, index_table, log_get) for r in rows]
     log['index_gets'] = gets['n']
 
     # Apply writes need the (tenant_id, normalized) key, which the plan does not
@@ -367,9 +391,10 @@ def main():
     log['end_ts'] = _now()
     log['post_condition_missing_subject_id'] = _post_condition_count()
     log['post_condition_pass'] = log['post_condition_missing_subject_id'] == 0
-    log['result'] = ('apply-complete'
-                     if log['post_condition_pass'] and log['tally'].get('errors', 0) == 0
-                     else 'apply-with-issues')
+    clean = (log['post_condition_pass']
+             and log['tally'].get('errors', 0) == 0
+             and log['tally'].get('unresolved', 0) == 0)
+    log['result'] = 'apply-complete' if clean else 'apply-with-issues'
     print(json.dumps(log, indent=2))
     return 0 if log['result'] == 'apply-complete' else 1
 
@@ -390,19 +415,23 @@ def _execute(rows, plans, index_table, index_cache, log):
             row = by_sub.get(sub, {})
             tenant_id = row.get('tenant_id')
             normalized = normalize_email(email_for_row(row))
-            put = put_index(index_table, tenant_id, normalized, sid)
-            if put == 'race':
-                # Someone (a concurrent G-A.2 writer or a re-run) won — adopt theirs.
-                won = get_index(index_table, tenant_id, normalized, consistent=True)
-                if won:
-                    sid = won
-                    index_cache[(tenant_id, normalized)] = won
-            elif put.startswith('error:'):
-                results.append(f'index_{put}')
-                print(f'  {sub} → index PUT {put}', file=sys.stderr)
+            resolved, ioutcome = get_or_create_index(
+                index_table, tenant_id, normalized, sid)
+            if ioutcome.startswith('error'):
+                results.append(f'index_{ioutcome}')
+                print(f'  {sub} → index PUT {ioutcome}', file=sys.stderr)
                 continue
-            else:
-                index_cache[(tenant_id, normalized)] = sid
+            if ioutcome == 'unresolved':
+                # LOUD, never a silent orphan: do NOT stamp a phantom id. Leaving
+                # the row unstamped surfaces it in the post-condition (>0 missing)
+                # so the operator re-runs (idempotent). Mirrors the writer's
+                # loud-on-unresolved-race contract.
+                results.append('index_race_unresolved')
+                print(f'  {sub:<50s} index_race_unresolved — NOT stamped, re-run',
+                      file=sys.stderr)
+                continue
+            sid = resolved  # 'existing' (adopted) or 'created' (our candidate)
+            index_cache[(tenant_id, normalized)] = sid
 
         st = stamp_row(sub, sid)
         results.append(f'{outcome}:{st}')
@@ -421,12 +450,15 @@ def _tally(plans):
 
 
 def _tally_results(results):
-    t = {'stamped': 0, 'already_stamped': 0, 'unindexed': 0, 'errors': 0, 'skipped': 0}
+    t = {'stamped': 0, 'already_stamped': 0, 'unindexed': 0, 'unresolved': 0,
+         'errors': 0, 'skipped': 0}
     for r in results:
         if r.startswith('skip_'):
             t['skipped'] += 1
         elif 'error' in r:
             t['errors'] += 1
+        elif r == 'index_race_unresolved':
+            t['unresolved'] += 1
         elif r.endswith(':stamped'):
             t['stamped'] += 1
             if r.startswith('unindexed'):
@@ -437,15 +469,28 @@ def _tally_results(results):
 
 
 def _post_condition_count():
-    """Count form rows STILL missing pii_subject_id (expect 0 after apply)."""
-    out = run_aws([
-        'dynamodb', 'scan', '--table-name', TABLE_FORM,
-        '--filter-expression', 'attribute_not_exists(pii_subject_id)',
-        '--select', 'COUNT', '--output', 'json',
-    ])
-    if out.get('__error__'):
-        raise RuntimeError(f'post-condition scan failed: {out}')
-    return out.get('Count', -1)
+    """Count form rows STILL missing pii_subject_id (expect 0 after apply).
+
+    Paginated: a single `scan --select COUNT` returns the count for ONE page
+    (≤1MB scanned) plus LastEvaluatedKey — summing across pages keeps the gate
+    correct if the table ever outgrows one page."""
+    total = 0
+    start_key = None
+    while True:
+        args = [
+            'dynamodb', 'scan', '--table-name', TABLE_FORM,
+            '--filter-expression', 'attribute_not_exists(pii_subject_id)',
+            '--select', 'COUNT', '--output', 'json',
+        ]
+        if start_key:
+            args += ['--exclusive-start-key', json.dumps(start_key)]
+        out = run_aws(args)
+        if out.get('__error__'):
+            raise RuntimeError(f'post-condition scan failed: {out}')
+        total += out.get('Count', 0)
+        start_key = out.get('LastEvaluatedKey')
+        if not start_key:
+            return total
 
 
 if __name__ == '__main__':
