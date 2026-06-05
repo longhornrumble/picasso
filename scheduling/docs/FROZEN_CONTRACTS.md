@@ -388,6 +388,95 @@ boundary). So the `proposing` step (availability + routing + slot-gen) AND the `
 
 ---
 
+## E. Sub-phase E interfaces — **PROPOSED 2026-06-05** (integrator M0; LOCKS after a verification pass)
+
+These are NEW interfaces sub-phase E produces/consumes. **PROPOSED, not yet locked** — they lock after a verification pass (esp. §E3 TCPA/channel — HIGH-risk), mirroring how §B was proposed → verified → LOCKED. Authoritative inputs: the [path-to-launch plan](SCHEDULING_PATH_TO_LAUNCH_PLAN.md), [UX decisions](SCHEDULING_UX_DECISIONS.md) D1–D8, canonical §9/§11/§12/§15, and the **already-shipped** SMS/notification stack (cited inline — workers CONSUME these, never rebuild them).
+
+> Convention: same as §B (Node 20 CommonJS, async, plain-object returns, `shared/scheduling/` for pure logic). **The dispatch primitives all exist** — E adds the per-booking EventBridge rule lifecycle + a channel model, not new senders.
+
+### E0 — access flags (D1; referenced by every E surface)
+```
+// Two independent flags gate scheduling (D1):
+//   scheduling_enabled            (Flag A, super-admin sets — paid entitlement) — tenant config
+//   calendar_integration_enabled  (Flag B, tenant-admin sets — "connect our org to Google") — tenant config
+// Per-staff Google OAuth (E11) is the 3rd gate. bookable = connected-calendar AND on ≥1 team (D3; no per-user toggle).
+```
+
+### E1 — reminder/attendance EventBridge Scheduler rule lifecycle (produced by WS-E-REMIND) — canonical §12.1/§9.2
+```js
+// NEW: nobody creates per-booking schedules today. The CONSUMER already exists and is FROZEN by its shipped shape:
+//   Scheduled_Message_Sender.handler({ pk, sk, message_id })  — reads picasso-scheduled-messages by {pk,sk},
+//   status-gates 'pending', consent-gates SMS, renders template_vars, dispatches. (Lambdas/lambda/Scheduled_Message_Sender/index.mjs:107)
+//   ⚠ Its EMAIL channel is a `// Future` stub — WS-E-REMIND MUST implement the email branch (invoke send_email) for the email-as-floor model (D7).
+//
+// Deterministic, idempotent rule names:  reminder → `sched-reminder-{tier}-{booking_id}` (tier ∈ t24h|t4h|t1h|t15m);  attendance → `sched-attendance-{booking_id}`
+// Rule target = Scheduled_Message_Sender; rule input payload = { pk, sk, message_id }  (EXACT shipped consumer shape).
+// At commit: (a) write N picasso-scheduled-messages rows (status:'pending'), (b) create N EventBridge schedules → consumer.
+// UPSERT on reschedule/move: booking.calendar_moved (carries new_start_at) OR token-reschedule → DELETE old schedules+rows,
+//   recompute tiers vs NEW start_at, CREATE fresh.  ◀ WS-E-REMIND EXIT CRITERION: a named seam test that a booking.calendar_moved
+//   event re-derives the schedule (this is the silent-failure class the listener work just closed — test it here, not only in CI-6).
+// DELETE on cancel: status→canceled → delete all schedules; consumer ALSO status-gates (surviving rule → safe no-op, defense in depth).
+// is_synthetic / CI-6 time-compression (LOCKED at M0, SR-3): STAGING_TEST_MODE=true AND booking.is_synthetic=true →
+//   tiers computed as start_at = now + N_min (lead-time rules fire immediately). DOUBLE-gated → real bookings never affected.
+//   PROD GUARD: handler init refuses to start if STAGING_TEST_MODE=true AND ENVIRONMENT=production.
+```
+
+### E2 — reminder cadence tiers (produced by WS-E-REMIND) — canonical §12.1
+```js
+// Computed from (start_at − now) at commit, recomputed on every reschedule/move:
+//   ≥24h → {t24h, t1h} · 4–24h → {t1h} · 1–4h → {t15m} · <1h → {} (too late)
+// start_at READ AT FIRE TIME from the Booking row — never snapshotted. Quiet-hours drop per §E3 (SMS only; email always sends).
+```
+
+### E3 — TCPA consent gate + channel-selection (produced by WS-E-TCPA; consumed by E3 dispatch, C8 confirm, notify.js cancel) — **HIGH-RISK**, canonical §12.2
+```js
+// EMAIL is the floor (always; carries .ics + full detail). SMS is the opt-in supplement (concise + tokenized link), NEVER sole channel for confirmation.
+// Consent store EXISTS (CONSUME): picasso-sms-consent  PK TENANT#{tenantId} · SK CONSENT#{consent_type}#{phone_e164};
+//   consent_given:bool, phone_e164 (phone-lookup GSI), opted_out_at; TTL = now + 4yr + 30d; phone stored ON the record (survives booking deletion).
+// ONE opt-in (captured at booking) covers all four moments (confirmation/reminder/cancel/reschedule) — transactional (D7).
+async function selectChannels({ tenantId, attendee, moment, nowLocal, tenantPrefs })
+//   → { email: true, sms: <bool> }
+//   sms = tenantPrefs.notificationPrefs.sms === true              // org-level
+//      && consentGiven(tenantId, attendee.phone)                 // recipient-level — FAIL-CLOSED (absent → false)
+//      && !inQuietHours(nowLocal, tenantPrefs.sms_quiet_hours)   // 8pm–8am local: reminders DEFER to window-end, confirmation SKIPS sms
+// Every SMS body carries a STOP/HELP affordance; SMS_Webhook_Handler already handles STOP/HELP/UNSTOP. SMS send via SMS_Sender (shipped).
+// SMS delivery failure → email already sent (backstop). Transactional only — never marketing.
+```
+
+### E4 — missed-event disposition + escalation (produced by WS-E-ATTEND/E10) — canonical §9.2/§11
+```js
+// Attendance check fires at event_end + 30min → Booking.status booked → pending_attendance; sends the 3-option interviewer prompt
+//   via the SHIPPED D4 /attended/* endpoints (security path live, action stubbed — E6 wires the action). Tokens = §B4 attended_yes/no_show/didnt_connect.
+// Dispositions: attended_yes → completed · no_show → no_show + auto-message volunteer w/ reschedule link · didnt_connect → coordinator_no_show (no outbound).
+// NO auto-completion (§11.1): stays pending_attendance until human disposition or admin close.
+// Silence-cadence (E10): T+24h resend + admin cc · T+72h urgent + Customer-Portal inbox alert · T+7d weekly digest (recurs until resolved).
+```
+
+### E5 — `text_en` write contract (produced by WS-E-TEXTEN; SOLO-FIRST — 3 shared writers) — canonical §15.5 / Risk 7
+```js
+// v1: text_en = text (verbatim copy) on every conversation-turn write: (1) Bedrock_Streaming_Handler emit, (2) Master_Function audit log, (3) analytics ingestion.
+// Dashboard read-path (E1b): prefer text_en, fall back to text when absent. CO-DEPLOY GATE: E1b CI completes BEFORE E1a merges.
+```
+
+### E6 — additive Booking attributes (schema discipline — readers tolerate absence)
+```js
+// is_synthetic: bool       — CI-6 double-gate; default absent/false. Source of truth for the time-compression branch (§E1).
+// reminder_schedule_state? — optional convenience bookkeeping; the picasso-scheduled-messages rows + EventBridge schedules are authoritative.
+// No key change, no new GSI. Mirrors the §A additive-attribute pattern.
+```
+
+### E7 — Customer-Portal bookings read API (integrator glue; consumed by E12/E15 dashboard)
+```js
+// GET /scheduling/bookings?scope=<staff|admin>   (Analytics_Dashboard_API; Clerk-authed)
+//   → { bookings: [ <projection> ], nextCursor? }
+// projection = { booking_id, tenantId, status, start_at, end_at, coordinator_email, resource_id, appointment_type_id, attendee{name,email,phone}, created_at, last_calendar_mutation_at, html_link }
+// admin scope → query tenantId-start_at-index (whole tenant); staff scope → tenantId-coordinator_email-index (own email only). Pagination via LastEvaluatedKey → nextCursor.
+```
+
+> **E13/E13b note (D4, no new §B contract needed):** Teams + Appointment Types map onto the SHIPPED tag routing with ZERO backend change — a "Team" = a `scheduling_tag`; an Appointment Type → a RoutingPolicy whose `tag_conditions` = the team, `tie_breaker` = round_robin. Add `modified_at` (timestamp + last-modifier) to AppointmentType/RoutingPolicy rows (additive; SR-1/Q5 dual-write guard). E13b writes the EXISTING `AppointmentType`/`RoutingPolicy` tables (§A).
+
+---
+
 ## C. Contract-change protocol
 1. A workstream that believes a contract is wrong/insufficient **stops and posts the issue to the integrator** (PR comment or status report) — it does NOT edit this file or fork the contract.
 2. The integrator decides: amend the contract (and notify every consuming workstream) or hold.
@@ -409,3 +498,4 @@ boundary). So the `proposing` step (availability + routing + slot-gen) AND the `
 | 2026-06-03 | **B-minimal weave reconciliation (FACADE/ZOOM/BINDING merged #209/#210/#211).** §B9 CALENDAR-FACADE shape **corrected to the §B13 TWO-arg** `deleteEvent(calendarId, eventId)` / `insertEvent(calendarId, requestBody)` — the 2026-06-02 `deleteEvent(booking)` single-arg wording was a thin-vs-fat error (reschedule.js + §B13 already used two-arg); **cancel.js re-synced** (lambda#212), the lone outlier. §B10 SK label **corrected `session_binding_id` → `session_id`** (the table's real range_key; value `binding#<sessionId>`) + **session-id threading invariant locked** (D4 mint → widget forward → resolveBinding, byte-identical, fail-closed on mismatch) — both per WS-BINDING #211. No consumer breakage (cancel.js unconsumed until WS-CONVO). |
 | 2026-06-03 | **§B16 tech-lead-proofed + AMENDED before launch** (3 BLOCKERS + 5 strong-recs, all ground-truthed vs live `pool.js`/`index.js`). **B16a output corrected:** `poolSize` moved from per-slot → **TOP-LEVEL = `pool.select().orderedPool.length`** (it's the ROUTING pool size per `lockSlot`'s contract; per-slot was both nonexistent in `pool.select` AND would mis-flag §5.5 solo-vs-pool) + the `SLOTS_PROPOSED→ok`/`SLOT_UNAVAILABLE→no_availability` status mapping made explicit + IN changed `appointmentType`/`routingPolicy` objects → `appointmentTypeId` (propose resolves appt-type row + policy object + candidates; §B7 returns candidates NOT policy) + camelCase `event.tenantId` pinned + gate-in-index.js (not the sub-handler) clarified. **B16b:** the qualifying→proposing ordering rule (advance only after `outcome:'ok'`, same saveState; `no_availability`→stay — else slot-less strand) + `alreadyRejected` accumulation. **B16c:** `pool_size` = the propose response's top-level `poolSize`. **B16d:** attendee-not-yet-known → stay in qualifying, entry-hook re-loads context per turn. Work-orders updated to match. No re-lock needed (corrected before any worker launched). |
 | 2026-06-03 | **§B16 LOCKED (B-remainder / new-booking in-chat wave; integrator).** The other half of the booking story — booking a NEW appointment in chat (`qualifying→proposing→confirming→booked`), vs §B9–§B15 which only change an existing one. §B16a `scheduling_propose` (a 3rd BCH route — availability+routing+slot-gen, reuses shipped C6 `pool.select`, READ-ONLY, generic slots). §B16b new-booking action vocab `select_slot`/`confirm_book`/`none` under the §B14 boundary. §B16c FREEZE of the already-shipped C8 commit route's `validate()` payload as the BSH→BCH commit seam (status `BOOKED`/`ALREADY_CONFIRMED`/`SLOT_UNAVAILABLE`/`COMMIT_FAILED`/`SCHEDULING_DISABLED`). §B16d the CTA→`qualifying` bootstrap (no §B10 binding; WS-C12 `scheduling_intent:'new_booking'` signal + integrator entry-hook). **Architecture decision (load-bearing):** C4/C6 pull googleapis → BSH can't bundle them → `proposing` + commit BOTH delegate to BCH via Lambda invoke (mirrors the Tier-2 executor). Decomposition: WS-NEWBOOK-PROPOSE + WS-C12 parallel; WS-NEWBOOK-FLOW keystone (weaves after PROPOSE). C10/C11 already shipped (calendar-events.js / commit C11 gate); C13 deferred to E (SMS-blocked). |
+| 2026-06-05 | **§E PROPOSED (sub-phase E; integrator M0; NOT yet locked).** E0 access flags (scheduling_enabled + calendar_integration_enabled). E1 per-booking EventBridge Scheduler rule lifecycle (the only new backend surface — consumer `Scheduled_Message_Sender` is shipped + its email branch is a `// Future` stub E must implement; rule payload `{pk,sk,message_id}`; calendar_moved re-bind seam test = named exit criterion; is_synthetic double-gated time-compression locked for CI-6). E2 cadence tiers. **E3 channel-selection + TCPA gate (HIGH-RISK)** — email-floor/SMS-supplement, consent fail-closed, quiet-hours, one-opt-in-covers-all-four. E4 missed-event disposition+escalation. E5 text_en. E6 additive Booking attrs (is_synthetic). E7 `/scheduling/bookings` read API. E13/E13b Teams+Appointment-Types map onto shipped tag routing (zero backend change) + `modified_at` dual-write guard. **Locks after a verification pass (esp. §E3 TCPA).** Inputs: SCHEDULING_PATH_TO_LAUNCH_PLAN + SCHEDULING_UX_DECISIONS (D1–D8). |
