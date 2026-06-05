@@ -25,6 +25,7 @@ import {
   saveToSession,
   getFromSession,
   clearSession,
+  trimHistoryForSend,
   _storeGet,
   _storeSet,
   _storeRemove,
@@ -488,11 +489,14 @@ export default function HTTPChatProvider({ children }) {
         tenant_hash: tenantHashRef.current,
         user_input: userInput,
         session_id: sessionIdRef.current,
-        conversation_context: conversationContext,
+        conversation_context: conversationContext
+          ? { ...conversationContext, recentMessages: trimHistoryForSend(conversationContext.recentMessages) }
+          : conversationContext,
         conversation_id: conversationManagerRef.current?.conversationId,
         turn: conversationManagerRef.current?.turn,
-        // Include these for compatibility
-        conversation_history: conversationContext?.recentMessages || [],
+        // conversation_history field removed: it was a byte-identical duplicate of
+        // conversation_context.recentMessages and bloated the body past the 8KB WAF
+        // SizeRestrictions_BODY limit. Master_Function reads conversation_context.recentMessages.
         original_user_input: userInput,
         // PHASE 1B: Include session context for form tracking (with suspended forms)
         session_context: enhancedSessionContext,
