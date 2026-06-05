@@ -1,5 +1,5 @@
 resource "aws_dynamodb_table" "pii_subject_index" {
-  name         = "picasso-pii-subject-index-staging"
+  name         = "picasso-pii-subject-index"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "tenant_id"
   range_key    = "normalized_email"
@@ -37,7 +37,7 @@ resource "aws_dynamodb_table" "pii_subject_index" {
   }
 
   tags = {
-    Name = "picasso-pii-subject-index-staging"
+    Name = "picasso-pii-subject-index"
   }
 }
 

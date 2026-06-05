@@ -6,13 +6,13 @@
 # Dedicated audit table (NOT the DSAR audit table) per the design's clean-
 # separation rationale + CLAUDE.md never-share-resources: the purge is a
 # distinct capability with its own role; it writes its own audit trail and
-# never reads or deletes it. Schema mirrors picasso-pii-dsar-audit-staging:
+# never reads or deletes it. Schema mirrors picasso-pii-dsar-audit:
 # the Lambda's `_write_audit_event` writes PK=purge_id, SK=event_timestamp,
 # plus `created_at_partition = event_timestamp[:7]` for a future counsel-
 # determined retention purge by year-month partition.
 
 resource "aws_dynamodb_table" "purge_audit" {
-  name         = "picasso-pii-tenant-purge-audit-staging"
+  name         = "picasso-pii-tenant-purge-audit"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "purge_id"
   range_key    = "event_timestamp"
@@ -56,7 +56,7 @@ resource "aws_dynamodb_table" "purge_audit" {
   }
 
   tags = {
-    Name = "picasso-pii-tenant-purge-audit-staging"
+    Name = "picasso-pii-tenant-purge-audit"
   }
 }
 
