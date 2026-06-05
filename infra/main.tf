@@ -79,8 +79,9 @@ module "ops_alarms_bsh_prod" {
 # See docs/runbooks/prod-iac-tier1-bsh-iam.md.
 # ─────────────────────────────────────────────────────────────────────────────
 module "bsh_iam_grants_prod" {
-  count  = var.env == "production" ? 1 : 0
-  source = "./modules/bsh-iam-grants-prod"
+  count     = var.env == "production" ? 1 : 0
+  source    = "./modules/bsh-iam-grants-prod"
+  role_name = "Bedrock-Streaming-Handler-Role" # explicit: the load-bearing import target
 }
 
 # Staging-only: cross-account replication target for prod tenant configs.
