@@ -281,10 +281,9 @@ locals {
   # Forward references to GSIs (already exist in their respective ddb modules).
   # D2: the live tenant-scoped read path for the prod single-key form-submissions
   # table is the tenant-timestamp-index GSI (PK=tenant_id), present on BOTH the
-  # staging + prod tables. (gsi_form_subjectid/PiiSubjectIdIndex was never
-  # created — left as a harmless forward-ref; the walker uses tenant-timestamp.)
+  # staging + prod tables. (The never-created PiiSubjectIdIndex grant was dropped
+  # in D2 — least-privilege; the walker uses tenant-timestamp-index.)
   gsi_form_tenant_ts    = "${local.t_form_submissions}/index/tenant-timestamp-index"
-  gsi_form_subjectid    = "${local.t_form_submissions}/index/PiiSubjectIdIndex"
   gsi_notif_bymessageid = "${local.t_notification_evts}/index/ByMessageId"
   gsi_subject_id        = "${local.t_subject_index}/index/PiiSubjectIdIndex"
   gsi_chmap_tenantindex = "${local.t_channel_mappings}/index/TenantIndex"
@@ -336,7 +335,7 @@ data "aws_iam_policy_document" "dsar" {
   statement {
     sid       = "FormSubmissionsReadDelete"
     actions   = ["dynamodb:Query", "dynamodb:GetItem", "dynamodb:DeleteItem", "dynamodb:DescribeTable"]
-    resources = [local.t_form_submissions, local.gsi_form_subjectid, local.gsi_form_tenant_ts]
+    resources = [local.t_form_submissions, local.gsi_form_tenant_ts]
   }
 
   # MFS-scoped surfaces — Query to enumerate, GetItem to read, DeleteItem to
