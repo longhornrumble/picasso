@@ -10,7 +10,7 @@
 #   - Reuses ops-alarms SNS topic from ops-alarms-master-function-staging (input var)
 #
 # SCOPE (least-privilege; mirrors lambda-pii-dsar-staging convention):
-#   - DDB Query on picasso-pii-dsar-audit-staging (StatusIndex GSI + main table)
+#   - DDB Query on picasso-pii-dsar-audit (StatusIndex GSI + main table)
 #   - SNS Publish on the input topic ARN (single topic; no wildcards)
 #   - NO PutItem on audit table (preserves C2 4-action Deny posture even at IAM level)
 #   - NO Decrypt on PII CMK (audit table uses default DDB SSE pending M7 F-DSAR-C2-SSE-DEFER)
@@ -21,7 +21,7 @@
 #   - NO write to dsar-log.md (that's an operator-controlled file)
 
 variable "dsar_audit_table_arn" {
-  description = "ARN of picasso-pii-dsar-audit-staging. Monitor Queries main table (PK=dsar_id) + StatusIndex GSI (PK=status, SK=event_timestamp)."
+  description = "ARN of picasso-pii-dsar-audit. Monitor Queries main table (PK=dsar_id) + StatusIndex GSI (PK=status, SK=event_timestamp)."
   type        = string
 }
 
@@ -56,7 +56,7 @@ locals {
   region         = data.aws_region.current.name
   function_name  = "picasso-pii-dsar-sla-monitor-staging"
   role_name      = "picasso-pii-dsar-sla-monitor-staging-role"
-  audit_table_id = element(split("/", var.dsar_audit_table_arn), 1) # "picasso-pii-dsar-audit-staging"
+  audit_table_id = element(split("/", var.dsar_audit_table_arn), 1) # "picasso-pii-dsar-audit"
 }
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -229,7 +229,7 @@ module "lambda_send_email_staging" {
 }
 
 # Consumer PII Remediation Path A, M3 done-bar #1 (master plan v0.3 §M3).
-# Daily EventBridge-triggered Lambda that scans picasso-pii-dsar-audit-staging
+# Daily EventBridge-triggered Lambda that scans picasso-pii-dsar-audit
 # StatusIndex for open DSARs past intake+25d (SLA-at-risk window) and publishes
 # SNS alerts to ops-alerts topic. Closes D5 G-D.
 #
@@ -258,6 +258,11 @@ module "lambda_pii_dsar_weekly_reminder_staging" {
   source = "./modules/lambda-pii-dsar-weekly-reminder-staging"
 
   ops_sns_topic_arn = module.ops_alarms_master_function_staging[0].topic_arn
+  # Wire the audit table name from the ddb module output so the weekly SNS
+  # reminder's operator CLI snippet tracks the canonical table name (the
+  # module's own default is a fallback only). Closes the D1 phase-audit
+  # cascade gap (#402 follow-up).
+  audit_table_name = module.ddb_pii_dsar_audit_staging[0].table_name
 }
 
 module "ddb_notification_events_staging" {
@@ -400,7 +405,7 @@ module "lambda_bedrock_handler_staging" {
   scheduling_executor_function_name = module.lambda_booking_commit_staging[0].commit_function_name
 
   # M1.G6 (master plan v0.12 / F-DSAR18 closure). BSH form_handler.js port
-  # of pii_subject.js needs the same picasso-pii-subject-index-staging
+  # of pii_subject.js needs the same picasso-pii-subject-index
   # table the Master_Function_Staging Python writer uses; least-priv grant
   # (GetItem + conditional PutItem only). Closes the BSH active-writer gap
   # where DSAR walker FilterExpression on pii_subject_id silently
