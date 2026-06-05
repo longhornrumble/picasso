@@ -134,7 +134,7 @@ variable "pii_cmk_key_arn" {
 }
 
 variable "dsar_audit_table_arn" {
-  description = "ARN of picasso-pii-dsar-audit-staging (module.ddb_pii_dsar_audit_staging[0].table_arn, PR #157). DSAR role gets PutItem only — append-only audit, never read or delete its own audit trail."
+  description = "ARN of picasso-pii-dsar-audit (module.ddb_pii_dsar_audit_staging[0].table_arn, PR #157). DSAR role gets PutItem only — append-only audit, never read or delete its own audit trail."
   type        = string
 }
 
@@ -468,7 +468,7 @@ data "aws_iam_policy_document" "dsar" {
     }
   }
 
-  # picasso-pii-dsar-audit-staging — PutItem ONLY. Append-only event log;
+  # picasso-pii-dsar-audit — PutItem ONLY. Append-only event log;
   # the DSAR role cannot read or delete its own audit trail. Read is for the
   # follow-up EventBridge SLA alarm Lambda (item 3) under a separate role.
   statement {

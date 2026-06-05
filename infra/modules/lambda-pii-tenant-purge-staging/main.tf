@@ -40,7 +40,7 @@
 # outside 525).
 
 variable "purge_audit_table_arn" {
-  description = "ARN of picasso-pii-tenant-purge-audit-staging (module.ddb_pii_tenant_purge_audit_staging[0].table_arn). The purge role gets PutItem only - append-only audit, never read or delete its own trail."
+  description = "ARN of picasso-pii-tenant-purge-audit (module.ddb_pii_tenant_purge_audit_staging[0].table_arn). The purge role gets PutItem only - append-only audit, never read or delete its own trail."
   type        = string
 }
 
@@ -69,7 +69,7 @@ locals {
   t_form_submissions   = "${local.ddb}/picasso-form-submissions-staging"
   t_notification_sends = "${local.ddb}/picasso-notification-sends"
   t_notification_evts  = "${local.ddb}/picasso-notification-events"
-  t_subject_index      = "${local.ddb}/picasso-pii-subject-index-staging"
+  t_subject_index      = "${local.ddb}/picasso-pii-subject-index"
   t_sms_usage          = "${local.ddb}/picasso-sms-usage"
   # Class C (F-DSAR31): session-summaries, pk=TENANT#{tenant_hash}. Purged as a
   # whole-partition delete when the caller supplies tenant_hash.
