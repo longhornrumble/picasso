@@ -1,9 +1,14 @@
 variable "env" {
-  description = "Deployment environment (dev, staging, prod). Drives resource name suffixes and tags."
+  # Value MUST mirror the live Environment tags / ENVIRONMENT env vars (staging, production) —
+  # never a translated form like "prod". Account = environment, so NEW resources use BARE names
+  # (no env suffix); env is carried only by this value via default_tags + Lambda env vars.
+  # (Legacy modules still embed `-${var.env}` in names — that suffix pattern is being retired by
+  # the naming-alignment program; do not add new resources that suffix names with var.env.)
+  description = "Deployment environment, matching live values: dev, staging, production."
   type        = string
   validation {
-    condition     = contains(["dev", "staging", "prod"], var.env)
-    error_message = "env must be one of: dev, staging, prod."
+    condition     = contains(["dev", "staging", "production"], var.env)
+    error_message = "env must be one of: dev, staging, production — the same values live tags/env-vars use. Never 'prod' (translation drift). Resource names stay bare; env lives in tags/vars only."
   }
 }
 

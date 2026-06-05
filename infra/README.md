@@ -51,7 +51,7 @@ terraform apply -var-file=envs/dev.tfvars
 |---|---|---|
 | staging | `myrecruiter-tfstate-staging` (525409062831) | `myrecruiter-tfstate-lock-staging` |
 | dev | `myrecruiter-tfstate-dev` (372666940362) | `myrecruiter-tfstate-lock-dev` |
-| prod | TBD — created in Phase 2 of P0 | TBD |
+| production | `myrecruiter-tfstate-production` (614056832592) | S3-native lockfile (`use_lockfile=true`) |
 
 State buckets have versioning + public access blocked. **staging** state is
 encrypted with a customer-managed KMS CMK (`alias/myrecruiter-tfstate-staging`,
@@ -79,6 +79,20 @@ rotation is enabled. If the key policy or alias is ever changed, the staging
 4. `terraform apply -var-file=envs/dev.tfvars` once happy
 5. Promote to staging by re-running with `-var-file=envs/staging.tfvars`
 
-## Production promotion (later)
+## Production promotion (Phase 2 — IN PROGRESS)
 
-Phase 2 of P0 will add `envs/prod.tfvars` + `backend/prod.tfbackend` plus state bucket creation in the prod account. Until then, **do not** create those files. Prod resources continue to be managed via existing manual processes during Phase 1.
+Phase 2 is underway. `envs/production.tfvars` + `backend/production.tfbackend` exist; the prod
+state backend + OIDC deploy role were bootstrapped out-of-band (see
+`docs/runbooks/prod-iac-bootstrap.md`). The first resources adopted are the BSH ops alarms (the
+pilot — `docs/runbooks/prod-iac-pilot-alarms.md`); applies are approval-gated via the `production`
+GitHub Environment in `.github/workflows/infra-deploy-prod.yml`.
+
+**Naming convention (do not violate — hard-won by the naming-alignment program):**
+- `var.env` values mirror the **live** Environment values: `staging`, `production` — never a
+  translated form like `prod`. The value flows to `default_tags { Environment }` and Lambda env vars.
+- Resource **names are BARE** (no env suffix): account = environment, so the same bare name
+  (`picasso-session-summaries`, `picasso-sms-consent`, …) exists in each account. Do NOT add new
+  resources that embed `${var.env}` in a name. (Legacy modules still carry `-${var.env}` suffixes;
+  those are being retired by the naming-alignment program. Until they're bare, production applies are
+  `-target`-scoped so they don't create orphan `-production`-suffixed tables.)
+- State buckets are the one forced exception (S3 names are global): `myrecruiter-tfstate-<envvalue>`.

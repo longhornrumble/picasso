@@ -54,6 +54,21 @@ module "picasso_form_tables" {
   env    = var.env
 }
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase 2 PILOT (production-only): BSH ops alarms — the first hand-managed prod
+# resources adopted into Terraform. Gated to production; the three resources
+# already exist live and are `terraform import`ed (no-op plan beyond default_tags).
+# Production applies are -target-scoped to this module for now (a full prod apply
+# would create orphan `picasso-sms-*-prod` tables via the un-gated form-tables
+# module above, since prod uses bare names). See docs/runbooks/prod-iac-pilot-alarms.md.
+# ─────────────────────────────────────────────────────────────────────────────
+module "ops_alarms_bsh_prod" {
+  count  = var.env == "production" ? 1 : 0
+  source = "./modules/ops-alarms-bsh-prod"
+
+  ops_alerts_topic_arn = "arn:aws:sns:us-east-1:614056832592:picasso-ops-alerts"
+}
+
 # Staging-only: cross-account replication target for prod tenant configs.
 # Bucket lives in the staging account; replication IS configured on the prod
 # source bucket (hand-applied with chris-admin until P0 Phase 2 brings prod
