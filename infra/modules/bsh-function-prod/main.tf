@@ -190,6 +190,17 @@ resource "aws_cloudwatch_log_group" "this" {
   name              = "/aws/lambda/${var.function_name}"
   retention_in_days = 7
   log_group_class   = "STANDARD"
+
+  # This group owns the ONLY prod ops-alarm metric filter (analytics-write-failure
+  # in ops-alarms-bsh-prod, wired by NAME with NO Terraform dependency edge). If
+  # this resource were ever destroyed/replaced, that filter — and the Foster
+  # Village alarm behind it — would die SILENTLY. prevent_destroy blocks any
+  # destroy/replace plan (plan-invisible: no effect on the import or the tag-add
+  # apply; `terraform state rm` recovery is unaffected). Flagged by the 2026-06-06
+  # phase-completion audit (missing cross-module edge = silent blast radius).
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 # API Gateway invoke permission — the live `allow-api-gateway-invoke-prod`
