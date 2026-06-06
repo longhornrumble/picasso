@@ -599,6 +599,9 @@ async function selectChannels({ tenantId, attendee, moment, nowLocal, tenantPref
 // G1 READ: handle_team_members_list (GET /team/members) projection now includes scheduling_tags (def []),
 //   calendar_email_override (def null), bookable_override (def null). Additive; readers tolerate absence (schema discipline) so
 //   pre-G1 records read as defaults. This is the list the E13 UI renders + edits against.
+//   ⚠ calendar_email_override is PII and is READ-GATED admin-or-self (an admin sees every record's value; a member sees only
+//     their OWN record's value, matched by auth email; everyone else gets null) — symmetric with its admin-or-self WRITE gate.
+//     scheduling_tags + bookable_override are operational (not PII) and are visible to all team members.
 //
 // ⚠ NO OPTIMISTIC-LOCK TOKEN (deliberate divergence from the G1 ask's "same lock as §E13b"): §E13b's lock guards standalone
 //   tables with commit-owned round-robin state; the employee registry has NO commit-owned scheduling state and its shared
