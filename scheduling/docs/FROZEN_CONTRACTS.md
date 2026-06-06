@@ -517,6 +517,61 @@ async function selectChannels({ tenantId, attendee, moment, nowLocal, tenantPref
 
 > **E13/E13b note (D4, no new §B contract needed):** Teams + Appointment Types map onto the SHIPPED tag routing with ZERO backend change — a "Team" = a `scheduling_tag`; an Appointment Type → a RoutingPolicy whose `tag_conditions` = the team, `tie_breaker` = round_robin. Add `modified_at` (timestamp + last-modifier) to AppointmentType/RoutingPolicy rows (additive; SR-1/Q5 dual-write guard). E13b writes the EXISTING `AppointmentType`/`RoutingPolicy` tables (§A).
 
+### E13b — AppointmentType/RoutingPolicy write API + vocab-validation (integrator glue; consumed by the WS-E-PORTAL E13 UI) — **LOCKED 2026-06-06** (integrator)
+```
+// Reverse-engineered from the LIVE booking-router read path (candidate-resolver.js + routing.js + pool.select)
+// — the canonical §10.1 sketch under-specifies the stored shape. Workers build the E13 Settings sub-tab UI
+// AGAINST THIS; the integrator owns these endpoints. WRITES THE DDB TABLES (§A), never tenant config S3.
+//
+// ENDPOINTS (Analytics_Dashboard_API; Clerk-authed; ADMIN/super_admin ONLY via _require_write_role — staff cannot write routing):
+//   GET    /scheduling/appointment-types                      → { appointment_types: [<AT row>] }   (tenant-scoped Query)
+//   POST   /scheduling/appointment-types                      body=<AT write> → 201 { appointment_type }   (create; server-mints appointment_type_id if absent)
+//   PATCH  /scheduling/appointment-types/{appointment_type_id} body=<AT write>+If-Match → 200 { appointment_type }   (update; optimistic-lock)
+//   GET    /scheduling/routing-policies                       → { routing_policies: [<RP row>] }
+//   POST   /scheduling/routing-policies                       body=<RP write> → 201 { routing_policy }
+//   PATCH  /scheduling/routing-policies/{routing_policy_id}    body=<RP write>+If-Match → 200 { routing_policy }
+//
+// AppointmentType STORED ROW (picasso-appointment-type-{env}; PK tenantId · SK appointment_type_id):
+//   { tenantId, appointment_type_id, name:str, duration_minutes:int(1..480), buffer_before_minutes:int>=0(def 0),
+//     buffer_after_minutes:int>=0(def 0), lead_time_minutes:int>=0(def 0), routing_policy_id:str (FK→RoutingPolicy, REQUIRED —
+//     candidate-resolver THROWS without it), modified_at:{ at:ISO8601Z, by:editor_email } }
+//   Field names match scheduling_config_schema.md appointmentTypeSchema (duration_minutes/buffer_*_minutes/lead_time_minutes).
+//
+// RoutingPolicy STORED ROW (picasso-routing-policy-{env}; PK tenantId · SK routing_policy_id):
+//   { tenantId, routing_policy_id, tie_breaker:'round_robin'|'first_available'(def round_robin),
+//     tag_conditions:[ { operator:'in_any'|'equals'(def equals), values:[tag] } ] (def []; AND across conditions; [] = solo, everyone eligible),
+//     modified_at:{ at, by } }
+//   ⚠ RUNTIME tag_conditions shape is {operator, values[]} (what routing.js matchesCondition reads) — NOT the
+//     scheduling_config_schema.md authoring shape {tag}. The endpoint accepts a UI team-selection and constructs
+//     {operator:'in_any', values:[teamTag]} per the E13/E13b note ("tag_conditions = the team, tie_breaker = round_robin").
+//   round-robin state (last_assigned_resource_id/last_assigned_at) is COMMIT-OWNED (routing.js advanceRoundRobin) — the write API
+//     NEVER sets or clears it (a config edit must not reset fairness state). candidate_resource_ids seen on fixture rows is a
+//     FIXTURE ARTIFACT — the production router resolves candidates from the employee-registry by scheduling_tags, NOT from the row; do NOT write it.
+//
+// VOCAB-VALIDATION (PYTHON, in Analytics_Dashboard_API — NOT a Node shared/scheduling/ module and NOT a separate Lambda:
+//   the write endpoints live in the Python ADA Lambda [§E7's home], so a Node module can't be called inline and a
+//   standalone validation Lambda is over-engineered. The SEAM-5 "vocabulary-validation Lambda" wording predates this
+//   in-handler decision):  _validate_tag_conditions(tag_conditions, vocabulary) → (ok:bool, unknown_tags:[...])
+//   The closed vocabulary = tenant config S3 `scheduling.scheduling_tag_vocabulary` (READ — reads are allowed on staging;
+//   the staging config bucket is a read-only prod replica so the vocabulary is NOT editable from staging). FAIL-CLOSED: any
+//   tag in any condition's values[] not present in the vocabulary → 422 { error, unknownTags } (Invariant 3, closed-vocabulary
+//   routing integrity — a typo'd tag would silently empty a routing pool). Empty/absent vocabulary → only solo policies
+//   (tag_conditions [] ) may be written; any tagged condition is rejected.
+//
+// OPTIMISTIC LOCK (the SR-1/Q5 "dual-write guard"): PATCH requires the caller's last-seen modified_at.at echoed via an
+//   `If-Match` header (or body `expected_modified_at`); the write is a conditional UpdateItem
+//   (ConditionExpression = attribute_exists(pk) AND modified_at.at == token) → 428 if no token, 409 on row-missing OR
+//   stale-token (concurrent edit). POST (create) uses attribute_not_exists(SK) → 409 if the id exists.
+//   modified_at.at is MICROSECOND-precision ISO8601Z so two same-second edits can't share a token (sub-second lock bypass).
+//   LEGACY/FIXTURE ROWS (predate E13b → no modified_at): GET returns them without modified_at; to first-edit one the caller
+//   sends `If-Match: *`, which writes under ConditionExpression attribute_exists(pk) AND attribute_not_exists(modified_at)
+//   — stamps it once without clobbering a concurrently-stamped edit. After the first edit they carry a normal token.
+//
+// OUT OF SCOPE of E13b: E14 template overrides REUSE the shipped PATCH /settings/notifications/templates/{form_id}
+//   (handle_notification_templates_update) — no new endpoint. E13 tag-VOCABULARY editing is NOT here (config-builder / hand-edited
+//   scheduling.json owns the closed set; staging config is read-only). Deletion of appt-types/policies is v2 (orphan-FK risk → defer).
+```
+
 ### E8 — re-engagement copy module (produced by WS-E-COPY) — canonical §11.4
 ```js
 // module: shared/scheduling/reengagement.js  (PURE-LOGIC, Bedrock via DI — NOT in BSH → zero collision with WS-E-TEXTEN)
@@ -599,3 +654,4 @@ notify.js `reengagement` kind (+ its STOP footer) · the `selectChannels`-into-`
 | 2026-06-05 | **§E1 + §E5 RATIFIED from worker escalations (both correct, neither forked — §C).** **§E1 attendance target:** REMIND+ATTEND both flagged that the attendance-check rule can't target the pure dispatcher `Scheduled_Message_Sender` (can't set attendance_state / mint tokens) → ratified target = **`Attendance_Disposition_Handler` (WS-E-ATTEND)**; REMIND already parameterized it via `SCHEDULER_TARGET_ARN` (no rework — integrator points the env + grants Scheduler-invoke). **§E5 re-corrected (my FIRST correction was STILL wrong):** WS-E-TEXTEN ground-truthed that the transcript producer (recent-messages `content`) and the dashboard reader (session-events `content_preview`, set by the WIDGET) are TWO different stores. Split into Chain 1 (recent-messages — add `text_en` at conversation_handler.py:768 + **Meta_Response_Processor** [4th writer I missed]; consumers = widget-replay + DSAR/purge, NOT dashboard) + Chain 2 (dashboard reads `content_preview_en ?? content_preview`; the widget producer is v2-deferred). BSH analytics_writer + Analytics_Event_Processor are OUT (no full per-turn text). **Lesson reinforced: worker ground-truth > integrator drafting; ratify their well-reasoned findings.** |
 | 2026-06-05 | **§E weave-audit ratifications (Wave E-1 PR audits; integrator-owned, none forked — §C).** From the TCPA #246, OAUTH #248, and CI6 #245 weave audits: (1) **SEAM-1 ratified** — `quietHours` stays a param defaulted to `{20,8}` (= the fixed 8pm–8am window; custom = forward-compat override); the module's tz fallback is 2-hop `booking.timezone → UTC`, and the **WS-E-REMIND fire-time caller owns** resolving the tenant `scheduling.timezone` middle hop into `booking.timezone` (SEAM-1 omits `tenantPrefs` to keep `selectChannels` pure); the unused `tenantId` param may be kept-with-JSDoc or dropped (worker's choice, both faithful). (2) **§B3 consumer-facing chip clarified** — `generateSlots` emits per-slot `resourceId`, but the chip that reaches downstream consumers (post C6-merge + pool.select) carries `candidateResourceIds:[…]`; consumers read `candidateResourceIds`, never `chip.resourceId` (closes the WS-E-CI6 stale-§B3 flag; signature unchanged). (3) **§E11 added + LOCKED** — the Google 3LO consent flow + the integrator-minted init-token contract (HMAC-signed, 300s TTL, `_state-signing-key`, R1 single-use Beta-gated) + §B7 revoked→pool-exclusion + the `invalid_client`-is-platform-alarm-not-revocation rule, so the Analytics_Dashboard_API mint glue has a frozen spec. (4) **§E6 lock CONFIRMED** — `is_synthetic` was already locked under the 2026-06-05 §E LOCK (the CI6 "§E6 only in build-plan" flag was stale). SEAM-3 secret shape unchanged. No consumer re-sync needed (all clarifications additive). |
 | 2026-06-06 | **§E7 scope vocab RATIFIED (lambda#255 weave + 3-reviewer audit; integrator-owned).** `scope=staff|admin` → **`staff_self|tenant_aggregate`** to match the shipped dash#11 UI (clearer + already coded; the endpoint was built to it). Behavior unchanged from the §E7 intent: `staff_self`→own coordinator_email (lower-cased), `tenant_aggregate`→bounded ±90d, ADMIN-only (server-enforced). Also folded the audit hardening into the spec: per-page Limit (cap 200), server-validated tenant-bound cursor, tenant_id always from session. Endpoint built + audited (no security blockers) + merged to lambda main (#255). Owed before dash#11 goes live: IAM `dynamodb:Query` grant on the Analytics_Dashboard_API role + the 2 GSIs, BOOKING_TABLE env confirm, pii-inventory read-surface line, dash#11 `pagination` dead-type cleanup. |
+| 2026-06-06 | **§E13b write contract + vocab-validation LOCKED (integrator; unblocks WS-E-PORTAL Wave E-3 E13 UI).** The SEAM-5 "E13b write endpoints + vocabulary-validation Lambda" glue, made precise by reverse-engineering the LIVE booking-router read path (the canonical §10.1 sketch under-specified the stored shape). Resolutions: (1) **WRITES THE DDB TABLES** (`picasso-appointment-type-{env}`/`picasso-routing-policy-{env}`), never tenant config S3 — confirmed the runtime source; tables were fixture-seeded only, so E13b is the real admin write path. (2) **RUNTIME `tag_conditions` shape = `{operator,values[]}`** (routing.js `matchesCondition`), NOT the config-schema authoring `{tag}`; the endpoint builds `{operator:'in_any', values:[teamTag]}` from a UI team-selection. (3) **`candidate_resource_ids` on fixture rows is a FIXTURE ARTIFACT** — production resolves candidates from the employee-registry by `scheduling_tags`, not from the policy row; the write API does NOT write it. (4) **round-robin state is commit-owned** — the write API never sets/clears `last_assigned_*`. (5) **vocab-validation = PYTHON in `Analytics_Dashboard_API`** (in-handler `_validate_tag_conditions`, NOT a Node module and NOT a separate Lambda — the write endpoints are in the Python ADA Lambda; the SEAM-5 "Lambda" wording predates this), reads the closed set from config S3 `scheduling.scheduling_tag_vocabulary` (read-only OK on staging), FAIL-CLOSED 422 on unknown tags. (6) **`modified_at:{at,by}` optimistic lock** = the SR-1/Q5 dual-write guard (PATCH conditional on echoed `If-Match`; POST `attribute_not_exists`). (7) **ADMIN-only** (`_require_write_role`). OUT: E14 reuses the shipped template-update endpoint; E13 vocabulary EDITING stays in config-builder/hand-edit (staging config read-only); delete = v2. ⚠ STAGING CONSTRAINT: tagged/team policies need a pre-seeded prod-config vocabulary; solo policies (empty `tag_conditions`) always work. Backend: lambda#TBD; consumed by the WS-E-PORTAL E13 Settings sub-tab. |
