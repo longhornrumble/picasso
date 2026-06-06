@@ -68,6 +68,29 @@ variable "api_gateway_id" {
   default     = "kgvc8xnewf"
 }
 
+# ── Remedy B (#435 streaming-bypass closure) ────────────────────────────────
+# The deployed BSH bundle already contains + calls validateCfOriginHeader; it is
+# a NO-OP until REQUIRE_CF_ORIGIN_HEADER="true". Setting CF_ORIGIN_SECRET_NAME +
+# the SM-read grant (in bsh-iam-grants-prod) alone changes NOTHING at runtime —
+# the validator only enforces when the flag flips. Mirrors live staging wiring
+# (lambda-bedrock-handler-staging:574-577 env + 325-332 grant).
+variable "cf_origin_secret_name" {
+  description = "Name of the CF-origin validator secret. BSH reads it at runtime (GetSecretValue) to validate the CloudFront-injected x-picasso-cf-origin header. Mirrors staging."
+  type        = string
+  default     = "picasso/bsh/cf-origin-secret"
+}
+
+# LOAD-BEARING: 'false' = validator no-op (rollout-safe). Flip to 'true' ONLY after
+# (1) the secret exists, (2) the SM-read grant is applied, and (3) the prod CF
+# streaming origin injects x-picasso-cf-origin. The validator FAILS CLOSED, so a
+# premature flip 403s ALL chat traffic. The flip is a deliberate gated apply
+# (1-line PR bumping this default, or -var). See the Remedy-B runbook.
+variable "require_cf_origin_header" {
+  description = "Enforcement flag for the CF-origin-header validator ('true'/'false'). Flip to 'true' only after secret+grant+CF-header all exist (fail-closed validator; premature flip 403s all traffic)."
+  type        = string
+  default     = "false"
+}
+
 data "aws_caller_identity" "current" {}
 
 locals {
@@ -115,11 +138,16 @@ resource "aws_lambda_function" "this" {
   # yet; faithful import does not "fix" it here).
   environment {
     variables = {
-      ANALYTICS_QUEUE_URL      = "https://sqs.us-east-1.amazonaws.com/${data.aws_caller_identity.current.account_id}/picasso-analytics-events"
-      BEDROCK_MODEL_ID         = "global.anthropic.claude-haiku-4-5-20251001-v1:0"
-      BEDROCK_REGION           = "us-east-1"
-      COLD_START_FORCE         = var.cold_start_force
-      CONFIG_BUCKET            = "myrecruiter-picasso"
+      ANALYTICS_QUEUE_URL = "https://sqs.us-east-1.amazonaws.com/${data.aws_caller_identity.current.account_id}/picasso-analytics-events"
+      BEDROCK_MODEL_ID    = "global.anthropic.claude-haiku-4-5-20251001-v1:0"
+      BEDROCK_REGION      = "us-east-1"
+      COLD_START_FORCE    = var.cold_start_force
+      CONFIG_BUCKET       = "myrecruiter-picasso"
+      # Remedy B (#435 bypass closure) — INERT until require_cf_origin_header
+      # flips to "true" (the validator gates on the flag; CF_ORIGIN_SECRET_NAME
+      # is unread while it's "false"). Mirrors the live staging pair.
+      CF_ORIGIN_SECRET_NAME    = var.cf_origin_secret_name
+      REQUIRE_CF_ORIGIN_HEADER = var.require_cf_origin_header
       EMPLOYEE_REGISTRY_TABLE  = "picasso-employee-registry"
       FORM_SUBMISSIONS_TABLE   = "picasso_form_submissions"
       NOTIFICATION_SENDS_TABLE = "picasso-notification-sends"
