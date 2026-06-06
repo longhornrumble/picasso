@@ -175,10 +175,84 @@ incident-class closure.
 
 ---
 
+## Follow-on increment (2026-06-06) — adopt the log group + API-GW permission
+
+Adopts the two surfaces deferred in the first increment into the **same** `bsh-function-prod` module, via
+the same import-in-place belt. Live facts confirmed before modeling:
+- Log group `/aws/lambda/Bedrock_Streaming_Handler`: `retentionInDays=7`, `logGroupClass=STANDARD`, **no
+  `kmsKeyId`**, **tags `{}`** (empty). Its 1 metric filter is owned by `ops-alarms-bsh-prod` (by name) — NOT
+  re-declared here; importing the group does not touch the filter.
+- Resource policy statement `allow-api-gateway-invoke-prod`: principal `apigateway.amazonaws.com`, action
+  `lambda:InvokeFunction`, `source_arn arn:aws:execute-api:us-east-1:614056832592:kgvc8xnewf/*/*`. (The other
+  statement, `FunctionURLAllowPublicAccess`, is owned by `aws_lambda_function_url.this` — not modeled as a
+  permission.)
+
+### The one non-no-op: 3 tag-adds on the log group
+The log group carries **zero** live tags, so the first gated apply adds **all 3** `default_tags`
+(`Environment=production` + `ManagedBy=terraform` + `Project=myrecruiter`) — one more than the function's 2
+(the function already had `Environment`). Benign tag-adoption, **not** a functional change. `aws_lambda_permission`
+has no tags → a truly zero-change import (like Tier 1's inline policies). retention/class/kms all match live.
+
+### Phase A — import the 2 new resources (state-only, LOCAL)
+Same window discipline as the function import: **import only after this PR is mergeable; the same operator
+imports + merges + dispatches the first apply in one session; no other prod workflow dispatches in between.**
+Run from the follow-on worktree (`/private/tmp/prod-iac-tier2-followon/infra`).
+
+```bash
+cd /private/tmp/prod-iac-tier2-followon/infra
+unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+export TF_VAR_q5_mfs_cf_origin_secret=$(printf '0%.0s' $(seq 64))
+export TF_VAR_q5_streaming_cf_origin_secret=$(printf '0%.0s' $(seq 64))
+export TF_VAR_messenger_verify_token=unused-in-prod
+aws sts get-caller-identity --profile chris-admin    # expect 614056832592
+AWS_PROFILE=chris-admin terraform init -reconfigure -backend-config=backend/production.tfbackend
+
+set -e
+# aws_cloudwatch_log_group import ID = log group name.
+AWS_PROFILE=chris-admin terraform import -var-file=envs/production.tfvars \
+  'module.bsh_function_prod[0].aws_cloudwatch_log_group.this' '/aws/lambda/Bedrock_Streaming_Handler'
+# aws_lambda_permission import ID = "<function_name>/<statement_id>".
+AWS_PROFILE=chris-admin terraform import -var-file=envs/production.tfvars \
+  'module.bsh_function_prod[0].aws_lambda_permission.api_gateway' \
+  'Bedrock_Streaming_Handler/allow-api-gateway-invoke-prod'
+set +e
+
+AWS_PROFILE=chris-admin terraform plan -var-file=envs/production.tfvars -target=module.bsh_function_prod
+```
+Expect: **`0 to add, 1 to change, 0 to destroy`** — the **log group** updated in-place with ONLY the 3-tag
+add (`tags_all` gains Environment + ManagedBy + Project). The **permission**, **function**, and **Function
+URL** all read no-change. If the plan wants to change retention, `log_group_class`, add a `kms_key_id`, or
+alter the permission's principal/action/source_arn — the HCL drifted from live; reconcile against
+`aws logs describe-log-groups` / `aws lambda get-policy` before proceeding. Do **NOT** apply.
+
+Recovery (un-adopt from state only, never touches live AWS): `terraform state rm` the two addresses, fix HCL,
+re-import.
+
+### Phase B — gated belt
+Identical to the function increment: open PR **base=main** (prod CI plans; read the `Terraform plan
+(production)` JOB log, not `comments[-1]`). **Pre-import** the prod plan shows the log group + permission as
+**`2 to add`** (informational — do NOT apply that). Merge → dispatch "Terraform Infrastructure (production)"
+with **target=`module.bsh_function_prod`** → **operator approves** the `Production` gate → applies **1 change
+(3 tags on the log group)**. **Decline** the `deploy-production.yml` app-deploy (no app code changed).
+
+Post-apply verify:
+```bash
+aws logs describe-log-groups --log-group-name-prefix /aws/lambda/Bedrock_Streaming_Handler \
+  --profile chris-admin --query 'logGroups[0].{retention:retentionInDays,kms:kmsKeyId,class:logGroupClass}'
+  # retention 7, kms null, class STANDARD — UNCHANGED
+aws logs list-tags-log-group --log-group-name /aws/lambda/Bedrock_Streaming_Handler --profile chris-admin
+  # Environment + ManagedBy + Project now present
+aws lambda get-policy --function-name Bedrock_Streaming_Handler --profile chris-admin \
+  --query 'Policy' --output text | python3 -c 'import json,sys;p=json.load(sys.stdin);print([s["Sid"] for s in p["Statement"]])'
+  # still: FunctionURLAllowPublicAccess + allow-api-gateway-invoke-prod
+```
+
+---
+
 ## After Tier 2 — remaining tiers
-- **Tier 2 follow-ons (defer-ok):** adopt the deferred log group + the API-GW invoke permission; bring the
-  managed-policy attachments in scope and remediate `AmazonBedrockFullAccess` / `AmazonS3ReadOnlyAccess` to
-  scoped grants; scope SES off `Resource:"*"`.
+- **Tier 2 follow-ons:** ✅ **log group + API-GW invoke permission DONE** (this increment, 2026-06-06). Still
+  deferred (defer-ok): bring the managed-policy attachments in scope and remediate `AmazonBedrockFullAccess` /
+  `AmazonS3ReadOnlyAccess` to scoped grants; scope SES off `Resource:"*"`.
 - **⚠️ Standing constraint carried from Tier 1 (do not trip):** the role's `ClerkSecretRead` grant
   hardcodes the Clerk secret ARN with a version suffix → **Secrets Manager rotation on that secret MUST stay
   OFF** until the ARN is widened to a `…secret_key-*` wildcard, else every Clerk auth check AccessDenies and

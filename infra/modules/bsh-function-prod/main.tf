@@ -9,26 +9,29 @@
 # SESSION_SUMMARIES_TABLE + registry env vars live. Under Terraform, every env
 # change becomes a reviewed PR + gated apply, not a hand `update-function-configuration`.
 #
-# SCOPE (operator decision 2026-06-06): function + Function URL ONLY. Two
-# adjacent surfaces are DEFERRED and stay hand-managed (flagged VISIBLE here,
-# Tier-1 deferred-posture pattern):
-#   • Log group `/aws/lambda/Bedrock_Streaming_Handler` (retention 7, no KMS).
-#     Defer-ok: peripheral to env-var governance; importing it adds zero-change
-#     matching risk for no incident-class benefit. (Staging's module ADDS a KMS
-#     CMK here — prod has none; a faithful import must NOT add one.)
+# SCOPE: the function + Function URL were adopted in the first Tier-2 increment
+# (#427). This FOLLOW-ON increment (2026-06-06) additionally adopts the two
+# adjacent surfaces that were deferred there — same import-in-place belt:
+#   • Log group `/aws/lambda/Bedrock_Streaming_Handler` (retention 7, NO KMS —
+#     staging's module adds a CMK; prod has none, so a faithful import must NOT
+#     add one). Its ONE metric filter is owned by ops-alarms-bsh-prod, NOT here.
 #   • `aws_lambda_permission` "allow-api-gateway-invoke-prod" (API GW kgvc8xnewf
-#     → this function). Defer-ok: a second, stable invoke path unrelated to the
-#     env-var class; adopt in a later increment if that API GW is itself adopted.
+#     → this function) — the second, stable invoke path beside the Function URL.
 #
 # NOT MANAGED HERE (by design):
 #   • The execution ROLE `Bedrock-Streaming-Handler-Role` — Tier 1's
 #     bsh-iam-grants-prod owns its 8 inline policies by-name; the role resource
 #     itself stays hand-made. This module only REFERENCES it by ARN.
 #   • Reserved concurrency (none set live), VPC/DLQ/layers/FS (all absent live).
+#   • The Function URL's FunctionURLAllowPublicAccess resource-policy statement
+#     is owned by aws_lambda_function_url.this (auth NONE), NOT a separate
+#     aws_lambda_permission — so only the API-GW statement is modeled below.
 #
 # import IDs (operator-run, see docs/runbooks/prod-iac-tier2-bsh-function.md):
-#   aws_lambda_function.this      → Bedrock_Streaming_Handler
-#   aws_lambda_function_url.this   → Bedrock_Streaming_Handler
+#   aws_lambda_function.this           → Bedrock_Streaming_Handler
+#   aws_lambda_function_url.this        → Bedrock_Streaming_Handler
+#   aws_cloudwatch_log_group.this       → /aws/lambda/Bedrock_Streaming_Handler
+#   aws_lambda_permission.api_gateway   → Bedrock_Streaming_Handler/allow-api-gateway-invoke-prod
 # ─────────────────────────────────────────────────────────────────────────────
 
 variable "function_name" {
@@ -57,6 +60,12 @@ variable "cold_start_force" {
   description = "Value of the COLD_START_FORCE env var (deploy-time cache-bust timestamp). Live value as of 2026-06-06 import. Bump via PR/-var, never hand-CLI (would be reverted on next apply)."
   type        = string
   default     = "1777660112"
+}
+
+variable "api_gateway_id" {
+  description = "REST API GW id whose invoke this function permits (source of the live allow-api-gateway-invoke-prod resource-policy statement)."
+  type        = string
+  default     = "kgvc8xnewf"
 }
 
 data "aws_caller_identity" "current" {}
@@ -166,6 +175,47 @@ resource "aws_lambda_function_url" "this" {
     allow_origins     = ["*"]
     max_age           = 300
   }
+}
+
+# Log group for the function. Live: retention 7 days, STANDARD class, NO KMS.
+# A faithful prod import must NOT add a CMK (staging's module does; prod has
+# none — adding one would try to associate a key = drift). No resource-level
+# `tags` block: live tags are EMPTY, so the first gated apply adds the 3
+# default_tags (Environment + ManagedBy + Project) — a benign tag-adoption like
+# the function, NOT a functional change. The log group's ONE metric filter (the
+# Foster Village ops-alarm filter) is owned by module ops-alarms-bsh-prod and is
+# referenced there by log-group NAME, so it is NOT (and must not be) declared
+# here — importing the group does not touch the filter.
+resource "aws_cloudwatch_log_group" "this" {
+  name              = "/aws/lambda/${var.function_name}"
+  retention_in_days = 7
+  log_group_class   = "STANDARD"
+
+  # This group owns the ONLY prod ops-alarm metric filter (analytics-write-failure
+  # in ops-alarms-bsh-prod, wired by NAME with NO Terraform dependency edge). If
+  # this resource were ever destroyed/replaced, that filter — and the Foster
+  # Village alarm behind it — would die SILENTLY. prevent_destroy blocks any
+  # destroy/replace plan (plan-invisible: no effect on the import or the tag-add
+  # apply; `terraform state rm` recovery is unaffected). Flagged by the 2026-06-06
+  # phase-completion audit (missing cross-module edge = silent blast radius).
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+# API Gateway invoke permission — the live `allow-api-gateway-invoke-prod`
+# statement on the function's resource policy (the second invoke path beside the
+# Function URL). Modeled verbatim: principal apigateway.amazonaws.com,
+# lambda:InvokeFunction, source_arn for REST API kgvc8xnewf (any stage/method).
+# No source_account / event_source_token live, so none are set (adding them
+# would diverge from the live statement). Permissions carry no tags → a truly
+# zero-change import (like Tier 1's inline policies).
+resource "aws_lambda_permission" "api_gateway" {
+  statement_id  = "allow-api-gateway-invoke-prod"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.this.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "arn:aws:execute-api:us-east-1:${data.aws_caller_identity.current.account_id}:${var.api_gateway_id}/*/*"
 }
 
 output "function_arn" {
