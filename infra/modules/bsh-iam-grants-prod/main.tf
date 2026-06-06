@@ -39,10 +39,11 @@
 #     The role's effective permissions are therefore BROADER than the 7 inline
 #     policies below. The role resource + trust policy + these attachments stay
 #     hand-managed (don't churn); Tier 2 brings them in with the function import.
-#   • picasso-sms-consent: ACTIVE prod table that BSH form_handler.js writes, but
-#     NO inline grant covers it (only sms-usage + notification-sends are in
-#     DynamoDBFormSubmissions). Pre-existing gap — any prod sms-consent write path
-#     AccessDenies today. Add the grant at Tier 2; not introduced here.
+#   • picasso-sms-consent: RESOLVED — the DynamoDBSmsConsent policy below now
+#     grants the PutItem the BSH writeConsentRecord() path needs (was a latent
+#     TCPA-compliance gap: the conditional consent write AccessDenied + swallowed,
+#     silently dropping the consent record). This is the ONE deferred-posture item
+#     closed in Tier 2; the others (mgd attachments, SES `*`) remain deferred.
 #   • SES-SendEmail uses Resource:"*" (pre-existing) — can send as any verified
 #     identity. Faithful import mirrors it; scope to the actual sender identity at Tier 2.
 #   • Clerk secret ARN below hardcodes the version suffix `-IVjCkY`. Secrets-Manager
@@ -187,6 +188,27 @@ resource "aws_iam_role_policy" "tenant_registry_read" {
         "${local.ddb_prefix}/picasso-tenant-registry-production",
         "${local.ddb_prefix}/picasso-tenant-registry-production/index/*",
       ]
+    }]
+  })
+}
+
+# NEW grant (Tier 2 — a create, not an import). Closes the latent TCPA-compliance
+# gap the phase-completion-audit surfaced: BSH form_handler.js writeConsentRecord()
+# does a conditional PutItem to picasso-sms-consent when a form captures phone +
+# explicit SMS consent (form_handler.js:294-298), but no inline policy granted it,
+# so the write AccessDenied and was swallowed (the catch at :1220 + the .catch at
+# :299) — silently losing the consent record. Least-privilege: PutItem only (the
+# sole sms-consent operation anywhere in BSH; no read/query path exists).
+resource "aws_iam_role_policy" "dynamodb_sms_consent" {
+  name = "DynamoDBSmsConsent"
+  role = var.role_name
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid      = "SmsConsentWrite"
+      Effect   = "Allow"
+      Action   = "dynamodb:PutItem"
+      Resource = "${local.ddb_prefix}/picasso-sms-consent"
     }]
   })
 }
