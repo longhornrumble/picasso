@@ -587,6 +587,13 @@ module "lambda_analytics_dashboard_api_staging" {
   booking_table_arn  = module.ddb_booking_staging[0].table_arn
   booking_table_name = module.ddb_booking_staging[0].table_name
 
+  # §E13b AppointmentType/RoutingPolicy write API (admin-only CRUD over the
+  # routing tables the live booking router reads).
+  appointment_type_table_arn  = module.ddb_appointment_type_staging[0].table_arn
+  appointment_type_table_name = module.ddb_appointment_type_staging[0].table_name
+  routing_policy_table_arn    = module.ddb_routing_policy_staging[0].table_arn
+  routing_policy_table_name   = module.ddb_routing_policy_staging[0].table_name
+
   # Tier-3 archive bucket is currently hand-created (Phase 2 of MFS cleanup).
   # ARN inlined here rather than via module output until the bucket itself is
   # Terraformed. Follow-up tracked in project memory.
