@@ -69,6 +69,21 @@ module "ops_alarms_bsh_prod" {
   ops_alerts_topic_arn = "arn:aws:sns:us-east-1:614056832592:picasso-ops-alerts"
 }
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase 2 Tier 1 (production-only): BSH execution-role inline-policy grants.
+# Adopts the 7 hand-made inline policies on the live `Bedrock-Streaming-Handler-Role`
+# into Terraform via `terraform import` (state-only). Version-controls the
+# highest-churn surface on the role (grants were hand-mutated 3x in the
+# 2026-06-04/05 Foster Village incident). Role resource + function/env stay
+# hand-managed (function = Tier 2). -target-scoped applies per the header above.
+# See docs/runbooks/prod-iac-tier1-bsh-iam.md.
+# ─────────────────────────────────────────────────────────────────────────────
+module "bsh_iam_grants_prod" {
+  count     = var.env == "production" ? 1 : 0
+  source    = "./modules/bsh-iam-grants-prod"
+  role_name = "Bedrock-Streaming-Handler-Role" # explicit: the load-bearing import target
+}
+
 # Staging-only: cross-account replication target for prod tenant configs.
 # Bucket lives in the staging account; replication IS configured on the prod
 # source bucket (hand-applied with chris-admin until P0 Phase 2 brings prod

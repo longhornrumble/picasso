@@ -23,7 +23,7 @@ on:
     inputs:
       target:
         description: "REQUIRED until naming reconciliation: -target to scope the apply (e.g. module.ops_alarms_bsh_prod). A blank value is rejected (the apply fails closed) so a full-root apply can't create orphan '-production' tables."
-        required: false
+        required: true
         type: string
 
 permissions:
@@ -102,7 +102,12 @@ jobs:
       run:
         working-directory: infra
     steps:
+      # Pin ref=main: a production apply must come from the reviewed/merged main
+      # state, never an arbitrary branch selected in the Run-workflow dropdown.
+      # (workflow_dispatch defaults to the selected ref; pinning removes that footgun.)
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        with:
+          ref: main
       - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd  # v3
         with:
           terraform_version: 1.15.1
