@@ -13,6 +13,18 @@ sets the env + grant + CF header + flips the flag — zero code change.
 `REQUIRE_CF_ORIGIN_HEADER`/`CF_ORIGIN_SECRET_NAME` both unset; secret `picasso/bsh/cf-origin-secret`
 absent; role has 8 inline policies (no `CfOriginSecretRead`).
 
+**Validator behavior — CONFIRMED from the deployed bundle (`validateCfOriginHeader`/`xK`):**
+- **Flag-first:** `if (REQUIRE_CF_ORIGIN_HEADER.toLowerCase() !== "true") return {valid:true}` — the secret is
+  read ONLY after the flag passes. So flag `"false"` ⇒ `GetSecretValue` is **never called** ⇒ the env+grant
+  apply (step 2) is inert and **does NOT require the secret to exist yet**. The secret must exist only before
+  the **flag flip** (step 4).
+- **Secret is a PLAIN STRING** (compared via `Buffer.from(String(secret))` + `timingSafeEqual`), **NOT JSON**.
+  Create the prod secret as the bare 64-char value (match staging — verify with
+  `aws secretsmanager get-secret-value --secret-id picasso/bsh/cf-origin-secret --profile myrecruiter-staging --query SecretString --output text`).
+- **Fails closed** (missing header → invalid; secret unavailable → invalid) and uses a **constant-time**
+  compare. The header value must EXACTLY equal the secret value (the CF header and the secret are two manual
+  entries — keep them identical).
+
 ## What this PR adds (IaC)
 - `bsh-function-prod`: 2 vars (`cf_origin_secret_name` default `picasso/bsh/cf-origin-secret`;
   `require_cf_origin_header` default **`false`**) + 2 env keys (`CF_ORIGIN_SECRET_NAME`,
@@ -60,11 +72,57 @@ The validator **fails closed**. Do these in order; do NOT flip the flag early.
    ```
 3. BSH CloudWatch logs show `SECURITY: streamingHandler rejected request: missing CF origin header` on the
    direct probe.
+4. **API-GW path (audit finding #2 — verify, do NOT assume):** the validator runs INSIDE the Lambda, so the
+   API GW invoke path (`allow-api-gateway-invoke-prod`, GW `kgvc8xnewf`) also passes through it — BUT only
+   rejects if that API GW route does NOT already inject `x-picasso-cf-origin`. After the flip, probe it:
+   ```bash
+   curl -s -o /dev/null -w '%{http_code}' -X POST \
+     https://kgvc8xnewf.execute-api.us-east-1.amazonaws.com/<stage>/<route> \
+     -H 'content-type: application/json' -d '{"tenant_hash":"X","user_input":"x"}'   # want 403
+   ```
+   If it returns 200, the API GW path is a residual bypass — either deprecate that route or have it inject the
+   header. Document the result; Remedy B's stated scope is the **Function URL** bypass.
+
+## Pre-flag-flip checklist (audit finding #7 — the flip PR is one character; gate it)
+Before merging the `require_cf_origin_header=true` PR, confirm ALL of:
+- [ ] secret `picasso/bsh/cf-origin-secret` exists in prod (plain 64-char string)
+- [ ] `CfOriginSecretRead` grant applied (step 2) — `aws iam list-role-policies --role-name Bedrock-Streaming-Handler-Role | grep CfOriginSecretRead`
+- [ ] prod CF `E3G0LSWB1AQ9LP` streaming origin injects `x-picasso-cf-origin` = the secret value (Deployed)
+- [ ] (recommended) SM resource policy on the secret restricts reads to the BSH role (see hardening below)
+
+## Recommended hardening before the flip (audit finding #3 — defer-ok, separate apply)
+The secret VALUE is the shared token; any account-614 principal with `secretsmanager:GetSecretValue` on `*`
+(operators, the deploy role) can read it and replay the header. Add a Secrets Manager **resource policy**
+allowing only the BSH role ARN (a follow-on PR after the secret exists — it references the live secret ARN):
+```hcl
+resource "aws_secretsmanager_secret_policy" "cf_origin" {
+  secret_arn = "<the created secret's ARN>"
+  policy = jsonencode({ Version = "2012-10-17", Statement = [
+    { Sid = "AllowBSHRoleOnly", Effect = "Allow", Principal = { AWS = "<BSH role ARN>" },
+      Action = "secretsmanager:GetSecretValue", Resource = "*" },
+    { Sid = "DenyOthers", Effect = "Deny", Principal = "*", Action = "secretsmanager:GetSecretValue",
+      Resource = "*", Condition = { StringNotEquals = { "aws:PrincipalArn" = "<BSH role ARN>" } } } ]})
+}
+```
+Note: the IAM grant's wildcard ARN (`…cf-origin-secret-*`) matches only the 6-char AWS rotation suffix, not
+arbitrary names — and the runtime reads the fixed name in `CF_ORIGIN_SECRET_NAME`, so a same-prefix decoy
+secret gains an attacker nothing.
 
 ## Rollback
 If the flag flip 403s legitimate traffic (e.g. CF header missing/mismatched): revert the flag to `"false"`
-via a 1-line PR + gated apply (fastest), or `-var require_cf_origin_header=false`. The validator returns to
-no-op immediately; the secret + grant + env can stay (inert).
+via a 1-line PR + gated apply (fastest governed path), or `-var require_cf_origin_header=false`. The
+validator returns to no-op immediately; the secret + grant + env can stay (inert).
+
+**Emergency break-glass (outage in progress, no approver online — audit finding #6):** unset the flag
+directly, then reconcile:
+```bash
+# 1) immediate: flip the live flag off (creates drift)
+aws lambda update-function-configuration --function-name Bedrock_Streaming_Handler --profile chris-admin \
+  --environment "Variables={...ALL 16 vars..., REQUIRE_CF_ORIGIN_HEADER=false}"   # full map; omitting keys DROPS them
+# 2) immediately after: open a 1-line PR setting require_cf_origin_header="false" so the next gated apply
+#    matches live (else the next apply would re-flip it to whatever HCL says).
+```
+⚠️ `update-function-configuration --environment` REPLACES the whole map — pass all 16 vars or you drop env keys.
 
 ## Residual risk → Remedy A (later)
 The header secret is plaintext in CF config (readable with `cloudfront:GetDistributionConfig`) — B blocks

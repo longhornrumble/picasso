@@ -132,7 +132,9 @@ resource "aws_lambda_function" "this" {
     log_group  = "/aws/lambda/${var.function_name}"
   }
 
-  # All 14 live env vars, modeled verbatim. NOTE TENANT_REGISTRY_TABLE carries
+  # 16 env vars: the 14 originally imported + 2 added by Remedy B (#435):
+  # CF_ORIGIN_SECRET_NAME + REQUIRE_CF_ORIGIN_HEADER (see the Remedy-B var block
+  # above; the flag defaults "false" → inert). NOTE TENANT_REGISTRY_TABLE carries
   # the `-production` suffix live while siblings are bare — that's the current
   # live value, mirrored AS-IS (the naming-alignment program has not stripped it
   # yet; faithful import does not "fix" it here).
