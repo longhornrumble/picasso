@@ -108,9 +108,25 @@ module "bsh_function_prod" {
 # value never enters git/state). -target-scoped applies per the header above.
 # See docs/runbooks/prod-iac-tier4-cloudfront.md.
 # ─────────────────────────────────────────────────────────────────────────────
+# Remedy A (#435): origin-request Lambda@Edge that SigV4-signs /stream requests to
+# the prod BSH Function URL (replaces OAC, which can't sign POST bodies — proven
+# infeasible on staging). Its role holds lambda:InvokeFunctionUrl on the prod BSH
+# function; its qualified ARN is associated on /stream* by cloudfront_streaming_prod
+# below. Inert until the Function URL flips to AWS_IAM (bsh-function-prod
+# streaming_function_url_auth_type, Phase 2). Mirrors the proven staging signer.
+module "lambda_edge_bsh_signer_prod" {
+  count  = var.env == "production" ? 1 : 0
+  source = "./modules/lambda-edge-bsh-signer-prod"
+
+  bsh_function_arn = "arn:aws:lambda:us-east-1:614056832592:function:Bedrock_Streaming_Handler"
+}
+
 module "cloudfront_streaming_prod" {
   count  = var.env == "production" ? 1 : 0
   source = "./modules/cloudfront-streaming-prod"
+
+  # Remedy A (#435): the edge signer's versioned ARN, associated on /stream*.
+  streaming_edge_signer_qualified_arn = module.lambda_edge_bsh_signer_prod[0].qualified_arn
 }
 
 # Staging-only: cross-account replication target for prod tenant configs.
