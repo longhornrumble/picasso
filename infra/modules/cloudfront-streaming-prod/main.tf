@@ -10,10 +10,11 @@
 # (Sandbox/tier4-cf-recon/dist-config-1780775235.json, ETag EKLOTZYGLUMT1).
 #
 # WHY NOW: the next security remedy (Remedy A for #435) flips the BSH Function
-# URL AuthType NONE->AWS_IAM and has CloudFront sign requests via a `lambda`-type
-# Origin Access Control. That CF-side change (attach an OAC to the streaming
-# origin) can only be done cleanly once the distribution is in Terraform — which
-# is this tier. The streaming origin below deliberately leaves the OAC seam open.
+# URL AuthType NONE->AWS_IAM and has CloudFront sign requests. The signing is done
+# by an origin-request Lambda@Edge SigV4 signer associated on the /stream* behavior
+# (CloudFront OAC was proven INFEASIBLE — it cannot sign POST request bodies →
+# InvalidSignatureException, staging 2026-06-06). That behavior-level association
+# can only be added once the distribution is in Terraform — which is this tier.
 #
 # SCOPE — surgical, ONE resource:
 #   • This module manages ONLY `aws_cloudfront_distribution.streaming`.
@@ -34,15 +35,21 @@
 #   ignore is at origin granularity). Net effect: the live hand-injected header
 #   is left UNTOUCHED by every apply; no secret is committed or state-stored.
 #   TRADE-OFF: TF will not reconcile ANY origin drift while this ignore stands.
-#   That is acceptable for the short T4->Remedy-A window and is NARROWED in
-#   Remedy A (which removes the ignore to attach the OAC, then strip-B deletes
-#   the now-redundant header live). See docs/runbooks/prod-iac-tier4-cloudfront.md.
+#   Remedy A does NOT need to remove this ignore — its Lambda@Edge signer attaches
+#   on the /stream* BEHAVIOR (not the origin), so the ignore stays as-is. strip-B
+#   (a later, separate change) deletes the now-redundant header live and can then
+#   narrow/remove the ignore. See docs/runbooks/remedy-a-prod-cutover.md.
 #
 # import ID (operator-run): E3G0LSWB1AQ9LP
 #   terraform import \
 #     'module.cloudfront_streaming_prod[0].aws_cloudfront_distribution.streaming' \
 #     E3G0LSWB1AQ9LP
 # =============================================================================
+
+variable "streaming_edge_signer_qualified_arn" {
+  description = "Remedy A (#435): versioned ARN of the origin-request Lambda@Edge signer (lambda-edge-bsh-signer-prod). Associated on /stream* to SigV4-sign requests to the BSH Function URL so the URL can enforce AuthType=AWS_IAM. Inert until the Function URL flips NONE->AWS_IAM (bsh-function-prod streaming_function_url_auth_type, Phase 2)."
+  type        = string
+}
 
 locals {
   streaming_origin_id   = "picasso-streaming-lambda"
@@ -236,6 +243,18 @@ resource "aws_cloudfront_distribution" "streaming" {
     cache_policy_id          = local.cache_disabled_id
     origin_request_policy_id = local.orp_all_viewer_xh_id
     compress                 = false
+
+    # Remedy A (#435): the edge signer SigV4-signs each request to the BSH
+    # Function URL (include_body=true so the POST body is in the signature).
+    # This is a BEHAVIOR change (NOT subject to the lifecycle.ignore_changes on
+    # `origin` below), so it applies cleanly while the live x-picasso-cf-origin
+    # header stays untouched. Inert until the Function URL's authorization_type
+    # flips NONE->AWS_IAM (Phase 2).
+    lambda_function_association {
+      event_type   = "origin-request"
+      lambda_arn   = var.streaming_edge_signer_qualified_arn
+      include_body = true
+    }
   }
 
   ordered_cache_behavior {
@@ -281,7 +300,7 @@ resource "aws_cloudfront_distribution" "streaming" {
 }
 
 output "distribution_arn" {
-  description = "ARN of the prod chat distribution. Remedy A consumes this as the aws:SourceArn condition on the BSH Function URL's lambda:InvokeFunctionUrl grant to cloudfront.amazonaws.com."
+  description = "ARN of the prod chat distribution (faithful-import detail). Remedy A enforces #435 via a Lambda@Edge signer on the /stream* behavior, NOT an OAC/SourceArn grant, so this ARN is not consumed by the remedy."
   value       = aws_cloudfront_distribution.streaming.arn
 }
 
