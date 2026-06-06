@@ -504,13 +504,14 @@ module "lambda_bedrock_handler_staging" {
     "arn:aws:iam::614056832592:role/picasso-kb-retriever-from-staging",
   ]
 
-  # Remedy A (#435): the Function URL stays authorization_type=NONE (var default)
-  # until the staged flip. The OAC approach was REMOVED (OAC can't sign POST bodies
-  # — InvalidSignatureException, proven on staging 2026-06-06); signing is now done
-  # by the origin-request Lambda@Edge (module.lambda_edge_bsh_signer_staging),
-  # associated on /stream by the cloudfront_widget_staging module. Phase 2 flips
-  # streaming_function_url_auth_type = "AWS_IAM" after the signer + association are
-  # live and CloudFront has propagated.
+  # Remedy A (#435) Phase 2 — ENFORCE. The Lambda@Edge signer + /stream association
+  # are live and CloudFront-propagated (Phase 1, #455/#456). Flipping to AWS_IAM
+  # was PROVEN end-to-end on staging 2026-06-06: CF→L@E-signed /stream → 200 + SSE,
+  # unsigned direct Function URL → 403 (#435 bypass closed at the IAM layer).
+  # Rollback = remove this line (→ NONE default); the Remedy B header still
+  # protects the URL until strip-B. Signer identity = the L@E role
+  # (module.lambda_edge_bsh_signer_staging holds lambda:InvokeFunctionUrl on BSH).
+  streaming_function_url_auth_type = "AWS_IAM"
 }
 
 # Issue #5 batch 2b: staging-account Master_Function. Placeholder code;
