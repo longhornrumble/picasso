@@ -94,19 +94,23 @@ variable "require_cf_origin_header" {
 }
 
 # ── Remedy A (#435 streaming-bypass closure, the IAM-layer hardening) ────────
-# Staged hard-cutover knob for the Function URL's authorization_type. Default
-# NONE = the URL is public (current prod state; guarded only by the Remedy B
-# header). Flip to AWS_IAM ONLY AFTER the prod Lambda@Edge signer
-# (lambda-edge-bsh-signer-prod) + its /stream* association are live + CloudFront-
-# propagated (otherwise the flip 403s ALL chat — the OAC Phase-2 #452 did exactly
+# CURRENT STATE (2026-06-06): ENFORCED. The call site passes "AWS_IAM"; the prod
+# Lambda@Edge signer (lambda-edge-bsh-signer-prod) + its /stream* association are
+# live + CloudFront-propagated + Phase-1.5-proven (CF-signed /stream 200, direct
+# 403). #435 is closed on prod.
+#
+# This var is the staged-cutover + ROLLBACK knob. The default stays NONE (the
+# rollback target / pre-cutover state): to roll back, set the call site back to
+# "NONE" (or delete the line) via a 1-line PR + gated apply — instant on the
+# Function URL; the Remedy B header still guards the URL during rollback. Do NOT
+# re-flip to AWS_IAM from NONE unless the signer + /stream* assoc are live +
+# propagated (a premature flip 403s ALL chat — the OAC Phase-2 #452 did exactly
 # that on staging → reverted). The signer SigV4-signs every /stream request incl.
 # the POST body, so a CF-served request is accepted while a direct/unsigned one is
-# rejected. Rollback = set back to "NONE" via a 1-line PR + gated apply (instant
-# on the Function URL); the Remedy B header still guards the URL during rollback.
-# Mirrors the proven staging var (lambda-bedrock-handler-staging
+# rejected. Mirrors the proven staging var (lambda-bedrock-handler-staging
 # streaming_function_url_auth_type). See docs/runbooks/remedy-a-prod-cutover.md.
 variable "streaming_function_url_auth_type" {
-  description = "Function URL authorization_type. 'NONE' (default, inert) or 'AWS_IAM' (Remedy A enforced — #435 closed). Flip to AWS_IAM only after the prod edge signer + /stream* assoc are live + propagated."
+  description = "Function URL authorization_type. 'AWS_IAM' = Remedy A ENFORCED (#435 closed; the live state). 'NONE' = public/rollback target. Default NONE is the rollback knob; the call site passes AWS_IAM. Only (re-)flip to AWS_IAM when the prod edge signer + /stream* assoc are live + propagated."
   type        = string
   default     = "NONE"
 
