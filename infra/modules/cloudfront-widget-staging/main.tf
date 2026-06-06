@@ -66,6 +66,11 @@ variable "oac_id" {
   type        = string
 }
 
+variable "streaming_edge_signer_qualified_arn" {
+  description = "Versioned ARN of the Remedy A origin-request Lambda@Edge signer (lambda-edge-bsh-signer-staging). Associated on /stream to SigV4-sign requests to the BSH Function URL."
+  type        = string
+}
+
 variable "mfs_cf_origin_secret" {
   description = "x-picasso-cf-origin header value for the Master_Function origin. Non-committed; supplied via TF_VAR_ from a GitHub staging-environment secret in CI (operator-gated, see PR body). No default — a missing value MUST fail the apply."
   type        = string
@@ -148,19 +153,10 @@ resource "aws_cloudfront_origin_request_policy" "picasso_origin_request" {
   }
 }
 
-# Remedy A (#435 root fix) — lambda-type OAC so CloudFront SigV4-signs every
-# request to the BSH streaming Function URL. Paired with the Function URL's
-# authorization_type=AWS_IAM (lambda-bedrock-handler-staging) + the
-# lambda:InvokeFunctionUrl grant to cloudfront.amazonaws.com. While AuthType is
-# still NONE this is a no-op (the URL ignores the signature); enforcement begins
-# when AuthType flips. Mirrors the s3 OAC pattern (cloudfront-oac-staging).
-resource "aws_cloudfront_origin_access_control" "streaming_lambda" {
-  name                              = "picasso-streaming-lambda-staging-oac"
-  description                       = "SigV4-signs CloudFront->BSH streaming Function URL (Remedy A, #435)"
-  origin_access_control_origin_type = "lambda"
-  signing_behavior                  = "always"
-  signing_protocol                  = "sigv4"
-}
+# Remedy A (#435): OAC was REMOVED — CloudFront OAC cannot sign POST request
+# bodies (InvalidSignatureException, proven on staging 2026-06-06). The
+# origin-request Lambda@Edge signer (lambda-edge-bsh-signer-staging) does the
+# SigV4 signing instead. See the /stream lambda_function_association below.
 
 resource "aws_cloudfront_distribution" "widget" {
   enabled             = true
@@ -209,9 +205,8 @@ resource "aws_cloudfront_distribution" "widget" {
     origin_id   = local.streaming_origin_id
     domain_name = var.streaming_origin_domain
 
-    # Remedy A (#435): CloudFront SigV4-signs requests to the Function URL.
-    # No-op until the Function URL's authorization_type flips NONE->AWS_IAM.
-    origin_access_control_id = aws_cloudfront_origin_access_control.streaming_lambda.id
+    # Remedy A (#435): signing is done by the origin-request Lambda@Edge on the
+    # /stream behavior (no OAC — OAC can't sign POST bodies).
 
     custom_origin_config {
       http_port                = 80
@@ -283,6 +278,15 @@ resource "aws_cloudfront_distribution" "widget" {
     cache_policy_id          = local.cache_disabled_id
     origin_request_policy_id = local.orp_all_viewer_xh_id
     compress                 = false
+
+    # Remedy A (#435): the edge signer SigV4-signs each request to the BSH
+    # Function URL (include_body=true so the POST body is in the signature).
+    # Inert until the Function URL's authorization_type flips NONE->AWS_IAM.
+    lambda_function_association {
+      event_type   = "origin-request"
+      lambda_arn   = var.streaming_edge_signer_qualified_arn
+      include_body = true
+    }
   }
 
   # No-alias phase: default *.cloudfront.net cert (a custom ACM cert REQUIRES
