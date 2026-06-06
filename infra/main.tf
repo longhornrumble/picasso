@@ -84,6 +84,20 @@ module "bsh_iam_grants_prod" {
   role_name = "Bedrock-Streaming-Handler-Role" # explicit: the load-bearing import target
 }
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase 2 Tier 2 (production-only): the BSH Lambda FUNCTION + its 14 env vars.
+# Adopts the live `Bedrock_Streaming_Handler` function via `terraform import`
+# (state-only). Closes the env-var-drift incident class (Foster Village 2026-05-23
+# was an unset BEDROCK_MODEL_ID). Scope = function + Function URL ONLY; log group
+# + API-GW invoke permission stay hand-managed (see module header). Role resource
+# is Tier 1's (referenced by ARN, not managed). -target-scoped applies per the
+# header above. See docs/runbooks/prod-iac-tier2-bsh-function.md.
+# ─────────────────────────────────────────────────────────────────────────────
+module "bsh_function_prod" {
+  count  = var.env == "production" ? 1 : 0
+  source = "./modules/bsh-function-prod"
+}
+
 # Staging-only: cross-account replication target for prod tenant configs.
 # Bucket lives in the staging account; replication IS configured on the prod
 # source bucket (hand-applied with chris-admin until P0 Phase 2 brings prod
