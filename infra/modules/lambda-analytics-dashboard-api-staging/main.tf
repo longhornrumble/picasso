@@ -115,6 +115,24 @@ variable "booking_table_name" {
   type = string
 }
 
+variable "appointment_type_table_arn" {
+  description = "ARN of picasso-appointment-type-{env}. ADA's §E13b write API does Query/GetItem/PutItem/UpdateItem (no GSI on this table). Staging-only; scheduling has no prod table yet."
+  type        = string
+}
+
+variable "appointment_type_table_name" {
+  type = string
+}
+
+variable "routing_policy_table_arn" {
+  description = "ARN of picasso-routing-policy-{env}. ADA's §E13b write API does Query/GetItem/PutItem/UpdateItem (no GSI). The write API never touches the commit-owned round-robin state (UpdateItem SETs editable fields only). Staging-only."
+  type        = string
+}
+
+variable "routing_policy_table_name" {
+  type = string
+}
+
 variable "clerk_jwks_url" {
   description = "Clerk JWKS endpoint. Defaults to the Clerk dev project shared with legacy staging."
   type        = string
@@ -272,6 +290,25 @@ data "aws_iam_policy_document" "exec" {
     ]
   }
 
+  # §E13b AppointmentType/RoutingPolicy write API (admin-only). Query (list by
+  # tenantId PK), GetItem (FK check / RR-state-preserving PATCH reads ALL_NEW),
+  # PutItem (create), UpdateItem (patch). NO DeleteItem (delete is v2). Base
+  # tables ONLY — these tables have no GSI (canonical §18). The write API never
+  # mutates bookings and never sets the commit-owned round-robin state.
+  statement {
+    sid = "SchedulingConfigWrite"
+    actions = [
+      "dynamodb:Query",
+      "dynamodb:GetItem",
+      "dynamodb:PutItem",
+      "dynamodb:UpdateItem",
+    ]
+    resources = [
+      var.appointment_type_table_arn,
+      var.routing_policy_table_arn,
+    ]
+  }
+
   # B5 audit: Tier-3 archive read path. Tightened from the hand-attached
   # ada-archive-read policy to require the tenant-partition prefix shape
   # — sessions/tenant=*/ — so any code bug that uses a flat legacy prefix
@@ -391,8 +428,14 @@ resource "aws_lambda_function" "this" {
       AUDIT_TABLE_NAME           = var.audit_table_name
       # §E7 GET /scheduling/bookings reader. Code default is the BARE name
       # `picasso-booking`; staging's table is still env-suffixed, so pin it.
-      BOOKING_TABLE    = var.booking_table_name
-      USE_DYNAMO_CACHE = "false"
+      BOOKING_TABLE = var.booking_table_name
+      # §E13b AppointmentType/RoutingPolicy write API. Code defaults are the BARE
+      # names (picasso-appointment-type / picasso-routing-policy); staging tables
+      # are env-suffixed, so pin them — else the write API reads/writes the wrong
+      # (nonexistent) table. Mirrors the candidate-resolver.js read-side env.
+      APPOINTMENT_TYPE_TABLE = var.appointment_type_table_name
+      ROUTING_POLICY_TABLE   = var.routing_policy_table_name
+      USE_DYNAMO_CACHE       = "false"
       # Plan Security F8: restrict test-send endpoints to recipients whose
       # email domain is in this comma-list. Without it, an authenticated
       # admin could trigger a test send to any address (including real
