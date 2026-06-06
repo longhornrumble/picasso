@@ -384,6 +384,13 @@ module "ddb_routing_policy_staging" {
   env    = var.env
 }
 
+# G2 / E14 scheduling notification-template overrides (PK tenantId, SK moment).
+module "ddb_scheduling_notif_template_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/ddb-scheduling-notif-template"
+  env    = var.env
+}
+
 module "ddb_conversation_scheduling_session_staging" {
   count  = var.env == "staging" ? 1 : 0
   source = "./modules/ddb-conversation-scheduling-session"
@@ -617,6 +624,10 @@ module "lambda_analytics_dashboard_api_staging" {
   appointment_type_table_name = module.ddb_appointment_type_staging[0].table_name
   routing_policy_table_arn    = module.ddb_routing_policy_staging[0].table_arn
   routing_policy_table_name   = module.ddb_routing_policy_staging[0].table_name
+
+  # G2/E14 scheduling notification-template overrides (Query GET + UpdateItem PATCH).
+  scheduling_notif_template_table_arn  = module.ddb_scheduling_notif_template_staging[0].table_arn
+  scheduling_notif_template_table_name = module.ddb_scheduling_notif_template_staging[0].table_name
 
   # Tier-3 archive bucket is currently hand-created (Phase 2 of MFS cleanup).
   # ARN inlined here rather than via module output until the bucket itself is
@@ -1097,6 +1108,10 @@ module "lambda_calendar_event_consumer_staging" {
   employee_registry_table_arn  = module.ddb_employee_registry_v2_staging[0].table_arn
   employee_registry_table_name = module.ddb_employee_registry_v2_staging[0].table_name
 
+  # §E14 notification-template override (notify.js GetItem at dispatch; fail-safe → default).
+  scheduling_notif_template_table_arn  = module.ddb_scheduling_notif_template_staging[0].table_arn
+  scheduling_notif_template_table_name = module.ddb_scheduling_notif_template_staging[0].table_name
+
   # Ops alerts SNS topic (admin OOO-conflict alert publish + the Errors alarm).
   ops_alerts_topic_arn = module.ops_alarms_master_function_staging[0].topic_arn
 }
@@ -1121,6 +1136,10 @@ module "lambda_calendar_lifecycle_consumer_staging" {
 
   # Fan-out lifecycle-consumer FIFO queue (event-source-mapping + IAM consume).
   source_queue_arn = module.sns_calendar_watch_fanout_staging[0].lifecycle_consumer_queue_arn
+
+  # §E14 notification-template override (notify.js GetItem at cancel/reschedule dispatch).
+  scheduling_notif_template_table_arn  = module.ddb_scheduling_notif_template_staging[0].table_arn
+  scheduling_notif_template_table_name = module.ddb_scheduling_notif_template_staging[0].table_name
 
   # Ops alerts SNS topic (channel-degrade alert publish + the Errors alarm).
   ops_alerts_topic_arn = module.ops_alarms_master_function_staging[0].topic_arn

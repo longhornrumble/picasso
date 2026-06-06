@@ -48,6 +48,15 @@ variable "channels_table_name" {
   type = string
 }
 
+variable "scheduling_notif_template_table_arn" {
+  description = "ARN of picasso-scheduling-notif-template-staging. notify.js GetItem (tenantId, moment) for the §E14 tenant template override at dispatch (cancel/reschedule notices). Fail-safe: a miss/error uses the local default."
+  type        = string
+}
+
+variable "scheduling_notif_template_table_name" {
+  type = string
+}
+
 variable "send_email_function_name" {
   description = "Name of the reusable send_email Lambda the (Y) cancel_notice invokes (async). The exec role is granted lambda:InvokeFunction on exactly this function ARN."
   type        = string
@@ -171,6 +180,13 @@ data "aws_iam_policy_document" "consumer_exec" {
     resources = [var.booking_table_arn]
   }
 
+  # §E14: notify.js point-reads the tenant's notification-template override at dispatch.
+  statement {
+    sid       = "DDBReadSchedulingNotifTemplate"
+    actions   = ["dynamodb:GetItem"]
+    resources = [var.scheduling_notif_template_table_arn]
+  }
+
   # Watch-channels table: channel-degrade.js UpdateItem on the channel row. UpdateItem only.
   statement {
     sid       = "DDBChannelsDegrade"
@@ -258,6 +274,7 @@ resource "aws_lambda_function" "consumer" {
       BOOKING_TABLE                 = var.booking_table_name
       CALENDAR_WATCH_CHANNELS_TABLE = var.channels_table_name
       OPS_ALERTS_TOPIC_ARN          = var.ops_alerts_topic_arn
+      SCHED_NOTIF_TEMPLATE_TABLE    = var.scheduling_notif_template_table_name
       SEND_EMAIL_FUNCTION           = var.send_email_function_name
       JWT_SECRET_KEY_NAME           = "picasso/staging/jwt/signing-key"
       SCHEDULE_BASE_URL             = "https://staging.schedule.myrecruiter.ai"
