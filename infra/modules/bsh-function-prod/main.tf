@@ -134,9 +134,10 @@ resource "aws_lambda_function" "this" {
     log_group  = "/aws/lambda/${var.function_name}"
   }
 
-  # 16 env vars: the 14 originally imported + 2 added by Remedy B (#435):
-  # CF_ORIGIN_SECRET_NAME + REQUIRE_CF_ORIGIN_HEADER (see the Remedy-B var block
-  # above; the flag defaults "false" → inert). NOTE TENANT_REGISTRY_TABLE carries
+  # 17 env vars: 14 originally imported + 2 added by Remedy B (#435,
+  # CF_ORIGIN_SECRET_NAME + REQUIRE_CF_ORIGIN_HEADER) + 1 added by §P5.1
+  # (PII_SUBJECT_INDEX_TABLE, paired with the DynamoDBPiiSubjectIndex grant;
+  # INERT until the pii_subject.js code deploy). NOTE TENANT_REGISTRY_TABLE carries
   # the `-production` suffix live while siblings are bare — that's the current
   # live value, mirrored AS-IS (the naming-alignment program has not stripped it
   # yet; faithful import does not "fix" it here).
@@ -155,10 +156,15 @@ resource "aws_lambda_function" "this" {
       EMPLOYEE_REGISTRY_TABLE  = "picasso-employee-registry"
       FORM_SUBMISSIONS_TABLE   = "picasso_form_submissions"
       NOTIFICATION_SENDS_TABLE = "picasso-notification-sends"
-      SESSION_SUMMARIES_TABLE  = "picasso-session-summaries"
-      SMS_CONSENT_TABLE        = "picasso-sms-consent"
-      SMS_SENDER_FUNCTION      = "SMS_Sender"
-      SMS_USAGE_TABLE          = "picasso-sms-usage"
+      # §P5.1: BSH pii_subject.js mints + conditional-PutItems pii_subject_id into
+      # this table (email->subject index) so email-path DSAR resolves. Paired with
+      # the DynamoDBPiiSubjectIndex grant in bsh-iam-grants-prod. Bare name = same
+      # in staging + prod (account=environment). INERT until the §P5.1 code deploy.
+      PII_SUBJECT_INDEX_TABLE = "picasso-pii-subject-index"
+      SESSION_SUMMARIES_TABLE = "picasso-session-summaries"
+      SMS_CONSENT_TABLE       = "picasso-sms-consent"
+      SMS_SENDER_FUNCTION     = "SMS_Sender"
+      SMS_USAGE_TABLE         = "picasso-sms-usage"
       # TODO(naming-alignment): the only env table name still carrying a `-${env}`
       # suffix; update when the table is renamed to the bare convention (Tier 3).
       TENANT_REGISTRY_TABLE       = "picasso-tenant-registry-production"
