@@ -33,7 +33,14 @@ only `Environment=production` live, but the root provider `default_tags` also se
 + `Project=myrecruiter`. So the **first gated apply ADDS those 2 tags** to the live function — a benign
 tag-adoption identical to the ops-alarms pilot, **NOT** a functional change. The `aws_lambda_function_url`
 does not support tags (no change there). Everything else — runtime, handler, memory, timeout, all 14 env
-vars, CORS — matches live and is genuinely no-change.
+vars, CORS, `ephemeral_storage`, `logging_config` — matches live and is genuinely no-change.
+
+**Exact plan shape to expect on the tags** (so the diff doesn't surprise you): because the module declares
+no resource-level `tags` block (env lives in `default_tags` per convention), the plan shows the
+resource-level `tags` attribute **dropping** the explicit `Environment=production` key — but `tags_all`
+(the merged, effective set) keeps `Environment=production` (from `default_tags`) and **adds** `ManagedBy`
++ `Project`. **Net live tags after apply: Environment + ManagedBy + Project.** No tag is actually removed
+from the running function.
 
 ---
 
@@ -76,10 +83,12 @@ set +e
 ```bash
 AWS_PROFILE=chris-admin terraform plan -var-file=envs/production.tfvars -target=module.bsh_function_prod
 ```
-Expect: **exactly 1 resource to change — the function — with ONLY `tags`/`tags_all` adding
-`ManagedBy=terraform` + `Project=myrecruiter`** (the benign adoption above). The `aws_lambda_function_url`
-should read no-change. **If the plan wants to change anything else on the function** (runtime, handler,
-memory, timeout, env var values, CORS, role) — the HCL drifted from live; reconcile against
+Expect: **exactly 1 resource to change — the function — with ONLY the tags delta** (resource-level `tags`
+drops `Environment`; `tags_all` adds `ManagedBy=terraform` + `Project=myrecruiter`; net effective tags =
+Environment + ManagedBy + Project — see "The one non-no-op" above). The `aws_lambda_function_url` should
+read no-change. **If the plan wants to change anything else on the function** (runtime, handler, memory,
+timeout, env var values, CORS, role, `ephemeral_storage`, `logging_config`, or — watch for this —
+`log_format` flipping to JSON) — the HCL drifted from live; reconcile against
 `aws lambda get-function-configuration` / `get-function-url-config` before proceeding. Do **NOT** apply.
 
 > `source_code_hash` / `filename` are `ignore_changes`d → the live deployed code is never touched. A
@@ -95,11 +104,18 @@ AWS_PROFILE=chris-admin terraform state rm 'module.bsh_function_prod[0].aws_lamb
 ```
 Then fix the HCL and re-import. Never `apply` while the verify plan shows changes beyond the 2 tag-adds.
 
-> **State/branch window:** Phase A writes the imported resources into the **shared remote prod state** from
-> the feature branch, but the module code only lands on `main` at merge. Do the import **close to merge**,
-> and never run a non-`-target` prod apply in the interim — an un-gated apply from `main` (which lacks the
-> module until merge) would see the orphaned state and plan to **destroy** the function. The prod workflow is
-> fail-closed without `-target`, so this is a discipline note, not an exposed footgun.
+> **⚠️ State/branch window (time-boxed, high-severity — read before importing):** Phase A writes the
+> imported resources into the **shared remote prod state** from the feature branch, but the module code only
+> lands on `main` at merge. In the interim the state has resources that `main`'s config doesn't define yet —
+> so a prod apply from `main` (even a `-target=module.bsh_function_prod` one) would plan to **DESTROY** the
+> live function. Mitigation is sequencing discipline, so do it tightly:
+> 1. Import **only after** this PR is approved + mergeable (not before).
+> 2. The **same operator** imports, merges, and dispatches the first `-target` apply — **in one session**.
+> 3. **No other prod workflow dispatches** between import and merge.
+>
+> If the window is interrupted and `main` advances, do **not** apply; if state ends up orphaned, recover via
+> `terraform state rm` (Recovery above) and re-import after merge. The destroy is of the *state entry* (the
+> live AWS function survives), but recovery is a manual rm + re-import — avoid it by keeping the window short.
 
 ---
 
@@ -144,12 +160,27 @@ PRs.
 From here, **every BSH env-var change is a PR**, not a hand `update-function-configuration`. That is the
 incident-class closure.
 
+> **COLD_START_FORCE — the one env var you used to bump by hand on deploys.** Now that it's governed, bump
+> it the Terraform way: either edit the `cold_start_force` default in `modules/bsh-function-prod/main.tf` in
+> a one-line PR, or pass `-var cold_start_force=<new-ts>` to the gated apply. **Do NOT
+> `aws lambda update-function-configuration` it anymore** — a hand bump becomes drift that the next gated
+> apply (even from an unrelated PR) silently REVERTS to the modeled value, un-doing your cache-bust.
+
 ---
 
 ## After Tier 2 — remaining tiers
 - **Tier 2 follow-ons (defer-ok):** adopt the deferred log group + the API-GW invoke permission; bring the
   managed-policy attachments in scope and remediate `AmazonBedrockFullAccess` / `AmazonS3ReadOnlyAccess` to
   scoped grants; scope SES off `Resource:"*"`.
+- **⚠️ Standing constraint carried from Tier 1 (do not trip):** the role's `ClerkSecretRead` grant
+  hardcodes the Clerk secret ARN with a version suffix → **Secrets Manager rotation on that secret MUST stay
+  OFF** until the ARN is widened to a `…secret_key-*` wildcard, else every Clerk auth check AccessDenies and
+  BSH chat outages. See `infra/modules/bsh-iam-grants-prod/main.tf` header.
+- **CI safety follow-on (defer-ok):** the prod apply workflow has no automated "is the module in state?"
+  pre-flight, so applying `-target=module.bsh_function_prod` **before** Phase A import would CREATE the
+  function from the placeholder zip (a prod chat outage). Today the control is the approval gate + the Phase A
+  "do not apply from a `2 to add` plan" instruction. A generic state-presence guard in the workflow would
+  harden this.
 - **Tier 3 + naming reconciliation:** DynamoDB tables via `terraform import`, reconciling the module
   `{name}-{env}` convention with prod's bare names (incl. the `picasso-tenant-registry-production` /
   `picasso_form_submissions` mismatches mirrored as-is here). Only after this can the prod workflow drop

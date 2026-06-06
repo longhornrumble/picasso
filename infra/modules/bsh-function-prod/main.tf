@@ -43,12 +43,18 @@ variable "role_name" {
   default     = "Bedrock-Streaming-Handler-Role"
 }
 
-# COLD_START_FORCE is a manual cache-bust timestamp the operator bumps on deploys.
-# Modeled as a variable (operator decision 2026-06-06) so ALL 14 env vars are
-# governed — nothing silently drifts. To cache-bust under Terraform: bump this
-# var + gated apply (or bump live via CLI and reconcile the var next apply).
+# COLD_START_FORCE is a manual cache-bust timestamp. Modeled as a variable
+# (operator decision 2026-06-06) so ALL 14 env vars are governed — nothing
+# silently drifts. (The staging BSH module omits this var entirely; it exists
+# only on the prod function as a deploy-time cache-bust knob.)
+#
+# ⚠️ WORKFLOW CHANGE once this is under Terraform: to cache-bust, bump this
+# default in a PR (or pass `-var cold_start_force=<ts>` to the gated apply) —
+# do NOT `aws lambda update-function-configuration` it by hand anymore. A hand
+# CLI bump becomes drift that the next gated apply (even from an unrelated PR)
+# would silently REVERT. The runbook's "prove the change path" section covers this.
 variable "cold_start_force" {
-  description = "Value of the COLD_START_FORCE env var (manual cache-bust timestamp). Live value as of 2026-06-06 import."
+  description = "Value of the COLD_START_FORCE env var (deploy-time cache-bust timestamp). Live value as of 2026-06-06 import. Bump via PR/-var, never hand-CLI (would be reverted on next apply)."
   type        = string
   default     = "1777660112"
 }
@@ -76,9 +82,23 @@ resource "aws_lambda_function" "this" {
   memory_size   = 2048
   timeout       = 900
   architectures = ["x86_64"]
+  package_type  = "Zip"
 
   filename         = data.archive_file.placeholder.output_path
   source_code_hash = data.archive_file.placeholder.output_base64sha256
+
+  # Optional+Computed attrs declared at their EXACT live values — removes
+  # import ambiguity so the post-import plan is verifiably no-change on these
+  # (esp. logging_config: an omitted block risks the provider resetting
+  # log_format Text->JSON, which would break the form-handler metric filters).
+  ephemeral_storage {
+    size = 512
+  }
+
+  logging_config {
+    log_format = "Text"
+    log_group  = "/aws/lambda/${var.function_name}"
+  }
 
   # All 14 live env vars, modeled verbatim. NOTE TENANT_REGISTRY_TABLE carries
   # the `-production` suffix live while siblings are bare — that's the current
@@ -86,18 +106,20 @@ resource "aws_lambda_function" "this" {
   # yet; faithful import does not "fix" it here).
   environment {
     variables = {
-      ANALYTICS_QUEUE_URL         = "https://sqs.us-east-1.amazonaws.com/614056832592/picasso-analytics-events"
-      BEDROCK_MODEL_ID            = "global.anthropic.claude-haiku-4-5-20251001-v1:0"
-      BEDROCK_REGION              = "us-east-1"
-      COLD_START_FORCE            = var.cold_start_force
-      CONFIG_BUCKET               = "myrecruiter-picasso"
-      EMPLOYEE_REGISTRY_TABLE     = "picasso-employee-registry"
-      FORM_SUBMISSIONS_TABLE      = "picasso_form_submissions"
-      NOTIFICATION_SENDS_TABLE    = "picasso-notification-sends"
-      SESSION_SUMMARIES_TABLE     = "picasso-session-summaries"
-      SMS_CONSENT_TABLE           = "picasso-sms-consent"
-      SMS_SENDER_FUNCTION         = "SMS_Sender"
-      SMS_USAGE_TABLE             = "picasso-sms-usage"
+      ANALYTICS_QUEUE_URL      = "https://sqs.us-east-1.amazonaws.com/${data.aws_caller_identity.current.account_id}/picasso-analytics-events"
+      BEDROCK_MODEL_ID         = "global.anthropic.claude-haiku-4-5-20251001-v1:0"
+      BEDROCK_REGION           = "us-east-1"
+      COLD_START_FORCE         = var.cold_start_force
+      CONFIG_BUCKET            = "myrecruiter-picasso"
+      EMPLOYEE_REGISTRY_TABLE  = "picasso-employee-registry"
+      FORM_SUBMISSIONS_TABLE   = "picasso_form_submissions"
+      NOTIFICATION_SENDS_TABLE = "picasso-notification-sends"
+      SESSION_SUMMARIES_TABLE  = "picasso-session-summaries"
+      SMS_CONSENT_TABLE        = "picasso-sms-consent"
+      SMS_SENDER_FUNCTION      = "SMS_Sender"
+      SMS_USAGE_TABLE          = "picasso-sms-usage"
+      # TODO(naming-alignment): the only env table name still carrying a `-${env}`
+      # suffix; update when the table is renamed to the bare convention (Tier 3).
       TENANT_REGISTRY_TABLE       = "picasso-tenant-registry-production"
       USE_REGISTRY_FOR_RESOLUTION = "true"
     }
