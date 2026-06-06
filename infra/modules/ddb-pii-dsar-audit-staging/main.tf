@@ -1,5 +1,5 @@
 resource "aws_dynamodb_table" "pii_dsar_audit" {
-  name         = "picasso-pii-dsar-audit-staging"
+  name         = "picasso-pii-dsar-audit"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "dsar_id"
   range_key    = "event_timestamp"
@@ -72,7 +72,7 @@ resource "aws_dynamodb_table" "pii_dsar_audit" {
   }
 
   tags = {
-    Name = "picasso-pii-dsar-audit-staging"
+    Name = "picasso-pii-dsar-audit"
   }
 }
 

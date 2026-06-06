@@ -40,7 +40,7 @@
 # outside 525).
 
 variable "purge_audit_table_arn" {
-  description = "ARN of picasso-pii-tenant-purge-audit-staging (module.ddb_pii_tenant_purge_audit_staging[0].table_arn). The purge role gets PutItem only - append-only audit, never read or delete its own trail."
+  description = "ARN of picasso-pii-tenant-purge-audit (module.ddb_pii_tenant_purge_audit_staging[0].table_arn). The purge role gets PutItem only - append-only audit, never read or delete its own trail."
   type        = string
 }
 
@@ -69,8 +69,11 @@ locals {
   t_form_submissions   = "${local.ddb}/picasso-form-submissions-staging"
   t_notification_sends = "${local.ddb}/picasso-notification-sends"
   t_notification_evts  = "${local.ddb}/picasso-notification-events"
-  t_subject_index      = "${local.ddb}/picasso-pii-subject-index-staging"
+  t_subject_index      = "${local.ddb}/picasso-pii-subject-index"
   t_sms_usage          = "${local.ddb}/picasso-sms-usage"
+  # D2: the prod single-key form-submissions table is tenant-queryable only via
+  # the tenant-timestamp-index GSI (present on both staging + prod tables).
+  gsi_form_tenant_ts = "${local.t_form_submissions}/index/tenant-timestamp-index"
   # Class C (F-DSAR31): session-summaries, pk=TENANT#{tenant_hash}. Purged as a
   # whole-partition delete when the caller supplies tenant_hash.
   t_session_summaries = "${local.ddb}/picasso-session-summaries"
@@ -105,11 +108,15 @@ data "aws_iam_policy_document" "purge" {
     resources = ["arn:aws:logs:${local.region}:${local.acct}:log-group:/aws/lambda/picasso-pii-tenant-purge-staging:*"]
   }
 
-  # Class A surface: form-submissions. Query PK=tenant_id, DeleteItem per row.
+  # Class A surface: form-submissions. Query (base table on staging; the
+  # tenant-timestamp-index GSI on the prod single-key table) + DeleteItem per
+  # row. DescribeTable lets the purger discover the table key schema once
+  # (cached) to adapt query+delete shape across the account-divergent key
+  # schema (D2).
   statement {
     sid       = "FormSubmissionsQueryDelete"
-    actions   = ["dynamodb:Query", "dynamodb:DeleteItem"]
-    resources = [local.t_form_submissions]
+    actions   = ["dynamodb:Query", "dynamodb:DeleteItem", "dynamodb:DescribeTable"]
+    resources = [local.t_form_submissions, local.gsi_form_tenant_ts]
   }
 
   # Class A surface: notification-sends. Query PK=TENANT#{tenant_id}, DeleteItem.
@@ -217,11 +224,15 @@ resource "aws_lambda_function" "this" {
   # data.aws_caller_identity.account_id — so a staging module accidentally
   # instantiated in the prod account still REFUSES (525 ≠ 614). The prod module
   # sets "614056832592". This is the prod-promotion gate that replaces the former
-  # code-constant friction. Table names remain code constants until the
-  # canonical-naming change lands.
+  # code-constant friction. Canonicalized table names remain code constants;
+  # form-submissions is the lone exception (its name diverges across accounts —
+  # D2) so it is passed here.
   environment {
     variables = {
       EXPECTED_ACCOUNT = "525409062831"
+      # D2: account-divergent name (carve-out). Default in code = the staging
+      # name; the prod runbook sets this to picasso_form_submissions.
+      FORM_SUBMISSIONS_TABLE = "picasso-form-submissions-staging"
     }
   }
 
