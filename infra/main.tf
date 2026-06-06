@@ -583,6 +583,10 @@ module "lambda_analytics_dashboard_api_staging" {
   audit_table_arn                = module.ddb_audit_staging[0].table_arn
   audit_table_name               = module.ddb_audit_staging[0].table_name
 
+  # §E7 GET /scheduling/bookings reader (Query on the two booking GSIs only).
+  booking_table_arn  = module.ddb_booking_staging[0].table_arn
+  booking_table_name = module.ddb_booking_staging[0].table_name
+
   # Tier-3 archive bucket is currently hand-created (Phase 2 of MFS cleanup).
   # ARN inlined here rather than via module output until the bucket itself is
   # Terraformed. Follow-up tracked in project memory.
