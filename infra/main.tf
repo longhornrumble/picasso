@@ -511,12 +511,14 @@ module "lambda_bedrock_handler_staging" {
   # after CloudFront has propagated the OAC signing.
   cloudfront_distribution_arn = module.cloudfront_widget_staging[0].distribution_arn
 
-  # Remedy A Phase 2 (#435 ENFORCE): flip the Function URL to AWS_IAM now that the
-  # OAC + invoke grant are live and CloudFront has propagated signing (E3G30AUOEJTB36
-  # Deployed, /stream still 200 on Phase 1). Unsigned direct hits → 403; CF's signed
-  # requests pass via AllowCloudFrontInvokeFunctionUrl. Rollback = remove this line
-  # (back to NONE default) — Remedy B header still protects until strip-B.
-  streaming_function_url_auth_type = "AWS_IAM"
+  # Remedy A Phase 2 REVERTED 2026-06-06: flipping to AWS_IAM 403'd the CF-signed
+  # /stream path (live-proven on staging — that's exactly why we proved here, not
+  # prod). Reverted to NONE (var default) to restore service; the live AuthType was
+  # also reset to NONE via CLI for immediate recovery. The Phase 1 OAC + invoke
+  # grant (#451) stay in place — inert/harmless while AuthType=NONE. Root cause under
+  # investigation (likely OAC SigV4 incompatibility with the Lambda RESPONSE_STREAM
+  # invoke mode and/or POST body-hash signing). Do NOT re-enable until understood.
+  # streaming_function_url_auth_type = "AWS_IAM"   # ← disabled; 403'd signed traffic
 }
 
 # Issue #5 batch 2b: staging-account Master_Function. Placeholder code;
