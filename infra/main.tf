@@ -503,6 +503,13 @@ module "lambda_bedrock_handler_staging" {
   kb_retriever_role_arns = [
     "arn:aws:iam::614056832592:role/picasso-kb-retriever-from-staging",
   ]
+
+  # Remedy A (#435): wire the staging chat distribution ARN so BSH grants it
+  # lambda:InvokeFunctionUrl (cloudfront.amazonaws.com, scoped via SourceArn).
+  # The Function URL stays authorization_type=NONE until the staged flip
+  # (streaming_function_url_auth_type) is set to AWS_IAM in a follow-on apply,
+  # after CloudFront has propagated the OAC signing.
+  cloudfront_distribution_arn = module.cloudfront_widget_staging[0].distribution_arn
 }
 
 # Issue #5 batch 2b: staging-account Master_Function. Placeholder code;

@@ -210,6 +210,30 @@ variable "scheduling_executor_function_name" {
   default     = ""
 }
 
+# ── Remedy A (#435 root fix): CloudFront OAC + Function URL IAM auth ──────────
+variable "cloudfront_distribution_arn" {
+  description = "ARN of the CloudFront distribution allowed to invoke this Function URL (Remedy A). Scopes the lambda:InvokeFunctionUrl grant to cloudfront.amazonaws.com via aws:SourceArn. Empty = no grant created (the seam stays dormant)."
+  type        = string
+  default     = ""
+}
+
+# LOAD-BEARING staged-flip flag (mirrors Remedy B's require_cf_origin_header).
+# 'NONE' = open URL (Remedy B header is the only gate); 'AWS_IAM' = enforce SigV4
+# so only CloudFront's OAC-signed requests pass (#435 closed). Flip to AWS_IAM
+# ONLY AFTER the OAC + invoke grant are applied AND CloudFront has finished
+# deploying the signing (else CF sends unsigned requests for the minutes-long
+# propagation window → 403s all chat). Rollback = set back to 'NONE' (instant;
+# the Remedy B header still protects the URL until strip-B).
+variable "streaming_function_url_auth_type" {
+  description = "Function URL authorization_type ('NONE' or 'AWS_IAM'). Staged flip for Remedy A (#435): flip to AWS_IAM only after the OAC+grant are live and CloudFront has propagated signing. Roll back to NONE if signed CF traffic 403s."
+  type        = string
+  default     = "NONE"
+  validation {
+    condition     = contains(["NONE", "AWS_IAM"], var.streaming_function_url_auth_type)
+    error_message = "streaming_function_url_auth_type must be 'NONE' or 'AWS_IAM'."
+  }
+}
+
 data "aws_iam_policy_document" "trust" {
   statement {
     actions = ["sts:AssumeRole"]
@@ -619,7 +643,7 @@ resource "aws_lambda_function" "this" {
 
 resource "aws_lambda_function_url" "this" {
   function_name      = aws_lambda_function.this.function_name
-  authorization_type = "NONE"
+  authorization_type = var.streaming_function_url_auth_type
   invoke_mode        = "RESPONSE_STREAM"
 
   # CORS matches the live Lambda's narrowed values (pre-Terraform hand
@@ -645,6 +669,21 @@ resource "aws_lambda_function_url" "this" {
     allow_headers     = ["accept", "authorization", "content-type", "x-picasso-cf-origin", "x-requested-with"]
     allow_credentials = true
   }
+}
+
+# Remedy A (#435): grant CloudFront's OAC SigV4 identity permission to invoke the
+# Function URL under AWS_IAM, scoped to the specific distribution via aws:SourceArn.
+# Created INERT while authorization_type=NONE (the function_url_auth_type=AWS_IAM
+# condition only matches once the URL is flipped). Conditional on the dist ARN
+# being wired (cloudfront_distribution_arn) so the seam stays dormant otherwise.
+resource "aws_lambda_permission" "cloudfront_invoke_url" {
+  count                  = var.cloudfront_distribution_arn != "" ? 1 : 0
+  statement_id           = "AllowCloudFrontInvokeFunctionUrl"
+  action                 = "lambda:InvokeFunctionUrl"
+  function_name          = aws_lambda_function.this.function_name
+  principal              = "cloudfront.amazonaws.com"
+  source_arn             = var.cloudfront_distribution_arn
+  function_url_auth_type = "AWS_IAM"
 }
 
 # ──────────────────────────────────────────────────────────────────────

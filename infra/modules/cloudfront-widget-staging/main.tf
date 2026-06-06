@@ -148,6 +148,20 @@ resource "aws_cloudfront_origin_request_policy" "picasso_origin_request" {
   }
 }
 
+# Remedy A (#435 root fix) — lambda-type OAC so CloudFront SigV4-signs every
+# request to the BSH streaming Function URL. Paired with the Function URL's
+# authorization_type=AWS_IAM (lambda-bedrock-handler-staging) + the
+# lambda:InvokeFunctionUrl grant to cloudfront.amazonaws.com. While AuthType is
+# still NONE this is a no-op (the URL ignores the signature); enforcement begins
+# when AuthType flips. Mirrors the s3 OAC pattern (cloudfront-oac-staging).
+resource "aws_cloudfront_origin_access_control" "streaming_lambda" {
+  name                              = "picasso-streaming-lambda-staging-oac"
+  description                       = "SigV4-signs CloudFront->BSH streaming Function URL (Remedy A, #435)"
+  origin_access_control_origin_type = "lambda"
+  signing_behavior                  = "always"
+  signing_protocol                  = "sigv4"
+}
+
 resource "aws_cloudfront_distribution" "widget" {
   enabled             = true
   comment             = "Staging - Picasso Widget"
@@ -195,6 +209,10 @@ resource "aws_cloudfront_distribution" "widget" {
     origin_id   = local.streaming_origin_id
     domain_name = var.streaming_origin_domain
 
+    # Remedy A (#435): CloudFront SigV4-signs requests to the Function URL.
+    # No-op until the Function URL's authorization_type flips NONE->AWS_IAM.
+    origin_access_control_id = aws_cloudfront_origin_access_control.streaming_lambda.id
+
     custom_origin_config {
       http_port                = 80
       https_port               = 443
@@ -204,6 +222,8 @@ resource "aws_cloudfront_distribution" "widget" {
       origin_keepalive_timeout = 5
     }
 
+    # Remedy B (defense-in-depth, retained until strip-B): BSH also checks this
+    # header at the app layer. Kept while Remedy A soaks; removed at strip-B.
     custom_header {
       name  = "x-picasso-cf-origin"
       value = var.streaming_cf_origin_secret
