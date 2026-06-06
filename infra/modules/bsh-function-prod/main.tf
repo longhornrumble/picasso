@@ -80,15 +80,17 @@ variable "cf_origin_secret_name" {
   default     = "picasso/bsh/cf-origin-secret"
 }
 
-# LOAD-BEARING: 'false' = validator no-op (rollout-safe). Flip to 'true' ONLY after
-# (1) the secret exists, (2) the SM-read grant is applied, and (3) the prod CF
-# streaming origin injects x-picasso-cf-origin. The validator FAILS CLOSED, so a
-# premature flip 403s ALL chat traffic. The flip is a deliberate gated apply
-# (1-line PR bumping this default, or -var). See the Remedy-B runbook.
+# LOAD-BEARING: 'false' = validator no-op; 'true' = ENFORCING (#435 bypass closed).
+# Flipped to 'true' 2026-06-06 ONLY AFTER all 3 prerequisites were verified live:
+# (1) secret picasso/bsh/cf-origin-secret created (ARN suffix -kQs1vT, plain 64-char),
+# (2) CfOriginSecretRead grant applied (role 9 policies), (3) prod CF E3G0LSWB1AQ9LP
+# streaming origin injects x-picasso-cf-origin (Deployed). The validator FAILS CLOSED;
+# to roll back, set this to 'false' via a 1-line PR + gated apply (or emergency
+# break-glass per the runbook). See docs/runbooks/prod-iac-tier2sec-remedy-b.md.
 variable "require_cf_origin_header" {
-  description = "Enforcement flag for the CF-origin-header validator ('true'/'false'). Flip to 'true' only after secret+grant+CF-header all exist (fail-closed validator; premature flip 403s all traffic)."
+  description = "Enforcement flag for the CF-origin-header validator ('true'/'false'). 'true' = enforcing (#435 closed). Roll back to 'false' via PR+apply if the CF header/secret diverge (fail-closed validator)."
   type        = string
-  default     = "false"
+  default     = "true"
 }
 
 data "aws_caller_identity" "current" {}
