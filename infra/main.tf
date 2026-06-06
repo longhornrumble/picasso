@@ -510,6 +510,13 @@ module "lambda_bedrock_handler_staging" {
   # (streaming_function_url_auth_type) is set to AWS_IAM in a follow-on apply,
   # after CloudFront has propagated the OAC signing.
   cloudfront_distribution_arn = module.cloudfront_widget_staging[0].distribution_arn
+
+  # Remedy A Phase 2 (#435 ENFORCE): flip the Function URL to AWS_IAM now that the
+  # OAC + invoke grant are live and CloudFront has propagated signing (E3G30AUOEJTB36
+  # Deployed, /stream still 200 on Phase 1). Unsigned direct hits → 403; CF's signed
+  # requests pass via AllowCloudFrontInvokeFunctionUrl. Rollback = remove this line
+  # (back to NONE default) — Remedy B header still protects until strip-B.
+  streaming_function_url_auth_type = "AWS_IAM"
 }
 
 # Issue #5 batch 2b: staging-account Master_Function. Placeholder code;
