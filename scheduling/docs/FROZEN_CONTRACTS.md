@@ -410,7 +410,10 @@ These are NEW interfaces sub-phase E produces/consumes. **LOCKED** after a verif
 //   ⚠ Its EMAIL channel is a `// Future` stub — WS-E-REMIND MUST implement the email branch (invoke send_email) for the email-as-floor model (D7).
 //
 // Deterministic, idempotent rule names:  reminder → `sched-reminder-{tier}-{booking_id}` (tier ∈ t24h|t4h|t1h|t15m);  attendance → `sched-attendance-{booking_id}`
-// Rule target = Scheduled_Message_Sender; rule input payload = { pk, sk, message_id }  (EXACT shipped consumer shape).
+// Rule INPUT payload = { pk, sk, message_id } (EXACT shipped consumer shape). Rule TARGET ◀ RATIFIED 2026-06-05 (REMIND+ATTEND both flagged; my original "Scheduled_Message_Sender" was wrong for attendance):
+//   reminder rules → Scheduled_Message_Sender (pure dispatch).
+//   attendance rule (sched-attendance) → Attendance_Disposition_Handler (WS-E-ATTEND) — it sets attendance_state + sends the tokenized 3-option prompt; a pure dispatcher CANNOT.
+//   REMIND parameterizes the attendance target via SCHEDULER_TARGET_ARN env → integrator points it at the ATTEND handler + grants the Scheduler role lambda:InvokeFunction on it.
 // At commit: (a) write N picasso-scheduled-messages rows (status:'pending'), (b) create N EventBridge schedules → consumer.
 //   picasso-scheduled-messages WRITE SHAPE (match the shipped consumer): PK `TENANT#{tenantId}` · SK `SCHEDULED#{start_at_iso}#{message_id}`;
 //   fields { tenant_id, channel:'sms'|'email', recipient_phone (E.164, COPIED from Booking.attendee_phone), recipient_email, body, template,
@@ -466,15 +469,22 @@ async function selectChannels({ tenantId, attendee, moment, nowLocal, tenantPref
 // Silence-cadence (E10): T+24h resend + admin cc · T+72h urgent + Customer-Portal inbox alert · T+7d weekly digest (recurs until resolved).
 ```
 
-### E5 — `text_en` write contract (produced by WS-E-TEXTEN) — canonical §15.5 / Risk 7  ◀ CORRECTED 2026-06-05 (seam dry-run: only ONE turn-text write site exists, not three)
+### E5 — `text_en` write contract (produced by WS-E-TEXTEN) — canonical §15.5 / Risk 7  ◀ RE-CORRECTED 2026-06-05 (WS-E-TEXTEN ground-truth: producer↔consumer are TWO different stores; my FIRST correction kept a false dashboard-read premise)
 ```js
-// GROUND-TRUTH (seam dry-run corrected the original "3 writers" premise):
-//   • Master_Function conversation_handler.py:768 writes `content` (the turn text) to picasso-recent-messages → ADD `text_en` = same value HERE. (E1a — the ONLY write site)
-//   • BSH writes SESSION-SUMMARIES (session-level aggregates, NOT per-turn text) → OUT OF SCOPE, do not touch.
-//   • Analytics_Event_Processor writes EVENTS (not turn text) → OUT OF SCOPE.
-// v1: text_en = text (verbatim copy) at conversation_handler.py:768.
-// Dashboard read-path (E1b): Analytics_Dashboard_API recent-conversations — prefer text_en, fall back to text when absent. CO-DEPLOY GATE: E1b CI completes BEFORE E1a merges.
-// NOT "solo-first" — the 3-writer collision was a false premise; the single site collides with no other §E workstream.
+// The field is named `content` (recent-messages) / `content_preview` (session-events) — NOT "text". The transcript producer and the dashboard
+// reader are DIFFERENT stores → TWO independent chains; plant the forward-compat _en slot in each:
+//
+// CHAIN 1 — transcript source-of-truth (picasso-recent-messages). Add a `text_en` sibling to the `content` write at BOTH:
+//   • Master_Function_Staging/conversation_handler.py:768
+//   • Meta_Response_Processor/index.js   (the Meta/WhatsApp turn writer — the 4th writer WS-E-TEXTEN found; my first correction missed it)
+//   v1: text_en = content. CONSUMERS = widget context-replay + PII DSAR/purge (read defensively). The DASHBOARD does NOT read recent-messages.
+//
+// CHAIN 2 — dashboard per-turn (session-events `content_preview`). Dashboard E1b reads `payload.content_preview_en ?? payload.content_preview`.
+//   The content_preview_en PRODUCER is the Picasso WIDGET (3rd repo) → DEFERRED to v2 (real translation); absent in v1 → the read always falls back.
+//   So v1 TEXTEN = lambda Chain-1 writers + the dashboard fallback-read (1-char `??`); the widget producer is a separate v2 task.
+//
+// OUT OF SCOPE (wrongly named in the original §E5 + my first correction): BSH analytics_writer (summaries aggregates, no full text) +
+//   Analytics_Event_Processor (opaque event_payload). first_question_en on summaries = no-op until v2. Chain 1 (lambda) deploys independently.
 ```
 
 ### E6 — additive Booking attributes (schema discipline — readers tolerate absence)
@@ -550,3 +560,4 @@ notify.js `reengagement` kind (+ its STOP footer) · the `selectChannels`-into-`
 | 2026-06-05 | **§E PROPOSED (sub-phase E; integrator M0; NOT yet locked).** E0 access flags (scheduling_enabled + calendar_integration_enabled). E1 per-booking EventBridge Scheduler rule lifecycle (the only new backend surface — consumer `Scheduled_Message_Sender` is shipped + its email branch is a `// Future` stub E must implement; rule payload `{pk,sk,message_id}`; calendar_moved re-bind seam test = named exit criterion; is_synthetic double-gated time-compression locked for CI-6). E2 cadence tiers. **E3 channel-selection + TCPA gate (HIGH-RISK)** — email-floor/SMS-supplement, consent fail-closed, quiet-hours, one-opt-in-covers-all-four. E4 missed-event disposition+escalation. E5 text_en. E6 additive Booking attrs (is_synthetic). E7 `/scheduling/bookings` read API. E13/E13b Teams+Appointment-Types map onto shipped tag routing (zero backend change) + `modified_at` dual-write guard. **Locks after a verification pass (esp. §E3 TCPA).** Inputs: SCHEDULING_PATH_TO_LAUNCH_PLAN + SCHEDULING_UX_DECISIONS (D1–D8). |
 | 2026-06-05 | **§E LOCKED** (verification pass — Security-Reviewer on §E3 TCPA + tech-lead on the set, re-run against the ACTUAL text after a first pass mistakenly read a tree without §E). The informed pass found most "blockers" were false-misses; **7 real amendments folded before lock:** (1) §E1 **calendar_moved=CANCEL** correction — the cal-lifecycle consumer cancels on a coordinator move (`reconcileMoved`→cancel_reason=coordinator_moved), so calendar_moved→DELETE reminders; RE-BIND is token-reschedule ONLY (the earlier "calendar_moved re-binds" draft was wrong; M1 exit-criterion test re-pointed to token-reschedule); (2) §E1 `picasso-scheduled-messages` **write shape** pinned (SK `SCHEDULED#{iso}#{id}`, recipient_phone E.164 from Booking.attendee_phone, channel, status:'pending', …); (3) §E1 **EventBridge Scheduler IAM role** (trust scheduler.amazonaws.com + lambda:InvokeFunction, RoleArn at CreateSchedule); (4) §E3 **quiet-hours** nowLocal = Booking.timezone at FIRE-TIME; (5) §E3 `sendType:'contact'` = the gate-activating field + STOP/HELP as a test-enforced template field; (6) §E3 **consent-TTL implementation gap** — shipped form_handler.js omits ttl + IaC has no TTL attr → WS-E-TCPA patches both before building; (7) §E4 **attendance_state** is a non-key attribute, NOT a Booking.status value (status stays the §A-locked 5); + §E7 admin query bounded to start_at±90d. Workers may now build against §E. |
 | 2026-06-05 | **§E SEAM RESOLUTIONS + §E8 + integrator-glue + 3-wave sequencing LOCKED** (post seam dry-run — 4 worker escalations [COPY/OAUTH/CI6/TCPA] + an adversarial audit of the 4 quiet work-orders [REMIND/ATTEND/PORTAL/TEXTEN]). The dry-run found the original work-orders under-specified the cross-workstream seams + had 2 factual errors. Fixed: **§E5 corrected** (ONE turn-text write site = conversation_handler.py:768, not "3 writers"; not solo-first); **§E8 added** (reengagement.js standalone; COPY owns body+reschedule-link, notify.js §B8 owns the STOP footer via a new `reengagement` kind = glue); **SEAM-1** selectChannels = channels.js (TCPA-owned), fire-time gating INSIDE Scheduled_Message_Sender (REMIND wires), volunteer-tz quiet-hours; **SEAM-3** OAUTH secret-shape CORRECTED (keep shipped shape + additive, platform-app secret, §B7-exclusion + Flag B + D3-callback = glue); **SEAM-4/5** ATTEND D4-stub-wiring + E10 routing + PORTAL endpoints/nav = glue. **Integrator-glue list** + **3-wave sequencing** (E-1 TCPA/TEXTEN/OAUTH/COPY → E-2 REMIND→ATTEND → E-3 PORTAL→CI6) locked; the "all-8-parallel" launch was wrong. Workers code to the SEAM RESOLUTIONS section. |
+| 2026-06-05 | **§E1 + §E5 RATIFIED from worker escalations (both correct, neither forked — §C).** **§E1 attendance target:** REMIND+ATTEND both flagged that the attendance-check rule can't target the pure dispatcher `Scheduled_Message_Sender` (can't set attendance_state / mint tokens) → ratified target = **`Attendance_Disposition_Handler` (WS-E-ATTEND)**; REMIND already parameterized it via `SCHEDULER_TARGET_ARN` (no rework — integrator points the env + grants Scheduler-invoke). **§E5 re-corrected (my FIRST correction was STILL wrong):** WS-E-TEXTEN ground-truthed that the transcript producer (recent-messages `content`) and the dashboard reader (session-events `content_preview`, set by the WIDGET) are TWO different stores. Split into Chain 1 (recent-messages — add `text_en` at conversation_handler.py:768 + **Meta_Response_Processor** [4th writer I missed]; consumers = widget-replay + DSAR/purge, NOT dashboard) + Chain 2 (dashboard reads `content_preview_en ?? content_preview`; the widget producer is v2-deferred). BSH analytics_writer + Analytics_Event_Processor are OUT (no full per-turn text). **Lesson reinforced: worker ground-truth > integrator drafting; ratify their well-reasoned findings.** |
