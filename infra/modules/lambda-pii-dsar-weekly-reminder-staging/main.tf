@@ -57,7 +57,7 @@ variable "sla_monitor_function_name" {
 variable "audit_table_name" {
   description = "Audit table name. Interpolated into the reminder body's DDB CLI snippet."
   type        = string
-  default     = "picasso-pii-dsar-audit-staging"
+  default     = "picasso-pii-dsar-audit"
 }
 
 variable "sla_days_intake_plus" {

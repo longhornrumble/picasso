@@ -86,13 +86,13 @@ variable "form_submissions_table_name" {
 }
 
 # M1.G6 (master plan v0.12 / F-DSAR18 closure). BSH form_handler.js now mints
-# + indexes pii_subject_id via the same picasso-pii-subject-index-staging
+# + indexes pii_subject_id via the same picasso-pii-subject-index
 # table the Master_Function_Staging Python writer uses. Default empty keeps
 # the module backward-compatible — when the var is empty, the IAM statement
 # below + the env var entry are omitted; the Lambda's pii_subject.js falls
 # back to its UNINDEXED-candidate best-effort path (submission never fails).
 variable "pii_subject_index_table_arn" {
-  description = "ARN of picasso-pii-subject-index-staging (BSH pii_subject.js mints + indexes pii_subject_id). Empty = grant + env var omitted (backward-compatible fallback to UNINDEXED rows)."
+  description = "ARN of picasso-pii-subject-index (BSH pii_subject.js mints + indexes pii_subject_id). Empty = grant + env var omitted (backward-compatible fallback to UNINDEXED rows)."
   type        = string
   default     = ""
 }
