@@ -133,6 +133,15 @@ variable "routing_policy_table_name" {
   type = string
 }
 
+variable "scheduling_notif_template_table_arn" {
+  description = "ARN of picasso-scheduling-notif-template-{env}. ADA's G2/E14 API does Query (GET) + UpdateItem (PATCH upsert-merge) only — no GSI. Staging-only."
+  type        = string
+}
+
+variable "scheduling_notif_template_table_name" {
+  type = string
+}
+
 variable "clerk_jwks_url" {
   description = "Clerk JWKS endpoint. Defaults to the Clerk dev project shared with legacy staging."
   type        = string
@@ -309,6 +318,20 @@ data "aws_iam_policy_document" "exec" {
     ]
   }
 
+  # G2/E14 scheduling notification-template overrides. ADA reads via Query (GET
+  # list) and writes via UpdateItem (PATCH upsert-merge of subject/body_text/
+  # body_html). No GetItem/PutItem/DeleteItem needed; base table only (no GSI).
+  statement {
+    sid = "SchedulingNotifTemplateWrite"
+    actions = [
+      "dynamodb:Query",
+      "dynamodb:UpdateItem",
+    ]
+    resources = [
+      var.scheduling_notif_template_table_arn,
+    ]
+  }
+
   # B5 audit: Tier-3 archive read path. Tightened from the hand-attached
   # ada-archive-read policy to require the tenant-partition prefix shape
   # — sessions/tenant=*/ — so any code bug that uses a flat legacy prefix
@@ -433,9 +456,10 @@ resource "aws_lambda_function" "this" {
       # names (picasso-appointment-type / picasso-routing-policy); staging tables
       # are env-suffixed, so pin them — else the write API reads/writes the wrong
       # (nonexistent) table. Mirrors the candidate-resolver.js read-side env.
-      APPOINTMENT_TYPE_TABLE = var.appointment_type_table_name
-      ROUTING_POLICY_TABLE   = var.routing_policy_table_name
-      USE_DYNAMO_CACHE       = "false"
+      APPOINTMENT_TYPE_TABLE     = var.appointment_type_table_name
+      ROUTING_POLICY_TABLE       = var.routing_policy_table_name
+      SCHED_NOTIF_TEMPLATE_TABLE = var.scheduling_notif_template_table_name
+      USE_DYNAMO_CACHE           = "false"
       # Plan Security F8: restrict test-send endpoints to recipients whose
       # email domain is in this comma-list. Without it, an authenticated
       # admin could trigger a test send to any address (including real

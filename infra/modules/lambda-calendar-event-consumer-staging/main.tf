@@ -61,6 +61,15 @@ variable "employee_registry_table_arn" {
 variable "employee_registry_table_name" {
   type = string
 }
+variable "scheduling_notif_template_table_arn" {
+  description = "ARN of picasso-scheduling-notif-template-staging. notify.js GetItem (tenantId, moment) for the §E14 tenant template override at dispatch (reoffer/cancel notices). Fail-safe: a miss/error uses the local default."
+  type        = string
+}
+
+variable "scheduling_notif_template_table_name" {
+  type = string
+}
+
 variable "send_email_function_name" {
   description = "Name of the reusable send_email Lambda the (Y) reoffer notice invokes (async). The exec role is granted lambda:InvokeFunction on exactly this function ARN."
   type        = string
@@ -200,6 +209,12 @@ data "aws_iam_policy_document" "consumer_exec" {
     actions   = ["dynamodb:Query"]
     resources = [var.employee_registry_table_arn]
   }
+  # §E14: notify.js point-reads the tenant's notification-template override at dispatch.
+  statement {
+    sid       = "DDBReadSchedulingNotifTemplate"
+    actions   = ["dynamodb:GetItem"]
+    resources = [var.scheduling_notif_template_table_arn]
+  }
 
   # gap C (Y wire): invoke the reusable send_email Lambda (async) for the reoffer notice.
   # Scoped to EXACTLY the send_email function ARN (no wildcard).
@@ -281,12 +296,13 @@ resource "aws_lambda_function" "consumer" {
       BOOKING_TABLE        = var.booking_table_name
       OPS_ALERTS_TOPIC_ARN = var.ops_alerts_topic_arn
       # gap C reoffer (X + Y + §13.4 token)
-      APPOINTMENT_TYPE_TABLE  = var.appointment_type_table_name
-      ROUTING_POLICY_TABLE    = var.routing_policy_table_name
-      EMPLOYEE_REGISTRY_TABLE = var.employee_registry_table_name
-      SEND_EMAIL_FUNCTION     = var.send_email_function_name
-      JWT_SECRET_KEY_NAME     = "picasso/staging/jwt/signing-key"
-      SCHEDULE_BASE_URL       = "https://staging.schedule.myrecruiter.ai"
+      APPOINTMENT_TYPE_TABLE     = var.appointment_type_table_name
+      ROUTING_POLICY_TABLE       = var.routing_policy_table_name
+      EMPLOYEE_REGISTRY_TABLE    = var.employee_registry_table_name
+      SCHED_NOTIF_TEMPLATE_TABLE = var.scheduling_notif_template_table_name
+      SEND_EMAIL_FUNCTION        = var.send_email_function_name
+      JWT_SECRET_KEY_NAME        = "picasso/staging/jwt/signing-key"
+      SCHEDULE_BASE_URL          = "https://staging.schedule.myrecruiter.ai"
     }
   }
 
