@@ -139,7 +139,13 @@ resource "aws_lambda_function" "this" {
   lifecycle {
     # Real code deploys via `aws lambda update-function-code`; do not let any
     # subsequent terraform apply revert it to the placeholder zip.
-    ignore_changes = [filename, source_code_hash]
+    #
+    # `description` is a deploy-time changelog marker the deploy process bumps
+    # per release (live: "v17: Fix Tier 2 CTA routing …"). It's code-deploy
+    # metadata, not a config knob, so it's ignored alongside the code — otherwise
+    # the import would WIPE the live description and every future deploy would
+    # re-create drift (caught by the Phase A verify-plan, 2026-06-06).
+    ignore_changes = [filename, source_code_hash, description]
   }
 }
 

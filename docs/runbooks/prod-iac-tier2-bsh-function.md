@@ -83,10 +83,17 @@ set +e
 ```bash
 AWS_PROFILE=chris-admin terraform plan -var-file=envs/production.tfvars -target=module.bsh_function_prod
 ```
-Expect: **exactly 1 resource to change — the function — with ONLY the tags delta** (resource-level `tags`
-drops `Environment`; `tags_all` adds `ManagedBy=terraform` + `Project=myrecruiter`; net effective tags =
-Environment + ManagedBy + Project — see "The one non-no-op" above). The `aws_lambda_function_url` should
-read no-change. **If the plan wants to change anything else on the function** (runtime, handler, memory,
+Expect: **`0 to add, 1 to change, 0 to destroy`** — the function updated in-place with ONLY: (a) the tags
+delta (resource-level `tags` drops `Environment`; `tags_all` adds `ManagedBy=terraform` + `Project=myrecruiter`;
+net effective tags = Environment + ManagedBy + Project — see "The one non-no-op" above), and (b) `publish = false`
+(the provider making that default explicit on import — a no-op, no version is published). `description` is in
+`ignore_changes` (it's a deploy-time changelog marker, e.g. "v17: …"), so the import does NOT wipe it. The
+`aws_lambda_function_url` should read no-change.
+
+> **Verified live 2026-06-06:** after import, the actual `plan -target=module.bsh_function_prod` was exactly
+> this — `0 add / 1 change / 0 destroy`, the change being `tags_all` (+2) and `publish=false`. The Phase A
+> verify caught one drift first pass (`description` would have been nulled) → fixed by adding it to
+> `ignore_changes`; the re-verify was clean. **If the plan wants to change anything else on the function** (runtime, handler, memory,
 timeout, env var values, CORS, role, `ephemeral_storage`, `logging_config`, or — watch for this —
 `log_format` flipping to JSON) — the HCL drifted from live; reconcile against
 `aws lambda get-function-configuration` / `get-function-url-config` before proceeding. Do **NOT** apply.
