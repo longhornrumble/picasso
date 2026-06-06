@@ -68,6 +68,31 @@ variable "api_gateway_id" {
   default     = "kgvc8xnewf"
 }
 
+# ── Remedy B (#435 streaming-bypass closure) ────────────────────────────────
+# The deployed BSH bundle already contains + calls validateCfOriginHeader; it is
+# a NO-OP until REQUIRE_CF_ORIGIN_HEADER="true". Setting CF_ORIGIN_SECRET_NAME +
+# the SM-read grant (in bsh-iam-grants-prod) alone changes NOTHING at runtime —
+# the validator only enforces when the flag flips. Mirrors live staging wiring
+# (lambda-bedrock-handler-staging:574-577 env + 325-332 grant).
+variable "cf_origin_secret_name" {
+  description = "Name of the CF-origin validator secret. BSH reads it at runtime (GetSecretValue) to validate the CloudFront-injected x-picasso-cf-origin header. Mirrors staging."
+  type        = string
+  default     = "picasso/bsh/cf-origin-secret"
+}
+
+# LOAD-BEARING: 'false' = validator no-op; 'true' = ENFORCING (#435 bypass closed).
+# Flipped to 'true' 2026-06-06 ONLY AFTER all 3 prerequisites were verified live:
+# (1) secret picasso/bsh/cf-origin-secret created (ARN suffix -kQs1vT, plain 64-char),
+# (2) CfOriginSecretRead grant applied (role 9 policies), (3) prod CF E3G0LSWB1AQ9LP
+# streaming origin injects x-picasso-cf-origin (Deployed). The validator FAILS CLOSED;
+# to roll back, set this to 'false' via a 1-line PR + gated apply (or emergency
+# break-glass per the runbook). See docs/runbooks/prod-iac-tier2sec-remedy-b.md.
+variable "require_cf_origin_header" {
+  description = "Enforcement flag for the CF-origin-header validator ('true'/'false'). 'true' = enforcing (#435 closed). Roll back to 'false' via PR+apply if the CF header/secret diverge (fail-closed validator)."
+  type        = string
+  default     = "true"
+}
+
 data "aws_caller_identity" "current" {}
 
 locals {
@@ -109,24 +134,37 @@ resource "aws_lambda_function" "this" {
     log_group  = "/aws/lambda/${var.function_name}"
   }
 
-  # All 14 live env vars, modeled verbatim. NOTE TENANT_REGISTRY_TABLE carries
+  # 17 env vars: 14 originally imported + 2 added by Remedy B (#435,
+  # CF_ORIGIN_SECRET_NAME + REQUIRE_CF_ORIGIN_HEADER) + 1 added by §P5.1
+  # (PII_SUBJECT_INDEX_TABLE, paired with the DynamoDBPiiSubjectIndex grant;
+  # INERT until the pii_subject.js code deploy). NOTE TENANT_REGISTRY_TABLE carries
   # the `-production` suffix live while siblings are bare — that's the current
   # live value, mirrored AS-IS (the naming-alignment program has not stripped it
   # yet; faithful import does not "fix" it here).
   environment {
     variables = {
-      ANALYTICS_QUEUE_URL      = "https://sqs.us-east-1.amazonaws.com/${data.aws_caller_identity.current.account_id}/picasso-analytics-events"
-      BEDROCK_MODEL_ID         = "global.anthropic.claude-haiku-4-5-20251001-v1:0"
-      BEDROCK_REGION           = "us-east-1"
-      COLD_START_FORCE         = var.cold_start_force
-      CONFIG_BUCKET            = "myrecruiter-picasso"
+      ANALYTICS_QUEUE_URL = "https://sqs.us-east-1.amazonaws.com/${data.aws_caller_identity.current.account_id}/picasso-analytics-events"
+      BEDROCK_MODEL_ID    = "global.anthropic.claude-haiku-4-5-20251001-v1:0"
+      BEDROCK_REGION      = "us-east-1"
+      COLD_START_FORCE    = var.cold_start_force
+      CONFIG_BUCKET       = "myrecruiter-picasso"
+      # Remedy B (#435 bypass closure) — INERT until require_cf_origin_header
+      # flips to "true" (the validator gates on the flag; CF_ORIGIN_SECRET_NAME
+      # is unread while it's "false"). Mirrors the live staging pair.
+      CF_ORIGIN_SECRET_NAME    = var.cf_origin_secret_name
+      REQUIRE_CF_ORIGIN_HEADER = var.require_cf_origin_header
       EMPLOYEE_REGISTRY_TABLE  = "picasso-employee-registry"
       FORM_SUBMISSIONS_TABLE   = "picasso_form_submissions"
       NOTIFICATION_SENDS_TABLE = "picasso-notification-sends"
-      SESSION_SUMMARIES_TABLE  = "picasso-session-summaries"
-      SMS_CONSENT_TABLE        = "picasso-sms-consent"
-      SMS_SENDER_FUNCTION      = "SMS_Sender"
-      SMS_USAGE_TABLE          = "picasso-sms-usage"
+      # §P5.1: BSH pii_subject.js mints + conditional-PutItems pii_subject_id into
+      # this table (email->subject index) so email-path DSAR resolves. Paired with
+      # the DynamoDBPiiSubjectIndex grant in bsh-iam-grants-prod. Bare name = same
+      # in staging + prod (account=environment). INERT until the §P5.1 code deploy.
+      PII_SUBJECT_INDEX_TABLE = "picasso-pii-subject-index"
+      SESSION_SUMMARIES_TABLE = "picasso-session-summaries"
+      SMS_CONSENT_TABLE       = "picasso-sms-consent"
+      SMS_SENDER_FUNCTION     = "SMS_Sender"
+      SMS_USAGE_TABLE         = "picasso-sms-usage"
       # TODO(naming-alignment): the only env table name still carrying a `-${env}`
       # suffix; update when the table is renamed to the bare convention (Tier 3).
       TENANT_REGISTRY_TABLE       = "picasso-tenant-registry-production"

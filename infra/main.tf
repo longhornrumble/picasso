@@ -98,6 +98,21 @@ module "bsh_function_prod" {
   source = "./modules/bsh-function-prod"
 }
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase 2 Tier 4 (production-only): the prod chat CloudFront distribution
+# E3G0LSWB1AQ9LP (alias chat.myrecruiter.ai). Adopts the live, hand-managed
+# distribution via `terraform import` (state-only). Prerequisite for Remedy A
+# (#435): brings CloudFront under TF so the streaming origin can get a `lambda`
+# OAC + the Function URL can flip to AuthType:AWS_IAM. The live x-picasso-cf-origin
+# secret header is left untouched (lifecycle.ignore_changes on `origin`; the
+# value never enters git/state). -target-scoped applies per the header above.
+# See docs/runbooks/prod-iac-tier4-cloudfront.md.
+# ─────────────────────────────────────────────────────────────────────────────
+module "cloudfront_streaming_prod" {
+  count  = var.env == "production" ? 1 : 0
+  source = "./modules/cloudfront-streaming-prod"
+}
+
 # Staging-only: cross-account replication target for prod tenant configs.
 # Bucket lives in the staging account; replication IS configured on the prod
 # source bucket (hand-applied with chris-admin until P0 Phase 2 brings prod

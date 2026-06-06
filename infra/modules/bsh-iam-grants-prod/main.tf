@@ -105,6 +105,29 @@ resource "aws_iam_role_policy" "dynamodb_form_submissions" {
   })
 }
 
+# §P5.1: least-privilege grant for the BSH pii_subject.js writer - conditional
+# PutItem (attribute_not_exists) + GetItem on the email->subject index. Mirrors
+# the staging BSH role grant (DynamoDBPiiSubjectIndex). Base table only, no
+# index/* - the writer keys on (tenant_id, normalized_email) directly. Pairs
+# with PII_SUBJECT_INDEX_TABLE env in bsh-function-prod; both must land together.
+# INERT until the separate pii_subject.js code deploy (PII/deploy-owned).
+resource "aws_iam_role_policy" "dynamodb_pii_subject_index" {
+  name = "DynamoDBPiiSubjectIndex"
+  role = var.role_name
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid    = "PiiSubjectIndexWrite"
+      Effect = "Allow"
+      Action = [
+        "dynamodb:PutItem",
+        "dynamodb:GetItem",
+      ]
+      Resource = "${local.ddb_prefix}/picasso-pii-subject-index"
+    }]
+  })
+}
+
 resource "aws_iam_role_policy" "dynamodb_session_summaries" {
   name = "DynamoDBSessionSummaries"
   role = var.role_name
@@ -209,6 +232,30 @@ resource "aws_iam_role_policy" "dynamodb_sms_consent" {
       Effect   = "Allow"
       Action   = "dynamodb:PutItem"
       Resource = "${local.ddb_prefix}/picasso-sms-consent"
+    }]
+  })
+}
+
+# NEW grant (Tier 2-SEC Remedy B for the #435 streaming-bypass — a create, not an
+# import). BSH's validateCfOriginHeader reads the cf-origin secret at runtime to
+# validate the CloudFront-injected x-picasso-cf-origin header (the defense that
+# closes the AuthType:NONE direct-invoke bypass). Mirrors the live staging
+# CfOriginSecretRead Sid (lambda-bedrock-handler-staging:325-332). Least-privilege:
+# GetSecretValue only, the one cf-origin secret. WILDCARD ARN suffix (-*) so
+# Secrets Manager rotation (new ARN suffix) does NOT break the grant — UNLIKE the
+# ClerkSecretRead landmine above (hardcoded version suffix -> rotation must stay OFF).
+# Granting this alone changes nothing at runtime; enforcement turns on only when
+# bsh-function-prod's REQUIRE_CF_ORIGIN_HEADER flips to "true".
+resource "aws_iam_role_policy" "cf_origin_secret_read" {
+  name = "CfOriginSecretRead"
+  role = var.role_name
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid      = "CfOriginSecretRead"
+      Effect   = "Allow"
+      Action   = "secretsmanager:GetSecretValue"
+      Resource = "arn:aws:secretsmanager:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:secret:picasso/bsh/cf-origin-secret-*"
     }]
   })
 }
