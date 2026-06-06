@@ -522,7 +522,13 @@ on success/fallback. verify-before-commit, then PR. FULL audit at weave.
 
 ## Wave E prompts (copy-paste) — sub-phase E
 
-**§E0–E7 LOCKED** ([FROZEN_CONTRACTS](FROZEN_CONTRACTS.md) §E). **Launch order:** **E-TEXTEN solo first** (hold the others until its PR is open + no-collision) → E-REMIND / E-TCPA / E-COPY / E-OAUTH concurrent → E-ATTEND after E-REMIND's E5 trigger → E-PORTAL after dash#9 (operator-gated merge) → **E-CI6 LAST** (gates E exit). HIGH-risk weaves (TCPA / ATTEND / OAUTH / COPY) → phase-completion-audit + operator go, NO auto-merge. Every prompt: read the work-order + the §E contracts it cites + CLAUDE.md; OWN only the work-order's files; isolated worktree; verify-before-commit; PR with the report-back snippet; STOP+flag a wrong contract, never fork.
+> **⚠ CORRECTED 2026-06-05 (post seam dry-run) — read this first.**
+> - **AUTHORITATIVE SEAMS:** every worker reads the **`## E — SEAM RESOLUTIONS` section of [FROZEN_CONTRACTS](FROZEN_CONTRACTS.md)** — it supersedes any seam ambiguity in a work-order and lists what is **integrator glue** (NOT a worker slice).
+> - **WORKTREE-FIRST (kills the stale-checkout FP):** the primary checkout is parked on another program's branch (pre-§E). Your **FIRST action**: `git fetch origin && git worktree add -b <branch> <fresh-dir> origin/main && cd <fresh-dir>` — then read the work-order + §E **from inside that worktree**. Do NOT read from the session's default directory.
+> - **REVISED 3-WAVE ORDER (the old "all-8-parallel" was wrong):** **Wave E-1 (now):** E-TCPA · E-TEXTEN · E-OAUTH(backend-first) · E-COPY (file-disjoint, no unbuilt-glue deps). **Wave E-2 (after E-1 + glue):** E-REMIND → then E-ATTEND. **Wave E-3 (after endpoints+nav glue + dash#9):** E-PORTAL → E-CI6 LAST.
+> - HIGH-risk weaves (TCPA / ATTEND / OAUTH / COPY) → phase-completion-audit + operator go, NO auto-merge.
+
+**§E0–E8 LOCKED** ([FROZEN_CONTRACTS](FROZEN_CONTRACTS.md) §E + the SEAM RESOLUTIONS section). Every prompt: worktree off `origin/main` FIRST; read the work-order + §E SEAM RESOLUTIONS + CLAUDE.md from inside it; OWN only the work-order's files; verify-before-commit; PR with the report-back snippet; STOP+flag a wrong contract, never fork.
 
 ### E-1) WS-E-TEXTEN — text_en plumbing *(SOLO-FIRST)*
 ```
