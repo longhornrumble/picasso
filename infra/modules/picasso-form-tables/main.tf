@@ -44,6 +44,17 @@ resource "aws_dynamodb_table" "sms_consent" {
     projection_type = "ALL"
   }
 
+  # TCPA retention (FROZEN_CONTRACTS §E3): consent records auto-expire 4yr + 30d after
+  # capture (data-minimization per CLAUDE.md PII goal). The writers (form_handler.js
+  # writeConsentRecord + the WS-E-TCPA booking consent.js) set `ttl = epoch(now+4yr+30d)`
+  # on each record; pre-existing records WITHOUT the attribute are untouched (DynamoDB only
+  # expires items that carry a valid ttl), so enabling-here and the writers are
+  # order-independent — same pattern as the sms_usage table below.
+  ttl {
+    attribute_name = "ttl"
+    enabled        = true
+  }
+
   point_in_time_recovery {
     enabled = true
   }
