@@ -212,3 +212,27 @@ resource "aws_iam_role_policy" "dynamodb_sms_consent" {
     }]
   })
 }
+
+# NEW grant (Tier 2-SEC Remedy B for the #435 streaming-bypass — a create, not an
+# import). BSH's validateCfOriginHeader reads the cf-origin secret at runtime to
+# validate the CloudFront-injected x-picasso-cf-origin header (the defense that
+# closes the AuthType:NONE direct-invoke bypass). Mirrors the live staging
+# CfOriginSecretRead Sid (lambda-bedrock-handler-staging:325-332). Least-privilege:
+# GetSecretValue only, the one cf-origin secret. WILDCARD ARN suffix (-*) so
+# Secrets Manager rotation (new ARN suffix) does NOT break the grant — UNLIKE the
+# ClerkSecretRead landmine above (hardcoded version suffix -> rotation must stay OFF).
+# Granting this alone changes nothing at runtime; enforcement turns on only when
+# bsh-function-prod's REQUIRE_CF_ORIGIN_HEADER flips to "true".
+resource "aws_iam_role_policy" "cf_origin_secret_read" {
+  name = "CfOriginSecretRead"
+  role = var.role_name
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid      = "CfOriginSecretRead"
+      Effect   = "Allow"
+      Action   = "secretsmanager:GetSecretValue"
+      Resource = "arn:aws:secretsmanager:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:secret:picasso/bsh/cf-origin-secret-*"
+    }]
+  })
+}
