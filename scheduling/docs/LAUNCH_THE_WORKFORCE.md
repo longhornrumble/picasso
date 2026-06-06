@@ -517,3 +517,89 @@ booked→§B16c via injected deps (deps.invokeProposal / deps.invokeBookingCommi
 edit index.js — the integrator wires the entry-hook + live deps (§B16d). Double-fire guard: advance to booked
 on success/fallback. verify-before-commit, then PR. FULL audit at weave.
 ```
+
+---
+
+## Wave E prompts (copy-paste) — sub-phase E
+
+**§E0–E7 LOCKED** ([FROZEN_CONTRACTS](FROZEN_CONTRACTS.md) §E). **Launch order:** **E-TEXTEN solo first** (hold the others until its PR is open + no-collision) → E-REMIND / E-TCPA / E-COPY / E-OAUTH concurrent → E-ATTEND after E-REMIND's E5 trigger → E-PORTAL after dash#9 (operator-gated merge) → **E-CI6 LAST** (gates E exit). HIGH-risk weaves (TCPA / ATTEND / OAUTH / COPY) → phase-completion-audit + operator go, NO auto-merge. Every prompt: read the work-order + the §E contracts it cites + CLAUDE.md; OWN only the work-order's files; isolated worktree; verify-before-commit; PR with the report-back snippet; STOP+flag a wrong contract, never fork.
+
+### E-1) WS-E-TEXTEN — text_en plumbing *(SOLO-FIRST)*
+```
+ONE workstream. Work-order: scheduling/docs/workstreams/WS-E-TEXTEN-text-en-plumbing.md. Read it + §E5 +
+CLAUDE.md. TWO repos: E1a lambda (feature/scheduling-ws-e-texten) + E1b dashboard
+(feature/scheduling-ws-e-texten-dash), base main; isolated worktrees. OWN only the additive text_en field at the
+3 writers (BSH emit / Master_Function audit / analytics ingestion) + the dashboard text_en??text read-path + tests.
+v1: text_en = text (verbatim). CO-DEPLOY GATE: E1b CI before E1a merge. verify-before-commit, PR each. Light audit.
+```
+
+### E-2) WS-E-REMIND — reminder rule lifecycle + dispatch
+```
+ONE workstream. Work-order: scheduling/docs/workstreams/WS-E-REMIND-reminder-rule-lifecycle.md. Read it +
+§E1/E2/E6 + §B9 + the §14.2 listener + CLAUDE.md. lambda, branch feature/scheduling-ws-e-remind, base main, OWN
+worktree. OWN only Reminder_Scheduler/ (EventBridge rule create/upsert/delete + cadence + reconciler) + the email
+branch in Scheduled_Message_Sender + tests. KEY: token-reschedule re-binds (named exit test); calendar_moved=CANCEL
+→ delete (not re-bind). CONSUME §E3 selectChannels at dispatch. Deliver the EventBridge Scheduler IAM deploy-note
+(integrator wires it). verify-before-commit, PR. Light audit.
+```
+
+### E-3) WS-E-TCPA — consent gate + channel-selection *(HIGH-RISK)*
+```
+ONE workstream. Work-order: scheduling/docs/workstreams/WS-E-TCPA-consent-gate-channel-selection.md. Read it +
+§E3 + CLAUDE.md (PII/TCPA). lambda + infra deploy-note, branch feature/scheduling-ws-e-tcpa, base main, OWN
+worktree. FIRST patch form_handler.js ttl + the picasso-sms-consent IaC TTL attribute. Then build selectChannels
+(email-floor; sms = org-flag && consent[fail-closed] && !quiet-hours[fire-time, Booking.timezone]) + booking-end
+opt-in capture (E.164-before-write, ttl=now+4yr+30d, sendType:'contact', STOP test-enforced). Deliver a
+pii-inventory snippet (integrator coordinates w/ PII session). verify-before-commit, PR. FLAG HIGH-RISK → FULL audit + operator go.
+```
+
+### E-4) WS-E-COPY — re-engagement copy + compliance injection
+```
+ONE workstream. Work-order: scheduling/docs/workstreams/WS-E-COPY-llm-reengagement.md. Read it + §E3/E4 + CLAUDE.md.
+lambda (confirm BSH-vs-standalone home w/ integrator), branch feature/scheduling-ws-e-copy, base main, OWN worktree.
+OWN only the re-engagement copy module: LLM-prompted (Bedrock) + PROGRAMMATIC compliance injection (reschedule link +
+STOP + unsubscribe always present, even on an empty/adversarial model reply — test it). Diplomatic tone; never
+"no availability". verify-before-commit, PR. FULL audit (compliance invariant).
+```
+
+### E-5) WS-E-ATTEND — attendance + disposition + escalation *(HIGH-RISK; after E-REMIND E5)*
+```
+ONE workstream. Work-order: scheduling/docs/workstreams/WS-E-ATTEND-missed-event-disposition.md. Read it + §E1/E3/E4
++ §B4 + the D4 /attended/* endpoints + CLAUDE.md. lambda, branch feature/scheduling-ws-e-attend, base main, OWN
+worktree. OWN the attendance-check (sets NON-KEY attendance_state='pending_attendance', NOT Booking.status) + the
+3-option disposition (wires D4's stubbed action → valid status completed/no_show/coordinator_no_show) + E10 escalation
+(T+24h/72h/7d) + C13 Zoom-T15 paging. CONSUME WS-E-REMIND's EventBridge lib + WS-E-TCPA selectChannels + WS-E-COPY.
+verify-before-commit, PR. FLAG HIGH-RISK → FULL audit + operator go.
+```
+
+### E-6) WS-E-OAUTH — Calendar Connection consent flow *(HIGH-RISK; SPLIT backend→frontend)*
+```
+ONE workstream. Work-order: scheduling/docs/workstreams/WS-E-OAUTH-calendar-connection.md. Read it + §E0 + UX-DECISIONS
+D2 + CLAUDE.md (never-share-IAM, credential gate). SPLIT: backend PR first (feature/scheduling-ws-e-oauth-backend,
+lambda+infra-note) then UI PR (feature/scheduling-ws-e-oauth-ui, dashboard), base main, OWN worktrees. Build the Google
+3LO consent flow (redirect→code-exchange→write picasso/scheduling/oauth/{tenant}/{coord} secret→fire B5) REUSING the
+shipped oauth-client.js, on the D3 domain; + revocation detection (401 invalid_grant→disconnect+bookable:false;
+5xx→stale-connected — distinguish in a test); + the staff Connection UI. Testing-mode (no Google verification). Deliver
+per-secret IAM + pii-inventory snippets. verify-before-commit, PR. FLAG HIGH-RISK → FULL audit + operator go.
+```
+
+### E-7) WS-E-PORTAL — Customer-Portal surfaces *(operator-gated merge; after dash#9)*
+```
+ONE workstream. Work-order: scheduling/docs/workstreams/WS-E-PORTAL-customer-portal-surfaces.md. Read it + §E7 + §A +
+UI plan Surfaces 2/3/7/8/9 + UX-DECISIONS D3/D4/D8 + CLAUDE.md. picasso-analytics-dashboard, branch
+feature/scheduling-ws-e-portal (split per surface), base main, OWN worktree. Wire E12/E15 render-slices into nav +
+GET /scheduling/bookings (§E7); E13 team/tag settings; E13b Appointment Types + Teams CRUD (Team=tag; generate
+RoutingPolicy under the hood, zero backend change; +modified_at; spike first, 4–6d); E14 templates (incl. SMS); E16
+embed (after E-OAUTH). Keep the scheduling vitest suite green. verify-before-commit, PR. Light audit, but
+OPERATOR-GATED MERGE (merge = prod deploy) — no auto-merge.
+```
+
+### E-8) WS-E-CI6 — synthetic monitor *(LAST — gates E exit)*
+```
+ONE workstream. Work-order: scheduling/docs/workstreams/WS-E-CI6-synthetic-monitor.md. Read it + §E1/E6 + CI strategy
+§5.1 + CLAUDE.md. lambda + infra-note, branch feature/scheduling-ws-e-ci6, base main, OWN worktree. OWN the synthetic
+monitor: 5 cycles (cancel/attendance/reminder/disposition/revocation); time-compression via is_synthetic+STAGING_TEST_MODE
+double-gate (start_at=now+N_min); HARD prod-guard (refuse init if STAGING_TEST_MODE && ENVIRONMENT=production — test it);
+token-revocation cycle = OPERATOR-triggered + monitored (no auto-revoke); nightly >7d synthetic cleanup. verify-before-commit,
+PR. Full audit (prod-safety guard).
+```
