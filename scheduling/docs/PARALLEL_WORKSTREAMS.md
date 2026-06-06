@@ -132,6 +132,27 @@ The recovery loop (B-minimal, §B9–§B15) only CHANGES an existing booking. B-
 
 ---
 
+### 4.4 Wave E (sub-phase E — reminders + missed-event + Customer Portal UI) — **READY (contracts) 2026-06-05** (§E LOCKED)
+
+The heaviest remaining phase. Contracts **§E0–E7 LOCKED 2026-06-05** ([FROZEN_CONTRACTS](FROZEN_CONTRACTS.md) §E; verification pass folded 7 amendments). Re-sized vs ground-truth: the SMS/notification dispatch stack is ALREADY SHIPPED (`SMS_Sender`, `Scheduled_Message_Sender`, `picasso-sms-consent`, `send_email`, `notify.js`) → the only NEW backend surface is the per-booking **EventBridge Scheduler rule lifecycle** (§E1). **Critical path = the UI/OAuth track (E11→E16 + E13b) + CI-6, NOT the reminder backend.** Plan: [SCHEDULING_PATH_TO_LAUNCH_PLAN.md](SCHEDULING_PATH_TO_LAUNCH_PLAN.md); decisions: [SCHEDULING_UX_DECISIONS.md](SCHEDULING_UX_DECISIONS.md) D1–D8.
+
+**M0 prerequisites (integrator, before worker launch):** §E contracts ✅ LOCKED · dashboard CI repair (scheduling-scoped vitest gate — in progress) · flag names ✅ (`scheduling_enabled` + `calendar_integration_enabled`) · work-orders + launch-prompts (pending). **Workers do NOT launch until M0 closes + operator go.**
+
+| WS | Tasks | Repo / base | Risk | Independent because |
+|---|---|---|---|---|
+| **WS-E-TEXTEN** | E1a/E1b | lambda + dashboard | MED (collision) | `text_en` across 3 writers + dashboard read — **SOLO-FIRST**, gates the other lambda workers |
+| **WS-E-REMIND** | E2/E3/E4/E9 | lambda → main | MED | new `Reminder_Scheduler/` + EventBridge rule lib + reconciler; extends `Scheduled_Message_Sender` email stub |
+| **WS-E-TCPA** | E8 | lambda → main | **HIGH** | consent gate + channel-selection (§E3); TCPA → full audit + operator go; bring-up patches `form_handler.js` ttl + IaC TTL first |
+| **WS-E-COPY** | E7 | lambda/BSH → main | MED | LLM re-engagement prompt + compliance injection |
+| **WS-E-ATTEND** | E5/E6/E10 + C13 | lambda → main | **HIGH** | attendance rule (`attendance_state` §E4) + 3-option disposition (D4 stubbed) + escalation; tokens/commit → full audit; after E5 |
+| **WS-E-OAUTH** | E11 | dashboard + lambda + IaC | **HIGH** | Calendar-Connection consent flow + revocation + UI; OAuth/secrets/IAM → full audit; **SPLIT backend→frontend**; blocks E16 |
+| **WS-E-PORTAL** | E12-wire/E13/E13b/E14/E15/E16 | dashboard → (gated) | MED | Customer-Portal surfaces; **operator-gated merge** (no staging buffer); after CI repair; E13b 4–6d |
+| **WS-E-CI6** | CI-6 | lambda → main | MED | synthetic monitor (5 cycles; token-revocation cycle = manual-trigger); **lands LAST** — gates E exit |
+
+**Launch order:** WS-E-TEXTEN **solo first** (3-writer collision — hold the other lambda work-orders until its PR is open + no-collision confirmed) → WS-E-REMIND / TCPA / COPY / OAUTH concurrent → WS-E-ATTEND after E5 → WS-E-PORTAL after the dashboard CI repair (operator-gated) → WS-E-CI6 last. **HIGH-risk weaves (TCPA / ATTEND / OAUTH / COPY) → phase-completion-audit + operator go-ahead, NO auto-merge.** **Integrator glue owed:** `/scheduling/bookings` endpoint (§E7), EventBridge Scheduler IAM role (§E1), the dashboard nav-wire, the §E1 email branch in `Scheduled_Message_Sender`. **Cross-phase (NOT E, tracked separately):** Surface-4 calendar fallback (B-remainder §B16) + C8 confirmation-SMS (D6/D7).
+
+---
+
 ## 5. Risk-calibrated audit rule (lever #4)
 
 > **Full `phase-completion-audit`** (≥3 adversarial reviewers + remediation) at weave time for any workstream touching: **prompt-injection / LLM input (C2)**, **race conditions or money/commit paths (C6, C8)**, **signed tokens / auth (D1a)**, **IAM / external surface / PII**.
@@ -194,6 +215,17 @@ Until provisioned, C8 builds **Meet-first** (`conferenceData.createRequest`, rid
 | WS-C12 (B-remainder, §4.3) | feature/scheduling-ws-c12 | [picasso#387](https://github.com/longhornrumble/picasso/pull/387) | **MERGED 2026-06-04** (staging) | §B16b/d frontend — generic slot chips (snapshot-proven no coordinator name) + backend-driven confirm + `start_scheduling`→`scheduling_intent:'new_booking'` signal + `scheduling_notice`. LIGHT audit clean. Renders BOTH the recovery-loop + new-booking chips. **Integrator follow-up:** wire the deterministic `scheduling_slot_id` hint into the FLOW (select_slot only; confirm_book stays §B14 LLM-detected). |
 | WS-NEWBOOK-FLOW (B-remainder KEYSTONE, §4.3) | feature/scheduling-ws-newbook-flow | [lambda#228](https://github.com/longhornrumble/lambda/pull/228) | **MERGED 2026-06-04** | §B16b in-chat new-booking flow (`qualifying→proposing→confirming→booked`; §B14 boundary). FULL adversarial audit: **§B14 commit boundary CLEAN** (10 paths traced; no free-text/non-confirming commit) + 5-item remediation (window-forward, deps.selectedSlot removed, poolSize fail-loud, select_slot illegal-state tests, detector logger). Deployed staging. |
 | **Entry-hook glue (INTEGRATOR §B16d)** | glue/scheduling-newbook-entry-hook | [lambda#229](https://github.com/longhornrumble/lambda/pull/229) | **MERGED + LIVE 2026-06-04** | `newBookingEntry.js` (engage/bootstrap/no-op + `resolveQualifyingContext`) + index.js wiring at both call-sites (`tenantId` from config) + `newBookingDep` (invokeProposal/invokeBookingCommit reuse the BCH executor) + `saveState` persists `proposal`+`rejected_slot_ids`. tech-lead-proof APPROVE (no-regression traced) + SR-2 fixed. **Deployed live staging BSH** (CodeSha `oCujJ5rk…`, 05:59Z) → new-booking **propose path LIVE for MYR384719**. **Residuals (defer-ok):** attendee-sourcing (lights the commit half) · SR-1 double-loadState · index.js handler-harness test · full in-chat F-phase UAT. |
+
+| — **Wave E (§4.4) — seeded 2026-06-05; §E LOCKED; M0 closing** — | | | | |
+| WS-E-TEXTEN | — | — | NOT STARTED | E1a/E1b `text_en` (3 writers + dashboard read). **SOLO-FIRST** (collision); co-deploy gate E1b→E1a. |
+| WS-E-REMIND | — | — | NOT STARTED | E2/E3/E4/E9 EventBridge rule lifecycle + dispatch + reconciler (§E1, the new backend surface). Extends `Scheduled_Message_Sender` email stub. calendar_moved=cancel→delete; re-bind=token-reschedule only. |
+| WS-E-TCPA | — | — | NOT STARTED | E8 consent gate + channel-selection (§E3). **HIGH-RISK** → full audit + operator go. Bring-up: patch `form_handler.js` ttl + IaC TTL first. |
+| WS-E-COPY | — | — | NOT STARTED | E7 LLM re-engagement copy + compliance injection (Data-AI-RAG). |
+| WS-E-ATTEND | — | — | NOT STARTED | E5/E6/E10 + C13. `attendance_state` (§E4, NOT Booking.status) + 3-option disposition (D4 stubbed). **HIGH-RISK** (tokens/commit). After E5. |
+| WS-E-OAUTH | — | — | NOT STARTED | E11 Calendar-Connection consent flow + revocation + UI. **HIGH-RISK** (OAuth/secrets/IAM). **SPLIT backend→frontend.** Blocks E16. Reuses shipped `oauth-client.js`. |
+| WS-E-PORTAL | — | — | NOT STARTED | E12-wire/E13/E13b/E14/E15/E16 dashboard surfaces. **Operator-gated merge** (no staging buffer). After CI repair. E13b 4–6d (`modified_at` dual-write guard). |
+| WS-E-CI6 | — | — | NOT STARTED | CI-6 synthetic monitor (5 cycles; token-revocation = manual-trigger). **LANDS LAST** — gates E exit. |
+| **§E integrator glue** | — | — | IN PROGRESS | §E contracts ✅ LOCKED. Dashboard CI repair (in progress). OWED: `/scheduling/bookings` endpoint, EventBridge Scheduler IAM role, nav-wire, work-orders + launch-prompts. |
 
 **Status values:** NOT STARTED · IN PROGRESS · IN REVIEW (PR open) · MERGED · BLOCKED · READY (work-order written, awaiting worker) · DEFERRED.
 
