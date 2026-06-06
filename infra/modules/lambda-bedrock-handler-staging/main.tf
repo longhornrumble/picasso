@@ -210,22 +210,18 @@ variable "scheduling_executor_function_name" {
   default     = ""
 }
 
-# ── Remedy A (#435 root fix): CloudFront OAC + Function URL IAM auth ──────────
-variable "cloudfront_distribution_arn" {
-  description = "ARN of the CloudFront distribution allowed to invoke this Function URL (Remedy A). Scopes the lambda:InvokeFunctionUrl grant to cloudfront.amazonaws.com via aws:SourceArn. Empty = no grant created (the seam stays dormant)."
-  type        = string
-  default     = ""
-}
-
+# ── Remedy A (#435 root fix): Function URL IAM auth (signing via Lambda@Edge) ──
 # LOAD-BEARING staged-flip flag (mirrors Remedy B's require_cf_origin_header).
 # 'NONE' = open URL (Remedy B header is the only gate); 'AWS_IAM' = enforce SigV4
-# so only CloudFront's OAC-signed requests pass (#435 closed). Flip to AWS_IAM
-# ONLY AFTER the OAC + invoke grant are applied AND CloudFront has finished
-# deploying the signing (else CF sends unsigned requests for the minutes-long
-# propagation window → 403s all chat). Rollback = set back to 'NONE' (instant;
-# the Remedy B header still protects the URL until strip-B).
+# so only the Lambda@Edge-signed requests pass (#435 closed). Flip to AWS_IAM
+# ONLY AFTER the edge signer + its /stream association are live and CloudFront has
+# finished deploying (else CF sends unsigned requests for the minutes-long
+# propagation window → 403s all chat). The signer identity (the L@E role) holds
+# lambda:InvokeFunctionUrl; no resource grant is needed here (same-account
+# identity policy on the L@E role suffices). Rollback = set back to 'NONE'
+# (instant; the Remedy B header still protects the URL until strip-B).
 variable "streaming_function_url_auth_type" {
-  description = "Function URL authorization_type ('NONE' or 'AWS_IAM'). Staged flip for Remedy A (#435): flip to AWS_IAM only after the OAC+grant are live and CloudFront has propagated signing. Roll back to NONE if signed CF traffic 403s."
+  description = "Function URL authorization_type ('NONE' or 'AWS_IAM'). Staged flip for Remedy A (#435): flip to AWS_IAM only after the Lambda@Edge signer + /stream association are live and CloudFront has propagated. Roll back to NONE if signed traffic 403s."
   type        = string
   default     = "NONE"
   validation {
@@ -671,20 +667,11 @@ resource "aws_lambda_function_url" "this" {
   }
 }
 
-# Remedy A (#435): grant CloudFront's OAC SigV4 identity permission to invoke the
-# Function URL under AWS_IAM, scoped to the specific distribution via aws:SourceArn.
-# Created INERT while authorization_type=NONE (the function_url_auth_type=AWS_IAM
-# condition only matches once the URL is flipped). Conditional on the dist ARN
-# being wired (cloudfront_distribution_arn) so the seam stays dormant otherwise.
-resource "aws_lambda_permission" "cloudfront_invoke_url" {
-  count                  = var.cloudfront_distribution_arn != "" ? 1 : 0
-  statement_id           = "AllowCloudFrontInvokeFunctionUrl"
-  action                 = "lambda:InvokeFunctionUrl"
-  function_name          = aws_lambda_function.this.function_name
-  principal              = "cloudfront.amazonaws.com"
-  source_arn             = var.cloudfront_distribution_arn
-  function_url_auth_type = "AWS_IAM"
-}
+# Remedy A (#435): the Function-URL invoke grant lives on the Lambda@Edge signer's
+# role (module.lambda_edge_bsh_signer_staging grants it lambda:InvokeFunctionUrl on
+# this function — same-account identity policy, sufficient for AWS_IAM Function URL
+# auth). No resource-based permission is modeled here; the OAC + cloudfront-service
+# grant approach was removed (OAC can't sign POST bodies — InvalidSignatureException).
 
 # ──────────────────────────────────────────────────────────────────────
 # # MANUAL STEP REQUIRED — Function URL post-creation

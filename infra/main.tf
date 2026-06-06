@@ -504,21 +504,13 @@ module "lambda_bedrock_handler_staging" {
     "arn:aws:iam::614056832592:role/picasso-kb-retriever-from-staging",
   ]
 
-  # Remedy A (#435): wire the staging chat distribution ARN so BSH grants it
-  # lambda:InvokeFunctionUrl (cloudfront.amazonaws.com, scoped via SourceArn).
-  # The Function URL stays authorization_type=NONE until the staged flip
-  # (streaming_function_url_auth_type) is set to AWS_IAM in a follow-on apply,
-  # after CloudFront has propagated the OAC signing.
-  cloudfront_distribution_arn = module.cloudfront_widget_staging[0].distribution_arn
-
-  # Remedy A Phase 2 REVERTED 2026-06-06: flipping to AWS_IAM 403'd the CF-signed
-  # /stream path (live-proven on staging — that's exactly why we proved here, not
-  # prod). Reverted to NONE (var default) to restore service; the live AuthType was
-  # also reset to NONE via CLI for immediate recovery. The Phase 1 OAC + invoke
-  # grant (#451) stay in place — inert/harmless while AuthType=NONE. Root cause under
-  # investigation (likely OAC SigV4 incompatibility with the Lambda RESPONSE_STREAM
-  # invoke mode and/or POST body-hash signing). Do NOT re-enable until understood.
-  # streaming_function_url_auth_type = "AWS_IAM"   # ← disabled; 403'd signed traffic
+  # Remedy A (#435): the Function URL stays authorization_type=NONE (var default)
+  # until the staged flip. The OAC approach was REMOVED (OAC can't sign POST bodies
+  # — InvalidSignatureException, proven on staging 2026-06-06); signing is now done
+  # by the origin-request Lambda@Edge (module.lambda_edge_bsh_signer_staging),
+  # associated on /stream by the cloudfront_widget_staging module. Phase 2 flips
+  # streaming_function_url_auth_type = "AWS_IAM" after the signer + association are
+  # live and CloudFront has propagated.
 }
 
 # Issue #5 batch 2b: staging-account Master_Function. Placeholder code;
@@ -1280,6 +1272,18 @@ module "s3_widget_staging" {
 # first (operator deletes it via chris-admin) or this apply fails with
 # CloudFront CNAMEAlreadyExists. No wildcard cert / no associate-alias / no
 # zero-downtime dance — staging carries no real traffic.
+# Remedy A (#435): origin-request Lambda@Edge that SigV4-signs /stream requests to
+# the BSH Function URL (replaces OAC, which can't sign POST bodies). Its role holds
+# lambda:InvokeFunctionUrl on the BSH function; its qualified ARN is associated on
+# /stream by the cloudfront_widget_staging module below. Inert until the Function
+# URL flips to AWS_IAM (streaming_function_url_auth_type, Phase 2).
+module "lambda_edge_bsh_signer_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/lambda-edge-bsh-signer-staging"
+
+  bsh_function_arn = "arn:aws:lambda:us-east-1:525409062831:function:Bedrock_Streaming_Handler_Staging"
+}
+
 module "cloudfront_widget_staging" {
   count  = var.env == "staging" ? 1 : 0
   source = "./modules/cloudfront-widget-staging"
@@ -1292,6 +1296,9 @@ module "cloudfront_widget_staging" {
   # Non-committed, distinct per origin. See operator-gated prerequisite above.
   mfs_cf_origin_secret       = var.q5_mfs_cf_origin_secret
   streaming_cf_origin_secret = var.q5_streaming_cf_origin_secret
+
+  # Remedy A (#435): the edge signer's versioned ARN, associated on /stream.
+  streaming_edge_signer_qualified_arn = module.lambda_edge_bsh_signer_staging[0].qualified_arn
 }
 
 # Q5 Phase 2 [locked decision #9]: minimal CI widget-deploy role. No module
