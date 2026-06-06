@@ -114,10 +114,15 @@ resource "aws_lambda_function" "this" {
       EMPLOYEE_REGISTRY_TABLE  = "picasso-employee-registry"
       FORM_SUBMISSIONS_TABLE   = "picasso_form_submissions"
       NOTIFICATION_SENDS_TABLE = "picasso-notification-sends"
-      SESSION_SUMMARIES_TABLE  = "picasso-session-summaries"
-      SMS_CONSENT_TABLE        = "picasso-sms-consent"
-      SMS_SENDER_FUNCTION      = "SMS_Sender"
-      SMS_USAGE_TABLE          = "picasso-sms-usage"
+      # §P5.1: BSH pii_subject.js mints + conditional-PutItems pii_subject_id into
+      # this table (email->subject index) so email-path DSAR resolves. Paired with
+      # the DynamoDBPiiSubjectIndex grant in bsh-iam-grants-prod. Bare name = same
+      # in staging + prod (account=environment). Default in code matches this.
+      PII_SUBJECT_INDEX_TABLE = "picasso-pii-subject-index"
+      SESSION_SUMMARIES_TABLE = "picasso-session-summaries"
+      SMS_CONSENT_TABLE       = "picasso-sms-consent"
+      SMS_SENDER_FUNCTION     = "SMS_Sender"
+      SMS_USAGE_TABLE         = "picasso-sms-usage"
       # TODO(naming-alignment): the only env table name still carrying a `-${env}`
       # suffix; update when the table is renamed to the bare convention (Tier 3).
       TENANT_REGISTRY_TABLE       = "picasso-tenant-registry-production"
