@@ -96,6 +96,14 @@ module "bsh_iam_grants_prod" {
 module "bsh_function_prod" {
   count  = var.env == "production" ? 1 : 0
   source = "./modules/bsh-function-prod"
+
+  # Remedy A (#435) Phase 2: enforce IAM on the streaming Function URL, closing the
+  # public bypass durably. The prod Lambda@Edge signer + /stream* association are
+  # live + CloudFront-propagated + PROVEN (Phase 1.5 controlled-flip on prod:
+  # CF-signed /stream -> 200+SSE, direct unsigned -> 403). This flips
+  # authorization_type NONE -> AWS_IAM. Rollback = set back to "NONE" (instant on
+  # the Function URL); the Remedy B header still guards during rollback.
+  streaming_function_url_auth_type = "AWS_IAM"
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
