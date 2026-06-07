@@ -10,6 +10,12 @@ variable "redemption_function_url_domain" {
   default     = "placeholder-ws-d4-not-yet-provisioned.lambda-url.us-east-1.on.aws"
 }
 
+variable "oauth_function_url_domain" {
+  description = "Host of the E11 Calendar_OAuth_Connect Lambda Function URL — the SECOND CloudFront custom origin (G3). Bare host only (no scheme/slash/path). Routes the 3 OAuth paths (/connect, /oauth/callback, /connection/status). Default is a placeholder so validate/plan pass; the integrator wires the real Function URL host. The redemption paths stay on the default origin."
+  type        = string
+  default     = "placeholder-oauth-not-yet-provisioned.lambda-url.us-east-1.on.aws"
+}
+
 variable "enable_custom_domain" {
   description = "Cert-ISSUED ordering gate. false (Apply 1) = no alias + default *.cloudfront.net cert (validate via the raw d###.cloudfront.net domain); the ACM cert is created PENDING_VALIDATION. true (Apply 2) = attach the redemption_host alias + the ACM cert (requires the cert to have reached ISSUED first, i.e. the operator added the GoDaddy validation CNAME)."
   type        = bool

@@ -1264,6 +1264,11 @@ module "scheduling_redemption_domain_staging" {
   # (dns_alias_record output) to make the host resolve.
   redemption_function_url_domain = module.lambda_scheduling_redemption_handler_staging[0].function_url_domain
   enable_custom_domain           = true
+
+  # G3: the 2nd origin — the E11 Calendar_OAuth_Connect Function URL — for the 3 OAuth paths
+  # (/connect, /oauth/callback, /connection/status). The callback path is what Google redirects
+  # back to, so it must equal the Lambda's OAUTH_REDIRECT_URI + the Google console redirect URI.
+  oauth_function_url_domain = module.lambda_calendar_oauth_connect_staging[0].function_url_domain
 }
 
 # Stranded_Booking_Remediator (lambda#194, MERGED) — B11 coordinator-offboarding
