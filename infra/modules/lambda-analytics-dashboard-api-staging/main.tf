@@ -142,6 +142,17 @@ variable "scheduling_notif_template_table_name" {
   type = string
 }
 
+variable "oauth_function_url" {
+  description = "Full Function URL of Calendar_OAuth_Connect (G3/E0) -> OAUTH_FUNCTION_URL env. The ADA init-token mint appends /connect and /connection/status to it. Empty until PR-1's Lambda exists; the mint handler 503s while empty."
+  type        = string
+  default     = ""
+}
+
+variable "oauth_state_signing_secret_arn" {
+  description = "ARN (with -* suffix) of picasso/scheduling/oauth/_state-signing-key. The ADA init-token mint reads it (GetSecretValue) to state.sign — the SAME key Calendar_OAuth_Connect state.verify reads."
+  type        = string
+}
+
 variable "clerk_jwks_url" {
   description = "Clerk JWKS endpoint. Defaults to the Clerk dev project shared with legacy staging."
   type        = string
@@ -332,6 +343,16 @@ data "aws_iam_policy_document" "exec" {
     ]
   }
 
+  # G3/E0: the init-token mint reads the OAuth state-signing key to state.sign the
+  # init tokens the E16 connect UI uses. GetSecretValue only, on the single
+  # reserved _state-signing-key secret (NOT the per-coordinator OAuth secrets,
+  # NOT the platform app secret — ADA only signs, it never reads/writes those).
+  statement {
+    sid       = "OAuthStateSigningKeyRead"
+    actions   = ["secretsmanager:GetSecretValue"]
+    resources = [var.oauth_state_signing_secret_arn]
+  }
+
   # B5 audit: Tier-3 archive read path. Tightened from the hand-attached
   # ada-archive-read policy to require the tenant-partition prefix shape
   # — sessions/tenant=*/ — so any code bug that uses a flat legacy prefix
@@ -459,6 +480,7 @@ resource "aws_lambda_function" "this" {
       APPOINTMENT_TYPE_TABLE     = var.appointment_type_table_name
       ROUTING_POLICY_TABLE       = var.routing_policy_table_name
       SCHED_NOTIF_TEMPLATE_TABLE = var.scheduling_notif_template_table_name
+      OAUTH_FUNCTION_URL         = var.oauth_function_url
       USE_DYNAMO_CACHE           = "false"
       # Plan Security F8: restrict test-send endpoints to recipients whose
       # email domain is in this comma-list. Without it, an authenticated
