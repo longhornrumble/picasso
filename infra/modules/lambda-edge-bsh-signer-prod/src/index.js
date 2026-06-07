@@ -23,6 +23,13 @@ function signingKey(secret, dateStamp) {
 const rfc3986 = (s) =>
   encodeURIComponent(s).replace(/[!'()*]/g, (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase());
 
+// decodeURIComponent throws on a malformed percent-sequence (e.g. '%ZZ'). Fall
+// back to the raw string so a bad query param can't turn a request into a 502;
+// rfc3986 then encodes the literal '%' as '%25', matching AWS's own normalization.
+const safeDecode = (s) => {
+  try { return decodeURIComponent(s); } catch (_) { return s; }
+};
+
 // Build the SigV4 canonical query string. CloudFront gives request.querystring
 // without the leading '?'. Split each pair on the FIRST '=' only (a value may
 // itself contain '=', e.g. base64 padding), decode, RFC3986-encode key+value,
@@ -35,7 +42,7 @@ function canonicalizeQuery(query) {
       const i = p.indexOf('=');
       const rawK = i === -1 ? p : p.slice(0, i);
       const rawV = i === -1 ? '' : p.slice(i + 1);
-      return [rfc3986(decodeURIComponent(rawK)), rfc3986(decodeURIComponent(rawV))];
+      return [rfc3986(safeDecode(rawK)), rfc3986(safeDecode(rawV))];
     })
     .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
     .map(([k, v]) => `${k}=${v}`)

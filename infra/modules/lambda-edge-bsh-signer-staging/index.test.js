@@ -1,8 +1,9 @@
 'use strict';
 // Unit tests for the BSH Lambda@Edge SigV4 signer (Remedy A #435 hardening).
-// Run: node --test infra/modules/lambda-edge-bsh-signer-staging/index.test.js
+// Run: node --test <this-module>/index.test.js
 // The test file lives at the MODULE ROOT (not src/) so Terraform's archive_file
 // (source_dir = src/) does NOT bundle it into the deployed Lambda zip.
+// Kept byte-identical between the staging and prod signer modules (per-account twins).
 const test = require('node:test');
 const assert = require('node:assert');
 const { handler, signedHeaders, canonicalizeQuery } = require('./src/index.js');
@@ -65,7 +66,9 @@ test('handler error → 502, and the secret key is never logged', async () => {
     const out = await handler(ev);
     assert.strictEqual(out.status, '502');
     assert.ok(logs.length > 0, 'the failure is logged for edge-region debugging');
-    assert.ok(!logs.join(' ').includes(process.env.AWS_SECRET_ACCESS_KEY), 'secret key must not appear in logs');
+    const logged = logs.join(' ');
+    assert.ok(!logged.includes(process.env.AWS_SECRET_ACCESS_KEY), 'secret key must not appear in logs');
+    assert.ok(!logged.includes(process.env.AWS_ACCESS_KEY_ID), 'access key id must not appear in logs');
   } finally {
     console.error = orig;
   }
@@ -120,4 +123,30 @@ test('a different body produces a different signature (body IS signed)', () => {
   const b = signedHeaders({ ...base, body: Buffer.from('{"a":2}') });
   assert.notStrictEqual(a.authorization, b.authorization);
   assert.notStrictEqual(a['x-amz-content-sha256'], b['x-amz-content-sha256']);
+});
+
+// Lambda@Edge ALWAYS runs with temporary STS creds, so AWS_SESSION_TOKEN is set
+// on every real invocation → x-amz-security-token is in the signed header set.
+// This is the production path; the other tests run without a token, so cover it.
+test('session token is signed in (x-amz-security-token) and changes the signature', () => {
+  const now = new Date('2026-06-06T12:00:00.000Z');
+  const base = { method: 'POST', host: 'h', path: '/stream', query: '', body: Buffer.from('{}'), accessKeyId: 'AKIDEXAMPLE', secretAccessKey: 'secret', now };
+  const withToken = signedHeaders({ ...base, sessionToken: 'FwoGZXIvYXdzToken==' });
+  const without = signedHeaders({ ...base });
+  assert.strictEqual(withToken['x-amz-security-token'], 'FwoGZXIvYXdzToken==');
+  assert.match(withToken.authorization, /SignedHeaders=host;x-amz-content-sha256;x-amz-date;x-amz-security-token/);
+  assert.notStrictEqual(withToken.authorization, without.authorization, 'the token changes the signature');
+});
+
+test('handler propagates x-amz-security-token from env (the real prod cred path)', async () => {
+  setCreds();
+  process.env.AWS_SESSION_TOKEN = 'FwoGZXIvYXdzTESTTOKEN==';
+  try {
+    const out = await handler(makeEvent());
+    assert.ok(out.headers['x-amz-security-token'], 'security-token header set on the request');
+    assert.strictEqual(out.headers['x-amz-security-token'][0].value, 'FwoGZXIvYXdzTESTTOKEN==');
+    assert.match(out.headers.authorization[0].value, /x-amz-security-token/);
+  } finally {
+    delete process.env.AWS_SESSION_TOKEN;
+  }
 });
