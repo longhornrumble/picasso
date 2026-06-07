@@ -60,7 +60,8 @@ resource "aws_acm_certificate" "redemption" {
 }
 
 locals {
-  origin_id = "scheduling-redemption-lambda-staging"
+  origin_id       = "scheduling-redemption-lambda-staging"
+  oauth_origin_id = "scheduling-oauth-lambda-staging" # G3: the E11 consent-flow Function URL
 
   # AWS-MANAGED CloudFront policies — global, identical ID in every account
   # (same literals used by cloudfront-widget-staging, verified there 2026-05-16):
@@ -103,8 +104,26 @@ resource "aws_cloudfront_distribution" "redemption" {
     }
   }
 
-  # All six redemption paths hit the same Lambda Function URL → one default
-  # behavior, no per-path ordered behaviors. HTTPS forced; nothing cached.
+  # SECOND custom origin: the E11 Calendar_OAuth_Connect Function URL (G3). The 3 OAuth
+  # paths route here via ordered behaviors; everything else (the redemption paths) stays
+  # on the default origin above. Same Function-URL constraints (AllViewerExceptHostHeader,
+  # https-only).
+  origin {
+    origin_id   = local.oauth_origin_id
+    domain_name = var.oauth_function_url_domain
+
+    custom_origin_config {
+      http_port                = 80
+      https_port               = 443
+      origin_protocol_policy   = "https-only"
+      origin_ssl_protocols     = ["TLSv1.2"]
+      origin_read_timeout      = 30
+      origin_keepalive_timeout = 5
+    }
+  }
+
+  # All six redemption paths hit the same Lambda Function URL → the default behavior.
+  # HTTPS forced; nothing cached.
   default_cache_behavior {
     target_origin_id         = local.origin_id
     viewer_protocol_policy   = "redirect-to-https"
@@ -113,6 +132,24 @@ resource "aws_cloudfront_distribution" "redemption" {
     cache_policy_id          = local.cache_disabled_id
     origin_request_policy_id = local.orp_all_viewer_xh_id
     compress                 = true
+  }
+
+  # G3: route the 3 E11 OAuth paths to the OAuth Function URL origin. Exact path patterns
+  # (the routes carry no subpaths; query strings are not part of the match). The callback
+  # path MUST equal the Google console redirect_uri + the Lambda's OAUTH_REDIRECT_URI.
+  # Same CachingDisabled + AllViewerExceptHostHeader as the redemption default.
+  dynamic "ordered_cache_behavior" {
+    for_each = toset(["/connect", "/oauth/callback", "/connection/status"])
+    content {
+      path_pattern             = ordered_cache_behavior.value
+      target_origin_id         = local.oauth_origin_id
+      viewer_protocol_policy   = "redirect-to-https"
+      allowed_methods          = local.viewer_methods
+      cached_methods           = local.read_methods
+      cache_policy_id          = local.cache_disabled_id
+      origin_request_policy_id = local.orp_all_viewer_xh_id
+      compress                 = true
+    }
   }
 
   # No-alias phase (Apply 1): default *.cloudfront.net cert — a custom ACM cert
