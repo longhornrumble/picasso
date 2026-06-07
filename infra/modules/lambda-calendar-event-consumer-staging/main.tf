@@ -233,6 +233,25 @@ data "aws_iam_policy_document" "consumer_exec" {
     resources = ["arn:${data.aws_partition.current.partition}:secretsmanager:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:secret:picasso/staging/jwt/signing-key-*"]
   }
 
+  # §B7 (G3): the reoffer re-pool path (index.js resolveCandidates) reads each candidate's
+  # per-coordinator OAuth secret `status` to exclude revoked calendars. GetSecretValue on the
+  # per-coordinator prefix only, FENCED off the reserved `_*` secrets (both ARN + short-name
+  # forms, per the G3 Sec-B1 fix) so this consumer can never read the platform-app creds or the
+  # state-signing key. (Booking_Commit_Handler + Stranded_Booking_Remediator already grant this.)
+  statement {
+    sid       = "SecretsReadCoordinatorOAuthStatus"
+    actions   = ["secretsmanager:GetSecretValue"]
+    resources = ["arn:${data.aws_partition.current.partition}:secretsmanager:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:secret:picasso/scheduling/oauth/*"]
+    condition {
+      test     = "StringNotLike"
+      variable = "secretsmanager:SecretId"
+      values = [
+        "arn:${data.aws_partition.current.partition}:secretsmanager:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:secret:picasso/scheduling/oauth/_*",
+        "picasso/scheduling/oauth/_*",
+      ]
+    }
+  }
+
   # SNS: best-effort admin alert on a newly-flagged OOO conflict.
   statement {
     sid       = "SNSPublishOpsAlerts"
