@@ -1366,6 +1366,9 @@ module "lambda_edge_bsh_signer_staging" {
   count  = var.env == "staging" ? 1 : 0
   source = "./modules/lambda-edge-bsh-signer-staging"
 
+  # Literal ARN (not a module output, unlike the prod signer): the staging BSH is
+  # the hand-managed legacy Bedrock_Streaming_Handler_Staging — there is no
+  # bsh-function-staging Terraform module to reference. Intentional asymmetry.
   bsh_function_arn = "arn:aws:lambda:us-east-1:525409062831:function:Bedrock_Streaming_Handler_Staging"
 }
 
