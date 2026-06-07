@@ -15,8 +15,10 @@
 #   • Log group `/aws/lambda/Bedrock_Streaming_Handler` (retention 7, NO KMS —
 #     staging's module adds a CMK; prod has none, so a faithful import must NOT
 #     add one). Its ONE metric filter is owned by ops-alarms-bsh-prod, NOT here.
-#   • `aws_lambda_permission` "allow-api-gateway-invoke-prod" (API GW kgvc8xnewf
-#     → this function) — the second, stable invoke path beside the Function URL.
+#
+# (The `allow-api-gateway-invoke-prod` lambda_permission was adopted here in the
+# follow-on increment, then REMOVED 2026-06-06 as a vestigial grant — #441,
+# Remedy A #435 hardening. See the removal note near the outputs.)
 #
 # NOT MANAGED HERE (by design):
 #   • The execution ROLE `Bedrock-Streaming-Handler-Role` — Tier 1's
@@ -24,14 +26,17 @@
 #     itself stays hand-made. This module only REFERENCES it by ARN.
 #   • Reserved concurrency (none set live), VPC/DLQ/layers/FS (all absent live).
 #   • The Function URL's FunctionURLAllowPublicAccess resource-policy statement
-#     is owned by aws_lambda_function_url.this (auth NONE), NOT a separate
-#     aws_lambda_permission — so only the API-GW statement is modeled below.
+#     is auto-managed by aws_lambda_function_url.this. Under Remedy A (#435) the
+#     URL is AuthType=AWS_IAM, so that statement is condition-gated to
+#     FunctionUrlAuthType=NONE and is INERT (it only re-activates on a rollback to
+#     NONE). No `aws_lambda_permission` resources are modeled here (the sole one,
+#     the API-GW grant, was removed as vestigial — #441).
 #
 # import IDs (operator-run, see docs/runbooks/prod-iac-tier2-bsh-function.md):
 #   aws_lambda_function.this           → Bedrock_Streaming_Handler
 #   aws_lambda_function_url.this        → Bedrock_Streaming_Handler
 #   aws_cloudwatch_log_group.this       → /aws/lambda/Bedrock_Streaming_Handler
-#   aws_lambda_permission.api_gateway   → Bedrock_Streaming_Handler/allow-api-gateway-invoke-prod
+#   (aws_lambda_permission.api_gateway was imported then removed — #441, see below)
 # ─────────────────────────────────────────────────────────────────────────────
 
 variable "function_name" {
@@ -62,11 +67,6 @@ variable "cold_start_force" {
   default     = "1777660112"
 }
 
-variable "api_gateway_id" {
-  description = "REST API GW id whose invoke this function permits (source of the live allow-api-gateway-invoke-prod resource-policy statement)."
-  type        = string
-  default     = "kgvc8xnewf"
-}
 
 # ── Remedy B (#435 streaming-bypass closure) ────────────────────────────────
 # The deployed BSH bundle already contains + calls validateCfOriginHeader; it is
@@ -268,20 +268,16 @@ resource "aws_cloudwatch_log_group" "this" {
   }
 }
 
-# API Gateway invoke permission — the live `allow-api-gateway-invoke-prod`
-# statement on the function's resource policy (the second invoke path beside the
-# Function URL). Modeled verbatim: principal apigateway.amazonaws.com,
-# lambda:InvokeFunction, source_arn for REST API kgvc8xnewf (any stage/method).
-# No source_account / event_source_token live, so none are set (adding them
-# would diverge from the live statement). Permissions carry no tags → a truly
-# zero-change import (like Tier 1's inline policies).
-resource "aws_lambda_permission" "api_gateway" {
-  statement_id  = "allow-api-gateway-invoke-prod"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.this.function_name
-  principal     = "apigateway.amazonaws.com"
-  source_arn    = "arn:aws:execute-api:us-east-1:${data.aws_caller_identity.current.account_id}:${var.api_gateway_id}/*/*"
-}
+# REMOVED 2026-06-06 (#441, Remedy A #435 hardening): the
+# `allow-api-gateway-invoke-prod` statement (apigateway.amazonaws.com →
+# lambda:InvokeFunction, source kgvc8xnewf/*/*) was VESTIGIAL. The prod HTTP API
+# `kgvc8xnewf` ("picasso") has only `/Master_Function` routes → Master_Function:live;
+# its two BSH-targeting integrations are ORPHANED (no route points to them), so no
+# request reaches BSH via API Gateway (verified live). Removing this grant deletes
+# the only remaining IAM-authorized invoke path to BSH beside the Function URL —
+# any future accidental route-to-BSH now FAILS CLOSED. Removing the HCL resource
+# makes the gated apply DESTROY the live resource-policy statement (1 to destroy).
+# (BSH is reached only via its Function URL, now AuthType=AWS_IAM — see Remedy A.)
 
 output "function_arn" {
   value = aws_lambda_function.this.arn
