@@ -60,20 +60,40 @@ CF distribution (1 behavior gains a `lambda_function_association`). The
 `lifecycle.ignore_changes=[origin]` on the CF dist keeps the live `x-picasso-cf-origin`
 header untouched — the L@E assoc is on the BEHAVIOR, not the origin, so it applies cleanly.
 
-**Post-Phase-1 verification:**
+> ⚠️ **TARGET BOTH MODULES — do NOT target only `module.cloudfront_streaming_prod`.**
+> `-target=module.cloudfront_streaming_prod` alone pulls only the signer resources in
+> CloudFront's *dependency closure* (the Lambda function + its role) — it **silently
+> MISSES** `aws_iam_role_policy.invoke_bsh_url` (the `lambda:InvokeFunctionUrl` grant)
+> and the `AWSLambdaBasicExecutionRole` attachment, because the CF distribution does
+> not depend on them. The result is a signer with NO authorization to invoke the URL —
+> which would 403 ALL chat the moment Phase 2 flips to AWS_IAM. (This happened on the
+> 2026-06-06 prod cutover; caught by the mandatory IAM check below and fixed with a
+> corrective `-target=module.lambda_edge_bsh_signer_prod` apply.) If the belt only
+> accepts ONE `-target` value, run TWO applies: **signer module first**, then the CF
+> module.
+
+**Post-Phase-1 verification (ALL are blocking gates):**
 
 ```bash
-# CF distribution fully propagated:
-aws cloudfront get-distribution --id E3G0LSWB1AQ9LP --profile chris-admin --query 'Distribution.Status' --output text   # wait for: Deployed
-# /stream* now carries the L@E assoc:
+# 1) MANDATORY — the signer role MUST carry BOTH IAM policies (the dependency-closure
+#    footgun above silently omits them). If either is missing, the cutover is INCOMPLETE
+#    — run `-target=module.lambda_edge_bsh_signer_prod` before proceeding.
+aws iam list-role-policies --role-name picasso-bsh-edge-signer-role --profile chris-admin            # MUST include: InvokeBshFunctionUrl
+aws iam list-attached-role-policies --role-name picasso-bsh-edge-signer-role \
+  --profile chris-admin --query 'AttachedPolicies[].PolicyName' --output text                        # MUST include: AWSLambdaBasicExecutionRole
+
+# 2) /stream* carries the L@E assoc:
 aws cloudfront get-distribution --id E3G0LSWB1AQ9LP --profile chris-admin \
   --query 'Distribution.DistributionConfig.CacheBehaviors.Items[?PathPattern==`/stream*`].LambdaFunctionAssociations.Items[0].LambdaFunctionARN' --output text
-# Chat still works (AuthType NONE, signer inert):
+
+# 3) BLOCKING — wait for CloudFront to fully propagate the L@E assoc to every edge POP.
+#    Flipping AuthType before this completes 403s requests served by stale POPs.
+until [ "$(aws cloudfront get-distribution --id E3G0LSWB1AQ9LP --profile chris-admin --query 'Distribution.Status' --output text)" = "Deployed" ]; do echo "CF still deploying..."; sleep 30; done
+
+# 4) Chat still works (AuthType NONE, signer inert):
 curl -s -o /dev/null -w "HTTP %{http_code}\n" -X POST https://chat.myrecruiter.ai/stream \
   -H 'Content-Type: application/json' -d '{"tenant_hash":"<a-real-prod-tenant-hash>","user_input":"hi"}'   # expect 200
 ```
-
-⚠️ **Wait for `Status: Deployed`** before Phase 2. L@E replicas must propagate to edge.
 
 ---
 
@@ -120,6 +140,12 @@ in the nearest edge region, e.g. `us-east-1` `/aws/lambda/us-east-1.picasso-bsh-
 
 Expected plan: **update** `aws_lambda_function_url.this` (`authorization_type` NONE →
 AWS_IAM). The flip is instant on the Function URL.
+
+> **Custody note:** if the Phase 1.5 controlled flip left live = AWS_IAM and you did not
+> revert it to NONE, the Phase 2 apply log may show `0 changed` (live already matched).
+> Confirm the apply log shows `authorization_type "NONE" -> "AWS_IAM"` and `1 changed`
+> so you know **Terraform** performed the enforcement (not a leftover CLI flip). If it
+> shows `0 changed`, verify state: `terraform state show 'module.bsh_function_prod[0].aws_lambda_function_url.this' | grep authorization_type` must read `AWS_IAM`.
 
 **Post-Phase-2 verification (the #435 closure proof on prod):**
 

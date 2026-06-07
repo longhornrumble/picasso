@@ -66,7 +66,8 @@ module "ops_alarms_bsh_prod" {
   count  = var.env == "production" ? 1 : 0
   source = "./modules/ops-alarms-bsh-prod"
 
-  ops_alerts_topic_arn = "arn:aws:sns:us-east-1:614056832592:picasso-ops-alerts"
+  ops_alerts_topic_arn      = "arn:aws:sns:us-east-1:614056832592:picasso-ops-alerts"
+  streaming_distribution_id = "E3G0LSWB1AQ9LP" # Remedy A (#435): /stream 5xx signer-failure alarm
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
