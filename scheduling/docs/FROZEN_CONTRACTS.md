@@ -694,6 +694,44 @@ async function generateReengagementCopy({ purpose, booking, tenant, rescheduleUr
 //   state-signing secrets, the Google redirect_uri registration, Flag B provisioning, and the §B7 exclusion filter.
 ```
 
+### E0 — scheduling OAuth init-token MINT (integrator glue; WS-E-PORTAL G3) — **LOCKED 2026-06-06** (integrator)
+```js
+// The Clerk-authed dashboard backend (Analytics_Dashboard_API) mints the short-lived init token the
+// E16 calendar-connect UI uses to drive the public §E11 Calendar_OAuth_Connect flow. This formalizes
+// the DEPLOY_NOTES.md §5 "proposed §E0" against the SHIPPED reality. Backend: lambda#263 + hardening
+// lambda#265; IaC picasso#468 (OAUTH_FUNCTION_URL env + state-key GetSecretValue grant) + picasso#471
+// (IAM short-name fence). Consumed by the WS-E-PORTAL E16 surface.
+//
+// ENDPOINT (ADA; Clerk-authed; ANY authenticated staff; tenant + identity from AUTH):
+//   GET /scheduling/connection/init  → 200 { connect_url, status_url, expires_in:300 }
+//     connect_url = `${OAUTH_FUNCTION_URL}/connect?init=<token>`
+//     status_url  = `${OAUTH_FUNCTION_URL}/connection/status?init=<token>`   (SAME token in both)
+//   Feature-gated: validate_feature_access(tenant_id,'dashboard_scheduling') BEFORE minting (403 if absent).
+//   400 if no verified caller identity / no verified tenant; 503 if OAUTH_FUNCTION_URL unset.
+//
+// ⚠ SELF-MINT ONLY (anti-slot-poisoning): coordinator_id = lower(verified Clerk email),
+//   coordinator_email = verified Clerk identity, tenant_id from the verified org — the handler takes
+//   NO body, so identity is structurally un-spoofable. A caller can only ever connect THEIR OWN
+//   calendar. (An ADMIN viewing ANOTHER staff member's connection status is a SEPARATE read — NOT this
+//   mint; deferred contract extension.)
+//
+// TOKEN WIRE FORMAT (matches Calendar_OAuth_Connect/state.js byte-for-byte — cross-language proven by
+//   state-python-compat.test.js running the REAL state.verify on a Python-minted golden):
+//     `<payloadB64url>.<sigB64url>`
+//     payload = compact JSON { typ:'init', tenant_id, coordinator_id, coordinator_email, iat, exp, nonce }
+//     b64url = urlsafe base64, '=' padding stripped;  sig = HMAC-SHA256(rawKeyString, payloadB64) b64url.
+//   The HMAC key is the SECRET'S RAW STRING (state.verify re-HMACs the received payloadB64 literally, so
+//   JSON key order is irrelevant). typ is 'init' (the §E11 sketch's "type:'state'" was imprecise — the
+//   /connect route mints its OWN typ:'state' token from the verified init). The token is pure base64url +
+//   a '.' (all RFC-3986-unreserved), so it rides the query string unencoded.
+//   Key: `picasso/scheduling/oauth/_state-signing-key` (a SEPARATE trust domain from the booking JWT key).
+//
+// ◀ R1 SINGLE-USE = BETA-GATED (per §E11; waived for the single-coordinator staging pilot): the init token
+//   is replay-able within its 300s TTL. Before multi-user/prod: conditional PutItem of the token `nonce`
+//   to the EXISTING `picasso-token-jti-blacklist` (§B4) + drop coordinator_email from the payload / disable
+//   D3 query-string logging (the email is base64-readable in CloudFront logs). NOT a staging blocker.
+```
+
 ## E — SEAM RESOLUTIONS + integrator-glue + sequencing — **LOCKED 2026-06-05** (post seam dry-run; ratifies the 4 worker escalations + the 4-WO audit)
 
 The seam dry-run found the original work-orders under-specified the cross-workstream seams (+ 2 factual errors: §E5 above, OAUTH secret-shape below). Resolutions, authoritative — workers code to THESE:
@@ -746,3 +784,4 @@ notify.js `reengagement` kind (+ its STOP footer) · the `selectChannels`-into-`
 | 2026-06-06 | **§E13c per-staff scheduling settings write + tag-vocabulary read LOCKED (integrator; WS-E-PORTAL G1/G4).** The staff-side complement to §E13b — §E13b creates Teams (= a `scheduling_tag`) but a Team routes to NOBODY until that tag is assigned to staff; §E13c assigns it, completing the routing loop (candidate-resolver reads `scheduling_tags` off the employee registry). Endpoints (Analytics_Dashboard_API, Clerk-authed, tenant from AUTH not path): `PATCH /scheduling/employees/{employee_id}` (G1) writes ADDITIVE fields on the AdminEmployee registry record via `tenant_registry_ops.update_employee` — `scheduling_tags` (ADMIN-only, FAIL-CLOSED vocab → 422 {unknownTags}), `bookable_override` ('off'|null, ADMIN-only force-OFF; `bookable` itself is DERIVED, never written), `calendar_email_override` (SELF-or-ADMIN per §8 matrix); per-field auth enforced BEFORE write (no admin-field smuggling). `GET /scheduling/tag-vocabulary` (G4, ADMIN-only) exposes the §E13b vocab as a dropdown source. Read: `GET /team/members` projection now surfaces the 3 fields (additive, schema-discipline defaults). ⚠ DELIBERATE DIVERGENCE from the G1 ask's "same optimistic-lock as §E13b": NO lock token — the shared registry update path has no conditional-write support and per-staff edits have no commit-owned state (low-contention); registry stamps `updatedAt` globally. NO new IaC (writes the table + reads the config-S3 vocab ADA already does). OUT: G3 connection-status + G5 metrics (deferred). Backend: lambda#259; consumed by the WS-E-PORTAL E13 Settings sub-tab. |
 | 2026-06-06 | **§E14 scheduling notification-template overrides LOCKED (integrator; WS-E-PORTAL G2).** Per-tenant override of the scheduling lifecycle-notice EMAIL copy (`reschedule_link`/`reoffer`/`cancel_notice` — the 3 that dispatch with a full subject+body). ⚠ STORAGE = DDB (`picasso-scheduling-notif-template-{env}`, PK tenantId/SK moment), **NOT** the form-template store the §E13b OUT-note cited — that store is form-scoped in tenant-config-S3 AND staging config-S3 is read-only (writes denied), so a config editor couldn't hold a moment key nor save on staging; scheduling config lives in DDB per §E13b. Endpoints (ADA, Clerk-authed, ADMIN-only, tenant from AUTH): `GET /scheduling/notification-templates` (effective=override-over-default + is_override + default echo + {{variables}}) + `PATCH /scheduling/notification-templates/{moment}` (upsert-MERGE; partial save preserves others; empty-string clears; NO optimistic lock per §E13c; modified_at stamped; unknown moment 404; bad field 400). ⚠ COMPLIANCE INVARIANT: notify.js appends STOP AFTER render OUTSIDE the editable body → an override can NEVER drop the unsubscribe line. notify.js reads the override at dispatch (defaultLoadTemplateOverride GetItem, FAIL-SAFE → local default on any miss/error, try/caught so it never blocks a send). OUT v1: reengagement (AI body), SMS (WS-E-TCPA), confirmation/reminders (WS-E-REMIND, not dispatched). Editor-display defaults mirror notify.js (parity-tested); follow-up = extract to shared JSON to kill drift. Backend lambda#261 + IaC picasso#459 (table + ADA write grant + Calendar_Event/Lifecycle_Consumer read grants + env); consumed by the WS-E-PORTAL E14 editor. |
 | 2026-06-06 | **§E14 GET-shape prose CORRECTED to match deployed code (doc-only; flagged by WS-E-PORTAL dash#15, integrator-confirmed against lambda#261 on lambda main).** The §E14 prose listed `available_variables:[...]` as a TOP-LEVEL sibling of `moments`/`stop_footer_note`; the deployed `handle_scheduling_notification_templates_get` (lambda_function.py:4383) returns it **PER-MOMENT** (inside each `moments[<moment>]` object = the variables valid for that moment), with the top-level response being only `{ moments, stop_footer_note }`. The Portal built the editor to the deployed reality (correct) and flagged the prose; this row + the §E14 GET line are the doc fix. No code change, no consumer re-sync (the shipped UI already matches). |
+| 2026-06-06 | **§E0 scheduling OAuth init-token MINT LOCKED (integrator; WS-E-PORTAL G3).** Formalizes the DEPLOY_NOTES §5 "proposed §E0" against the SHIPPED reality: `GET /scheduling/connection/init` (ADA, Clerk-authed, any authenticated staff, feature-gated `dashboard_scheduling`) → `{connect_url, status_url, expires_in:300}`. SELF-MINT only — coordinator identity from the verified Clerk auth (no body), anti-slot-poisoning. Token wire format matches Calendar_OAuth_Connect/state.js byte-for-byte (cross-language proven), `typ:'init'` (correcting the §E11 sketch's imprecise `type:'state'` — /connect mints its own `state` token from the verified init). Backend lambda#263 + hardening lambda#265 (phase-audit: SM-error no-leak, strip-email guard, feature gate, bounded SM client, whitespace-key reject, wrong_type cross-lang test, CI auto-deploy); IaC picasso#468 (env+grant) + picasso#471 (IAM short-name fence). DEFERRED (Beta): R1 single-use (replay-able within 300s TTL; staging-pilot accepted) + admin-views-other-staff status (separate read). Consumed by the WS-E-PORTAL E16 surface. |
