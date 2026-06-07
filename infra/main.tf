@@ -1201,6 +1201,36 @@ module "lambda_scheduling_redemption_handler_staging" {
   config_bucket_name       = module.tenant_config_staging[0].bucket_name
 }
 
+# Scheduling sub-phase E Task E11 — Calendar_OAuth_Connect (lambda#248, MERGED).
+# The per-staff Google Calendar 3LO consent flow + its public Function URL — the
+# 2nd custom origin behind the WS-D3 staging.schedule.myrecruiter.ai dist (the D3
+# routing for /connect, /oauth/callback, /connection/status is a SEPARATE PR-2 on
+# the redemption-domain module). Dedicated least-priv role (FROZEN_CONTRACTS §E11 +
+# Calendar_OAuth_Connect/DEPLOY_NOTES.md): read the 2 reserved platform secrets,
+# manage per-coordinator OAuth secrets (fenced off the reserved _* prefix), invoke
+# the B5 watch onboarder, GetObject the tenant-config Flag-A gate. Code ships via
+# lambda-repo CI (deploy-staging.yml — add Calendar_OAuth_Connect to the matrix +
+# dispatch options, then deploy onto this shell). OPERATOR-provision before first
+# live connect: the _platform/google-app secret (Google client creds + the
+# /oauth/callback redirect URI registered in Google Cloud Console) + the
+# _state-signing-key secret. After first apply: add the manual Function URL 2nd
+# resource-policy statement via the Console (see the module banner).
+module "lambda_calendar_oauth_connect_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/lambda-calendar-oauth-connect-staging"
+
+  # Tenant config bucket — featureGate.js Flag-A gate reads tenants/{id}/config.json.
+  tenant_config_bucket_arn = module.tenant_config_staging[0].bucket_arn
+  config_bucket_name       = module.tenant_config_staging[0].bucket_name
+
+  # B5 watch onboarder — best-effort invoke after a successful connect.
+  onboarder_function_arn  = module.lambda_calendar_watch_onboarder_staging[0].onboarder_function_arn
+  onboarder_function_name = module.lambda_calendar_watch_onboarder_staging[0].onboarder_function_name
+
+  # Ops alerts SNS topic (Errors/Throttles alarm target only — the handler does not publish).
+  ops_alerts_topic_arn = module.ops_alarms_master_function_staging[0].topic_arn
+}
+
 # Scheduling redemption edge — staging.schedule.myrecruiter.ai (WS-D3 #347, sub-phase D §13.8).
 # The public HTTPS edge that fronts the WS-D4 token-redemption Lambda (the six /cancel
 # /reschedule /resume /attended/* endpoints). The cancel/reschedule email links minted by
