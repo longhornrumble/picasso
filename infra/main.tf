@@ -127,7 +127,10 @@ module "lambda_edge_bsh_signer_prod" {
   count  = var.env == "production" ? 1 : 0
   source = "./modules/lambda-edge-bsh-signer-prod"
 
-  bsh_function_arn = "arn:aws:lambda:us-east-1:614056832592:function:Bedrock_Streaming_Handler"
+  # Module output (not a literal ARN) so Terraform has a real dependency edge to
+  # the prod BSH function — same value, but the signer's invoke grant now tracks
+  # a function replace/re-import instead of racing it.
+  bsh_function_arn = module.bsh_function_prod[0].function_arn
 }
 
 module "cloudfront_streaming_prod" {
