@@ -183,6 +183,13 @@ data "aws_iam_policy_document" "oauth_exec" {
   # the per-coordinator writer cannot write _platform/_state-signing-key even
   # though the resource glob would otherwise include them. Two independent gates
   # (this + the code-level reserved-`_`-prefix guard in secrets.buildSecretPath).
+  #
+  # G3 audit Sec-B1: the callers pass the SHORT name (e.g.
+  # "picasso/scheduling/oauth/_state-signing-key"), not the full ARN, to
+  # GetSecretValue. Whether IAM normalizes secretsmanager:SecretId to the ARN
+  # before evaluating the condition is version/path-dependent, so a single
+  # ARN-format pattern could leave a short-name bypass. Enumerate BOTH the ARN
+  # and the short-name forms so the `_*` fence holds regardless.
   statement {
     sid = "ManagePerCoordinatorOAuthSecrets"
     actions = [
@@ -199,6 +206,7 @@ data "aws_iam_policy_document" "oauth_exec" {
       variable = "secretsmanager:SecretId"
       values = [
         "arn:${data.aws_partition.current.partition}:secretsmanager:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:secret:picasso/scheduling/oauth/_*",
+        "picasso/scheduling/oauth/_*",
       ]
     }
   }

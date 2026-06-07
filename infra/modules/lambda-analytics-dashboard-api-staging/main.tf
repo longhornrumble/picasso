@@ -149,7 +149,7 @@ variable "oauth_function_url" {
 }
 
 variable "oauth_state_signing_secret_arn" {
-  description = "ARN (with -* suffix) of picasso/scheduling/oauth/_state-signing-key. The ADA init-token mint reads it (GetSecretValue) to state.sign — the SAME key Calendar_OAuth_Connect state.verify reads."
+  description = "ARN (with -* suffix) of picasso/scheduling/oauth/_state-signing-key. The ADA init-token mint reads it (GetSecretValue) to state.sign — the SAME key Calendar_OAuth_Connect state.verify reads. OPERATOR PRE-PROVISION: the secret at this ARN must exist before the mint runs (it is created out-of-band, NOT Terraform-managed, so its value never enters tfstate). See Calendar_OAuth_Connect/DEPLOY_NOTES.md §4."
   type        = string
 }
 
