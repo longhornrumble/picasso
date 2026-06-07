@@ -32,6 +32,12 @@ variable "streaming_waf_name" {
   default     = "picasso-streaming-waf"
 }
 
+variable "streaming_distribution_id" {
+  description = "Prod chat CloudFront distribution id (for the Remedy A /stream 5xx alarm)."
+  type        = string
+  default     = "E3G0LSWB1AQ9LP"
+}
+
 # ─────────────────────────────────────────────────────────────────────────────
 # #10 — metric filter: count `analytics_write_failure` log lines.
 # Quoted-substring pattern, NOT a JSON `{$.evt=...}` pattern: the Node Lambda
@@ -70,6 +76,43 @@ resource "aws_cloudwatch_metric_alarm" "analytics_write_failure" {
   comparison_operator = "GreaterThanOrEqualToThreshold"
   evaluation_periods  = 1
   treat_missing_data  = "notBreaching"
+
+  alarm_actions = [var.ops_alerts_topic_arn]
+  ok_actions    = [var.ops_alerts_topic_arn]
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Remedy A (#435) — alarm: prod chat CloudFront 5xx (the signer-failure signal).
+# The Remedy A origin-request Lambda@Edge signer SigV4-signs every /stream request.
+# If it ever throws / mis-signs / fails to invoke the now-AWS_IAM Function URL,
+# CloudFront returns 5xx to the viewer and BSH logs NOTHING — so the existing
+# analytics_write_failure alarm (which keys on BSH logs) cannot see it. This is
+# the aggregate signal that catches that silent-failure class.
+#
+# WHY CF 5xx, not a Lambda@Edge `Errors` alarm: L@E publishes function error
+# metrics PER EDGE REGION (dims FunctionName+Region) — there is no single clean
+# dimension set that aggregates them, so a one-dimension Lambda alarm would
+# silently never fire (false confidence, worse than none). CloudFront
+# 5xxErrorRate (a default per-distribution metric in us-east-1) is the robust
+# aggregate. 5xxErrorRate is a percent; healthy /stream = ~0. Threshold 5% over
+# 5min catches a signer regression fast without flapping on a lone transient.
+# ─────────────────────────────────────────────────────────────────────────────
+resource "aws_cloudwatch_metric_alarm" "streaming_cf_5xx" {
+  alarm_name          = "WARN! Picasso prod chat CloudFront 5xx (Remedy A signer/origin)"
+  alarm_description   = "Prod chat distribution E3G0LSWB1AQ9LP is returning 5xx. After Remedy A (#435) the most likely cause is the origin-request Lambda@Edge signer (picasso-bsh-edge-signer) failing/mis-signing the AWS_IAM BSH Function URL — BSH logs nothing in that case. Check the signer's edge-region CloudWatch logs (/aws/lambda/<region>.picasso-bsh-edge-signer) and the BSH Function URL AuthType. Rollback per docs/runbooks/remedy-a-prod-cutover.md (set streaming_function_url_auth_type=NONE)."
+  namespace           = "AWS/CloudFront"
+  metric_name         = "5xxErrorRate"
+  statistic           = "Average"
+  period              = 300
+  threshold           = 5
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  evaluation_periods  = 1
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    DistributionId = var.streaming_distribution_id
+    Region         = "Global"
+  }
 
   alarm_actions = [var.ops_alerts_topic_arn]
   ok_actions    = [var.ops_alerts_topic_arn]

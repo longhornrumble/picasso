@@ -572,6 +572,93 @@ async function selectChannels({ tenantId, attendee, moment, nowLocal, tenantPref
 //   scheduling.json owns the closed set; staging config is read-only). Deletion of appt-types/policies is v2 (orphan-FK risk → defer).
 ```
 
+### E13c — per-staff scheduling settings write + tag-vocabulary read (integrator glue; WS-E-PORTAL G1/G4) — **LOCKED 2026-06-06** (integrator)
+```
+// The staff-side complement to §E13b. §E13b creates Teams (= a scheduling_tag) + Appointment Types, but a Team routes to
+// NOBODY until that tag is assigned to staff. These endpoints assign it. Consumed by the E13 Settings sub-tab UI (ui_plan
+// Surface 3). Backend: lambda#259 (Analytics_Dashboard_API). Resolves WS-E-PORTAL_GLUE_REQUESTS.md G1 + G4.
+//
+// ENDPOINTS (Analytics_Dashboard_API; Clerk-authed; tenant from the AUTHENTICATED session — super-admin via X-Tenant-Override,
+//   NOT a path tenantId; this mirrors §E7/§E13b + the /team/* surfaces, and is why the path is /{employee_id} not /{tenantId}/{employee_id}):
+//   GET   /scheduling/tag-vocabulary                  → { scheduling_tag_vocabulary: [tag] }   (G4; ADMIN-only; reads config S3, same source as §E13b vocab)
+//   PATCH /scheduling/employees/{employee_id}         body=<settings> → 200 { employee_id, ...written_fields }   (G1)
+//
+// G1 WRITE FIELDS (all optional; >=1 required; writes ADDITIVE fields on the AdminEmployee registry record via
+//   tenant_registry_ops.update_employee — NOT a standalone scheduling table; the registry is where the booking router's
+//   candidate-resolver reads scheduling_tags):
+//   scheduling_tags          : string[]      ADMIN-only; FAIL-CLOSED vocab validation (each tag ∈ scheduling_tag_vocabulary)
+//                                             → 422 { error, unknownTags }. deduped, first-seen order. [] clears.
+//   bookable_override        : 'off' | null  ADMIN-only force-OFF. `bookable` ITSELF IS DERIVED (D3: connected calendar AND
+//                                             on >=1 team) and is NEVER written here — this only force-disables. null clears.
+//   calendar_email_override  : string | null SELF (caller's auth email == the target record's email) OR ADMIN. validated as an
+//                                             email, normalized trim+lowercase. null/'' clears.
+//   Per §8 permission matrix (scheduling_ui_plan.md, resolved 2026-05-02): tags + bookable_override admin-curated;
+//   calendar_email_override staff-self-editable. Per-field auth is enforced BEFORE any write, so a member cannot smuggle an
+//   admin-only field alongside their own calendar email (mixed body with any admin field + non-admin caller → 403, no write).
+//
+// G1 READ: handle_team_members_list (GET /team/members) projection now includes scheduling_tags (def []),
+//   calendar_email_override (def null), bookable_override (def null). Additive; readers tolerate absence (schema discipline) so
+//   pre-G1 records read as defaults. This is the list the E13 UI renders + edits against.
+//   ⚠ calendar_email_override is PII and is READ-GATED admin-or-self (an admin sees every record's value; a member sees only
+//     their OWN record's value, matched by auth email; everyone else gets null) — symmetric with its admin-or-self WRITE gate.
+//     scheduling_tags + bookable_override are operational (not PII) and are visible to all team members.
+//
+// ⚠ NO OPTIMISTIC-LOCK TOKEN (deliberate divergence from the G1 ask's "same lock as §E13b"): §E13b's lock guards standalone
+//   tables with commit-owned round-robin state; the employee registry has NO commit-owned scheduling state and its shared
+//   update path (tenant_registry_ops.update_employee, used by role/status writes) has no conditional-write support. Per-staff
+//   edits are low-contention. Adding a conditional-write protocol to a shared registry module = over-engineering + out of
+//   scheduling's ownership. Registry stamps updatedAt globally. If hard locking is later required, that is a registry-module
+//   enhancement (separate slice); a worker may dispute via §C.
+//
+// NO NEW IaC: writes the employee table ADA already writes (role/status) + reads config-S3 vocab ADA already reads (§E13b).
+// OUT OF SCOPE: tag-VOCABULARY editing (config-builder owns it, §E13b OUT-note); G3 connection-status + G5 metrics (deferred, see WS-E-PORTAL_GLUE_REQUESTS.md).
+```
+
+### E14 — scheduling notification-template overrides (integrator glue; WS-E-PORTAL G2) — **LOCKED 2026-06-06** (integrator)
+```
+// Per-tenant override of the scheduling lifecycle-notice EMAIL copy. Consumed by the E14 editor UI.
+// Backend: lambda#261 (notify.js + Analytics_Dashboard_API) + IaC picasso#459. Resolves WS-E-PORTAL_GLUE_REQUESTS.md G2.
+//
+// ⚠ STORAGE = DDB, NOT the form-template store (corrects the §E13b OUT-note's "reuse PATCH /settings/notifications/
+//   templates/{form_id}"): that store is config.conversational_forms[form_id].notifications in tenant-config-S3 —
+//   form-SCOPED (the GET walks conversational_forms; the PATCH writes into a form block) AND staging config-S3 is a
+//   read-only prod replica (PutObject DENIED), so a config-backed editor could neither hold a non-form "moment" key nor
+//   be saved/tested on staging. Scheduling config lives in DDB per §E13b; §E14 follows suit.
+//   Table: picasso-scheduling-notif-template-{env} (PK tenantId · SK moment; no GSI). Row:
+//     { tenantId, moment, subject?, body_text?, body_html?, modified_at:{at,by} }  (any subset of the 3 body fields)
+//
+// ENDPOINTS (Analytics_Dashboard_API; Clerk-authed; ADMIN/super_admin ONLY via _require_write_role; tenant from AUTH):
+//   GET   /scheduling/notification-templates            → { moments: { <moment>: { subject, body_text, body_html,
+//                                                            is_override:bool, default:{subject,body_text,body_html},
+//                                                            modified_at } }, available_variables:[...], stop_footer_note }
+//         (EFFECTIVE copy = the override field if a non-empty string, else the default; is_override per moment.)
+//   PATCH /scheduling/notification-templates/{moment}    body={subject?,body_text?,body_html?} → 200 { moment, template }
+//         (UPSERT-MERGE: UpdateItem SET of only the provided fields — a partial save preserves the others; an empty-string
+//          field CLEARS that field's override [read then falls back to default]. NO optimistic lock [low-contention per-
+//          tenant config, consistent with §E13c — last-write-wins]; modified_at stamped. Unknown moment → 404; non-string
+//          or >5000-char field → 400; no fields → 400.)
+//
+// v1 MOMENTS (the 3 lifecycle notices that actually dispatch with a full subject+body):
+//   reschedule_link · reoffer · cancel_notice.   OUT OF SCOPE v1: reengagement (body is AI-generated by WS-E-COPY —
+//   not a template-edit surface), SMS templates (WS-E-TCPA owns the consent/footer spine), and confirmation /
+//   reminder_24h / reminder_1h (those don't dispatch until WS-E-REMIND lands — building an editor for them = editing a
+//   template that never sends).
+//
+// ⚠ COMPLIANCE INVARIANT (STOP can never be removed by an override): notify.js appends the STOP/unsubscribe line AFTER
+//   render, OUTSIDE the editable subject/body. The override stores body WITHOUT STOP; the editor shows stop_footer_note
+//   ("appended automatically and cannot be removed"). For SMS (when it lands) the STOP/HELP footer is WS-E-TCPA's, same stance.
+//
+// notify.js READ (consumed at dispatch): defaultLoadTemplateOverride GetItem(tenantId, moment) on SCHED_NOTIF_TEMPLATE_TABLE,
+//   merged over the local default (override field wins only when a non-empty string). FAIL-SAFE — non-overridable kind /
+//   unset table env / miss / ANY error → null → local default; the loader is also try/caught in dispatch so it can NEVER
+//   block a send. Grant+env on the dispatchers (Calendar_Event_Consumer, Calendar_Lifecycle_Consumer) is picasso#459; an
+//   un-wired dispatcher simply always uses defaults.
+//
+// ⚠ EDITOR-DISPLAY DEFAULTS are mirrored in ADA (_SCHED_NOTIF_DEFAULTS) from notify.js TEMPLATES (STOP excluded). notify.js
+//   is the AUTHORITATIVE default; the ADA copy is only the editor's unedited/"reset" preview. A parity test guards the moment
+//   keys. Follow-up (non-blocking): extract the defaults to a shared JSON both sides read to remove the drift risk.
+```
+
 ### E8 — re-engagement copy module (produced by WS-E-COPY) — canonical §11.4
 ```js
 // module: shared/scheduling/reengagement.js  (PURE-LOGIC, Bedrock via DI — NOT in BSH → zero collision with WS-E-TEXTEN)
@@ -655,3 +742,5 @@ notify.js `reengagement` kind (+ its STOP footer) · the `selectChannels`-into-`
 | 2026-06-05 | **§E weave-audit ratifications (Wave E-1 PR audits; integrator-owned, none forked — §C).** From the TCPA #246, OAUTH #248, and CI6 #245 weave audits: (1) **SEAM-1 ratified** — `quietHours` stays a param defaulted to `{20,8}` (= the fixed 8pm–8am window; custom = forward-compat override); the module's tz fallback is 2-hop `booking.timezone → UTC`, and the **WS-E-REMIND fire-time caller owns** resolving the tenant `scheduling.timezone` middle hop into `booking.timezone` (SEAM-1 omits `tenantPrefs` to keep `selectChannels` pure); the unused `tenantId` param may be kept-with-JSDoc or dropped (worker's choice, both faithful). (2) **§B3 consumer-facing chip clarified** — `generateSlots` emits per-slot `resourceId`, but the chip that reaches downstream consumers (post C6-merge + pool.select) carries `candidateResourceIds:[…]`; consumers read `candidateResourceIds`, never `chip.resourceId` (closes the WS-E-CI6 stale-§B3 flag; signature unchanged). (3) **§E11 added + LOCKED** — the Google 3LO consent flow + the integrator-minted init-token contract (HMAC-signed, 300s TTL, `_state-signing-key`, R1 single-use Beta-gated) + §B7 revoked→pool-exclusion + the `invalid_client`-is-platform-alarm-not-revocation rule, so the Analytics_Dashboard_API mint glue has a frozen spec. (4) **§E6 lock CONFIRMED** — `is_synthetic` was already locked under the 2026-06-05 §E LOCK (the CI6 "§E6 only in build-plan" flag was stale). SEAM-3 secret shape unchanged. No consumer re-sync needed (all clarifications additive). |
 | 2026-06-06 | **§E7 scope vocab RATIFIED (lambda#255 weave + 3-reviewer audit; integrator-owned).** `scope=staff|admin` → **`staff_self|tenant_aggregate`** to match the shipped dash#11 UI (clearer + already coded; the endpoint was built to it). Behavior unchanged from the §E7 intent: `staff_self`→own coordinator_email (lower-cased), `tenant_aggregate`→bounded ±90d, ADMIN-only (server-enforced). Also folded the audit hardening into the spec: per-page Limit (cap 200), server-validated tenant-bound cursor, tenant_id always from session. Endpoint built + audited (no security blockers) + merged to lambda main (#255). Owed before dash#11 goes live: IAM `dynamodb:Query` grant on the Analytics_Dashboard_API role + the 2 GSIs, BOOKING_TABLE env confirm, pii-inventory read-surface line, dash#11 `pagination` dead-type cleanup. |
 | 2026-06-06 | **§E13b write contract + vocab-validation LOCKED (integrator; unblocks WS-E-PORTAL Wave E-3 E13 UI).** The SEAM-5 "E13b write endpoints + vocabulary-validation Lambda" glue, made precise by reverse-engineering the LIVE booking-router read path (the canonical §10.1 sketch under-specified the stored shape). Resolutions: (1) **WRITES THE DDB TABLES** (`picasso-appointment-type-{env}`/`picasso-routing-policy-{env}`), never tenant config S3 — confirmed the runtime source; tables were fixture-seeded only, so E13b is the real admin write path. (2) **RUNTIME `tag_conditions` shape = `{operator,values[]}`** (routing.js `matchesCondition`), NOT the config-schema authoring `{tag}`; the endpoint builds `{operator:'in_any', values:[teamTag]}` from a UI team-selection. (3) **`candidate_resource_ids` on fixture rows is a FIXTURE ARTIFACT** — production resolves candidates from the employee-registry by `scheduling_tags`, not from the policy row; the write API does NOT write it. (4) **round-robin state is commit-owned** — the write API never sets/clears `last_assigned_*`. (5) **vocab-validation = PYTHON in `Analytics_Dashboard_API`** (in-handler `_validate_tag_conditions`, NOT a Node module and NOT a separate Lambda — the write endpoints are in the Python ADA Lambda; the SEAM-5 "Lambda" wording predates this), reads the closed set from config S3 `scheduling.scheduling_tag_vocabulary` (read-only OK on staging), FAIL-CLOSED 422 on unknown tags. (6) **`modified_at:{at,by}` optimistic lock** = the SR-1/Q5 dual-write guard (PATCH conditional on echoed `If-Match`; POST `attribute_not_exists`). (7) **ADMIN-only** (`_require_write_role`). OUT: E14 reuses the shipped template-update endpoint; E13 vocabulary EDITING stays in config-builder/hand-edit (staging config read-only); delete = v2. ⚠ STAGING CONSTRAINT: tagged/team policies need a pre-seeded prod-config vocabulary; solo policies (empty `tag_conditions`) always work. Backend: lambda#TBD; consumed by the WS-E-PORTAL E13 Settings sub-tab. |
+| 2026-06-06 | **§E13c per-staff scheduling settings write + tag-vocabulary read LOCKED (integrator; WS-E-PORTAL G1/G4).** The staff-side complement to §E13b — §E13b creates Teams (= a `scheduling_tag`) but a Team routes to NOBODY until that tag is assigned to staff; §E13c assigns it, completing the routing loop (candidate-resolver reads `scheduling_tags` off the employee registry). Endpoints (Analytics_Dashboard_API, Clerk-authed, tenant from AUTH not path): `PATCH /scheduling/employees/{employee_id}` (G1) writes ADDITIVE fields on the AdminEmployee registry record via `tenant_registry_ops.update_employee` — `scheduling_tags` (ADMIN-only, FAIL-CLOSED vocab → 422 {unknownTags}), `bookable_override` ('off'|null, ADMIN-only force-OFF; `bookable` itself is DERIVED, never written), `calendar_email_override` (SELF-or-ADMIN per §8 matrix); per-field auth enforced BEFORE write (no admin-field smuggling). `GET /scheduling/tag-vocabulary` (G4, ADMIN-only) exposes the §E13b vocab as a dropdown source. Read: `GET /team/members` projection now surfaces the 3 fields (additive, schema-discipline defaults). ⚠ DELIBERATE DIVERGENCE from the G1 ask's "same optimistic-lock as §E13b": NO lock token — the shared registry update path has no conditional-write support and per-staff edits have no commit-owned state (low-contention); registry stamps `updatedAt` globally. NO new IaC (writes the table + reads the config-S3 vocab ADA already does). OUT: G3 connection-status + G5 metrics (deferred). Backend: lambda#259; consumed by the WS-E-PORTAL E13 Settings sub-tab. |
+| 2026-06-06 | **§E14 scheduling notification-template overrides LOCKED (integrator; WS-E-PORTAL G2).** Per-tenant override of the scheduling lifecycle-notice EMAIL copy (`reschedule_link`/`reoffer`/`cancel_notice` — the 3 that dispatch with a full subject+body). ⚠ STORAGE = DDB (`picasso-scheduling-notif-template-{env}`, PK tenantId/SK moment), **NOT** the form-template store the §E13b OUT-note cited — that store is form-scoped in tenant-config-S3 AND staging config-S3 is read-only (writes denied), so a config editor couldn't hold a moment key nor save on staging; scheduling config lives in DDB per §E13b. Endpoints (ADA, Clerk-authed, ADMIN-only, tenant from AUTH): `GET /scheduling/notification-templates` (effective=override-over-default + is_override + default echo + {{variables}}) + `PATCH /scheduling/notification-templates/{moment}` (upsert-MERGE; partial save preserves others; empty-string clears; NO optimistic lock per §E13c; modified_at stamped; unknown moment 404; bad field 400). ⚠ COMPLIANCE INVARIANT: notify.js appends STOP AFTER render OUTSIDE the editable body → an override can NEVER drop the unsubscribe line. notify.js reads the override at dispatch (defaultLoadTemplateOverride GetItem, FAIL-SAFE → local default on any miss/error, try/caught so it never blocks a send). OUT v1: reengagement (AI body), SMS (WS-E-TCPA), confirmation/reminders (WS-E-REMIND, not dispatched). Editor-display defaults mirror notify.js (parity-tested); follow-up = extract to shared JSON to kill drift. Backend lambda#261 + IaC picasso#459 (table + ADA write grant + Calendar_Event/Lifecycle_Consumer read grants + env); consumed by the WS-E-PORTAL E14 editor. |

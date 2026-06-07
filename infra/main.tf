@@ -66,7 +66,8 @@ module "ops_alarms_bsh_prod" {
   count  = var.env == "production" ? 1 : 0
   source = "./modules/ops-alarms-bsh-prod"
 
-  ops_alerts_topic_arn = "arn:aws:sns:us-east-1:614056832592:picasso-ops-alerts"
+  ops_alerts_topic_arn      = "arn:aws:sns:us-east-1:614056832592:picasso-ops-alerts"
+  streaming_distribution_id = "E3G0LSWB1AQ9LP" # Remedy A (#435): /stream 5xx signer-failure alarm
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -96,6 +97,14 @@ module "bsh_iam_grants_prod" {
 module "bsh_function_prod" {
   count  = var.env == "production" ? 1 : 0
   source = "./modules/bsh-function-prod"
+
+  # Remedy A (#435) Phase 2: enforce IAM on the streaming Function URL, closing the
+  # public bypass durably. The prod Lambda@Edge signer + /stream* association are
+  # live + CloudFront-propagated + PROVEN (Phase 1.5 controlled-flip on prod:
+  # CF-signed /stream -> 200+SSE, direct unsigned -> 403). This flips
+  # authorization_type NONE -> AWS_IAM. Rollback = set back to "NONE" (instant on
+  # the Function URL); the Remedy B header still guards during rollback.
+  streaming_function_url_auth_type = "AWS_IAM"
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -108,9 +117,25 @@ module "bsh_function_prod" {
 # value never enters git/state). -target-scoped applies per the header above.
 # See docs/runbooks/prod-iac-tier4-cloudfront.md.
 # ─────────────────────────────────────────────────────────────────────────────
+# Remedy A (#435): origin-request Lambda@Edge that SigV4-signs /stream requests to
+# the prod BSH Function URL (replaces OAC, which can't sign POST bodies — proven
+# infeasible on staging). Its role holds lambda:InvokeFunctionUrl on the prod BSH
+# function; its qualified ARN is associated on /stream* by cloudfront_streaming_prod
+# below. Inert until the Function URL flips to AWS_IAM (bsh-function-prod
+# streaming_function_url_auth_type, Phase 2). Mirrors the proven staging signer.
+module "lambda_edge_bsh_signer_prod" {
+  count  = var.env == "production" ? 1 : 0
+  source = "./modules/lambda-edge-bsh-signer-prod"
+
+  bsh_function_arn = "arn:aws:lambda:us-east-1:614056832592:function:Bedrock_Streaming_Handler"
+}
+
 module "cloudfront_streaming_prod" {
   count  = var.env == "production" ? 1 : 0
   source = "./modules/cloudfront-streaming-prod"
+
+  # Remedy A (#435): the edge signer's versioned ARN, associated on /stream*.
+  streaming_edge_signer_qualified_arn = module.lambda_edge_bsh_signer_prod[0].qualified_arn
 }
 
 # Staging-only: cross-account replication target for prod tenant configs.
