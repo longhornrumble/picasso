@@ -311,6 +311,8 @@ npm run package
 aws lambda update-function-code --function-name Bedrock_Streaming_Handler_Staging --zip-file fileb://deployment.zip
 ```
 
+**Environment separation (the names above are STAGING-account functions).** The `*_Staging` names are the **staging-account (525)** Lambdas — what these deploy commands target. Their **production** counterparts are **bare-named** in account 614: `Master_Function`, `Bedrock_Streaming_Handler` (legacy hand-managed; promoted per the Deployment SOP above, never by these staging commands). Invocation is **not uniform**: prod `Master_Function` is fronted by a `live` alias, whereas prod `Bedrock_Streaming_Handler` has **no alias** and is invoked via its Function URL (`$LATEST`, `AuthType=AWS_IAM` behind the CloudFront `/stream` Lambda@Edge signer — Remedy A #435). (Verified live 2026-06-08.)
+
 ### Picasso Webscraping (Firecrawl SDK)
 ```bash
 # Install dependencies
