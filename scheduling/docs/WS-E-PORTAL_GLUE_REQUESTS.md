@@ -19,7 +19,7 @@ G1/G2/G4/G5 all RESOLVED + deployed. G3 RETIRED (E16 CUT by operator). **Two NEW
 | G5 | E15 richer metrics | `GET /scheduling/metrics` | LOW | ✅ RESOLVED — lambda#268 (per-type + status; `time_to_book`/`reschedule_rate` UNAVAILABLE by design) |
 | **G6** | **E12 booking ACTIONS** | **cancel-with-reason + reschedule-link + admin overrides endpoint** | **HIGH (v1-MUST)** | 🔴 OPEN — endpoint does NOT exist |
 | **G7** | **E14 SMS variants** | **extend §E14 to SMS templates** | **HIGH** | 🔴 OPEN — operator pulled SMS into v1 (2026-06-08) |
-| **G8** | **E13 D3 "connect calendar" warning + connection filter** | **per-staff `calendar_connected` flag in `GET /team/members`** | **MED (gates a v1-MUST warning)** | 🔴 OPEN — discovered by Wave-1 verification 2026-06-08 |
+| **G8** | **E13 D3 warning pair + connection filter** | **per-staff `calendar_connected` flag in `GET /team/members`** | **HIGH (gates the full v1-MUST D3 warning pair)** | 🔴 OPEN — discovered by Wave-1 verification 2026-06-08 |
 
 ---
 
@@ -142,9 +142,9 @@ The underlying logic already exists as shared modules — `shared/scheduling/can
 //   (optional, nice-to-have) calendar_connected_email?: string | null   // the connected calendar's address, admin-or-self gated like calendar_email_override
 // Additive; readers tolerate absence (schema discipline) → pre-G8 records read calendar_connected=false.
 ```
-With `calendar_connected` present, the frontend derives everything else: `bookable = calendar_connected AND scheduling_tags.length>0 AND bookable_override!=='off'`; **"not on any team"** warning = empty tags (already buildable w/o this); **"connect calendar"** warning = `!calendar_connected`; list filter `bookable / not-bookable / missing-connection`.
-**Note:** the **"not on any team"** half of the D3 warning ships in Wave 1 NOW (derivable from `scheduling_tags`); only the **calendar-connection** half waits on this. The CTA target ("Connect calendar") also presumes the Surface-1 connect UI (WS-E-OAUTH dashboard deliverable) exists — coordinate.
-**When it lands:** one-line — add `calendar_connected` to `TeamMember`, compute the warning + enable the connection filter.
+With `calendar_connected` present, the frontend derives everything else: `bookable = calendar_connected AND scheduling_tags.length>0 AND bookable_override!=='off'`; **"connect calendar"** warning = a scheduling participant with `!calendar_connected`; **"not on any team"** warning = a connected participant with empty tags; list filter `bookable / not-bookable / missing-connection`.
+**⚠ Correction (2026-06-08):** this gates the **FULL v1-MUST D3 warning pair**, not just the calendar half. `bookable` is purely DERIVED (no stored "intended-bookable" flag), so WITHOUT a connection signal there is no way to tell a misconfigured scheduling participant from general staff who were never meant to be bookable — firing "not on any team" on every untagged employee would be noise, not a warning. The existing neutral **"No teams"** label stays as informational until G8 lands. The "Connect calendar" CTA target also presumes the Surface-1 connect UI (WS-E-OAUTH dashboard deliverable) exists — coordinate.
+**When it lands:** add `calendar_connected` to `TeamMember`, then compute both warnings + enable the connection filter.
 
 ---
 
