@@ -19,6 +19,7 @@ G1/G2/G4/G5 all RESOLVED + deployed. G3 RETIRED (E16 CUT by operator). **Two NEW
 | G5 | E15 richer metrics | `GET /scheduling/metrics` | LOW | ✅ RESOLVED — lambda#268 (per-type + status; `time_to_book`/`reschedule_rate` UNAVAILABLE by design) |
 | **G6** | **E12 booking ACTIONS** | **cancel-with-reason + reschedule-link + admin overrides endpoint** | **HIGH (v1-MUST)** | 🔴 OPEN — endpoint does NOT exist |
 | **G7** | **E14 SMS variants** | **extend §E14 to SMS templates** | **HIGH** | 🔴 OPEN — operator pulled SMS into v1 (2026-06-08) |
+| **G8** | **E13 D3 "connect calendar" warning + connection filter** | **per-staff `calendar_connected` flag in `GET /team/members`** | **MED (gates a v1-MUST warning)** | 🔴 OPEN — discovered by Wave-1 verification 2026-06-08 |
 
 ---
 
@@ -126,6 +127,24 @@ The underlying logic already exists as shared modules — `shared/scheduling/can
 ```
 **Moment scope (decision):** only `reschedule_link` / `reoffer` / `cancel_notice` DISPATCH today; `confirmation` / `reminder_24h` / `reminder_1h` don't send until **WS-E-REMIND** lands. **Recommend SMS for the 3 sending moments now**, add reminders when REMIND lands (else the editor edits a template that never fires). Operator to confirm.
 **When it lands:** I add an SMS field per moment to the template editor (one input + a segment-count hint + a "STOP appended automatically, can't be removed" note), one-line wire.
+
+---
+
+### G8 — per-staff calendar-connection flag for the E13 roster (Surface 3 / D3) — **MED (gates a v1-MUST warning)** · 🔴 OPEN
+**Why blocked (discovered by Wave-1 verification 2026-06-08):** Surface 3's **"Connect calendar to be bookable"** warning is a **v1-MUST** (AC#19) — it fires when a staff member is intended-bookable but has no connected E11 calendar. The deployed §E13c `GET /team/members` projection carries `scheduling_tags` / `bookable_override` / `calendar_email_override` but **NO connection signal**, and the §E13c contract explicitly defers it ("G3 connection-status... deferred"). The OAuth `/connection/status` (#267) is **self-only** (the logged-in caller), so an ADMIN roster view has no way to know whether *each* staff member's calendar is connected. Without it the warning (and the "missing-connection" / derived-`bookable` list filters) cannot be computed frontend-side.
+
+**Ask — add one additive, non-PII field to the existing `/team/members` projection:**
+```js
+// GET /team/members  → each member additionally returns:
+//   calendar_connected: boolean   // does this employee have an ACTIVE E11 OAuth calendar connection?
+//                                  // (derive from the per-coordinator OAuth secret presence / connected_at, same source
+//                                  //  the booking router's §B7 bookable-connection-exclusion already consults)
+//   (optional, nice-to-have) calendar_connected_email?: string | null   // the connected calendar's address, admin-or-self gated like calendar_email_override
+// Additive; readers tolerate absence (schema discipline) → pre-G8 records read calendar_connected=false.
+```
+With `calendar_connected` present, the frontend derives everything else: `bookable = calendar_connected AND scheduling_tags.length>0 AND bookable_override!=='off'`; **"not on any team"** warning = empty tags (already buildable w/o this); **"connect calendar"** warning = `!calendar_connected`; list filter `bookable / not-bookable / missing-connection`.
+**Note:** the **"not on any team"** half of the D3 warning ships in Wave 1 NOW (derivable from `scheduling_tags`); only the **calendar-connection** half waits on this. The CTA target ("Connect calendar") also presumes the Surface-1 connect UI (WS-E-OAUTH dashboard deliverable) exists — coordinate.
+**When it lands:** one-line — add `calendar_connected` to `TeamMember`, compute the warning + enable the connection filter.
 
 ---
 
