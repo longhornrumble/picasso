@@ -153,24 +153,6 @@ resource "aws_cloudfront_origin_request_policy" "picasso_origin_request" {
   }
 }
 
-# Remedy A (#435): this OAC is RETIRED — CloudFront OAC cannot sign POST request
-# bodies (InvalidSignatureException, proven on staging 2026-06-06). Signing is now
-# done by the origin-request Lambda@Edge (lambda-edge-bsh-signer-staging); the
-# streaming origin no longer references this OAC (see below) and the /stream
-# behavior carries the L@E association instead.
-#
-# The resource is KEPT (orphaned, unattached) on purpose: deleting it in the SAME
-# apply that detaches it races CloudFront's propagation and 409s
-# (OriginAccessControlInUse — hit on the #455 apply). It is deleted in a separate
-# follow-up apply once the detach has propagated. Harmless while it sits here.
-resource "aws_cloudfront_origin_access_control" "streaming_lambda" {
-  name                              = "picasso-streaming-lambda-staging-oac"
-  description                       = "RETIRED (Remedy A → Lambda@Edge); pending separate-apply delete"
-  origin_access_control_origin_type = "lambda"
-  signing_behavior                  = "always"
-  signing_protocol                  = "sigv4"
-}
-
 resource "aws_cloudfront_distribution" "widget" {
   enabled             = true
   comment             = "Staging - Picasso Widget"
