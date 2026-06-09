@@ -176,6 +176,18 @@ variable "tenant_purge_function_arn" {
   default     = ""
 }
 
+variable "booking_commit_function_arn" {
+  description = "ARN of Booking_Commit_Handler. When set, the dashboard exec role gets lambda:InvokeFunction on it (the G6/E12 POST /scheduling/bookings/{id}/cancel + /reschedule-link actions proxy the side-effect to BCH's scheduling_mutate executor). Default empty renders ZERO grant — staging-only; scheduling has no prod surface yet."
+  type        = string
+  default     = ""
+}
+
+variable "booking_commit_function_name" {
+  description = "Name of Booking_Commit_Handler (BOOKING_COMMIT_FUNCTION_NAME env — the InvocationType=RequestResponse target for the G6 booking actions). Code default is the bare 'Booking_Commit_Handler'; pinned here for parity with the ARN grant."
+  type        = string
+  default     = "Booking_Commit_Handler"
+}
+
 # ------------------------------------------------------------------
 # IAM role + minimum-scope inline policy (with explicit Denies on prod)
 # ------------------------------------------------------------------
@@ -310,6 +322,17 @@ data "aws_iam_policy_document" "exec" {
     ]
   }
 
+  # G6/E12 booking ACTIONS (cancel + reschedule-link): the action handlers GetItem ONE booking
+  # by its (tenantId, booking_id) base-table key to run the §8 permission check (own-by-
+  # coordinator_email vs admin) before proxying to BCH. This is a deliberate, narrow exception
+  # to the GSI-Query-only posture above — GetItem on the BASE table ONLY (no GSI, no write); the
+  # tenant is IN the key, so a cross-tenant booking_id is structurally unfindable.
+  statement {
+    sid       = "SchedulingBookingActionRead"
+    actions   = ["dynamodb:GetItem"]
+    resources = [var.booking_table_arn]
+  }
+
   # §E13b AppointmentType/RoutingPolicy write API (admin-only). Query (list by
   # tenantId PK), GetItem (FK check / RR-state-preserving PATCH reads ALL_NEW),
   # PutItem (create), UpdateItem (patch). NO DeleteItem (delete is v2). Base
@@ -407,6 +430,19 @@ data "aws_iam_policy_document" "exec" {
       resources = [var.tenant_purge_function_arn]
     }
   }
+
+  # G6/E12 booking actions: the cancel + reschedule-link handlers proxy the side-effect to
+  # Booking_Commit_Handler's scheduling_mutate executor (events.delete / §B4 token mint + notify).
+  # Same-account (525->525) identity grant, scoped to the single BCH function ARN. Renders ZERO
+  # statements when booking_commit_function_arn == "" (default) — staging-only wiring.
+  dynamic "statement" {
+    for_each = var.booking_commit_function_arn != "" ? [1] : []
+    content {
+      sid       = "InvokeBookingCommit"
+      actions   = ["lambda:InvokeFunction"]
+      resources = [var.booking_commit_function_arn]
+    }
+  }
 }
 
 resource "aws_iam_role_policy" "exec" {
@@ -481,7 +517,9 @@ resource "aws_lambda_function" "this" {
       ROUTING_POLICY_TABLE       = var.routing_policy_table_name
       SCHED_NOTIF_TEMPLATE_TABLE = var.scheduling_notif_template_table_name
       OAUTH_FUNCTION_URL         = var.oauth_function_url
-      USE_DYNAMO_CACHE           = "false"
+      # G6/E12 booking actions proxy to BCH's scheduling_mutate executor (cancel + reschedule-link).
+      BOOKING_COMMIT_FUNCTION_NAME = var.booking_commit_function_name
+      USE_DYNAMO_CACHE             = "false"
       # Plan Security F8: restrict test-send endpoints to recipients whose
       # email domain is in this comma-list. Without it, an authenticated
       # admin could trigger a test send to any address (including real

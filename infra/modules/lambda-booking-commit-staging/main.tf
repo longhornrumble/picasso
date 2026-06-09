@@ -85,6 +85,23 @@ variable "employee_registry_table_name" {
   type = string
 }
 
+# ── G6 reschedule_link: notify.js emails the guest a self-serve reschedule link. It invokes
+# the send_email Lambda and reads the per-tenant §E14 template override (fail-safe → default). ──
+variable "scheduling_notif_template_table_arn" {
+  description = "ARN of picasso-scheduling-notif-template-staging. G6 reschedule_link: notify.js GetItem of the per-tenant §E14 template override at dispatch (read-only; fail-safe to the platform default if absent)."
+  type        = string
+}
+
+variable "scheduling_notif_template_table_name" {
+  type = string
+}
+
+variable "send_email_function_name" {
+  description = "Name of the reusable send_email Lambda the G6 reschedule_link notice invokes (async). The exec role is granted lambda:InvokeFunction on exactly this function ARN."
+  type        = string
+  default     = "send_email"
+}
+
 variable "scheduling_oauth_tenant_ids" {
   description = "Tenant IDs whose scheduling secrets the handler may read. secretsmanager:GetSecretValue is scoped to picasso/scheduling/oauth/{tenant}/* (Google OAuth + freeBusy) AND picasso/scheduling/zoom/{tenant} (Zoom S2S) for each — NOT a wildcard. Adding tenant #2 = append here in a reviewed PR, not a silent wildcard grant. A Zoom secret may not exist yet for a listed tenant (Zoom path is secret-gated at runtime); the grant is harmless until the secret is provisioned."
   type        = list(string)
@@ -326,6 +343,24 @@ data "aws_iam_policy_document" "commit_exec" {
       "${var.tenant_config_bucket_arn}/tenants/*/*-config.json",
     ]
   }
+
+  # G6 reschedule_link (the ADA-triggered "send reschedule link" action): notify.js emails the
+  # guest via the reusable send_email Lambda (async invoke). Scoped to EXACTLY that function ARN
+  # — no wildcard. Mirrors the Calendar_Event_Consumer reoffer-notice grant.
+  statement {
+    sid       = "InvokeSendEmail"
+    actions   = ["lambda:InvokeFunction"]
+    resources = ["arn:${data.aws_partition.current.partition}:lambda:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:function:${var.send_email_function_name}"]
+  }
+
+  # G6 reschedule_link: notify.js reads the per-tenant §E14 notification-template override at
+  # dispatch (GetItem on (tenantId, moment); fail-safe → platform default if absent). Read-only,
+  # base table only. Mirrors the consumers' DDBReadSchedulingNotifTemplate grant.
+  statement {
+    sid       = "DDBReadSchedulingNotifTemplate"
+    actions   = ["dynamodb:GetItem"]
+    resources = [var.scheduling_notif_template_table_arn]
+  }
 }
 
 resource "aws_iam_role_policy" "commit_exec" {
@@ -380,8 +415,12 @@ resource "aws_lambda_function" "commit" {
       SCHEDULE_BASE_URL        = "https://staging.schedule.myrecruiter.ai"
       OPS_ALERTS_TOPIC_ARN     = var.ops_alerts_topic_arn
       JWT_SECRET_KEY_NAME      = "picasso/staging/jwt/signing-key"
-      CONFIG_BUCKET            = var.config_bucket_name
-      S3_CONFIG_BUCKET         = var.config_bucket_name
+      # G6 reschedule_link: notify.js emails the guest via the send_email Lambda + honors the
+      # per-tenant §E14 template override (fail-safe → default if the table/row is absent).
+      SEND_EMAIL_FUNCTION        = var.send_email_function_name
+      SCHED_NOTIF_TEMPLATE_TABLE = var.scheduling_notif_template_table_name
+      CONFIG_BUCKET              = var.config_bucket_name
+      S3_CONFIG_BUCKET           = var.config_bucket_name
     }
   }
 
