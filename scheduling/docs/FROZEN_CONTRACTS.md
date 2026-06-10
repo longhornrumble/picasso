@@ -732,6 +732,69 @@ async function generateReengagementCopy({ purpose, booking, tenant, rescheduleUr
 //   D3 query-string logging (the email is base64-readable in CloudFront logs). NOT a staging blocker.
 ```
 
+### E12-actions — booking ACTIONS: cancel-with-reason + reschedule-link (integrator glue; WS-E-PORTAL G6) — **LOCKED 2026-06-09** (integrator)
+```js
+// The two per-card E12 booking ACTIONS the dash My-Bookings surface needs (cancel-with-reason = v1-MUST,
+// reschedule-link = v1-should + AC#18 admin override). Backend: lambda#269; IaC picasso#481 (ADA GetItem +
+// ADA→BCH invoke grant + BCH send_email/notif-template grants). Consumed by the WS-E-PORTAL E12 BookingCard.
+//
+// ⚠ ARCHITECTURE: NO new Lambda. ADA (Analytics_Dashboard_API, Python) is the Clerk-authed ENTRY; the
+//   side-effect is proxied Lambda-to-Lambda to Booking_Commit_Handler's EXISTING `scheduling_mutate`
+//   executor (BCH header "option d — extend BCH, don't add a Lambda"; BSH already invokes it). ADA performs
+//   NO calendar op / token mint itself (those are Node, single-sourced in BCH).
+//
+// ENDPOINTS (ADA; Clerk-authed; tenant from AUTH; feature-gated dashboard_scheduling):
+//   POST /scheduling/bookings/{booking_id}/cancel   body={ reason }
+//     → 200 { booking_id, status:'canceled' }  |  202 { booking_id, status:'pending_calendar_sync' }
+//     reason REQUIRED non-empty (400), ≤1000 chars. BCH executeCancel (events.delete) → the §14.2 listener
+//     flips Booking.status + dispatches cancel_notice; BCH ALSO persists audit-only cancel_reason/canceled_by
+//     (an attribute write — NOT the status flip; the listener's cancel write uses if_not_exists(cancel_reason)
+//      so the admin reason survives the flip).
+//   POST /scheduling/bookings/{booking_id}/reschedule-link   (no body)
+//     → 200 { booking_id, sent:<bool> }   (best-effort notify; sent:false on dispatch miss, still 200)
+//     → 429 if a link was sent within the cooldown (BCH atomic 60s anti-bombing claim → outcome
+//        'rate_limited'; NO fresh token minted, NO email). Distinct from a 502.
+//     BCH reschedule_link (NEW scheduling_mutate mutation, notify-only — NO calendar facade): mints a fresh
+//     §B4 reschedule token (tokens.sign('reschedule',…); MINT is stateless, NO jti write; expiry sources the
+//     booking's cancellation_window_hours like disposition.js, MIN-floored to 15min) + dispatches notify.js
+//     `reschedule_link` to the GUEST (who picks the new time; staff does NOT pick).
+//   booking_id contains '#' (booking#<hex>) → the dash %-encodes it; ADA urldecodes the path segment.
+//
+// §8 PERMISSION (own-or-admin): a staff member may act on their OWN booking — booking.coordinator_email ==
+//   their verified Clerk email (mirrors §E7 staff_self); admin/super_admin may act on ANY in-tenant booking
+//   (the §8 "cancel-on-volunteer's-behalf" override). ⚠ keys on coordinator_email — there is NO
+//   assigned_staff_id on the Booking row (corrects the G6-ask sketch). A non-admin non-owner gets 404 (NOT
+//   403) — same body as a genuine miss, so existence isn't leaked (no enumeration oracle). 409 if the booking
+//   is in ANY TERMINAL state (canceled/cancelled/completed/no_show/coordinator_no_show) — re-acting on an
+//   attended booking would delete a closed event + corrupt the row. Load = GetItem on the (tenantId,
+//   booking_id) BASE-TABLE key → the auth tenant is IN the key, so a cross-tenant booking_id is structurally
+//   unfindable. ADA invokes BCH via a BOUNDED Lambda client (read 30s, NO retries — a retried mutate could
+//   double-cancel/double-email).
+//
+// BCH scheduling_mutate PAYLOAD (ADA→BCH, extends the BSH→BCH shape):
+//   { action:'scheduling_mutate', mutation:'cancel'|'reschedule_link', tenantId, coordinatorId(=coordinator_email),
+//     bookingId, booking, reason?, canceled_by? }  → { outcome, booking?, sent? }
+//   cancel outcomes: 'deleted'|'pending_calendar_sync' → 200/202; anything else → 502. (NO 'canceled' outcome —
+//     executeCancel emits 'deleted'.) BCH STRICTLY rejects a booking whose tenantId is absent OR mismatched.
+//   reschedule_link outcomes: 'success' → 200{sent}; 'rate_limited' → 429; 'failed' → 502.
+//
+// IaC (staging): ADA SchedulingBookingActionRead (dynamodb:GetItem on the picasso-booking BASE table — a
+//   deliberate narrow exception to §E7's GSI-Query-only posture) + InvokeBookingCommit (lambda:InvokeFunction
+//   on BCH). BCH InvokeSendEmail (send_email) + DDBReadSchedulingNotifTemplate (§E14 override at dispatch,
+//   fail-safe→default) + SEND_EMAIL_FUNCTION/SCHED_NOTIF_TEMPLATE_TABLE env (reuses BCH's existing
+//   SCHEDULE_BASE_URL + jwt-signing-key grant). pii-inventory updated (cancel_reason/canceled_by = new
+//   DELETE-tier booking PII). BCH reserved_concurrent (5) is now a SHARED pool with the chat BSH path.
+//
+// ⚠ DEPLOY ORDERING: (1) apply IaC (picasso#481) FIRST — else GetItem/InvokeFunction AccessDenied; then
+//   (2) deploy lambda#269 (BCH + ADA TOGETHER). If ADA lands before BCH, reschedule-link hits BCH's old code
+//   → 'unknown_mutation' → ADA 502 (a brief false-negative window, not data-corrupting).
+//
+// PROVENANCE (auth + token + commit-path = HIGH-risk): a 4-reviewer phase-completion-audit ran pre-merge;
+//   6 blockers + the fix-now set all remediated (terminal-status guard, bounded invoke client, reschedule-link
+//   rate-limit, strict tenant guard, listener if_not_exists, 404-not-403, dead-outcome). lambda#269 follow-up
+//   commit; BCH jest 216 + Calendar_Lifecycle_Consumer 72 + ADA pytest 301 green.
+```
+
 ## E — SEAM RESOLUTIONS + integrator-glue + sequencing — **LOCKED 2026-06-05** (post seam dry-run; ratifies the 4 worker escalations + the 4-WO audit)
 
 The seam dry-run found the original work-orders under-specified the cross-workstream seams (+ 2 factual errors: §E5 above, OAUTH secret-shape below). Resolutions, authoritative — workers code to THESE:
@@ -785,3 +848,4 @@ notify.js `reengagement` kind (+ its STOP footer) · the `selectChannels`-into-`
 | 2026-06-06 | **§E14 scheduling notification-template overrides LOCKED (integrator; WS-E-PORTAL G2).** Per-tenant override of the scheduling lifecycle-notice EMAIL copy (`reschedule_link`/`reoffer`/`cancel_notice` — the 3 that dispatch with a full subject+body). ⚠ STORAGE = DDB (`picasso-scheduling-notif-template-{env}`, PK tenantId/SK moment), **NOT** the form-template store the §E13b OUT-note cited — that store is form-scoped in tenant-config-S3 AND staging config-S3 is read-only (writes denied), so a config editor couldn't hold a moment key nor save on staging; scheduling config lives in DDB per §E13b. Endpoints (ADA, Clerk-authed, ADMIN-only, tenant from AUTH): `GET /scheduling/notification-templates` (effective=override-over-default + is_override + default echo + {{variables}}) + `PATCH /scheduling/notification-templates/{moment}` (upsert-MERGE; partial save preserves others; empty-string clears; NO optimistic lock per §E13c; modified_at stamped; unknown moment 404; bad field 400). ⚠ COMPLIANCE INVARIANT: notify.js appends STOP AFTER render OUTSIDE the editable body → an override can NEVER drop the unsubscribe line. notify.js reads the override at dispatch (defaultLoadTemplateOverride GetItem, FAIL-SAFE → local default on any miss/error, try/caught so it never blocks a send). OUT v1: reengagement (AI body), SMS (WS-E-TCPA), confirmation/reminders (WS-E-REMIND, not dispatched). Editor-display defaults mirror notify.js (parity-tested); follow-up = extract to shared JSON to kill drift. Backend lambda#261 + IaC picasso#459 (table + ADA write grant + Calendar_Event/Lifecycle_Consumer read grants + env); consumed by the WS-E-PORTAL E14 editor. |
 | 2026-06-06 | **§E14 GET-shape prose CORRECTED to match deployed code (doc-only; flagged by WS-E-PORTAL dash#15, integrator-confirmed against lambda#261 on lambda main).** The §E14 prose listed `available_variables:[...]` as a TOP-LEVEL sibling of `moments`/`stop_footer_note`; the deployed `handle_scheduling_notification_templates_get` (lambda_function.py:4383) returns it **PER-MOMENT** (inside each `moments[<moment>]` object = the variables valid for that moment), with the top-level response being only `{ moments, stop_footer_note }`. The Portal built the editor to the deployed reality (correct) and flagged the prose; this row + the §E14 GET line are the doc fix. No code change, no consumer re-sync (the shipped UI already matches). |
 | 2026-06-06 | **§E0 scheduling OAuth init-token MINT LOCKED (integrator; WS-E-PORTAL G3).** Formalizes the DEPLOY_NOTES §5 "proposed §E0" against the SHIPPED reality: `GET /scheduling/connection/init` (ADA, Clerk-authed, any authenticated staff, feature-gated `dashboard_scheduling`) → `{connect_url, status_url, expires_in:300}`. SELF-MINT only — coordinator identity from the verified Clerk auth (no body), anti-slot-poisoning. Token wire format matches Calendar_OAuth_Connect/state.js byte-for-byte (cross-language proven), `typ:'init'` (correcting the §E11 sketch's imprecise `type:'state'` — /connect mints its own `state` token from the verified init). Backend lambda#263 + hardening lambda#265 (phase-audit: SM-error no-leak, strip-email guard, feature gate, bounded SM client, whitespace-key reject, wrong_type cross-lang test, CI auto-deploy); IaC picasso#468 (env+grant) + picasso#471 (IAM short-name fence). DEFERRED (Beta): R1 single-use (replay-able within 300s TTL; staging-pilot accepted) + admin-views-other-staff status (separate read). Consumed by the WS-E-PORTAL E16 surface. |
+| 2026-06-09 | **§E12-actions booking ACTIONS LOCKED (integrator; WS-E-PORTAL G6).** The two per-card E12 actions: `POST /scheduling/bookings/{id}/cancel {reason}` (v1-MUST) + `POST /scheduling/bookings/{id}/reschedule-link` (v1-should + AC#18 admin override). ⚠ ARCHITECTURE pivot (ground-truth): NO new Lambda — ADA (Python) is the Clerk-authed entry (feature-gate + load + §8 permission) and proxies the side-effect Lambda-to-Lambda to Booking_Commit_Handler's EXISTING `scheduling_mutate` executor (BCH "option d", already invoked by BSH). cancel reuses BCH's live `mutation:'cancel'` (events.delete → §14.2 listener flips status) + persists audit-only `cancel_reason`/`canceled_by` (attribute write, NOT the status flip); reschedule_link = ONE new notify-only `scheduling_mutate` mutation (NO calendar facade — mints a fresh §B4 token via tokens.sign [stateless, no jti write] + dispatches notify.js `reschedule_link` to the guest). ⚠ §8 PERMISSION keys on `coordinator_email == verified Clerk email` (own) or admin/super_admin (any in-tenant) — there is NO `assigned_staff_id` on the Booking row (corrects the G6-ask sketch). Load = GetItem on the (tenantId, booking_id) BASE-TABLE key → cross-tenant booking_id structurally unfindable. booking_id contains `#` → ADA urldecodes the path segment. Backend lambda#269; IaC picasso#481 (ADA `SchedulingBookingActionRead` GetItem [a narrow exception to §E7's GSI-Query-only posture] + `InvokeBookingCommit`; BCH `InvokeSendEmail` + `DDBReadSchedulingNotifTemplate` + env). Apply IaC BEFORE the code deploys (else AccessDenied; deploy BCH+ADA together — ADA-before-BCH = brief `unknown_mutation` 502 window). Consumed by the WS-E-PORTAL E12 BookingCard (cancel modal + reschedule-link button, role-gated). **HIGH-risk 4-reviewer phase-completion-audit ran pre-merge; 6 blockers + the fix-now set all remediated:** terminal-status 409 (not just canceled), bounded ADA→BCH invoke client (no-retry), reschedule-link 60s rate-limit → 429, STRICT BCH tenant guard, §14.2 listener `if_not_exists(cancel_reason)` (admin reason survives the flip), 404-not-403 for non-owner (no enumeration oracle), dead-`canceled`-outcome removed, token expiry sources cancellation_window_hours. pii-inventory updated (cancel_reason/canceled_by = DELETE-tier booking PII). BCH jest 216 + Calendar_Lifecycle_Consumer 72 + ADA pytest 301 green. Deferred (defer-ok, in the audit record): super_admin cross-tenant alarm, global `_request_user_role` refactor, min reason length, full reason-write retry, the G6-mint→redemption E2E (covered by the live staging smoke). |
