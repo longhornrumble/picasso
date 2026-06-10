@@ -53,15 +53,32 @@ resource "aws_iam_role_policy_attachment" "basic" {
 }
 
 # The signer identity: allow the L@E role to invoke the BSH Function URL under IAM.
+#
+# lambda:InvokeFunction is REQUIRED alongside InvokeFunctionUrl in this
+# account (2.5 Wave-2 incident, 2026-06-10): AWS_IAM Function URL auth here
+# evaluates a dual permission. For 4 days the check was silently satisfied
+# by the legacy resource-policy statement FunctionURLAllowInvokeAction
+# (Principal *, lambda:InvokeFunction, InvokedViaFunctionUrl=true) left on
+# the suffixed BSH from its AuthType NONE era — a console "Function URL >
+# Edit > Save" reconciliation stripped it, and the bare BSH never had it
+# (Terraform cannot express that resource statement; see the MANUAL STEP
+# comment in lambda-bedrock-handler-staging). Granting InvokeFunction
+# identity-side (scoped to the BSH ARNs) satisfies the check without any
+# resource policy and survives function recreation. NOTE: prod's signer
+# works with InvokeFunctionUrl alone — prod is the SCP-exempt management
+# account; this account's evaluation demands both.
 resource "aws_iam_role_policy" "invoke_bsh_url" {
   name = "InvokeBshFunctionUrl"
   role = aws_iam_role.this.id
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Sid      = "InvokeBshFunctionUrl"
-      Effect   = "Allow"
-      Action   = "lambda:InvokeFunctionUrl"
+      Sid    = "InvokeBshFunctionUrl"
+      Effect = "Allow"
+      Action = [
+        "lambda:InvokeFunctionUrl",
+        "lambda:InvokeFunction",
+      ]
       Resource = var.bsh_function_arns
     }]
   })
