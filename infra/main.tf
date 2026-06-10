@@ -814,10 +814,15 @@ module "analytics_events_pipeline_staging" {
   tenant_config_bucket_arn     = module.tenant_config_staging[0].bucket_arn
   tenant_config_bucket_name    = module.tenant_config_staging[0].bucket_name
 
-  # Phase C audit F1 closure: SQS queue policy needs the BSH role ARN to
-  # scope the Allow statement. Module gates the queue policy on this being
-  # the legitimate sender — no other staging-account principal may send.
-  bsh_role_arn = module.lambda_bedrock_handler_staging[0].role_arn
+  # Phase C audit F1 closure: SQS queue policy needs the BSH role ARNs to
+  # scope the Allow statement. Module gates the queue policy on these being
+  # the legitimate senders — no other staging-account principal may send.
+  # Task 2.5 Wave 1b: both BSH instances during the de-suffix transition;
+  # drops back to the bare instance alone in Wave 4.
+  bsh_role_arns = [
+    module.lambda_bedrock_handler_staging[0].role_arn,
+    module.lambda_bedrock_handler[0].role_arn,
+  ]
 }
 
 # Phase B (BSH staging-twin): SMS_Sender + SMS_Webhook_Handler twin.
@@ -1502,10 +1507,14 @@ module "lambda_edge_bsh_signer_staging" {
   count  = var.env == "staging" ? 1 : 0
   source = "./modules/lambda-edge-bsh-signer-staging"
 
-  # Literal ARN (not a module output, unlike the prod signer): the staging BSH is
-  # the hand-managed legacy Bedrock_Streaming_Handler_Staging — there is no
-  # bsh-function-staging Terraform module to reference. Intentional asymmetry.
-  bsh_function_arn = "arn:aws:lambda:us-east-1:525409062831:function:Bedrock_Streaming_Handler_Staging"
+  # Task 2.5 Wave 1b: both BSH instances during the de-suffix transition.
+  # The suffixed instance keeps its historical literal ARN (predates its TF
+  # module); the bare instance is a module output (real dependency edge).
+  # Drops back to the bare entry alone in Wave 4.
+  bsh_function_arns = [
+    "arn:aws:lambda:us-east-1:525409062831:function:Bedrock_Streaming_Handler_Staging",
+    module.lambda_bedrock_handler[0].function_arn,
+  ]
 }
 
 module "cloudfront_widget_staging" {
@@ -1587,11 +1596,16 @@ resource "aws_secretsmanager_secret_policy" "bsh_cf_origin_staging" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid       = "AllowBSHLambdaRoleOnly"
-        Effect    = "Allow"
-        Principal = { AWS = module.lambda_bedrock_handler_staging[0].role_arn }
-        Action    = "secretsmanager:GetSecretValue"
-        Resource  = "*"
+        # Task 2.5 Wave 1b: both BSH instances during the de-suffix
+        # transition; drops back to the bare instance alone in Wave 4.
+        Sid    = "AllowBSHLambdaRoleOnly"
+        Effect = "Allow"
+        Principal = { AWS = [
+          module.lambda_bedrock_handler_staging[0].role_arn,
+          module.lambda_bedrock_handler[0].role_arn,
+        ] }
+        Action   = "secretsmanager:GetSecretValue"
+        Resource = "*"
       },
       {
         # Same NotPrincipal-via-aws:PrincipalArn pattern as the JWT/Clerk
@@ -1604,7 +1618,10 @@ resource "aws_secretsmanager_secret_policy" "bsh_cf_origin_staging" {
         Resource  = "*"
         Condition = {
           StringNotEquals = {
-            "aws:PrincipalArn" = module.lambda_bedrock_handler_staging[0].role_arn
+            "aws:PrincipalArn" = [
+              module.lambda_bedrock_handler_staging[0].role_arn,
+              module.lambda_bedrock_handler[0].role_arn,
+            ]
           }
         }
       },
@@ -1624,6 +1641,9 @@ resource "aws_secretsmanager_secret_policy" "jwt_signing_key_staging" {
         Effect = "Allow"
         Principal = { AWS = [
           module.lambda_master_function_staging[0].role_arn,
+          # Task 2.5 Wave 1b: bare-named MFS instance during the de-suffix
+          # transition; the suffixed entry drops in Wave 4.
+          module.lambda_master_function[0].role_arn,
           module.lambda_analytics_dashboard_api_staging[0].role_arn,
           # Scheduling §13.4 signed-token signers (same key; iss claim isolates from
           # chat-session JWTs). Calendar_Event_Consumer mints the B9 reoffer link (gap C);
@@ -1652,6 +1672,7 @@ resource "aws_secretsmanager_secret_policy" "jwt_signing_key_staging" {
           StringNotEquals = {
             "aws:PrincipalArn" = [
               module.lambda_master_function_staging[0].role_arn,
+              module.lambda_master_function[0].role_arn,
               module.lambda_analytics_dashboard_api_staging[0].role_arn,
               module.lambda_calendar_event_consumer_staging[0].consumer_role_arn,
               module.lambda_booking_commit_staging[0].commit_role_arn,
@@ -1729,6 +1750,11 @@ resource "aws_kms_key_policy" "pii_staging" {
         Effect = "Allow"
         Principal = { AWS = [
           module.lambda_master_function_staging[0].role_arn,
+          # Task 2.5 Wave 1b: bare-named MFS instance during the de-suffix
+          # transition (shadow-key-gated per
+          # kms-pii-staging-policy-change-runbook.md, run 2026-06-10);
+          # the suffixed entry drops in Wave 4 under the same gate.
+          module.lambda_master_function[0].role_arn,
           module.lambda_pii_delete_staging[0].delete_role_arn,
           module.lambda_pii_delete_staging[0].backfill_role_arn,
           module.lambda_pii_dsar_staging[0].dsar_role_arn,
@@ -1773,6 +1799,7 @@ resource "aws_kms_key_policy" "pii_staging" {
             # gate per kms-pii-staging-policy-change-runbook.md §"PR4b SR-G".
             "aws:PrincipalArn" = [
               module.lambda_master_function_staging[0].role_arn,
+              module.lambda_master_function[0].role_arn,
               module.lambda_pii_delete_staging[0].delete_role_arn,
               module.lambda_pii_delete_staging[0].backfill_role_arn,
               module.lambda_pii_delete_staging[0].breakglass_role_arn,
