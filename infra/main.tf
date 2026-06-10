@@ -901,8 +901,13 @@ module "ops_alarms_master_function_staging" {
   count  = var.env == "staging" ? 1 : 0
   source = "./modules/ops-alarms-master-function-staging"
 
-  function_name  = module.lambda_master_function_staging[0].function_name
-  log_group_name = module.lambda_master_function_staging[0].log_group_name
+  # Task 2.5 Wave 2: alarms watch the bare-named MFS instance (alarm names
+  # + metric filters re-key from these outputs; the SNS topic and its
+  # out-of-band subscriptions are untouched). The module's hardcoded
+  # `Picasso/Master_Function_Staging` metric NAMESPACES stay — renaming a
+  # namespace orphans metric history; filter+alarm pairs stay consistent.
+  function_name  = module.lambda_master_function[0].function_name
+  log_group_name = module.lambda_master_function[0].log_group_name
 }
 
 # ──────────────────────────────────────────────────────────────────────
