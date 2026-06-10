@@ -77,6 +77,7 @@ One consistent, gated path from commit → staging → prod for all four product
 | 2.2 Versioned artifacts | Upload each prod bundle to `s3://<bucket>/releases/<sha>/` before syncing live. Rollback = re-sync a prior release prefix + invalidate. | Rollback rehearsed once per product |
 | 2.3 Config-builder staging bucket | Small TF module in `infra/` (staging account — fits existing staging belt + naming convention). Wire its staging deploy + un-stick the prod gate. | Config-builder PR deploys to staging; prod gate functional |
 | 2.4 Widget queue sanity re-check | After 0.3 + 2.1, confirm no waiting-run accumulation over 2 weeks. | `--status waiting` stays 0 |
+| 2.5 De-suffix the staging twins (operator-requested 2026-06-09) | Staging-account (525) `Master_Function_Staging` + `Bedrock_Streaming_Handler_Staging` → bare names, per uniform-env-rules (account = env; new staging fns are already bare — SMS_Sender, Calendar_*). **Not a rename-in-place** — create-new + cutover, ADA Phase 4.5 is the proven playbook. Blast surface: BSH staging Function URL (MFS `STREAMING_ENDPOINT`, CF origin `picasso-streaming-lambda`), TF modules `lambda-{bedrock-handler,master-function}-staging`, IAM grants, alarms, both deploy-workflow matrices, pr-checks. Include: retire the **prod-account `Master_Function_Staging` relic** still integrated in prod API GW `kgvc8xnewf` (pre-account-split leftover, found 2026-06-09). Sequence AFTER first successful prod dispatches (rename against a known-good pipeline); coordinate w/ the prod-IaC naming-alignment program. | Staging twins bare-named; widget/staging E2E green; prod relic unwired + deleted; workflows updated |
 
 ## Phase 3 — Finish the IaC program (≈2–3 careful sessions, prod-IaC-owned)
 
@@ -151,3 +152,18 @@ update the change log below.
   pre-existing always()-over-failed-gates hole); SR-2 no more skipped-deploy Slack noise; N-1 summary
   wording. Refuted: C-4 (pcb actions ARE pinned on origin/main). Audit record:
   memory `project_ci_modernization_phase0_audit_2026-06-09`. **Phase 0 COMPLETE on #486 merge.**
+- 2026-06-09 — **Phase 0 COMPLETE** (#486 merged; staleness check smoke-dispatched: green, correctly
+  no issue). **Phase 1 core SHIPPED — lambda#270 MERGED** (+ concern-remedies follow-up lambda#272):
+  MFS + BSH in the prod deploy matrix; zip-manifest guard BOTH workflows (fire-tested; .py+.json;
+  space-safe `unzip -Z1`); MFS deploys = publish + **`live`-alias flip with auto-rollback on failed
+  smoke**; BSH = $LATEST + version snapshots (TF `ignore_changes` seam respected; env vars NOT
+  CI-managed in prod); CF-routed smokes w/ cache-bypass; `scripts/whats-live.sh` (Phase 1.5 read-side
+  form — no new infra; flags alias-vs-$LATEST divergence). **⚠️ LIVE FINDING: prod MFS traffic =
+  API GW → `live` alias → v21 (2026-05-13) — the §P5.1 manual deploy never published/flipped, so
+  §P5.1 MFS code is NOT serving API GW traffic.** First MFS dispatch through the new workflow is the
+  remediation. 2-reviewer audit: B2 fixed (auto-rollback); 3 findings REFUTED with live evidence
+  (BSH-smoke-403 — Remedy B header is CF-origin-injected; whats-live sha/mod swap; Versions[-1]
+  pagination); first-dispatch env pre-flight DONE (§P5.1 + fail-loud keys present on prod $LATEST).
+  **Phase 1 remaining:** operator applies the deploy-role IAM delta
+  (`Sandbox/picasso-deploy-policy-v2.json`) → dispatch `Master_Function` (validates pipeline + closes
+  the v21 gap) → whats-live ⚠ disappears. Task 2.5 added (de-suffix staging twins, operator-requested).
