@@ -102,6 +102,28 @@ variable "send_email_function_name" {
   default     = "send_email"
 }
 
+# ── G7b reschedule_link SMS supplement: notify.js ALSO texts the guest the reschedule link
+# when the tenant enabled org SMS AND the guest has live consent AND it is not quiet-hours
+# (selectChannels gate). BCH GetItems the guest's consent record (pre-filter) and invokes the
+# SMS_Sender twin (which re-checks consent server-side). Both grants are scoped to one ARN. ──
+variable "sms_consent_table_arn" {
+  description = "ARN of picasso-sms-consent-staging. G7b reschedule_link: BCH GetItem of the guest's transactional-SMS consent record (read-only pre-filter; fail-safe → SMS suppressed if absent). MUST be the SAME table the SMS_Sender twin re-checks."
+  type        = string
+}
+
+variable "sms_consent_table_name" {
+  type = string
+}
+
+variable "sms_sender_function_arn" {
+  description = "ARN of the staging SMS_Sender twin. G7b reschedule_link: notify.js async-invokes it (sendType:'contact') for the SMS supplement. The exec role is granted lambda:InvokeFunction on exactly this ARN — no wildcard."
+  type        = string
+}
+
+variable "sms_sender_function_name" {
+  type = string
+}
+
 variable "scheduling_oauth_tenant_ids" {
   description = "Tenant IDs whose scheduling secrets the handler may read. secretsmanager:GetSecretValue is scoped to picasso/scheduling/oauth/{tenant}/* (Google OAuth + freeBusy) AND picasso/scheduling/zoom/{tenant} (Zoom S2S) for each — NOT a wildcard. Adding tenant #2 = append here in a reviewed PR, not a silent wildcard grant. A Zoom secret may not exist yet for a listed tenant (Zoom path is secret-gated at runtime); the grant is harmless until the secret is provisioned."
   type        = list(string)
@@ -361,6 +383,25 @@ data "aws_iam_policy_document" "commit_exec" {
     actions   = ["dynamodb:GetItem"]
     resources = [var.scheduling_notif_template_table_arn]
   }
+
+  # G7b reschedule_link SMS supplement: BCH reads the guest's transactional-SMS consent record
+  # (GetItem on (pk=TENANT#{tenantId}, sk=CONSENT#transactional#{E.164})) to pre-filter the
+  # selectChannels gate. Read-only, base table only — no GSI. Fail-safe: a miss/error → SMS
+  # suppressed (email floor stands). The SMS_Sender twin re-checks the SAME record server-side.
+  statement {
+    sid       = "DDBReadSmsConsent"
+    actions   = ["dynamodb:GetItem"]
+    resources = [var.sms_consent_table_arn]
+  }
+
+  # G7b reschedule_link SMS supplement: notify.js async-invokes the SMS_Sender twin
+  # (sendType:'contact'). Scoped to EXACTLY that function ARN — no wildcard. Mirrors the
+  # InvokeSendEmail grant above.
+  statement {
+    sid       = "InvokeSmsSender"
+    actions   = ["lambda:InvokeFunction"]
+    resources = [var.sms_sender_function_arn]
+  }
 }
 
 resource "aws_iam_role_policy" "commit_exec" {
@@ -419,8 +460,12 @@ resource "aws_lambda_function" "commit" {
       # per-tenant §E14 template override (fail-safe → default if the table/row is absent).
       SEND_EMAIL_FUNCTION        = var.send_email_function_name
       SCHED_NOTIF_TEMPLATE_TABLE = var.scheduling_notif_template_table_name
-      CONFIG_BUCKET              = var.config_bucket_name
-      S3_CONFIG_BUCKET           = var.config_bucket_name
+      # G7b reschedule_link SMS supplement: the SMS_Sender twin + the consent table BCH
+      # pre-filters against (same table the twin re-checks server-side).
+      SMS_SENDER_FUNCTION = var.sms_sender_function_name
+      SMS_CONSENT_TABLE   = var.sms_consent_table_name
+      CONFIG_BUCKET       = var.config_bucket_name
+      S3_CONFIG_BUCKET    = var.config_bucket_name
     }
   }
 
