@@ -175,3 +175,22 @@ update the change log below.
   smoke 200 — whats-live shows `alias live = v22 = $LATEST ✓`. The v21 alias gap is CLOSED; prod
   API GW traffic now serves §P5.1 code. Rollback target = v21.** Phase 1 fully closes on lambda#272
   merge. Audit record: memory `project_ci_modernization_phase1_audit_2026-06-09`.
+- 2026-06-10 — **Phase 2 wave 1 SHIPPED + LIVE-VALIDATED.** (a) **2.3**: pcb staging bucket + per-product
+  deploy role (picasso#492, belt-applied, verified live in 525; posture = public website endpoint
+  mirroring prod pcb, upgrade path documented; secret `AWS_DEPLOY_ROLE_ARN_STAGING` set). (b) **2.1+2.2**:
+  reusable `deploy-frontend.yml` on picasso main (#493) — deploy mechanics only (gates stay per-repo);
+  prod deploys archive immutable `releases/<sha>/` = one-step rollback (supersedes Phase 0's interim
+  backup for migrated repos). (c) **Consumers migrated**: analytics-dashboard (#22 — staging via
+  reusable LIVE-PROVEN on its own PR; prod now dispatch-only, was push-auto w/ toothless env gate) +
+  config-builder (#60 — **first-ever pcb staging previews**, live-proven + externally curl-verified;
+  prod keeps its real `production` env gate via an `approve-production` gate-job, since reusable-caller
+  jobs can't carry `environment:`). (d) **Bug found+fixed post-merge (#494)**: a called job requesting
+  more `permissions` than its caller grants = whole-workflow `startup_failure` with zero jobs and no
+  API-visible error — hit by both repos' prod callers (id-token+contents < the reusable's
+  pull-requests:write). Fix = reusable inherits caller permissions; caller contract documented in-line;
+  both startup-failed runs RERUN GREEN (prod jobs correctly skipped on push). Undetectable on PRs —
+  prod workflows don't execute on PR events; the post-merge push is their first validation.
+  **Phase 2 remaining:** widget migration (last consumer) + 2.5 de-suffix staging twins + 2.4
+  queue re-check (passive, ~2026-06-24). Ground-truth note: the dashboard's "staging" bucket
+  `picasso-analytics-portal-staging` lives in the PROD account 614 (legacy) — candidate to re-home
+  to 525 alongside 2.5-class naming work.
