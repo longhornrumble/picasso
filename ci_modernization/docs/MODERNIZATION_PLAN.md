@@ -167,3 +167,11 @@ update the change log below.
   **Phase 1 remaining:** operator applies the deploy-role IAM delta
   (`Sandbox/picasso-deploy-policy-v2.json`) → dispatch `Master_Function` (validates pipeline + closes
   the v21 gap) → whats-live ⚠ disappears. Task 2.5 added (de-suffix staging twins, operator-requested).
+- 2026-06-10 — **Phase 1 VALIDATED LIVE.** IAM delta applied+verified. First `Master_Function`
+  dispatch: attempt 1 (run 27248430578) failed SAFELY — release_note contained `$LATEST`, inline
+  `${{ }}` interpolation + `set -u` → unbound variable; alias untouched, no publish (fail-safe held).
+  Fix on lambda#272: free-text inputs via `env:` indirection (also closes the injection vector).
+  **Attempt 2 (run 27248503197) SUCCEEDED: published v22 from main@472062b, flipped `live` v21→v22,
+  smoke 200 — whats-live shows `alias live = v22 = $LATEST ✓`. The v21 alias gap is CLOSED; prod
+  API GW traffic now serves §P5.1 code. Rollback target = v21.** Phase 1 fully closes on lambda#272
+  merge. Audit record: memory `project_ci_modernization_phase1_audit_2026-06-09`.
