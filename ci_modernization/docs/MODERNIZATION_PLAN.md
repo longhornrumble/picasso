@@ -241,3 +241,22 @@ update the change log below.
   never consumed — a dispatch deploys the whole matrix; pre-existing, flagged not fixed). Wave 4
   (after soak): remove suffixed instances + old log-group state-rm (decision #2) + 614 trust
   removal + dangling integrations + whats-live names.
+- 2026-06-10 (later) — **Phase 4 core SHIPPED (#511 + #512) + stale-PR cleanup + smoke-budget fix.**
+  (a) **4.3 auto-rollback**: failed prod smoke in the reusable deploy-frontend self-heals — live
+  re-synced from the previous `releases/<sha>/` (newest non-current by LastModified), entry-point
+  cache-control restored, CF invalidated, rollback banner; all 3 front-ends inherit; skipped on
+  first release + staging. (b) **4.2 release notes**: prod summaries list commits since the previous
+  release via the compare API (no checkout — would wipe dist/; contents:read covers it). (c) **4.1
+  gate pings (picasso flows)**: `notify-approval` jobs Slack the operator the moment a prod gate is
+  actionable — widget (post-staging-deploy, with test link) + infra prod belt (at dispatch, with
+  `-target`, toJSON-escaped). lambda+pcb pending an org-level SLACK_WEBHOOK_URL (operator one-time).
+  (d) **lambda#38/#39 CLOSED with evidence** (promotion fulfilled by §P5.1+Phase 1; vestigial
+  aliases already gone — prod MFS carries only the load-bearing `live`). (e) **Smoke-budget fix
+  (lambda#275)**: PR#274's "failed" BSH deploy was a false negative — the AWS_IAM RESPONSE_STREAM
+  URL auth plane lags update-function-code beyond the old 5×6s budget (`wait function-updated` =
+  code plane only; pre-2.5 the CF smoke hit the never-just-updated OLD origin, masking it). Both
+  lambda workflows now retry 15×12s; prod's smoke previously had NO retry and could have spuriously
+  auto-rolled-back a healthy MFS alias flip. Validated by a green full-matrix dispatch.
+  **Phase 4 remaining:** 4.1 lambda+pcb extension (org-secret-gated). 1.5's write-side manifest
+  remains deliberately unbuilt (whats-live read-side answers the question; build only if deploy
+  HISTORY becomes a need).
