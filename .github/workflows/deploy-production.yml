@@ -1,14 +1,16 @@
 name: Deploy to Production
 
 on:
+  # Push to main runs quality gates + the STAGING deploy only. The production
+  # leg (approve-production → build → deploy) runs solely on workflow_dispatch,
+  # so prod deploys are deliberate acts and merges never queue waiting-approval
+  # runs (CI-modernization Phase 0.3 — the queue had grown to 21 ignored runs).
   push:
     branches:
       - main
     paths-ignore:
       # Docs-only changes don't affect the widget build artifact — skip the
-      # production deploy gate so docs PRs don't accumulate in the
-      # "Approve Production Deploy" queue. Mixed commits (docs + code)
-      # still trigger the workflow per GitHub paths-ignore semantics.
+      # workflow entirely for them.
       - 'docs/**'
       - '**/*.md'
   workflow_dispatch:
@@ -330,7 +332,10 @@ jobs:
     name: Approve Production Deploy
     runs-on: ubuntu-latest
     needs: build-and-deploy-staging
-    if: ${{ github.event.inputs.skip_staging != 'true' }}
+    # Production leg is dispatch-only (see `on:` comment). On push this job is
+    # skipped, which cascades: build + deploy skip too (their `if` requires
+    # approve-production success or the dispatch-only skip_staging input).
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.skip_staging != 'true' }}
     environment:
       name: production-approval
     steps:
