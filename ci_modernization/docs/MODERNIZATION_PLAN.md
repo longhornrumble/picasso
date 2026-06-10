@@ -220,3 +220,24 @@ update the change log below.
   dangling route-less `kgvc8xnewf` integrations (operator-run deletes). Execution blocked on 4
   operator decisions (source-dir rename out?, old log-group retention, who runs 614 edits,
   sequencing vs the naming-alignment session).
+- 2026-06-10 (later) — **2.5 Waves 1+2 EXECUTED — staging twins CUT OVER to bare names, soak (Wave 3)
+  begun.** Wave 1a #500 (parallel module instances; plan-gated 16-add/0-change/0-destroy); Wave 1b
+  #501+#502 (5 policy surfaces add-both; KMS edit shadow-key-gated per runbook); lambda#273 matrix
+  flip + dispatch (real code on bare pair, CodeSize byte-identical); operator gates: 614 KB-trust add
+  + kgvc8xnewf integrations pending Wave 4. Wave 2 #505 (CF origins + alarms re-key) + **two
+  recovered incidents**: (a) **SQS queue-policy self-lockout** — its own hardening SID denied
+  SetQueueAttributes to the deploy belt and admin; recovered via operator `sqs remove-permission` +
+  #502 adds the deploy role to the deny exceptions (control-plane parity with the KMS/secrets
+  policies). (b) **Function-URL dual-permission outage (~75 min staging chat)**: AWS_IAM URL auth in
+  the SCP'd staging account requires InvokeFunctionUrl AND InvokeFunction; the missing half was
+  silently carried by a NONE-era resource statement TF cannot express (the BSH module's documented
+  MANUAL STEP) — the bare twins lacked it, and the console no-op save that fixes NONE-auth URLs
+  (run on MFS, worked) RECONCILED the old BSH's policy and stripped its legacy statement too. Fix
+  #506: InvokeFunction added to the signer's identity grant (survives recreation; kills the manual
+  step for the signer path). CF access logs bracketed the outage exactly (last 200 05:06:21Z, first
+  403 05:14:55Z). **End state verified live**: MFS health 200 via CF on the bare fn; /stream 200
+  with real SSE; 11 alarms OK; old-MFS alarms re-keyed away; fresh traffic in both bare log groups.
+  Also found: lambda deploy-staging's `lambda` dispatch input is decorative (github.event.inputs
+  never consumed — a dispatch deploys the whole matrix; pre-existing, flagged not fixed). Wave 4
+  (after soak): remove suffixed instances + old log-group state-rm (decision #2) + 614 trust
+  removal + dangling integrations + whats-live names.
