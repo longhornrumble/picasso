@@ -1216,6 +1216,14 @@ module "lambda_booking_commit_staging" {
   scheduling_notif_template_table_arn  = module.ddb_scheduling_notif_template_staging[0].table_arn
   scheduling_notif_template_table_name = module.ddb_scheduling_notif_template_staging[0].table_name
 
+  # G7b reschedule_link SMS supplement: notify.js texts the guest the reschedule link when org
+  # SMS is enabled + the guest consented + it's not quiet-hours. BCH pre-filters consent on the
+  # SAME picasso-sms-consent-staging table the SMS_Sender twin re-checks, and invokes that twin.
+  sms_consent_table_arn    = module.picasso_form_tables.sms_consent_table_arn
+  sms_consent_table_name   = module.picasso_form_tables.sms_consent_table_name
+  sms_sender_function_arn  = module.lambda_sms_twin_staging[0].sms_sender_function_arn
+  sms_sender_function_name = module.lambda_sms_twin_staging[0].sms_sender_function_name
+
   # Ops alerts SNS topic (shared with MFS + Meta — created by ops_alarms_master_function_staging)
   ops_alerts_topic_arn = module.ops_alarms_master_function_staging[0].topic_arn
 
