@@ -1230,6 +1230,14 @@ module "lambda_booking_commit_staging" {
   # Tenant config bucket — the scheduling feature gate reads tenants/{id}/config.json.
   tenant_config_bucket_arn = module.tenant_config_staging[0].bucket_arn
   config_bucket_name       = module.tenant_config_staging[0].bucket_name
+
+  # Track 1 S6: reminder system wiring. scheduleReminders() + rebindReminders()
+  # create/delete per-booking EventBridge reminder schedules.
+  scheduled_messages_table_arn  = module.ddb_scheduled_messages_staging[0].table_arn
+  scheduled_messages_table_name = module.ddb_scheduled_messages_staging[0].table_name
+  scheduler_exec_role_arn       = module.lambda_reminder_scheduler_staging[0].scheduler_exec_role_arn
+  scheduler_target_arn          = module.lambda_reminder_scheduler_staging[0].scheduler_target_arn
+  scheduler_group_name          = module.lambda_reminder_scheduler_staging[0].scheduler_group_name
 }
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -1327,6 +1335,14 @@ module "lambda_calendar_lifecycle_consumer_staging" {
 
   # Ops alerts SNS topic (channel-degrade alert publish + the Errors alarm).
   ops_alerts_topic_arn = module.ops_alarms_master_function_staging[0].topic_arn
+
+  # Track 1 S6: reminder cleanup on cancel/move. deleteReminders() purges the
+  # per-booking EventBridge reminder schedules when a booking is canceled or moved.
+  # Consumer needs DeleteSchedule only -- no Create/PassRole (design Q1), so no exec-role ARN.
+  scheduled_messages_table_arn  = module.ddb_scheduled_messages_staging[0].table_arn
+  scheduled_messages_table_name = module.ddb_scheduled_messages_staging[0].table_name
+  scheduler_target_arn          = module.lambda_reminder_scheduler_staging[0].scheduler_target_arn
+  scheduler_group_name          = module.lambda_reminder_scheduler_staging[0].scheduler_group_name
 }
 
 # Scheduling sub-phase D Task D4 — Scheduling_Redemption_Handler (lambda#205, MERGED).
@@ -1833,6 +1849,113 @@ resource "aws_kms_key_policy" "pii_staging" {
       },
     ]
   })
+}
+
+# ══════════════════════════════════════════════════════════════════════════
+# Track 1 S6 — Reminder system activation (STAGING ONLY)
+#
+# Three new modules wire the merged-but-inert reminder code (lambda main S1/S2/S3)
+# into live AWS infrastructure:
+#
+#   1. ddb_scheduled_messages_staging — the picasso-scheduled-messages table that
+#      stores per-booking reminder rows. OPERATOR: check if this table already exists
+#      (created out-of-band by create-scheduled-messages-table.sh) and run
+#      `terraform import` before apply if so (see module banner).
+#
+#   2. lambda_scheduled_message_sender_staging — Scheduled_Message_Sender Lambda
+#      (the EventBridge Scheduler target). No deps on the scheduler module; creates
+#      its own execution role with send_email + SMS_Sender invoke grants.
+#
+#   3. lambda_reminder_scheduler_staging — houses THREE things:
+#        a. The dedicated schedule group "picasso-scheduling-reminders-staging"
+#        b. The EventBridge Scheduler execution role (ArnLike confused-deputy for
+#           dynamic per-booking schedule names; invoke-only on sender ARN)
+#        c. The Reminder_Scheduler (nightly reconciler) Lambda + its own role +
+#           a nightly cron schedule
+#
+# Dependency order (no cycle):
+#   ddb_scheduled_messages_staging  (no module deps)
+#   lambda_scheduled_message_sender_staging  (no module deps)
+#   lambda_reminder_scheduler_staging  →  lambda_scheduled_message_sender_staging
+#   lambda_booking_commit_staging  →  lambda_reminder_scheduler_staging + ddb
+#   lambda_calendar_lifecycle_consumer_staging  →  lambda_reminder_scheduler_staging + ddb
+#
+# Apply order (operator-gated):
+#   Step 0 — MANDATORY GATE (do NOT skip): the picasso-scheduled-messages table was likely
+#             created out-of-band by Scheduled_Message_Sender/create-scheduled-messages-table.sh.
+#             Run `aws dynamodb describe-table --table-name picasso-scheduled-messages
+#             --profile myrecruiter-staging`. If it EXISTS, `terraform import` it (command below)
+#             BEFORE apply — otherwise the create fails ResourceInUseException AFTER the roles +
+#             functions are already created (a messy partial apply). Proceed only when describe
+#             returns 404 OR the import is done + a plan shows no destructive table diff.
+#   Step 1 — apply with all three new modules + the BCH/lifecycle edits.
+#             The placeholder Lambdas + nightly cron fire = harmless no-op.
+#             AFTER apply: re-verify CodeSha256 on ALL FOUR touched functions (placeholder-revert
+#             hazard — the BCH + lifecycle edits re-touch their live functions):
+#               for f in Booking_Commit_Handler Calendar_Lifecycle_Consumer \
+#                        Scheduled_Message_Sender Reminder_Scheduler; do
+#                 aws lambda get-function-configuration --function-name "$f" \
+#                   --profile myrecruiter-staging --query CodeSha256; done
+#             Re-run the lambda-repo CI deploy for any that reverted to the placeholder.
+#   Step 2 — merge PR B / run lambda-repo CI deploys for the 3 functions.
+#   Step 3 — smoke: a synthetic cycle, OR exercise the CANCEL/RESCHEDULE path (not just a fresh
+#             booking) to confirm rows + schedules are created AND torn down.
+# ══════════════════════════════════════════════════════════════════════════
+
+# Track 1 S6 step 1: picasso-scheduled-messages table.
+# OPERATOR NOTE (see Step 0 gate above): if this table already exists, run BEFORE apply:
+#   terraform import \
+#     module.ddb_scheduled_messages_staging[0].aws_dynamodb_table.scheduled_messages \
+#     picasso-scheduled-messages
+module "ddb_scheduled_messages_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/ddb-scheduled-messages-staging"
+}
+
+# Track 1 S6 step 2: Scheduled_Message_Sender Lambda (the EventBridge schedule target).
+# No dependency on the scheduler module -- keeps the dependency graph acyclic.
+module "lambda_scheduled_message_sender_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/lambda-scheduled-message-sender-staging"
+
+  scheduled_messages_table_arn  = module.ddb_scheduled_messages_staging[0].table_arn
+  scheduled_messages_table_name = module.ddb_scheduled_messages_staging[0].table_name
+
+  # picasso-sms-consent (no -staging suffix) -- same table BCH + SMS_Sender use.
+  sms_consent_table_arn  = module.picasso_form_tables.sms_consent_table_arn
+  sms_consent_table_name = module.picasso_form_tables.sms_consent_table_name
+
+  # Invoke grants scoped to exactly these ARNs (no wildcard).
+  sms_sender_function_arn  = module.lambda_sms_twin_staging[0].sms_sender_function_arn
+  sms_sender_function_name = module.lambda_sms_twin_staging[0].sms_sender_function_name
+  # send_email_function_name defaults to "send_email" (bare, matches the staging function).
+
+  ops_alerts_topic_arn = module.ops_alarms_master_function_staging[0].topic_arn
+}
+
+# Track 1 S6 step 3: Reminder_Scheduler (nightly reconciler) + EventBridge exec role
+# + dedicated schedule group. Depends on lambda_scheduled_message_sender_staging for
+# the sender ARN (the target of every per-booking reminder schedule).
+module "lambda_reminder_scheduler_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/lambda-reminder-scheduler-staging"
+
+  # Scheduled_Message_Sender is the EventBridge schedule target; its ARN is wired into
+  # the scheduler_exec role's invoke policy + the reconciler's SCHEDULER_TARGET_ARN env.
+  sender_function_arn  = module.lambda_scheduled_message_sender_staging[0].sender_function_arn
+  sender_function_name = module.lambda_scheduled_message_sender_staging[0].sender_function_name
+
+  # Booking table (Query tenantId-start_at-index GSI + UpdateItem base table).
+  booking_table_arn          = module.ddb_booking_staging[0].table_arn
+  booking_table_name         = module.ddb_booking_staging[0].table_name
+  booking_start_at_index_arn = module.ddb_booking_staging[0].tenant_id_start_at_index_arn
+
+  # Scheduled-messages table (reconciler DeleteItem terminal rows).
+  scheduled_messages_table_arn  = module.ddb_scheduled_messages_staging[0].table_arn
+  scheduled_messages_table_name = module.ddb_scheduled_messages_staging[0].table_name
+
+  # Ops alerts SNS topic (Errors alarm target).
+  ops_alerts_topic_arn = module.ops_alarms_master_function_staging[0].topic_arn
 }
 
 # ------------------------------------------------------------------

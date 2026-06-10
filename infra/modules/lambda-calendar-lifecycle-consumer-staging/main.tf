@@ -63,6 +63,26 @@ variable "send_email_function_name" {
   default     = "send_email"
 }
 
+# ── Track 1 S6: reminder cleanup on cancel/move ──
+variable "scheduled_messages_table_arn" {
+  description = "ARN of picasso-scheduled-messages. Calendar_Lifecycle_Consumer DeleteItem to purge outstanding reminder rows when a booking is canceled or moved (deleteReminders path in S2)."
+  type        = string
+}
+
+variable "scheduled_messages_table_name" {
+  type = string
+}
+
+variable "scheduler_target_arn" {
+  description = "ARN of the Scheduled_Message_Sender Lambda. Passed as SCHEDULER_TARGET_ARN env so the S2 deleteReminders guard can check whether the reminder system is active."
+  type        = string
+}
+
+variable "scheduler_group_name" {
+  description = "Name of the dedicated reminder schedule group. Consumer DeleteSchedule is scoped to this group."
+  type        = string
+}
+
 variable "source_queue_arn" {
   description = "ARN of picasso-calendar-lifecycle-consumer-staging.fifo (from the fan-out module). The event-source-mapping polls it; the exec role consumes it."
   type        = string
@@ -237,6 +257,29 @@ data "aws_iam_policy_document" "consumer_exec" {
     actions   = ["xray:PutTraceSegments", "xray:PutTelemetryRecords"]
     resources = ["*"]
   }
+
+  # ── Track 1 S6: reminder cleanup on cancel/move ──
+
+  # EventBridge Scheduler: deleteReminders() (S2) removes per-booking reminder
+  # schedules when a booking is canceled or moved (reconcileDeleted/reconcileMoved).
+  # DeleteSchedule ONLY -- no CreateSchedule, no PassRole. The consumer never
+  # creates schedules; that is BCH's responsibility (design Q1).
+  statement {
+    sid     = "SchedulerDelete"
+    actions = ["scheduler:DeleteSchedule"]
+    resources = [
+      "arn:${data.aws_partition.current.partition}:scheduler:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:schedule/${var.scheduler_group_name}/*",
+    ]
+  }
+
+  # Scheduled-messages table: DeleteItem to purge outstanding reminder rows when a
+  # booking is canceled or moved (deleteReminders path). No CreateSchedule/PassRole --
+  # the consumer is cancel/cleanup only.
+  statement {
+    sid       = "DDBScheduledMessagesDelete"
+    actions   = ["dynamodb:DeleteItem"]
+    resources = [var.scheduled_messages_table_arn]
+  }
 }
 
 resource "aws_iam_role_policy" "consumer_exec" {
@@ -278,6 +321,12 @@ resource "aws_lambda_function" "consumer" {
       SEND_EMAIL_FUNCTION           = var.send_email_function_name
       JWT_SECRET_KEY_NAME           = "picasso/staging/jwt/signing-key"
       SCHEDULE_BASE_URL             = "https://staging.schedule.myrecruiter.ai"
+      # Track 1 S6: reminder cleanup wiring. deleteReminders() is DELETE-ONLY (no PassRole),
+      # so no SCHEDULER_ROLE_ARN (Security S2/SR-1). SCHEDULER_TARGET_ARN is the S2 guard's
+      # "is the reminder system wired?" check; SCHEDULER_GROUP_NAME feeds DeleteSchedule.
+      SCHEDULER_TARGET_ARN     = var.scheduler_target_arn
+      SCHEDULER_GROUP_NAME     = var.scheduler_group_name
+      SCHEDULED_MESSAGES_TABLE = var.scheduled_messages_table_name
     }
   }
 
