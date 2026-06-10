@@ -75,10 +75,16 @@ jobs:
   deploy:
     name: Deploy to ${{ inputs.environment }} (${{ inputs.bucket }})
     runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: read
-      pull-requests: write
+    # NO permissions block — the job inherits exactly what the CALLER job
+    # grants. A called job that requests MORE than its caller granted is a
+    # whole-workflow startup_failure (zero jobs, no error surfaced via the
+    # API) — this killed the pcb post-merge run when its prod caller granted
+    # only id-token+contents while this job demanded pull-requests:write.
+    #
+    # CALLER CONTRACT — grant on the calling job:
+    #   id-token: write        (always — OIDC role assumption)
+    #   contents: read         (always — artifact download)
+    #   pull-requests: write   (only when comment_pr: true)
     steps:
       - name: Download build artifact
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
