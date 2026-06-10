@@ -15,9 +15,9 @@
 # association), us-east-1 (root provider), trust includes edgelambda.amazonaws.com.
 # =============================================================================
 
-variable "bsh_function_arn" {
-  description = "ARN of the BSH streaming function this edge signer is allowed to invoke (lambda:InvokeFunctionUrl). Same-account identity grant on the L@E role."
-  type        = string
+variable "bsh_function_arns" {
+  description = "ARNs of the BSH streaming functions this edge signer is allowed to invoke (lambda:InvokeFunctionUrl). Same-account identity grant on the L@E role. Plural since task 2.5 Wave 1b: both the suffixed and bare-named BSH instances are listed during the de-suffix transition; drops back to one entry in Wave 4."
+  type        = list(string)
 }
 
 variable "function_name" {
@@ -62,7 +62,7 @@ resource "aws_iam_role_policy" "invoke_bsh_url" {
       Sid      = "InvokeBshFunctionUrl"
       Effect   = "Allow"
       Action   = "lambda:InvokeFunctionUrl"
-      Resource = var.bsh_function_arn
+      Resource = var.bsh_function_arns
     }]
   })
 }

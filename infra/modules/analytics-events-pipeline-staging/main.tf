@@ -41,9 +41,9 @@ variable "tenant_config_bucket_name" {
   type        = string
 }
 
-variable "bsh_role_arn" {
-  description = "ARN of the BSH Lambda execution role. Required for the SQS queue resource policy (audit F1 closure). Wired from module.lambda_bedrock_handler_staging[0].role_arn."
-  type        = string
+variable "bsh_role_arns" {
+  description = "ARNs of the BSH Lambda execution roles allowed to send (audit F1 closure). Plural since task 2.5 Wave 1b: both the suffixed and bare-named BSH instances are listed during the de-suffix transition; drops back to one entry in Wave 4."
+  type        = list(string)
 }
 
 variable "log_retention_days" {
@@ -129,7 +129,7 @@ resource "aws_sqs_queue_policy" "events" {
         # https://docs.aws.amazon.com/service-authorization/latest/reference/list_amazonsqs.html
         Sid       = "AllowBSHSend"
         Effect    = "Allow"
-        Principal = { AWS = var.bsh_role_arn }
+        Principal = { AWS = var.bsh_role_arns }
         Action    = "sqs:SendMessage"
         Resource  = aws_sqs_queue.events.arn
       },
@@ -164,7 +164,7 @@ resource "aws_sqs_queue_policy" "events" {
         Resource = aws_sqs_queue.events.arn
         Condition = {
           StringNotEquals = {
-            "aws:PrincipalArn" = [var.bsh_role_arn, aws_iam_role.exec.arn]
+            "aws:PrincipalArn" = concat(var.bsh_role_arns, [aws_iam_role.exec.arn])
           }
         }
       }
