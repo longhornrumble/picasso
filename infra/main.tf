@@ -646,6 +646,11 @@ module "lambda_analytics_dashboard_api_staging" {
   booking_table_arn  = module.ddb_booking_staging[0].table_arn
   booking_table_name = module.ddb_booking_staging[0].table_name
 
+  # G6/E12 booking actions (cancel + reschedule-link): ADA GetItems the booking for the §8
+  # permission check, then invokes BCH's scheduling_mutate executor for the side-effect.
+  booking_commit_function_arn  = module.lambda_booking_commit_staging[0].commit_function_arn
+  booking_commit_function_name = module.lambda_booking_commit_staging[0].commit_function_name
+
   # §E13b AppointmentType/RoutingPolicy write API (admin-only CRUD over the
   # routing tables the live booking router reads).
   appointment_type_table_arn  = module.ddb_appointment_type_staging[0].table_arn
@@ -1074,6 +1079,11 @@ module "lambda_booking_commit_staging" {
   appointment_type_table_name  = module.ddb_appointment_type_staging[0].table_name
   employee_registry_table_arn  = module.ddb_employee_registry_v2_staging[0].table_arn
   employee_registry_table_name = module.ddb_employee_registry_v2_staging[0].table_name
+
+  # G6 reschedule_link (the ADA-triggered "send reschedule link" action): notify.js emails the
+  # guest via send_email + reads the per-tenant §E14 template override (fail-safe → default).
+  scheduling_notif_template_table_arn  = module.ddb_scheduling_notif_template_staging[0].table_arn
+  scheduling_notif_template_table_name = module.ddb_scheduling_notif_template_staging[0].table_name
 
   # Ops alerts SNS topic (shared with MFS + Meta — created by ops_alarms_master_function_staging)
   ops_alerts_topic_arn = module.ops_alarms_master_function_staging[0].topic_arn
