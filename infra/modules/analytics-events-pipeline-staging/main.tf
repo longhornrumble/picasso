@@ -150,6 +150,15 @@ resource "aws_sqs_queue_policy" "events" {
         # Phase C.2 audit closure (rows 17+18): SetQueueAttributes blocks
         # redrive-target tampering / SSE disable; DeleteQueue blocks pipeline
         # destruction. PurgeQueue blocks bulk in-flight clear.
+        # SELF-LOCKOUT FIX (2026-06-10, found by the 2.5 Wave-1b apply):
+        # denying SetQueueAttributes without excepting the deploy role made
+        # this policy unmodifiable by the belt itself (run 27253632479,
+        # explicit-deny 403) — and by the operator's admin session. The
+        # GitHubActionsDeployRole exception below restores control-plane
+        # self-manageability, the same property the KMS key policy
+        # (root kms:Put*) and secret policies (no deny on PutResourcePolicy)
+        # were deliberately built with. The deploy role gains no data-plane
+        # access from this — only the listed control actions.
         Sid       = "DenyAllOtherStagingPrincipals"
         Effect    = "Deny"
         Principal = "*"
@@ -164,7 +173,10 @@ resource "aws_sqs_queue_policy" "events" {
         Resource = aws_sqs_queue.events.arn
         Condition = {
           StringNotEquals = {
-            "aws:PrincipalArn" = concat(var.bsh_role_arns, [aws_iam_role.exec.arn])
+            "aws:PrincipalArn" = concat(var.bsh_role_arns, [
+              aws_iam_role.exec.arn,
+              "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/GitHubActionsDeployRole",
+            ])
           }
         }
       }
