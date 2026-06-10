@@ -392,6 +392,12 @@ resource "aws_lambda_function" "commit" {
   timeout     = 90
   # Cap concurrency at the commit keystone: bound the blast radius of a runaway
   # caller and the rate of Google/Zoom/SES calls at v1 pilot scale.
+  # ⚠ SHARED POOL (G6, 2026-06-09): as of the G6 booking actions, ADA (the portal
+  # cancel/reschedule-link path) is a SECOND caller of this function alongside the chat
+  # BSH commit/propose path. All 5 slots are shared. A burst of portal cancels (each a
+  # multi-second Google events.delete) can transiently starve an in-chat commit
+  # (TooManyRequestsException → BSH "confirm by email"). Acceptable at v1 pilot scale;
+  # raise this (8–10) or split a dedicated bucket if portal action volume grows.
   reserved_concurrent_executions = 5
   architectures                  = ["x86_64"]
 
