@@ -141,7 +141,7 @@ The heaviest remaining phase. Contracts **§E0–E7 LOCKED 2026-06-05** ([FROZEN
 | WS | Tasks | Repo / base | Risk | Independent because |
 |---|---|---|---|---|
 | **WS-E-TEXTEN** | E1a/E1b | lambda + dashboard | MED (collision) | `text_en` across 3 writers + dashboard read — **SOLO-FIRST**, gates the other lambda workers |
-| **WS-E-REMIND** | E2/E3/E4/E9 | lambda → main | MED | new `Reminder_Scheduler/` + EventBridge rule lib + reconciler; extends `Scheduled_Message_Sender` email stub |
+| **WS-E-REMIND** | E2/E3/E4/E9 | lambda → main | MED→**HIGH (activation)** | `Reminder_Scheduler/` (lambda#242) MERGED but **INERT** — `scheduleReminders`/`rebind`/`delete` wired into nothing → confirmation/reminder_24h/reminder_1h do NOT dispatch. **Activation (commit-path wiring + EventBridge IAM + §E14-override feed) DEFERRED, operator-gated** → [`REMINDER_ACTIVATION_DEFERRED.md`](REMINDER_ACTIVATION_DEFERRED.md). Blocks WS-E-PORTAL row 2 (reminder-template editing). |
 | **WS-E-TCPA** | E8 | lambda → main | **HIGH** | consent gate + channel-selection (§E3); TCPA → full audit + operator go; bring-up patches `form_handler.js` ttl + IaC TTL first |
 | **WS-E-COPY** | E7 | lambda/BSH → main | MED | LLM re-engagement prompt + compliance injection |
 | **WS-E-ATTEND** | E5/E6/E10 + C13 | lambda → main | **HIGH** | attendance rule (`attendance_state` §E4) + 3-option disposition (D4 stubbed) + escalation; tokens/commit → full audit; after E5 |
