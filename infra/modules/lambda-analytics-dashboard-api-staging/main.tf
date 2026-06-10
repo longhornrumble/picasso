@@ -376,6 +376,34 @@ data "aws_iam_policy_document" "exec" {
     resources = [var.oauth_state_signing_secret_arn]
   }
 
+  # G8 (E13 D3 warnings): the GET /team/members calendar_connected flag reads each staff member's
+  # per-coordinator OAuth secret `status` (the SAME signal §B7 consults). GetSecretValue only, on
+  # the per-coordinator secrets, FENCED OFF the reserved `_*` (the _state-signing-key, read via
+  # OAuthStateSigningKeyRead above). Mirrors the Calendar_Event_Consumer SecretsReadCoordinatorOAuthStatus
+  # fence (both ARN + short-name patterns, since callers pass the short SecretId), + the per-tenant
+  # `*/_*` fence (so any future per-tenant reserved key is also excluded — G8 audit SR-2).
+  #
+  # ⚠ OPERATOR-ACCEPTED RISK (G8 audit B1, 2026-06-09): GetSecretValue returns the FULL secret
+  # (Google OAuth refresh/access tokens), not just `status` — so this grant gives ADA the CAPABILITY
+  # to read coordinator OAuth tokens, though the code uses only `status`. Accepted for the v1 pilot
+  # with this fence. TRACKED v2 follow-up: have the OAuth connect/revoke flow stamp `connected_at` on
+  # the employee registry → ADA reads the registry field → this statement is REMOVED entirely.
+  statement {
+    sid       = "SchedulingOAuthStatusRead"
+    actions   = ["secretsmanager:GetSecretValue"]
+    resources = ["arn:aws:secretsmanager:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:secret:picasso/scheduling/oauth/*"]
+    condition {
+      test     = "StringNotLike"
+      variable = "secretsmanager:SecretId"
+      values = [
+        "arn:aws:secretsmanager:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:secret:picasso/scheduling/oauth/_*",
+        "arn:aws:secretsmanager:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:secret:picasso/scheduling/oauth/*/_*",
+        "picasso/scheduling/oauth/_*",
+        "picasso/scheduling/oauth/*/_*",
+      ]
+    }
+  }
+
   # B5 audit: Tier-3 archive read path. Tightened from the hand-attached
   # ada-archive-read policy to require the tenant-partition prefix shape
   # — sessions/tenant=*/ — so any code bug that uses a flat legacy prefix
@@ -519,7 +547,10 @@ resource "aws_lambda_function" "this" {
       OAUTH_FUNCTION_URL         = var.oauth_function_url
       # G6/E12 booking actions proxy to BCH's scheduling_mutate executor (cancel + reschedule-link).
       BOOKING_COMMIT_FUNCTION_NAME = var.booking_commit_function_name
-      USE_DYNAMO_CACHE             = "false"
+      # G8: pin the per-coordinator OAuth secret prefix so the calendar_connected read path + the
+      # SchedulingOAuthStatusRead IAM fence can never silently diverge (code default matches).
+      OAUTH_SECRET_PATH_PREFIX = "picasso/scheduling/oauth"
+      USE_DYNAMO_CACHE         = "false"
       # Plan Security F8: restrict test-send endpoints to recipients whose
       # email domain is in this comma-list. Without it, an authenticated
       # admin could trigger a test send to any address (including real
