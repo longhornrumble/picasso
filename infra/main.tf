@@ -1413,6 +1413,23 @@ module "iam_widget_deploy_staging" {
   source = "./modules/iam-widget-deploy-staging"
 }
 
+# CI-modernization Phase 2.3: staging deploy target for picasso-config-builder
+# (closes the prod workflow's TODO(staging-env)). Bucket = public-read website
+# endpoint mirroring the prod bucket's posture (see module note); role =
+# per-product deploy role consumed by pcb's pr-checks via repo secret
+# AWS_DEPLOY_ROLE_ARN_STAGING.
+module "s3_config_builder_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/s3-config-builder-staging"
+}
+
+module "iam_config_builder_deploy_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/iam-config-builder-deploy-staging"
+
+  bucket_arn = module.s3_config_builder_staging[0].bucket_arn
+}
+
 # JWT secret resource policy — restricts read to the Lambda exec roles
 # that legitimately validate Picasso-issued JWTs. Defense-in-depth: the
 # Lambda IAM policies already grant the read; this resource-side Deny
