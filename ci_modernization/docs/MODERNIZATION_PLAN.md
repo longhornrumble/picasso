@@ -77,7 +77,7 @@ One consistent, gated path from commit → staging → prod for all four product
 | 2.2 Versioned artifacts | Upload each prod bundle to `s3://<bucket>/releases/<sha>/` before syncing live. Rollback = re-sync a prior release prefix + invalidate. | Rollback rehearsed once per product |
 | 2.3 Config-builder staging bucket | Small TF module in `infra/` (staging account — fits existing staging belt + naming convention). Wire its staging deploy + un-stick the prod gate. | Config-builder PR deploys to staging; prod gate functional |
 | 2.4 Widget queue sanity re-check | After 0.3 + 2.1, confirm no waiting-run accumulation over 2 weeks. | `--status waiting` stays 0 |
-| 2.5 De-suffix the staging twins (operator-requested 2026-06-09) | Staging-account (525) `Master_Function_Staging` + `Bedrock_Streaming_Handler_Staging` → bare names, per uniform-env-rules (account = env; new staging fns are already bare — SMS_Sender, Calendar_*). **Not a rename-in-place** — create-new + cutover, ADA Phase 4.5 is the proven playbook. Blast surface: BSH staging Function URL (MFS `STREAMING_ENDPOINT`, CF origin `picasso-streaming-lambda`), TF modules `lambda-{bedrock-handler,master-function}-staging`, IAM grants, alarms, both deploy-workflow matrices, pr-checks. Include: retire the **prod-account `Master_Function_Staging` relic** still integrated in prod API GW `kgvc8xnewf` (pre-account-split leftover, found 2026-06-09). Sequence AFTER first successful prod dispatches (rename against a known-good pipeline); coordinate w/ the prod-IaC naming-alignment program. | Staging twins bare-named; widget/staging E2E green; prod relic unwired + deleted; workflows updated |
+| 2.5 De-suffix the staging twins (operator-requested 2026-06-09; **SCOPED 2026-06-10 → `TASK_2_5_DESUFFIX_SCOPE.md`**) | Staging-account (525) `Master_Function_Staging` + `Bedrock_Streaming_Handler_Staging` → bare names, per uniform-env-rules (account = env; new staging fns are already bare — SMS_Sender, Calendar_*). **Not a rename-in-place** — create-new + cutover; discovery found both twins fully TF-managed (`var.function_name`-keyed), so the play is *parallel module instances*, cheaper than the ADA hand-managed playbook assumed. Blast surface, gates, waves, and 4 operator decisions: see the scope doc. **2026-06-10 live correction:** the prod-account relic Lambda is ALREADY deleted (614 has zero `*Staging*` functions; `kgvc8xnewf` routes all live traffic → `Master_Function:live`); what remains there is 3 route-less dangling integrations — trivial operator-run deletes. Sequence AFTER first successful prod dispatches (done — MFS v22 2026-06-10); coordinate w/ the active naming-alignment session (same infra tree, serialize applies). | Staging twins bare-named; widget/staging E2E green; dangling `kgvc8xnewf` integrations deleted; workflows updated |
 
 ## Phase 3 — Finish the IaC program (≈2–3 careful sessions, prod-IaC-owned)
 
@@ -175,3 +175,69 @@ update the change log below.
   smoke 200 — whats-live shows `alias live = v22 = $LATEST ✓`. The v21 alias gap is CLOSED; prod
   API GW traffic now serves §P5.1 code. Rollback target = v21.** Phase 1 fully closes on lambda#272
   merge. Audit record: memory `project_ci_modernization_phase1_audit_2026-06-09`.
+- 2026-06-10 — **Phase 2 wave 1 SHIPPED + LIVE-VALIDATED.** (a) **2.3**: pcb staging bucket + per-product
+  deploy role (picasso#492, belt-applied, verified live in 525; posture = public website endpoint
+  mirroring prod pcb, upgrade path documented; secret `AWS_DEPLOY_ROLE_ARN_STAGING` set). (b) **2.1+2.2**:
+  reusable `deploy-frontend.yml` on picasso main (#493) — deploy mechanics only (gates stay per-repo);
+  prod deploys archive immutable `releases/<sha>/` = one-step rollback (supersedes Phase 0's interim
+  backup for migrated repos). (c) **Consumers migrated**: analytics-dashboard (#22 — staging via
+  reusable LIVE-PROVEN on its own PR; prod now dispatch-only, was push-auto w/ toothless env gate) +
+  config-builder (#60 — **first-ever pcb staging previews**, live-proven + externally curl-verified;
+  prod keeps its real `production` env gate via an `approve-production` gate-job, since reusable-caller
+  jobs can't carry `environment:`). (d) **Bug found+fixed post-merge (#494)**: a called job requesting
+  more `permissions` than its caller grants = whole-workflow `startup_failure` with zero jobs and no
+  API-visible error — hit by both repos' prod callers (id-token+contents < the reusable's
+  pull-requests:write). Fix = reusable inherits caller permissions; caller contract documented in-line;
+  both startup-failed runs RERUN GREEN (prod jobs correctly skipped on push). Undetectable on PRs —
+  prod workflows don't execute on PR events; the post-merge push is their first validation.
+  **Phase 2 remaining:** widget migration (last consumer) + 2.5 de-suffix staging twins + 2.4
+  queue re-check (passive, ~2026-06-24). Ground-truth note: the dashboard's "staging" bucket
+  `picasso-analytics-portal-staging` lives in the PROD account 614 (legacy) — candidate to re-home
+  to 525 alongside 2.5-class naming work.
+- 2026-06-10 (later) — **Widget migrated to the reusable (picasso#496 MERGED) — 2.1 COMPLETE: all 3
+  front-ends on one deploy shape.** Reusable gained 3 optional inputs (`cache_control`,
+  `short_cache_paths`, `short_cache_control`) because the widget's cache split is load-bearing
+  (1-yr immutable hashed assets vs 5-min entry points — the PR #48 incident); defaults leave
+  dash/pcb byte-identical (simulated). Widget callers use **local-path `uses:`** (caller+reusable
+  same commit — no #493→#494 skew window). Preserved: quality gates, both builds, skip_staging
+  hotfix semantics, approve-production gate, notify guard; new `production-gate` job carries the
+  `production` environment (pcb pattern); new `post-deploy` job keeps the protected-files verify +
+  the load-bearing `deploy-production-*` tag (staleness check diffs against it). Phase-0 interim
+  artifact backup superseded by `releases/<sha>/` (as the Phase-0 audit planned). CF distribution
+  ids inline (E3G0LSWB1AQ9LP prod / E3G30AUOEJTB36 staging), verified live — staging role's
+  invalidation grant is pinned to exactly that id. **Staging leg LIVE-PROVEN on the merge-push**
+  (run 27251753021: reusable deployed picasso-widget-staging, smoke 200, prod leg + notify
+  correctly skipped; external curl: widget.js `cache-control: public, max-age=60`, fresh
+  last-modified). Prod leg validates on next operator dispatch (widget prod current — staleness
+  check green); the dispatch also covers the deferred 2.2 rollback rehearsal opportunity
+  (`releases/<sha>/` starts populating with the first dispatched prod deploy).
+- 2026-06-10 (later) — **2.5 SCOPED** (`TASK_2_5_DESUFFIX_SCOPE.md`): full live discovery of both
+  accounts. Key findings: twins fully TF-managed (parallel-module-instance cutover, zero-downtime,
+  4 waves); public URLs rename-immune (widget calls CF paths; only CF origin domains change); the
+  one prod-account edit on the critical path is the `picasso-kb-retriever-from-staging` trust
+  policy (names both suffixed roles); MFS metric namespaces are TF metric-filters, no Lambda code
+  change. **Plan drift corrected:** the 614 relic Lambda was already deleted — remainder is 3
+  dangling route-less `kgvc8xnewf` integrations (operator-run deletes). Execution blocked on 4
+  operator decisions (source-dir rename out?, old log-group retention, who runs 614 edits,
+  sequencing vs the naming-alignment session).
+- 2026-06-10 (later) — **2.5 Waves 1+2 EXECUTED — staging twins CUT OVER to bare names, soak (Wave 3)
+  begun.** Wave 1a #500 (parallel module instances; plan-gated 16-add/0-change/0-destroy); Wave 1b
+  #501+#502 (5 policy surfaces add-both; KMS edit shadow-key-gated per runbook); lambda#273 matrix
+  flip + dispatch (real code on bare pair, CodeSize byte-identical); operator gates: 614 KB-trust add
+  + kgvc8xnewf integrations pending Wave 4. Wave 2 #505 (CF origins + alarms re-key) + **two
+  recovered incidents**: (a) **SQS queue-policy self-lockout** — its own hardening SID denied
+  SetQueueAttributes to the deploy belt and admin; recovered via operator `sqs remove-permission` +
+  #502 adds the deploy role to the deny exceptions (control-plane parity with the KMS/secrets
+  policies). (b) **Function-URL dual-permission outage (~75 min staging chat)**: AWS_IAM URL auth in
+  the SCP'd staging account requires InvokeFunctionUrl AND InvokeFunction; the missing half was
+  silently carried by a NONE-era resource statement TF cannot express (the BSH module's documented
+  MANUAL STEP) — the bare twins lacked it, and the console no-op save that fixes NONE-auth URLs
+  (run on MFS, worked) RECONCILED the old BSH's policy and stripped its legacy statement too. Fix
+  #506: InvokeFunction added to the signer's identity grant (survives recreation; kills the manual
+  step for the signer path). CF access logs bracketed the outage exactly (last 200 05:06:21Z, first
+  403 05:14:55Z). **End state verified live**: MFS health 200 via CF on the bare fn; /stream 200
+  with real SSE; 11 alarms OK; old-MFS alarms re-keyed away; fresh traffic in both bare log groups.
+  Also found: lambda deploy-staging's `lambda` dispatch input is decorative (github.event.inputs
+  never consumed — a dispatch deploys the whole matrix; pre-existing, flagged not fixed). Wave 4
+  (after soak): remove suffixed instances + old log-group state-rm (decision #2) + 614 trust
+  removal + dangling integrations + whats-live names.
