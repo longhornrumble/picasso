@@ -58,6 +58,21 @@ on:
         type: string
         required: false
         default: ''
+      cache_control:
+        description: Cache-Control applied to the live sync (empty = none; e.g. "public, max-age=31536000, immutable")
+        type: string
+        required: false
+        default: ''
+      short_cache_paths:
+        description: Space-separated keys re-uploaded after the sync with short_cache_control — entry points whose URLs carry no content hash, so they must not inherit a long cache_control (e.g. "widget.js iframe.html")
+        type: string
+        required: false
+        default: ''
+      short_cache_control:
+        description: Cache-Control for short_cache_paths
+        type: string
+        required: false
+        default: 'public, max-age=300, must-revalidate'
       comment_pr:
         description: Post the deployed URL as a PR comment (staging-on-PR flows)
         type: boolean
@@ -111,6 +126,9 @@ jobs:
         # inputs get the safe path).
         env:
           SYNC_EXCLUDE: ${{ inputs.sync_exclude }}
+          CACHE_CONTROL: ${{ inputs.cache_control }}
+          SHORT_CACHE_PATHS: ${{ inputs.short_cache_paths }}
+          SHORT_CACHE_CONTROL: ${{ inputs.short_cache_control }}
         run: |
           set -euo pipefail
           EXCLUDES=()
@@ -120,7 +138,20 @@ jobs:
           for pat in $SYNC_EXCLUDE; do
             EXCLUDES+=(--exclude "$pat")
           done
-          aws s3 sync dist/ "s3://${{ inputs.bucket }}/" --delete "${EXCLUDES[@]}"
+          # Entry points get their own short Cache-Control below — exclude
+          # them from the bulk sync so they never carry the long value.
+          for key in $SHORT_CACHE_PATHS; do
+            EXCLUDES+=(--exclude "$key")
+          done
+          EXTRA=()
+          if [ -n "$CACHE_CONTROL" ]; then
+            EXTRA+=(--cache-control "$CACHE_CONTROL")
+          fi
+          aws s3 sync dist/ "s3://${{ inputs.bucket }}/" --delete "${EXCLUDES[@]}" ${EXTRA[@]+"${EXTRA[@]}"}
+          for key in $SHORT_CACHE_PATHS; do
+            aws s3 cp "dist/$key" "s3://${{ inputs.bucket }}/$key" \
+              --cache-control "$SHORT_CACHE_CONTROL"
+          done
 
       - name: Invalidate CloudFront
         if: inputs.cloudfront_distribution_id != ''
@@ -157,6 +188,8 @@ jobs:
         env:
           SYNC_EXCLUDE: ${{ inputs.sync_exclude }}
           CF_ID: ${{ inputs.cloudfront_distribution_id }}
+          SHORT_CACHE_PATHS: ${{ inputs.short_cache_paths }}
+          SHORT_CACHE_CONTROL: ${{ inputs.short_cache_control }}
         run: |
           {
             echo "### Deploy: ${{ inputs.environment }} -> ${{ inputs.bucket }}"
@@ -173,6 +206,11 @@ jobs:
                 CMD="$CMD --exclude '$pat'"
               done
               echo "$CMD"
+              # Entry points need their short Cache-Control restored — the
+              # release copy carries no Cache-Control metadata.
+              for key in $SHORT_CACHE_PATHS; do
+                echo "aws s3 cp s3://${{ inputs.bucket }}/releases/<prior-sha>/$key s3://${{ inputs.bucket }}/$key --cache-control '$SHORT_CACHE_CONTROL'"
+              done
               if [ -n "$CF_ID" ]; then
                 echo "aws cloudfront create-invalidation --distribution-id $CF_ID --paths '/*'"
               fi
