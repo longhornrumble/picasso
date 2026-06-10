@@ -602,6 +602,127 @@ module "lambda_master_function_staging" {
   log_retention_days = 7
 }
 
+# ──────────────────────────────────────────────────────────────────────
+# CI-modernization task 2.5 Wave 1a (TASK_2_5_DESUFFIX_SCOPE.md): bare-named
+# parallel instances of the two staging twins. Account = env; the suffixed
+# instances above are decommissioned in Wave 4 after CF origins cut over
+# (Wave 2) and a soak. These receive NO traffic until Wave 2. Args mirror
+# the suffixed instances exactly, except function_name and (for MFS) the
+# streaming endpoint, which points at the NEW BSH's Function URL.
+# Wave 1b (separate PR, after the shadow-key gate) adds the new roles to the
+# JWT / BSH-cf-origin secret policies, the PII CMK policy, the analytics SQS
+# queue policy, and the L@E signer grant.
+# ──────────────────────────────────────────────────────────────────────
+module "lambda_bedrock_handler" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/lambda-bedrock-handler-staging"
+
+  function_name = "Bedrock_Streaming_Handler"
+
+  tenant_config_bucket_arn     = module.tenant_config_staging[0].bucket_arn
+  config_bucket_name           = module.tenant_config_staging[0].bucket_name
+  session_summaries_table_arn  = module.session_summaries.table_arn
+  session_summaries_table_name = module.session_summaries.table_name
+  tenant_registry_table_arn    = module.ddb_tenant_registry_staging[0].table_arn
+  tenant_registry_table_name   = module.ddb_tenant_registry_staging[0].table_name
+
+  cf_origin_secret_arn  = "arn:aws:secretsmanager:us-east-1:525409062831:secret:picasso/bsh/cf-origin-secret-*"
+  cf_origin_secret_name = "picasso/bsh/cf-origin-secret"
+
+  form_submissions_table_arn    = module.ddb_form_submissions_staging[0].table_arn
+  form_submissions_table_name   = module.ddb_form_submissions_staging[0].table_name
+  notification_sends_table_arn  = module.ddb_notification_sends_staging[0].table_arn
+  notification_sends_table_name = module.ddb_notification_sends_staging[0].table_name
+  sms_consent_table_arn         = module.picasso_form_tables.sms_consent_table_arn
+  sms_consent_table_name        = module.picasso_form_tables.sms_consent_table_name
+  sms_usage_table_arn           = module.picasso_form_tables.sms_usage_table_arn
+  sms_usage_table_name          = module.picasso_form_tables.sms_usage_table_name
+
+  scheduling_session_table_arn  = module.ddb_conversation_scheduling_session_staging[0].table_arn
+  scheduling_session_table_name = module.ddb_conversation_scheduling_session_staging[0].table_name
+  booking_table_arn             = module.ddb_booking_staging[0].table_arn
+  booking_table_name            = module.ddb_booking_staging[0].table_name
+
+  scheduling_executor_function_arn  = module.lambda_booking_commit_staging[0].commit_function_arn
+  scheduling_executor_function_name = module.lambda_booking_commit_staging[0].commit_function_name
+
+  pii_subject_index_table_arn  = module.ddb_pii_subject_index_staging[0].table_arn
+  pii_subject_index_table_name = module.ddb_pii_subject_index_staging[0].table_name
+
+  pii_subject_index_alarm_sns_topic_arn = module.ops_alarms_master_function_staging[0].topic_arn
+
+  analytics_queue_arn = module.analytics_events_pipeline_staging[0].queue_arn
+  analytics_queue_url = module.analytics_events_pipeline_staging[0].queue_url
+
+  sms_sender_function_arn  = module.lambda_sms_twin_staging[0].sms_sender_function_arn
+  sms_sender_function_name = module.lambda_sms_twin_staging[0].sms_sender_function_name
+
+  kb_arns = [
+    "arn:aws:bedrock:us-east-1:614056832592:knowledge-base/0BQBWFYDMT",
+  ]
+
+  # Cross-account KB access. Wave-1 gate: the operator must add
+  # Bedrock_Streaming_Handler-role to this 614 role's trust policy before
+  # cutover (prod-account edit — see scope doc Decisions #3).
+  kb_retriever_role_arns = [
+    "arn:aws:iam::614056832592:role/picasso-kb-retriever-from-staging",
+  ]
+
+  # Remedy A posture carried over from the suffixed instance: AWS_IAM from
+  # birth. The L@E signer's InvokeFunctionUrl grant gains this instance's
+  # ARN in Wave 1b — until then the URL is intentionally unreachable
+  # (no traffic is expected before Wave 2 anyway).
+  streaming_function_url_auth_type = "AWS_IAM"
+}
+
+module "lambda_master_function" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/lambda-master-function-staging"
+
+  function_name = "Master_Function"
+
+  tenant_config_bucket_arn          = module.tenant_config_staging[0].bucket_arn
+  config_bucket_name                = module.tenant_config_staging[0].bucket_name
+  jwt_secret_arn                    = module.secrets_jwt_staging[0].secret_arn
+  jwt_secret_name                   = module.secrets_jwt_staging[0].secret_name
+  session_summaries_table_arn       = module.session_summaries.table_arn
+  session_summaries_table_name      = module.session_summaries.table_name
+  tenant_registry_table_arn         = module.ddb_tenant_registry_staging[0].table_arn
+  tenant_registry_table_name        = module.ddb_tenant_registry_staging[0].table_name
+  audit_table_arn                   = module.ddb_audit_staging[0].table_arn
+  audit_table_name                  = module.ddb_audit_staging[0].table_name
+  recent_messages_table_arn         = module.ddb_recent_messages_staging[0].table_arn
+  recent_messages_table_name        = module.ddb_recent_messages_staging[0].table_name
+  conversation_summaries_table_arn  = module.ddb_conversation_summaries_staging[0].table_arn
+  conversation_summaries_table_name = module.ddb_conversation_summaries_staging[0].table_name
+  token_blacklist_table_arn         = module.ddb_token_blacklist_staging[0].table_arn
+  token_blacklist_table_name        = module.ddb_token_blacklist_staging[0].table_name
+  form_submissions_table_arn        = module.ddb_form_submissions_staging[0].table_arn
+  form_submissions_table_name       = module.ddb_form_submissions_staging[0].table_name
+  notification_sends_table_arn      = module.ddb_notification_sends_staging[0].table_arn
+  notification_sends_table_name     = module.ddb_notification_sends_staging[0].table_name
+  pii_subject_index_table_arn       = module.ddb_pii_subject_index_staging[0].table_arn
+  pii_subject_index_table_name      = module.ddb_pii_subject_index_staging[0].table_name
+
+  # The bare MFS streams via the bare BSH — the new pair is wired together
+  # from birth; nothing about the suffixed pair changes.
+  streaming_endpoint = module.lambda_bedrock_handler[0].function_url
+
+  cf_origin_secret_arn = "arn:aws:secretsmanager:us-east-1:525409062831:secret:picasso/mfs/cf-origin-secret-ZU7vTU"
+
+  kb_arns = [
+    "arn:aws:bedrock:us-east-1:614056832592:knowledge-base/0BQBWFYDMT",
+  ]
+  # Same Wave-1 operator gate as the BSH instance above: add
+  # Master_Function-role to the 614 trust policy before cutover.
+  kb_retriever_role_arns = [
+    "arn:aws:iam::614056832592:role/picasso-kb-retriever-from-staging",
+  ]
+
+  # Same retention policy as the suffixed instance (7d, PII retention strategy).
+  log_retention_days = 7
+}
+
 # Phase 4.1: staging-account Analytics_Dashboard_API. Bundles IAM exec
 # role + CloudWatch log group + Lambda placeholder + Function URL
 # (AuthType NONE, BUFFERED). Real code ships via Phase 4.2 lambda repo
@@ -693,10 +814,15 @@ module "analytics_events_pipeline_staging" {
   tenant_config_bucket_arn     = module.tenant_config_staging[0].bucket_arn
   tenant_config_bucket_name    = module.tenant_config_staging[0].bucket_name
 
-  # Phase C audit F1 closure: SQS queue policy needs the BSH role ARN to
-  # scope the Allow statement. Module gates the queue policy on this being
-  # the legitimate sender — no other staging-account principal may send.
-  bsh_role_arn = module.lambda_bedrock_handler_staging[0].role_arn
+  # Phase C audit F1 closure: SQS queue policy needs the BSH role ARNs to
+  # scope the Allow statement. Module gates the queue policy on these being
+  # the legitimate senders — no other staging-account principal may send.
+  # Task 2.5 Wave 1b: both BSH instances during the de-suffix transition;
+  # drops back to the bare instance alone in Wave 4.
+  bsh_role_arns = [
+    module.lambda_bedrock_handler_staging[0].role_arn,
+    module.lambda_bedrock_handler[0].role_arn,
+  ]
 }
 
 # Phase B (BSH staging-twin): SMS_Sender + SMS_Webhook_Handler twin.
@@ -775,8 +901,13 @@ module "ops_alarms_master_function_staging" {
   count  = var.env == "staging" ? 1 : 0
   source = "./modules/ops-alarms-master-function-staging"
 
-  function_name  = module.lambda_master_function_staging[0].function_name
-  log_group_name = module.lambda_master_function_staging[0].log_group_name
+  # Task 2.5 Wave 2: alarms watch the bare-named MFS instance (alarm names
+  # + metric filters re-key from these outputs; the SNS topic and its
+  # out-of-band subscriptions are untouched). The module's hardcoded
+  # `Picasso/Master_Function_Staging` metric NAMESPACES stay — renaming a
+  # namespace orphans metric history; filter+alarm pairs stay consistent.
+  function_name  = module.lambda_master_function[0].function_name
+  log_group_name = module.lambda_master_function[0].log_group_name
 }
 
 # ──────────────────────────────────────────────────────────────────────
@@ -1381,10 +1512,14 @@ module "lambda_edge_bsh_signer_staging" {
   count  = var.env == "staging" ? 1 : 0
   source = "./modules/lambda-edge-bsh-signer-staging"
 
-  # Literal ARN (not a module output, unlike the prod signer): the staging BSH is
-  # the hand-managed legacy Bedrock_Streaming_Handler_Staging — there is no
-  # bsh-function-staging Terraform module to reference. Intentional asymmetry.
-  bsh_function_arn = "arn:aws:lambda:us-east-1:525409062831:function:Bedrock_Streaming_Handler_Staging"
+  # Task 2.5 Wave 1b: both BSH instances during the de-suffix transition.
+  # The suffixed instance keeps its historical literal ARN (predates its TF
+  # module); the bare instance is a module output (real dependency edge).
+  # Drops back to the bare entry alone in Wave 4.
+  bsh_function_arns = [
+    "arn:aws:lambda:us-east-1:525409062831:function:Bedrock_Streaming_Handler_Staging",
+    module.lambda_bedrock_handler[0].function_arn,
+  ]
 }
 
 module "cloudfront_widget_staging" {
@@ -1411,6 +1546,23 @@ module "cloudfront_widget_staging" {
 module "iam_widget_deploy_staging" {
   count  = var.env == "staging" ? 1 : 0
   source = "./modules/iam-widget-deploy-staging"
+}
+
+# CI-modernization Phase 2.3: staging deploy target for picasso-config-builder
+# (closes the prod workflow's TODO(staging-env)). Bucket = public-read website
+# endpoint mirroring the prod bucket's posture (see module note); role =
+# per-product deploy role consumed by pcb's pr-checks via repo secret
+# AWS_DEPLOY_ROLE_ARN_STAGING.
+module "s3_config_builder_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/s3-config-builder-staging"
+}
+
+module "iam_config_builder_deploy_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/iam-config-builder-deploy-staging"
+
+  bucket_arn = module.s3_config_builder_staging[0].bucket_arn
 }
 
 # JWT secret resource policy — restricts read to the Lambda exec roles
@@ -1449,11 +1601,16 @@ resource "aws_secretsmanager_secret_policy" "bsh_cf_origin_staging" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid       = "AllowBSHLambdaRoleOnly"
-        Effect    = "Allow"
-        Principal = { AWS = module.lambda_bedrock_handler_staging[0].role_arn }
-        Action    = "secretsmanager:GetSecretValue"
-        Resource  = "*"
+        # Task 2.5 Wave 1b: both BSH instances during the de-suffix
+        # transition; drops back to the bare instance alone in Wave 4.
+        Sid    = "AllowBSHLambdaRoleOnly"
+        Effect = "Allow"
+        Principal = { AWS = [
+          module.lambda_bedrock_handler_staging[0].role_arn,
+          module.lambda_bedrock_handler[0].role_arn,
+        ] }
+        Action   = "secretsmanager:GetSecretValue"
+        Resource = "*"
       },
       {
         # Same NotPrincipal-via-aws:PrincipalArn pattern as the JWT/Clerk
@@ -1466,7 +1623,10 @@ resource "aws_secretsmanager_secret_policy" "bsh_cf_origin_staging" {
         Resource  = "*"
         Condition = {
           StringNotEquals = {
-            "aws:PrincipalArn" = module.lambda_bedrock_handler_staging[0].role_arn
+            "aws:PrincipalArn" = [
+              module.lambda_bedrock_handler_staging[0].role_arn,
+              module.lambda_bedrock_handler[0].role_arn,
+            ]
           }
         }
       },
@@ -1486,6 +1646,9 @@ resource "aws_secretsmanager_secret_policy" "jwt_signing_key_staging" {
         Effect = "Allow"
         Principal = { AWS = [
           module.lambda_master_function_staging[0].role_arn,
+          # Task 2.5 Wave 1b: bare-named MFS instance during the de-suffix
+          # transition; the suffixed entry drops in Wave 4.
+          module.lambda_master_function[0].role_arn,
           module.lambda_analytics_dashboard_api_staging[0].role_arn,
           # Scheduling §13.4 signed-token signers (same key; iss claim isolates from
           # chat-session JWTs). Calendar_Event_Consumer mints the B9 reoffer link (gap C);
@@ -1514,6 +1677,7 @@ resource "aws_secretsmanager_secret_policy" "jwt_signing_key_staging" {
           StringNotEquals = {
             "aws:PrincipalArn" = [
               module.lambda_master_function_staging[0].role_arn,
+              module.lambda_master_function[0].role_arn,
               module.lambda_analytics_dashboard_api_staging[0].role_arn,
               module.lambda_calendar_event_consumer_staging[0].consumer_role_arn,
               module.lambda_booking_commit_staging[0].commit_role_arn,
@@ -1591,6 +1755,11 @@ resource "aws_kms_key_policy" "pii_staging" {
         Effect = "Allow"
         Principal = { AWS = [
           module.lambda_master_function_staging[0].role_arn,
+          # Task 2.5 Wave 1b: bare-named MFS instance during the de-suffix
+          # transition (shadow-key-gated per
+          # kms-pii-staging-policy-change-runbook.md, run 2026-06-10);
+          # the suffixed entry drops in Wave 4 under the same gate.
+          module.lambda_master_function[0].role_arn,
           module.lambda_pii_delete_staging[0].delete_role_arn,
           module.lambda_pii_delete_staging[0].backfill_role_arn,
           module.lambda_pii_dsar_staging[0].dsar_role_arn,
@@ -1635,6 +1804,7 @@ resource "aws_kms_key_policy" "pii_staging" {
             # gate per kms-pii-staging-policy-change-runbook.md §"PR4b SR-G".
             "aws:PrincipalArn" = [
               module.lambda_master_function_staging[0].role_arn,
+              module.lambda_master_function[0].role_arn,
               module.lambda_pii_delete_staging[0].delete_role_arn,
               module.lambda_pii_delete_staging[0].backfill_role_arn,
               module.lambda_pii_delete_staging[0].breakglass_role_arn,
