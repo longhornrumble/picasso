@@ -263,6 +263,22 @@ data "aws_iam_policy_document" "sms_sender_exec" {
     resources = ["${aws_secretsmanager_secret.telnyx_staging.arn}*"]
   }
 
+  # The Telnyx secret is encrypted with the customer-managed CMK above, so GetSecretValue
+  # needs kms:Decrypt on that key (the key policy's EnableRootAccount statement delegates to
+  # IAM, so this grant is sufficient). Scoped to THIS key only, and conditioned on
+  # kms:ViaService=secretsmanager so the role can only decrypt it THROUGH Secrets Manager,
+  # never call KMS directly. Without this, every send fails "Access to KMS is not allowed".
+  statement {
+    sid       = "TelnyxSecretDecrypt"
+    actions   = ["kms:Decrypt"]
+    resources = [aws_kms_key.telnyx_secret.arn]
+    condition {
+      test     = "StringEquals"
+      variable = "kms:ViaService"
+      values   = ["secretsmanager.${data.aws_region.current.name}.amazonaws.com"]
+    }
+  }
+
   statement {
     sid       = "NotificationSendsWrite"
     actions   = ["dynamodb:PutItem"]
