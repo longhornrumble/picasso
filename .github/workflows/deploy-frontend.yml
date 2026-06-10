@@ -113,6 +113,25 @@ jobs:
           role-to-assume: ${{ secrets.deploy_role_arn }}
           aws-region: ${{ env.AWS_REGION }}
 
+      # Identify the PREVIOUS release before archiving the current one —
+      # it's the auto-rollback target and the release-notes baseline.
+      # Newest distinct releases/<sha>/ prefix by object LastModified,
+      # excluding the current sha (re-deploys of the same sha).
+      - name: Find previous release (production)
+        id: prev
+        if: inputs.environment == 'production'
+        run: |
+          set -euo pipefail
+          PREV_SHA=$(aws s3api list-objects-v2 --bucket "${{ inputs.bucket }}" --prefix "releases/" \
+            --query 'Contents[].{k:Key,t:LastModified}' --output json 2>/dev/null \
+            | jq -r --arg cur "${{ github.sha }}" '
+                [ (. // [])[] | {sha: (.k | split("/")[1]), t} ]
+                | map(select(.sha != $cur and .sha != ""))
+                | group_by(.sha) | map({sha: .[0].sha, t: (map(.t) | max)})
+                | sort_by(.t) | last | .sha // empty')
+          echo "prev_sha=$PREV_SHA" >> "$GITHUB_OUTPUT"
+          echo "Previous release: ${PREV_SHA:-<none — first release>}"
+
       - name: Upload immutable release copy (production)
         if: inputs.environment == 'production'
         run: |
@@ -161,6 +180,7 @@ jobs:
             --paths '/*'
 
       - name: Smoke check
+        id: smoke
         run: |
           set -euo pipefail
           URL="${{ inputs.website_url }}${{ inputs.smoke_path }}"
@@ -170,6 +190,40 @@ jobs:
             echo "::error::Expected ${{ inputs.smoke_expect_status }}, got $STATUS"
             exit 1
           fi
+
+      # Phase 4.3: a failed prod smoke self-heals by re-syncing the previous
+      # release prefix — the operator approves agent work knowing a bad deploy
+      # reverts itself. Skipped on the first-ever release (no rollback target)
+      # and on staging (fast-forward fixes are cheaper there than rollbacks).
+      - name: Auto-rollback on failed smoke (production)
+        if: failure() && steps.smoke.outcome == 'failure' && inputs.environment == 'production' && steps.prev.outputs.prev_sha != ''
+        env:
+          SYNC_EXCLUDE: ${{ inputs.sync_exclude }}
+          SHORT_CACHE_PATHS: ${{ inputs.short_cache_paths }}
+          SHORT_CACHE_CONTROL: ${{ inputs.short_cache_control }}
+          PREV_SHA: ${{ steps.prev.outputs.prev_sha }}
+        run: |
+          set -euo pipefail
+          echo "::warning::Smoke failed — rolling live back to release $PREV_SHA"
+          EXCLUDES=(--exclude "releases/*")
+          for pat in $SYNC_EXCLUDE; do EXCLUDES+=(--exclude "$pat"); done
+          aws s3 sync "s3://${{ inputs.bucket }}/releases/$PREV_SHA/" "s3://${{ inputs.bucket }}/" --delete "${EXCLUDES[@]}"
+          for key in $SHORT_CACHE_PATHS; do
+            aws s3 cp "s3://${{ inputs.bucket }}/releases/$PREV_SHA/$key" "s3://${{ inputs.bucket }}/$key" \
+              --cache-control "$SHORT_CACHE_CONTROL"
+          done
+          if [ -n "${{ inputs.cloudfront_distribution_id }}" ]; then
+            aws cloudfront create-invalidation \
+              --distribution-id ${{ inputs.cloudfront_distribution_id }} --paths '/*'
+          fi
+          STATUS=$(curl -s -o /dev/null -w '%{http_code}' -H 'Cache-Control: no-cache' "${{ inputs.website_url }}${{ inputs.smoke_path }}")
+          {
+            echo "### ⚠️ AUTO-ROLLBACK executed"
+            echo ""
+            echo "Smoke failed on \`${{ github.sha }}\`; live re-synced to previous release \`$PREV_SHA\`."
+            echo "Post-rollback smoke: \`$STATUS\` (expected ${{ inputs.smoke_expect_status }})."
+            echo "The failed release remains archived at \`s3://${{ inputs.bucket }}/releases/${{ github.sha }}/\` for diagnosis."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Comment deployed URL on PR
         if: inputs.comment_pr && github.event_name == 'pull_request'
@@ -190,12 +244,26 @@ jobs:
           CF_ID: ${{ inputs.cloudfront_distribution_id }}
           SHORT_CACHE_PATHS: ${{ inputs.short_cache_paths }}
           SHORT_CACHE_CONTROL: ${{ inputs.short_cache_control }}
+          PREV_SHA: ${{ steps.prev.outputs.prev_sha }}
+          # Phase 4.2 release notes: compare API instead of a checkout — a
+          # checkout here would wipe dist/, and contents:read (already in the
+          # caller contract) covers the compare endpoint.
+          GH_TOKEN: ${{ github.token }}
         run: |
           {
             echo "### Deploy: ${{ inputs.environment }} -> ${{ inputs.bucket }}"
             echo ""
             echo "- **Commit:** ${{ github.sha }}"
             echo "- **URL:** ${{ inputs.website_url }}"
+            if [ "${{ inputs.environment }}" = "production" ] && [ -n "$PREV_SHA" ]; then
+              echo ""
+              echo "**Changes since previous release (\`${PREV_SHA:0:7}\`):**"
+              # Unrelated/garbage-collected prev sha -> compare 404s; degrade
+              # to a note rather than failing the summary.
+              gh api "repos/${{ github.repository }}/compare/$PREV_SHA...${{ github.sha }}" \
+                --jq '.commits[] | "- \(.sha[0:7]) \(.commit.message | split("\n")[0])"' 2>/dev/null \
+                | tail -50 || echo "_(commit range unavailable — previous release predates current history)_"
+            fi
             if [ "${{ inputs.environment }}" = "production" ]; then
               echo "- **Release copy:** \`s3://${{ inputs.bucket }}/releases/${{ github.sha }}/\` (immutable)"
               echo ""
