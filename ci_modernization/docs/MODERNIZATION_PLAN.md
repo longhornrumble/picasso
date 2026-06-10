@@ -141,3 +141,13 @@ update the change log below.
   gates green, WAITING at the `production` gate for operator approval. 0.5 resolved per operator:
   **convergence promote PR picasso#484** opened (staging→main, drift 22→0, merge-commit mandated).
   picasso#483 rebased onto main (attested, no content delta), all checks green — awaiting merge.
+- 2026-06-09 (close-out) — #483/#484/#485 all merged; drift 0; merge-push run 27244764448 proved the
+  new semantics (gates+staging success, prod leg skipped, no queue). **Phase-completion audit run**
+  (adversarial deployment-specialist): 2 blockers found — B-1 widget rollback was FICTIONAL (backup
+  died with the ephemeral runner) + B-2 dispatch-only removed the staleness signal. Operator-approved
+  **fix-now batch = picasso#486**: B-1 artifact-persisted backup + working rollback instructions;
+  B-2 weekly `prod-staleness-check.yml` (deduped issue on undeployed `Picasso/` changes); SR-1
+  skip_staging now skips the staging deploy AND the hotfix path requires green gates (closed a
+  pre-existing always()-over-failed-gates hole); SR-2 no more skipped-deploy Slack noise; N-1 summary
+  wording. Refuted: C-4 (pcb actions ARE pinned on origin/main). Audit record:
+  memory `project_ci_modernization_phase0_audit_2026-06-09`. **Phase 0 COMPLETE on #486 merge.**

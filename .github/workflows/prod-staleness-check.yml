@@ -1,0 +1,88 @@
+name: Prod Staleness Check
+
+# Phase 0 audit B-2 (ci_modernization/docs/MODERNIZATION_PLAN.md): production
+# deploys are dispatch-only, so nothing queues to signal "prod is behind".
+# This check replaces that signal: weekly, diff deployable widget paths since
+# the last deploy-production-* tag and open an issue if anything is pending.
+# Minimal interim form of Phase 4.1; superseded when the deploy-state
+# manifest (Phase 1.5) lands.
+
+on:
+  schedule:
+    - cron: '0 14 * * 1'   # Mondays 14:00 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    name: Compare prod deploy tag to main
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout (full history + tags)
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        with:
+          fetch-depth: 0
+          ref: main
+
+      - name: Diff deployable paths since last prod deploy
+        id: diff
+        run: |
+          set -euo pipefail
+          LAST_TAG=$(git tag -l 'deploy-production-*' --sort=-creatordate | head -1)
+          if [ -z "$LAST_TAG" ]; then
+            echo "No deploy-production-* tags found — nothing to compare." >> $GITHUB_STEP_SUMMARY
+            echo "stale=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          echo "Last prod deploy tag: $LAST_TAG" >> $GITHUB_STEP_SUMMARY
+          # Same deployable-path filter as the deploy workflow's intent:
+          # widget source only, docs excluded.
+          PENDING=$(git log --oneline "$LAST_TAG"..main -- 'Picasso/' ':!**/*.md' || true)
+          if [ -z "$PENDING" ]; then
+            echo "Prod widget is current — no deployable changes since $LAST_TAG." >> $GITHUB_STEP_SUMMARY
+            echo "stale=false" >> $GITHUB_OUTPUT
+          else
+            echo "stale=true" >> $GITHUB_OUTPUT
+            echo "last_tag=$LAST_TAG" >> $GITHUB_OUTPUT
+            {
+              echo 'pending<<PENDING_EOF'
+              echo "$PENDING"
+              echo 'PENDING_EOF'
+            } >> $GITHUB_OUTPUT
+            echo "Undeployed widget changes since $LAST_TAG:" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "$PENDING" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Open issue if stale (dedupe on open issue with same title)
+        if: steps.diff.outputs.stale == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TITLE: 'Widget prod is behind main — undeployed Picasso/ changes'
+          PENDING: ${{ steps.diff.outputs.pending }}
+          LAST_TAG: ${{ steps.diff.outputs.last_tag }}
+        run: |
+          set -euo pipefail
+          EXISTING=$(gh issue list --state open --search "in:title \"$TITLE\"" --json number --jq 'length')
+          if [ "$EXISTING" -gt 0 ]; then
+            echo "Open staleness issue already exists — not duplicating." >> $GITHUB_STEP_SUMMARY
+            exit 0
+          fi
+          BODY=/tmp/staleness-issue-body.md
+          {
+            echo "Weekly prod-staleness check: deployable \`Picasso/\` commits exist on \`main\` that are not in production (last deploy tag \`$LAST_TAG\`)."
+            echo ""
+            echo '```'
+            echo "$PENDING"
+            echo '```'
+            echo ""
+            echo "If these should ship: run the **Deploy to Production** workflow (dispatch) and approve the gate. If prod is intentionally held back, close this issue — the check re-opens it next week only while undeployed changes remain."
+            echo ""
+            echo "_Automated by \`.github/workflows/prod-staleness-check.yml\` (CI-modernization Phase 0 audit B-2)._"
+          } > "$BODY"
+          gh issue create --title "$TITLE" --body-file "$BODY"

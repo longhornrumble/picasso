@@ -265,6 +265,11 @@ jobs:
     name: Deploy to Staging
     runs-on: ubuntu-latest
     needs: [lint, typecheck, test, security, performance]
+    # Hotfix dispatches (skip_staging=true) really do skip the staging deploy
+    # now — previously the flag only skipped the approval pause while staging
+    # still deployed (Phase 0 audit SR-1). Quality gates still run on every
+    # path; a hotfix must pass tests too.
+    if: ${{ github.event.inputs.skip_staging != 'true' }}
     permissions:
       id-token: write
       contents: read
@@ -323,7 +328,14 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Use test tenant MYR384719 (hash \`my87674d777bf9\`)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "When testing is complete, approve the **Deploy to Production** step to continue." >> $GITHUB_STEP_SUMMARY
+          # The approval step only exists on dispatch runs — on push the prod
+          # leg is skipped by design, so don't tell the operator to wait for
+          # an approval UI that will never appear (Phase 0 audit N-1).
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "When testing is complete, approve the **Deploy to Production** step to continue." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "Push-triggered run: production deploy is dispatch-only (run **Deploy to Production** manually to promote)." >> $GITHUB_STEP_SUMMARY
+          fi
 
   # ─────────────────────────────────────────────────────────────────────
   # MANUAL APPROVAL GATE: Human tests staging before production
@@ -352,8 +364,18 @@ jobs:
   build:
     name: Build Production Bundle
     runs-on: ubuntu-latest
-    needs: approve-production
-    if: always() && (needs.approve-production.result == 'success' || github.event.inputs.skip_staging == 'true')
+    # Gate jobs listed in needs so the hotfix path (skip_staging=true, which
+    # skips staging AND the approval job) still requires green gates — without
+    # them, always() would let a hotfix build proceed over failed tests
+    # (pre-existing hole, closed with Phase 0 audit SR-1).
+    needs: [approve-production, lint, typecheck, test, security]
+    if: >-
+      always() &&
+      needs.lint.result == 'success' &&
+      needs.typecheck.result == 'success' &&
+      needs.test.result == 'success' &&
+      needs.security.result == 'success' &&
+      (needs.approve-production.result == 'success' || github.event.inputs.skip_staging == 'true')
     steps:
       - name: Checkout code
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
@@ -411,10 +433,22 @@ jobs:
 
       - name: Create backup of current production
         run: |
-          BACKUP_DIR="backups/production-$(date +%Y%m%d-%H%M%S)"
+          BACKUP_NAME="production-backup-$(date +%Y%m%d-%H%M%S)"
+          BACKUP_DIR="backups/$BACKUP_NAME"
           mkdir -p $BACKUP_DIR
           aws s3 sync ${{ env.S3_BUCKET_PRODUCTION }} $BACKUP_DIR --exclude "*.map" --exclude "collateral/*" --exclude "tenants/*"
           echo "BACKUP_DIR=$BACKUP_DIR" >> $GITHUB_ENV
+          echo "BACKUP_NAME=$BACKUP_NAME" >> $GITHUB_ENV
+
+      # The runner is ephemeral — without this upload the backup evaporates
+      # when the job ends and the rollback instructions below point at
+      # nothing (Phase 0 audit B-1).
+      - name: Persist backup as workflow artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: ${{ env.BACKUP_NAME }}
+          path: ${{ env.BACKUP_DIR }}
+          retention-days: 30
 
       - name: Deploy to S3
         working-directory: ./Picasso
@@ -479,19 +513,26 @@ jobs:
           echo "- **Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
           echo "- **S3 Bucket**: ${{ env.S3_BUCKET_PRODUCTION }}" >> $GITHUB_STEP_SUMMARY
           echo "- **CloudFront**: https://chat.myrecruiter.ai" >> $GITHUB_STEP_SUMMARY
-          echo "- **Backup**: ${{ env.BACKUP_DIR }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Backup artifact**: \`${{ env.BACKUP_NAME }}\` (30-day retention, attached to this run)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Rollback Instructions" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
-          echo "aws s3 sync ${{ env.BACKUP_DIR }}/ ${{ env.S3_BUCKET_PRODUCTION }} --delete --exclude 'collateral/*' --exclude 'tenants/*'" >> $GITHUB_STEP_SUMMARY
+          echo "gh run download ${{ github.run_id }} -n ${{ env.BACKUP_NAME }} -D /tmp/${{ env.BACKUP_NAME }} --repo ${{ github.repository }}" >> $GITHUB_STEP_SUMMARY
+          echo "aws s3 sync /tmp/${{ env.BACKUP_NAME }}/ ${{ env.S3_BUCKET_PRODUCTION }} --exclude 'collateral/*' --exclude 'tenants/*'" >> $GITHUB_STEP_SUMMARY
+          echo "aws cloudfront create-invalidation --distribution-id <CLOUDFRONT_DISTRIBUTION_ID> --paths '/*'" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "(No \`--delete\` on the rollback sync: the backup intentionally excludes \`collateral/\` and \`tenants/\`, which a \`--delete\` would wipe.)" >> $GITHUB_STEP_SUMMARY
 
   notify:
     name: Notify Deployment Status
     runs-on: ubuntu-latest
     needs: deploy
-    if: always()
+    # Only notify when a production deploy actually ran. Without the guard,
+    # every push to main Slacks "Production Deployment skipped" — pure noise
+    # that desensitizes the operator (Phase 0 audit SR-2).
+    if: always() && needs.deploy.result != 'skipped'
     steps:
       - name: Send Slack notification
         if: always()
