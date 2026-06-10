@@ -77,7 +77,7 @@ One consistent, gated path from commit → staging → prod for all four product
 | 2.2 Versioned artifacts | Upload each prod bundle to `s3://<bucket>/releases/<sha>/` before syncing live. Rollback = re-sync a prior release prefix + invalidate. | Rollback rehearsed once per product |
 | 2.3 Config-builder staging bucket | Small TF module in `infra/` (staging account — fits existing staging belt + naming convention). Wire its staging deploy + un-stick the prod gate. | Config-builder PR deploys to staging; prod gate functional |
 | 2.4 Widget queue sanity re-check | After 0.3 + 2.1, confirm no waiting-run accumulation over 2 weeks. | `--status waiting` stays 0 |
-| 2.5 De-suffix the staging twins (operator-requested 2026-06-09) | Staging-account (525) `Master_Function_Staging` + `Bedrock_Streaming_Handler_Staging` → bare names, per uniform-env-rules (account = env; new staging fns are already bare — SMS_Sender, Calendar_*). **Not a rename-in-place** — create-new + cutover, ADA Phase 4.5 is the proven playbook. Blast surface: BSH staging Function URL (MFS `STREAMING_ENDPOINT`, CF origin `picasso-streaming-lambda`), TF modules `lambda-{bedrock-handler,master-function}-staging`, IAM grants, alarms, both deploy-workflow matrices, pr-checks. Include: retire the **prod-account `Master_Function_Staging` relic** still integrated in prod API GW `kgvc8xnewf` (pre-account-split leftover, found 2026-06-09). Sequence AFTER first successful prod dispatches (rename against a known-good pipeline); coordinate w/ the prod-IaC naming-alignment program. | Staging twins bare-named; widget/staging E2E green; prod relic unwired + deleted; workflows updated |
+| 2.5 De-suffix the staging twins (operator-requested 2026-06-09; **SCOPED 2026-06-10 → `TASK_2_5_DESUFFIX_SCOPE.md`**) | Staging-account (525) `Master_Function_Staging` + `Bedrock_Streaming_Handler_Staging` → bare names, per uniform-env-rules (account = env; new staging fns are already bare — SMS_Sender, Calendar_*). **Not a rename-in-place** — create-new + cutover; discovery found both twins fully TF-managed (`var.function_name`-keyed), so the play is *parallel module instances*, cheaper than the ADA hand-managed playbook assumed. Blast surface, gates, waves, and 4 operator decisions: see the scope doc. **2026-06-10 live correction:** the prod-account relic Lambda is ALREADY deleted (614 has zero `*Staging*` functions; `kgvc8xnewf` routes all live traffic → `Master_Function:live`); what remains there is 3 route-less dangling integrations — trivial operator-run deletes. Sequence AFTER first successful prod dispatches (done — MFS v22 2026-06-10); coordinate w/ the active naming-alignment session (same infra tree, serialize applies). | Staging twins bare-named; widget/staging E2E green; dangling `kgvc8xnewf` integrations deleted; workflows updated |
 
 ## Phase 3 — Finish the IaC program (≈2–3 careful sessions, prod-IaC-owned)
 
@@ -211,3 +211,12 @@ update the change log below.
   last-modified). Prod leg validates on next operator dispatch (widget prod current — staleness
   check green); the dispatch also covers the deferred 2.2 rollback rehearsal opportunity
   (`releases/<sha>/` starts populating with the first dispatched prod deploy).
+- 2026-06-10 (later) — **2.5 SCOPED** (`TASK_2_5_DESUFFIX_SCOPE.md`): full live discovery of both
+  accounts. Key findings: twins fully TF-managed (parallel-module-instance cutover, zero-downtime,
+  4 waves); public URLs rename-immune (widget calls CF paths; only CF origin domains change); the
+  one prod-account edit on the critical path is the `picasso-kb-retriever-from-staging` trust
+  policy (names both suffixed roles); MFS metric namespaces are TF metric-filters, no Lambda code
+  change. **Plan drift corrected:** the 614 relic Lambda was already deleted — remainder is 3
+  dangling route-less `kgvc8xnewf` integrations (operator-run deletes). Execution blocked on 4
+  operator decisions (source-dir rename out?, old log-group retention, who runs 614 edits,
+  sequencing vs the naming-alignment session).
