@@ -202,6 +202,8 @@ The charter requires explicit enumeration of "outbound integration destinations 
 | `picasso-pii-delete-audit-staging` (future) | Audit integrity for delete operations | future PII delete pipeline |
 | `picasso-audit-staging` (existing) | Audit integrity — operator action log | MFS; TTL-ages-out per `retention_expires_at` |
 
+**Living-inventory PR rule FIRED 2026-06-10 (G7b — new READER of `picasso-sms-consent`):** the scheduling reschedule-link SMS supplement adds a new read access path on the SMS-twin-owned consent carve-out. `Booking_Commit_Handler` (`sms-consent.js`) now does a **read-only GetItem** on `picasso-sms-consent-staging` (key `pk=TENANT#{tenantId}`, `sk=CONSENT#transactional#{E.164}`) to pre-filter the §E3 `selectChannels` TCPA gate before texting the reschedule link; the SMS_Sender twin re-checks the same record server-side. **No new PII field, no new tier, no new table, no write** — the consent record shape and the SMS-twin ownership are unchanged; this is a new consumer of an existing surface (same pattern as the C1-GSI / tenant-purge "new access path" notes). Grant: `Booking_Commit_Handler-exec-staging` += `DDBReadSmsConsent` (GetItem, base table only) + `InvokeSmsSender` (the twin), picasso#503. PII-redaction: SMS_Sender's consent/send logs were changed in the same change to log a sha256 phone-prefix instead of the raw E.164 (no raw phone in CloudWatch). Code lambda#274.
+
 ---
 
 ## Findings (deltas vs the seed and IaC, beyond the seed's original 1–5)
