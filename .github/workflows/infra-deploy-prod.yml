@@ -93,6 +93,44 @@ jobs:
               issue_number: context.issue.number, body
             });
 
+  # Phase 4.1 (MODERNIZATION_PLAN.md): the apply job below holds at its
+  # environment gate from the moment of dispatch — ping the operator so an
+  # agent-staged apply gets a phone-tap approval instead of sitting unnoticed.
+  notify-approval:
+    name: Notify — approval ready
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Slack ping
+        uses: slackapi/slack-github-action@fcfb566f8b0aab22203f066d80ca1d7e4b5d05b3  # v1
+        with:
+          # target is free-text dispatch input — toJSON() escapes it so it
+          # cannot break the payload JSON (same class as the release_note
+          # injection, lambda run 27248430578; no raw free text inline).
+          payload: |
+            {
+              "text": ${{ toJSON(format('🟡 PROD terraform apply awaiting approval (target: {0})', github.event.inputs.target)) }},
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": ${{ toJSON(format('*🟡 Prod infra apply awaiting your approval* — target: `{0}`', github.event.inputs.target)) }}
+                  }
+                },
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "<https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|Review the plan, then approve / reject>"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+
   apply:
     name: Terraform apply (production)
     if: github.event_name == 'workflow_dispatch'
