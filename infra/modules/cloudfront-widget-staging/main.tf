@@ -96,15 +96,15 @@ variable "tenant_config_bucket_regional_domain" {
 }
 
 variable "mfs_origin_domain" {
-  description = "Function URL host of the staging-account Master_Function_Staging Lambda (P0.2-confirmed live value)."
+  description = "Function URL host of the staging-account Master_Function Lambda (task 2.5 Wave 2 cutover value; the pre-2.5 suffixed instance was cstamilgyys366udcnh7b5dfem0rhbcr)."
   type        = string
-  default     = "cstamilgyys366udcnh7b5dfem0rhbcr.lambda-url.us-east-1.on.aws"
+  default     = "bani65wtlj4xudnkas4eae2rdm0ytoqv.lambda-url.us-east-1.on.aws"
 }
 
 variable "streaming_origin_domain" {
-  description = "Function URL host of the staging-account Bedrock_Streaming_Handler_Staging Lambda (P0.2-confirmed live value; P22 doc's value is stale)."
+  description = "Function URL host of the staging-account Bedrock_Streaming_Handler Lambda (task 2.5 Wave 2 cutover value; the pre-2.5 suffixed instance was chm3ioesaxyrgsaeo3v763dmw40qaswu)."
   type        = string
-  default     = "chm3ioesaxyrgsaeo3v763dmw40qaswu.lambda-url.us-east-1.on.aws"
+  default     = "av5b2veoxmmrmx3hmggjell4bu0igeru.lambda-url.us-east-1.on.aws"
 }
 
 locals {
