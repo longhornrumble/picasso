@@ -1,0 +1,175 @@
+name: Deploy Frontend (reusable)
+
+# CI-modernization Phase 2.1+2.2 (ci_modernization/docs/MODERNIZATION_PLAN.md).
+# One reusable deploy unit for all S3/CloudFront front-ends (analytics
+# dashboard, config builder, widget). DEPLOY MECHANICS ONLY — quality gates
+# (lint/test/build) stay in each caller repo, which builds and uploads its
+# bundle as an artifact, then calls this with the artifact name.
+#
+# What it does, in order:
+#   1. download the caller's build artifact
+#   2. (production) upload an immutable copy to s3://<bucket>/releases/<sha>/
+#      — the one-step rollback unit: re-sync a prior release prefix to live
+#   3. sync the bundle to the live bucket root
+#   4. invalidate CloudFront (when a distribution id is supplied)
+#   5. smoke the public URL (Cache-Control: no-cache)
+#   6. (staging, PR context) comment the staging URL on the PR
+#   7. write a summary including the exact rollback command
+#
+# Callers pin `@main` of this (public) repo — acceptable single-operator
+# supply chain; pin a SHA if that ever changes.
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: staging | production (labels + behavior switches)
+        type: string
+        required: true
+      artifact_name:
+        description: Name of the uploaded build artifact containing the bundle
+        type: string
+        required: true
+      bucket:
+        description: Target S3 bucket name (no s3:// prefix)
+        type: string
+        required: true
+      cloudfront_distribution_id:
+        description: CloudFront distribution to invalidate (empty = skip — e.g. S3 website endpoints)
+        type: string
+        required: false
+        default: ''
+      website_url:
+        description: Public base URL used for the smoke check and PR comment
+        type: string
+        required: true
+      smoke_path:
+        description: Path appended to website_url for the smoke check
+        type: string
+        required: false
+        default: '/'
+      smoke_expect_status:
+        description: Expected HTTP status from the smoke check
+        type: string
+        required: false
+        default: '200'
+      sync_exclude:
+        description: Optional space-separated patterns excluded from the live sync AND protected from --delete (e.g. "collateral/* tenants/*")
+        type: string
+        required: false
+        default: ''
+      comment_pr:
+        description: Post the deployed URL as a PR comment (staging-on-PR flows)
+        type: boolean
+        required: false
+        default: false
+    secrets:
+      deploy_role_arn:
+        description: IAM role the deploy assumes (per-product, least-privilege)
+        required: true
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  deploy:
+    name: Deploy to ${{ inputs.environment }} (${{ inputs.bucket }})
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Download build artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: dist/
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a  # v4
+        with:
+          role-to-assume: ${{ secrets.deploy_role_arn }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Upload immutable release copy (production)
+        if: inputs.environment == 'production'
+        run: |
+          set -euo pipefail
+          aws s3 sync dist/ "s3://${{ inputs.bucket }}/releases/${{ github.sha }}/"
+          echo "Release archived: s3://${{ inputs.bucket }}/releases/${{ github.sha }}/"
+
+      - name: Sync to live
+        # sync_exclude reaches the shell via env, not inline interpolation
+        # (uniform rule since lambda run 27248430578 — even caller-YAML
+        # inputs get the safe path).
+        env:
+          SYNC_EXCLUDE: ${{ inputs.sync_exclude }}
+        run: |
+          set -euo pipefail
+          EXCLUDES=()
+          # releases/ holds the immutable rollback copies — never let the
+          # live sync's --delete reap them.
+          EXCLUDES+=(--exclude "releases/*")
+          for pat in $SYNC_EXCLUDE; do
+            EXCLUDES+=(--exclude "$pat")
+          done
+          aws s3 sync dist/ "s3://${{ inputs.bucket }}/" --delete "${EXCLUDES[@]}"
+
+      - name: Invalidate CloudFront
+        if: inputs.cloudfront_distribution_id != ''
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ inputs.cloudfront_distribution_id }} \
+            --paths '/*'
+
+      - name: Smoke check
+        run: |
+          set -euo pipefail
+          URL="${{ inputs.website_url }}${{ inputs.smoke_path }}"
+          STATUS=$(curl -s -o /dev/null -w '%{http_code}' -H 'Cache-Control: no-cache' "$URL")
+          echo "Smoke: GET $URL -> $STATUS"
+          if [ "$STATUS" != "${{ inputs.smoke_expect_status }}" ]; then
+            echo "::error::Expected ${{ inputs.smoke_expect_status }}, got $STATUS"
+            exit 1
+          fi
+
+      - name: Comment deployed URL on PR
+        if: inputs.comment_pr && github.event_name == 'pull_request'
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b  # v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## ${{ inputs.environment }} deployed\n\nTest at: **${{ inputs.website_url }}**\n\nAll quality gates passed. Merge when verification is complete.`
+            })
+
+      - name: Summary
+        if: always()
+        env:
+          SYNC_EXCLUDE: ${{ inputs.sync_exclude }}
+          CF_ID: ${{ inputs.cloudfront_distribution_id }}
+        run: |
+          {
+            echo "### Deploy: ${{ inputs.environment }} -> ${{ inputs.bucket }}"
+            echo ""
+            echo "- **Commit:** ${{ github.sha }}"
+            echo "- **URL:** ${{ inputs.website_url }}"
+            if [ "${{ inputs.environment }}" = "production" ]; then
+              echo "- **Release copy:** \`s3://${{ inputs.bucket }}/releases/${{ github.sha }}/\` (immutable)"
+              echo ""
+              echo "Rollback (one step; pick a prior release with \`aws s3 ls s3://${{ inputs.bucket }}/releases/\`):"
+              echo '```bash'
+              CMD="aws s3 sync s3://${{ inputs.bucket }}/releases/<prior-sha>/ s3://${{ inputs.bucket }}/ --delete --exclude 'releases/*'"
+              for pat in $SYNC_EXCLUDE; do
+                CMD="$CMD --exclude '$pat'"
+              done
+              echo "$CMD"
+              if [ -n "$CF_ID" ]; then
+                echo "aws cloudfront create-invalidation --distribution-id $CF_ID --paths '/*'"
+              fi
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
