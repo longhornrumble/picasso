@@ -210,6 +210,26 @@ variable "scheduling_executor_function_name" {
   default     = ""
 }
 
+# ── Remedy A (#435 root fix): Function URL IAM auth (signing via Lambda@Edge) ──
+# LOAD-BEARING staged-flip flag (mirrors Remedy B's require_cf_origin_header).
+# 'NONE' = open URL (Remedy B header is the only gate); 'AWS_IAM' = enforce SigV4
+# so only the Lambda@Edge-signed requests pass (#435 closed). Flip to AWS_IAM
+# ONLY AFTER the edge signer + its /stream association are live and CloudFront has
+# finished deploying (else CF sends unsigned requests for the minutes-long
+# propagation window → 403s all chat). The signer identity (the L@E role) holds
+# lambda:InvokeFunctionUrl; no resource grant is needed here (same-account
+# identity policy on the L@E role suffices). Rollback = set back to 'NONE'
+# (instant; the Remedy B header still protects the URL until strip-B).
+variable "streaming_function_url_auth_type" {
+  description = "Function URL authorization_type ('NONE' or 'AWS_IAM'). Staged flip for Remedy A (#435): flip to AWS_IAM only after the Lambda@Edge signer + /stream association are live and CloudFront has propagated. Roll back to NONE if signed traffic 403s."
+  type        = string
+  default     = "NONE"
+  validation {
+    condition     = contains(["NONE", "AWS_IAM"], var.streaming_function_url_auth_type)
+    error_message = "streaming_function_url_auth_type must be 'NONE' or 'AWS_IAM'."
+  }
+}
+
 data "aws_iam_policy_document" "trust" {
   statement {
     actions = ["sts:AssumeRole"]
@@ -619,7 +639,7 @@ resource "aws_lambda_function" "this" {
 
 resource "aws_lambda_function_url" "this" {
   function_name      = aws_lambda_function.this.function_name
-  authorization_type = "NONE"
+  authorization_type = var.streaming_function_url_auth_type
   invoke_mode        = "RESPONSE_STREAM"
 
   # CORS matches the live Lambda's narrowed values (pre-Terraform hand
@@ -646,6 +666,12 @@ resource "aws_lambda_function_url" "this" {
     allow_credentials = true
   }
 }
+
+# Remedy A (#435): the Function-URL invoke grant lives on the Lambda@Edge signer's
+# role (module.lambda_edge_bsh_signer_staging grants it lambda:InvokeFunctionUrl on
+# this function — same-account identity policy, sufficient for AWS_IAM Function URL
+# auth). No resource-based permission is modeled here; the OAC + cloudfront-service
+# grant approach was removed (OAC can't sign POST bodies — InvalidSignatureException).
 
 # ──────────────────────────────────────────────────────────────────────
 # # MANUAL STEP REQUIRED — Function URL post-creation

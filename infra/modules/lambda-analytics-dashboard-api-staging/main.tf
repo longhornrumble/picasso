@@ -106,6 +106,53 @@ variable "audit_table_name" {
   type = string
 }
 
+variable "booking_table_arn" {
+  description = "ARN of picasso-booking-{env}. ADA's §E7 GET /scheduling/bookings reader Querys the two GSIs only (no base-table read, no write). Staging-only; scheduling has no prod table yet."
+  type        = string
+}
+
+variable "booking_table_name" {
+  type = string
+}
+
+variable "appointment_type_table_arn" {
+  description = "ARN of picasso-appointment-type-{env}. ADA's §E13b write API does Query/GetItem/PutItem/UpdateItem (no GSI on this table). Staging-only; scheduling has no prod table yet."
+  type        = string
+}
+
+variable "appointment_type_table_name" {
+  type = string
+}
+
+variable "routing_policy_table_arn" {
+  description = "ARN of picasso-routing-policy-{env}. ADA's §E13b write API does Query/GetItem/PutItem/UpdateItem (no GSI). The write API never touches the commit-owned round-robin state (UpdateItem SETs editable fields only). Staging-only."
+  type        = string
+}
+
+variable "routing_policy_table_name" {
+  type = string
+}
+
+variable "scheduling_notif_template_table_arn" {
+  description = "ARN of picasso-scheduling-notif-template-{env}. ADA's G2/E14 API does Query (GET) + UpdateItem (PATCH upsert-merge) only — no GSI. Staging-only."
+  type        = string
+}
+
+variable "scheduling_notif_template_table_name" {
+  type = string
+}
+
+variable "oauth_function_url" {
+  description = "Full Function URL of Calendar_OAuth_Connect (G3/E0) -> OAUTH_FUNCTION_URL env. The ADA init-token mint appends /connect and /connection/status to it. Empty until PR-1's Lambda exists; the mint handler 503s while empty."
+  type        = string
+  default     = ""
+}
+
+variable "oauth_state_signing_secret_arn" {
+  description = "ARN (with -* suffix) of picasso/scheduling/oauth/_state-signing-key. The ADA init-token mint reads it (GetSecretValue) to state.sign — the SAME key Calendar_OAuth_Connect state.verify reads. OPERATOR PRE-PROVISION: the secret at this ARN must exist before the mint runs (it is created out-of-band, NOT Terraform-managed, so its value never enters tfstate). See Calendar_OAuth_Connect/DEPLOY_NOTES.md §4."
+  type        = string
+}
+
 variable "clerk_jwks_url" {
   description = "Clerk JWKS endpoint. Defaults to the Clerk dev project shared with legacy staging."
   type        = string
@@ -127,6 +174,18 @@ variable "tenant_purge_function_arn" {
   description = "ARN of picasso-pii-tenant-purge-staging. When set, the dashboard exec role gets lambda:InvokeFunction on it (the super-admin POST /admin/tenants/{id}/purge endpoint). Default empty renders ZERO grant — staging-only; the purge Lambda is staging-only (account guard refuses outside 525)."
   type        = string
   default     = ""
+}
+
+variable "booking_commit_function_arn" {
+  description = "ARN of Booking_Commit_Handler. When set, the dashboard exec role gets lambda:InvokeFunction on it (the G6/E12 POST /scheduling/bookings/{id}/cancel + /reschedule-link actions proxy the side-effect to BCH's scheduling_mutate executor). Default empty renders ZERO grant — staging-only; scheduling has no prod surface yet."
+  type        = string
+  default     = ""
+}
+
+variable "booking_commit_function_name" {
+  description = "Name of Booking_Commit_Handler (BOOKING_COMMIT_FUNCTION_NAME env — the InvocationType=RequestResponse target for the G6 booking actions). Code default is the bare 'Booking_Commit_Handler'; pinned here for parity with the ARN grant."
+  type        = string
+  default     = "Booking_Commit_Handler"
 }
 
 # ------------------------------------------------------------------
@@ -249,6 +308,74 @@ data "aws_iam_policy_document" "exec" {
     ]
   }
 
+  # §E7 GET /scheduling/bookings reader. Query on the two booking GSIs ONLY
+  # (tenantId-start_at-index for the date-window list, tenantId-coordinator_email-index
+  # for the staff_self scope) — deliberately NOT the base table and NOT /index/*, so a
+  # code bug can't read by raw booking_id or via an unintended GSI. Read-only; ADA never
+  # mutates bookings. Staging-only — scheduling has no prod booking table yet.
+  statement {
+    sid     = "SchedulingBookingsRead"
+    actions = ["dynamodb:Query"]
+    resources = [
+      "${var.booking_table_arn}/index/tenantId-start_at-index",
+      "${var.booking_table_arn}/index/tenantId-coordinator_email-index",
+    ]
+  }
+
+  # G6/E12 booking ACTIONS (cancel + reschedule-link): the action handlers GetItem ONE booking
+  # by its (tenantId, booking_id) base-table key to run the §8 permission check (own-by-
+  # coordinator_email vs admin) before proxying to BCH. This is a deliberate, narrow exception
+  # to the GSI-Query-only posture above — GetItem on the BASE table ONLY (no GSI, no write); the
+  # tenant is IN the key, so a cross-tenant booking_id is structurally unfindable.
+  statement {
+    sid       = "SchedulingBookingActionRead"
+    actions   = ["dynamodb:GetItem"]
+    resources = [var.booking_table_arn]
+  }
+
+  # §E13b AppointmentType/RoutingPolicy write API (admin-only). Query (list by
+  # tenantId PK), GetItem (FK check / RR-state-preserving PATCH reads ALL_NEW),
+  # PutItem (create), UpdateItem (patch). NO DeleteItem (delete is v2). Base
+  # tables ONLY — these tables have no GSI (canonical §18). The write API never
+  # mutates bookings and never sets the commit-owned round-robin state.
+  statement {
+    sid = "SchedulingConfigWrite"
+    actions = [
+      "dynamodb:Query",
+      "dynamodb:GetItem",
+      "dynamodb:PutItem",
+      "dynamodb:UpdateItem",
+    ]
+    resources = [
+      var.appointment_type_table_arn,
+      var.routing_policy_table_arn,
+    ]
+  }
+
+  # G2/E14 scheduling notification-template overrides. ADA reads via Query (GET
+  # list) and writes via UpdateItem (PATCH upsert-merge of subject/body_text/
+  # body_html). No GetItem/PutItem/DeleteItem needed; base table only (no GSI).
+  statement {
+    sid = "SchedulingNotifTemplateWrite"
+    actions = [
+      "dynamodb:Query",
+      "dynamodb:UpdateItem",
+    ]
+    resources = [
+      var.scheduling_notif_template_table_arn,
+    ]
+  }
+
+  # G3/E0: the init-token mint reads the OAuth state-signing key to state.sign the
+  # init tokens the E16 connect UI uses. GetSecretValue only, on the single
+  # reserved _state-signing-key secret (NOT the per-coordinator OAuth secrets,
+  # NOT the platform app secret — ADA only signs, it never reads/writes those).
+  statement {
+    sid       = "OAuthStateSigningKeyRead"
+    actions   = ["secretsmanager:GetSecretValue"]
+    resources = [var.oauth_state_signing_secret_arn]
+  }
+
   # B5 audit: Tier-3 archive read path. Tightened from the hand-attached
   # ada-archive-read policy to require the tenant-partition prefix shape
   # — sessions/tenant=*/ — so any code bug that uses a flat legacy prefix
@@ -301,6 +428,19 @@ data "aws_iam_policy_document" "exec" {
       sid       = "InvokeTenantPurge"
       actions   = ["lambda:InvokeFunction"]
       resources = [var.tenant_purge_function_arn]
+    }
+  }
+
+  # G6/E12 booking actions: the cancel + reschedule-link handlers proxy the side-effect to
+  # Booking_Commit_Handler's scheduling_mutate executor (events.delete / §B4 token mint + notify).
+  # Same-account (525->525) identity grant, scoped to the single BCH function ARN. Renders ZERO
+  # statements when booking_commit_function_arn == "" (default) — staging-only wiring.
+  dynamic "statement" {
+    for_each = var.booking_commit_function_arn != "" ? [1] : []
+    content {
+      sid       = "InvokeBookingCommit"
+      actions   = ["lambda:InvokeFunction"]
+      resources = [var.booking_commit_function_arn]
     }
   }
 }
@@ -366,7 +506,20 @@ resource "aws_lambda_function" "this" {
       BILLING_EVENTS_TABLE       = var.billing_events_table_name
       EMPLOYEE_REGISTRY_TABLE    = var.employee_registry_table_name
       AUDIT_TABLE_NAME           = var.audit_table_name
-      USE_DYNAMO_CACHE           = "false"
+      # §E7 GET /scheduling/bookings reader. Code default is the BARE name
+      # `picasso-booking`; staging's table is still env-suffixed, so pin it.
+      BOOKING_TABLE = var.booking_table_name
+      # §E13b AppointmentType/RoutingPolicy write API. Code defaults are the BARE
+      # names (picasso-appointment-type / picasso-routing-policy); staging tables
+      # are env-suffixed, so pin them — else the write API reads/writes the wrong
+      # (nonexistent) table. Mirrors the candidate-resolver.js read-side env.
+      APPOINTMENT_TYPE_TABLE     = var.appointment_type_table_name
+      ROUTING_POLICY_TABLE       = var.routing_policy_table_name
+      SCHED_NOTIF_TEMPLATE_TABLE = var.scheduling_notif_template_table_name
+      OAUTH_FUNCTION_URL         = var.oauth_function_url
+      # G6/E12 booking actions proxy to BCH's scheduling_mutate executor (cancel + reschedule-link).
+      BOOKING_COMMIT_FUNCTION_NAME = var.booking_commit_function_name
+      USE_DYNAMO_CACHE             = "false"
       # Plan Security F8: restrict test-send endpoints to recipients whose
       # email domain is in this comma-list. Without it, an authenticated
       # admin could trigger a test send to any address (including real

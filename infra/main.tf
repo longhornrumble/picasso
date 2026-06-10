@@ -412,6 +412,13 @@ module "ddb_routing_policy_staging" {
   env    = var.env
 }
 
+# G2 / E14 scheduling notification-template overrides (PK tenantId, SK moment).
+module "ddb_scheduling_notif_template_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/ddb-scheduling-notif-template"
+  env    = var.env
+}
+
 module "ddb_conversation_scheduling_session_staging" {
   count  = var.env == "staging" ? 1 : 0
   source = "./modules/ddb-conversation-scheduling-session"
@@ -531,6 +538,15 @@ module "lambda_bedrock_handler_staging" {
   kb_retriever_role_arns = [
     "arn:aws:iam::614056832592:role/picasso-kb-retriever-from-staging",
   ]
+
+  # Remedy A (#435) Phase 2 — ENFORCE. The Lambda@Edge signer + /stream association
+  # are live and CloudFront-propagated (Phase 1, #455/#456). Flipping to AWS_IAM
+  # was PROVEN end-to-end on staging 2026-06-06: CF→L@E-signed /stream → 200 + SSE,
+  # unsigned direct Function URL → 403 (#435 bypass closed at the IAM layer).
+  # Rollback = remove this line (→ NONE default); the Remedy B header still
+  # protects the URL until strip-B. Signer identity = the L@E role
+  # (module.lambda_edge_bsh_signer_staging holds lambda:InvokeFunctionUrl on BSH).
+  streaming_function_url_auth_type = "AWS_IAM"
 }
 
 # Issue #5 batch 2b: staging-account Master_Function. Placeholder code;
@@ -625,6 +641,33 @@ module "lambda_analytics_dashboard_api_staging" {
   employee_registry_table_name   = module.ddb_employee_registry_v2_staging[0].table_name
   audit_table_arn                = module.ddb_audit_staging[0].table_arn
   audit_table_name               = module.ddb_audit_staging[0].table_name
+
+  # §E7 GET /scheduling/bookings reader (Query on the two booking GSIs only).
+  booking_table_arn  = module.ddb_booking_staging[0].table_arn
+  booking_table_name = module.ddb_booking_staging[0].table_name
+
+  # G6/E12 booking actions (cancel + reschedule-link): ADA GetItems the booking for the §8
+  # permission check, then invokes BCH's scheduling_mutate executor for the side-effect.
+  booking_commit_function_arn  = module.lambda_booking_commit_staging[0].commit_function_arn
+  booking_commit_function_name = module.lambda_booking_commit_staging[0].commit_function_name
+
+  # §E13b AppointmentType/RoutingPolicy write API (admin-only CRUD over the
+  # routing tables the live booking router reads).
+  appointment_type_table_arn  = module.ddb_appointment_type_staging[0].table_arn
+  appointment_type_table_name = module.ddb_appointment_type_staging[0].table_name
+  routing_policy_table_arn    = module.ddb_routing_policy_staging[0].table_arn
+  routing_policy_table_name   = module.ddb_routing_policy_staging[0].table_name
+
+  # G2/E14 scheduling notification-template overrides (Query GET + UpdateItem PATCH).
+  scheduling_notif_template_table_arn  = module.ddb_scheduling_notif_template_staging[0].table_arn
+  scheduling_notif_template_table_name = module.ddb_scheduling_notif_template_staging[0].table_name
+
+  # G3/E0 OAuth init-token mint: the public Function URL the mint points the browser at,
+  # and the state-signing key it reads to sign init tokens (same key Calendar_OAuth_Connect
+  # state.verify reads). The URL references PR-1's module output (one atomic apply); the
+  # secret is the CLI-created _state-signing-key (-* covers the AWS suffix).
+  oauth_function_url             = module.lambda_calendar_oauth_connect_staging[0].function_url
+  oauth_state_signing_secret_arn = "arn:aws:secretsmanager:us-east-1:${data.aws_caller_identity.current.account_id}:secret:picasso/scheduling/oauth/_state-signing-key-*"
 
   # Tier-3 archive bucket is currently hand-created (Phase 2 of MFS cleanup).
   # ARN inlined here rather than via module output until the bucket itself is
@@ -1037,6 +1080,11 @@ module "lambda_booking_commit_staging" {
   employee_registry_table_arn  = module.ddb_employee_registry_v2_staging[0].table_arn
   employee_registry_table_name = module.ddb_employee_registry_v2_staging[0].table_name
 
+  # G6 reschedule_link (the ADA-triggered "send reschedule link" action): notify.js emails the
+  # guest via send_email + reads the per-tenant §E14 template override (fail-safe → default).
+  scheduling_notif_template_table_arn  = module.ddb_scheduling_notif_template_staging[0].table_arn
+  scheduling_notif_template_table_name = module.ddb_scheduling_notif_template_staging[0].table_name
+
   # Ops alerts SNS topic (shared with MFS + Meta — created by ops_alarms_master_function_staging)
   ops_alerts_topic_arn = module.ops_alarms_master_function_staging[0].topic_arn
 
@@ -1105,6 +1153,10 @@ module "lambda_calendar_event_consumer_staging" {
   employee_registry_table_arn  = module.ddb_employee_registry_v2_staging[0].table_arn
   employee_registry_table_name = module.ddb_employee_registry_v2_staging[0].table_name
 
+  # §E14 notification-template override (notify.js GetItem at dispatch; fail-safe → default).
+  scheduling_notif_template_table_arn  = module.ddb_scheduling_notif_template_staging[0].table_arn
+  scheduling_notif_template_table_name = module.ddb_scheduling_notif_template_staging[0].table_name
+
   # Ops alerts SNS topic (admin OOO-conflict alert publish + the Errors alarm).
   ops_alerts_topic_arn = module.ops_alarms_master_function_staging[0].topic_arn
 }
@@ -1129,6 +1181,10 @@ module "lambda_calendar_lifecycle_consumer_staging" {
 
   # Fan-out lifecycle-consumer FIFO queue (event-source-mapping + IAM consume).
   source_queue_arn = module.sns_calendar_watch_fanout_staging[0].lifecycle_consumer_queue_arn
+
+  # §E14 notification-template override (notify.js GetItem at cancel/reschedule dispatch).
+  scheduling_notif_template_table_arn  = module.ddb_scheduling_notif_template_staging[0].table_arn
+  scheduling_notif_template_table_name = module.ddb_scheduling_notif_template_staging[0].table_name
 
   # Ops alerts SNS topic (channel-degrade alert publish + the Errors alarm).
   ops_alerts_topic_arn = module.ops_alarms_master_function_staging[0].topic_arn
@@ -1165,6 +1221,36 @@ module "lambda_scheduling_redemption_handler_staging" {
   config_bucket_name       = module.tenant_config_staging[0].bucket_name
 }
 
+# Scheduling sub-phase E Task E11 — Calendar_OAuth_Connect (lambda#248, MERGED).
+# The per-staff Google Calendar 3LO consent flow + its public Function URL — the
+# 2nd custom origin behind the WS-D3 staging.schedule.myrecruiter.ai dist (the D3
+# routing for /connect, /oauth/callback, /connection/status is a SEPARATE PR-2 on
+# the redemption-domain module). Dedicated least-priv role (FROZEN_CONTRACTS §E11 +
+# Calendar_OAuth_Connect/DEPLOY_NOTES.md): read the 2 reserved platform secrets,
+# manage per-coordinator OAuth secrets (fenced off the reserved _* prefix), invoke
+# the B5 watch onboarder, GetObject the tenant-config Flag-A gate. Code ships via
+# lambda-repo CI (deploy-staging.yml — add Calendar_OAuth_Connect to the matrix +
+# dispatch options, then deploy onto this shell). OPERATOR-provision before first
+# live connect: the _platform/google-app secret (Google client creds + the
+# /oauth/callback redirect URI registered in Google Cloud Console) + the
+# _state-signing-key secret. After first apply: add the manual Function URL 2nd
+# resource-policy statement via the Console (see the module banner).
+module "lambda_calendar_oauth_connect_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/lambda-calendar-oauth-connect-staging"
+
+  # Tenant config bucket — featureGate.js Flag-A gate reads tenants/{id}/config.json.
+  tenant_config_bucket_arn = module.tenant_config_staging[0].bucket_arn
+  config_bucket_name       = module.tenant_config_staging[0].bucket_name
+
+  # B5 watch onboarder — best-effort invoke after a successful connect.
+  onboarder_function_arn  = module.lambda_calendar_watch_onboarder_staging[0].onboarder_function_arn
+  onboarder_function_name = module.lambda_calendar_watch_onboarder_staging[0].onboarder_function_name
+
+  # Ops alerts SNS topic (Errors/Throttles alarm target only — the handler does not publish).
+  ops_alerts_topic_arn = module.ops_alarms_master_function_staging[0].topic_arn
+}
+
 # Scheduling redemption edge — staging.schedule.myrecruiter.ai (WS-D3 #347, sub-phase D §13.8).
 # The public HTTPS edge that fronts the WS-D4 token-redemption Lambda (the six /cancel
 # /reschedule /resume /attended/* endpoints). The cancel/reschedule email links minted by
@@ -1188,6 +1274,11 @@ module "scheduling_redemption_domain_staging" {
   # (dns_alias_record output) to make the host resolve.
   redemption_function_url_domain = module.lambda_scheduling_redemption_handler_staging[0].function_url_domain
   enable_custom_domain           = true
+
+  # G3: the 2nd origin — the E11 Calendar_OAuth_Connect Function URL — for the 3 OAuth paths
+  # (/connect, /oauth/callback, /connection/status). The callback path is what Google redirects
+  # back to, so it must equal the Lambda's OAUTH_REDIRECT_URI + the Google console redirect URI.
+  oauth_function_url_domain = module.lambda_calendar_oauth_connect_staging[0].function_url_domain
 }
 
 # Stranded_Booking_Remediator (lambda#194, MERGED) — B11 coordinator-offboarding
@@ -1281,6 +1372,21 @@ module "s3_widget_staging" {
 # first (operator deletes it via chris-admin) or this apply fails with
 # CloudFront CNAMEAlreadyExists. No wildcard cert / no associate-alias / no
 # zero-downtime dance — staging carries no real traffic.
+# Remedy A (#435): origin-request Lambda@Edge that SigV4-signs /stream requests to
+# the BSH Function URL (replaces OAC, which can't sign POST bodies). Its role holds
+# lambda:InvokeFunctionUrl on the BSH function; its qualified ARN is associated on
+# /stream by the cloudfront_widget_staging module below. Inert until the Function
+# URL flips to AWS_IAM (streaming_function_url_auth_type, Phase 2).
+module "lambda_edge_bsh_signer_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/lambda-edge-bsh-signer-staging"
+
+  # Literal ARN (not a module output, unlike the prod signer): the staging BSH is
+  # the hand-managed legacy Bedrock_Streaming_Handler_Staging — there is no
+  # bsh-function-staging Terraform module to reference. Intentional asymmetry.
+  bsh_function_arn = "arn:aws:lambda:us-east-1:525409062831:function:Bedrock_Streaming_Handler_Staging"
+}
+
 module "cloudfront_widget_staging" {
   count  = var.env == "staging" ? 1 : 0
   source = "./modules/cloudfront-widget-staging"
@@ -1293,6 +1399,9 @@ module "cloudfront_widget_staging" {
   # Non-committed, distinct per origin. See operator-gated prerequisite above.
   mfs_cf_origin_secret       = var.q5_mfs_cf_origin_secret
   streaming_cf_origin_secret = var.q5_streaming_cf_origin_secret
+
+  # Remedy A (#435): the edge signer's versioned ARN, associated on /stream.
+  streaming_edge_signer_qualified_arn = module.lambda_edge_bsh_signer_staging[0].qualified_arn
 }
 
 # Q5 Phase 2 [locked decision #9]: minimal CI widget-deploy role. No module

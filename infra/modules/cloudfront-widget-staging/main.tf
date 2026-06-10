@@ -66,6 +66,11 @@ variable "oac_id" {
   type        = string
 }
 
+variable "streaming_edge_signer_qualified_arn" {
+  description = "Versioned ARN of the Remedy A origin-request Lambda@Edge signer (lambda-edge-bsh-signer-staging). Associated on /stream to SigV4-sign requests to the BSH Function URL."
+  type        = string
+}
+
 variable "mfs_cf_origin_secret" {
   description = "x-picasso-cf-origin header value for the Master_Function origin. Non-committed; supplied via TF_VAR_ from a GitHub staging-environment secret in CI (operator-gated, see PR body). No default — a missing value MUST fail the apply."
   type        = string
@@ -195,6 +200,9 @@ resource "aws_cloudfront_distribution" "widget" {
     origin_id   = local.streaming_origin_id
     domain_name = var.streaming_origin_domain
 
+    # Remedy A (#435): signing is done by the origin-request Lambda@Edge on the
+    # /stream behavior (no OAC — OAC can't sign POST bodies).
+
     custom_origin_config {
       http_port                = 80
       https_port               = 443
@@ -204,6 +212,8 @@ resource "aws_cloudfront_distribution" "widget" {
       origin_keepalive_timeout = 5
     }
 
+    # Remedy B (defense-in-depth, retained until strip-B): BSH also checks this
+    # header at the app layer. Kept while Remedy A soaks; removed at strip-B.
     custom_header {
       name  = "x-picasso-cf-origin"
       value = var.streaming_cf_origin_secret
@@ -263,6 +273,15 @@ resource "aws_cloudfront_distribution" "widget" {
     cache_policy_id          = local.cache_disabled_id
     origin_request_policy_id = local.orp_all_viewer_xh_id
     compress                 = false
+
+    # Remedy A (#435): the edge signer SigV4-signs each request to the BSH
+    # Function URL (include_body=true so the POST body is in the signature).
+    # Inert until the Function URL's authorization_type flips NONE->AWS_IAM.
+    lambda_function_association {
+      event_type   = "origin-request"
+      lambda_arn   = var.streaming_edge_signer_qualified_arn
+      include_body = true
+    }
   }
 
   # No-alias phase: default *.cloudfront.net cert (a custom ACM cert REQUIRES
