@@ -376,6 +376,26 @@ data "aws_iam_policy_document" "exec" {
     resources = [var.oauth_state_signing_secret_arn]
   }
 
+  # G8 (E13 D3 warnings): the GET /team/members calendar_connected flag reads each staff member's
+  # per-coordinator OAuth secret `status` (the SAME signal §B7 consults). GetSecretValue only, on
+  # the per-coordinator secrets, FENCED OFF the reserved `_*` (the _state-signing-key, read via
+  # OAuthStateSigningKeyRead above — ADA never reads the per-coordinator secret VALUES for any
+  # other purpose). Mirrors the Calendar_Event_Consumer SecretsReadCoordinatorOAuthStatus fence
+  # (both ARN + short-name patterns, since callers pass the short SecretId).
+  statement {
+    sid       = "SchedulingOAuthStatusRead"
+    actions   = ["secretsmanager:GetSecretValue"]
+    resources = ["arn:aws:secretsmanager:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:secret:picasso/scheduling/oauth/*"]
+    condition {
+      test     = "StringNotLike"
+      variable = "secretsmanager:SecretId"
+      values = [
+        "arn:aws:secretsmanager:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:secret:picasso/scheduling/oauth/_*",
+        "picasso/scheduling/oauth/_*",
+      ]
+    }
+  }
+
   # B5 audit: Tier-3 archive read path. Tightened from the hand-attached
   # ada-archive-read policy to require the tenant-partition prefix shape
   # — sessions/tenant=*/ — so any code bug that uses a flat legacy prefix
