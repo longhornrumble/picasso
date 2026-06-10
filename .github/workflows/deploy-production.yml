@@ -2,9 +2,11 @@ name: Deploy to Production
 
 on:
   # Push to main runs quality gates + the STAGING deploy only. The production
-  # leg (approve-production → build → deploy) runs solely on workflow_dispatch,
-  # so prod deploys are deliberate acts and merges never queue waiting-approval
-  # runs (CI-modernization Phase 0.3 — the queue had grown to 21 ignored runs).
+  # leg (approve-production → build → production-gate → deploy-production)
+  # runs solely on workflow_dispatch, so prod deploys are deliberate acts and
+  # merges never queue waiting-approval runs (CI-modernization Phase 0.3 —
+  # the queue had grown to 21 ignored runs). Deploy mechanics live in the
+  # reusable deploy-frontend.yml (Phase 2.1); quality gates + builds stay here.
   push:
     branches:
       - main
@@ -29,10 +31,6 @@ on:
 env:
   NODE_VERSION: '22'
   AWS_REGION: 'us-east-1'
-  S3_BUCKET_PRODUCTION: 's3://picassocode/'
-  S3_BUCKET_STAGING: 's3://picasso-widget-staging/'
-  CLOUDFRONT_DISTRIBUTION_ID: ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }}
-  CLOUDFRONT_STAGING_ID: ${{ secrets.CLOUDFRONT_STAGING_DISTRIBUTION_ID }}
 
 jobs:
   lint:
@@ -259,10 +257,10 @@ jobs:
           retention-days: 30
 
   # ─────────────────────────────────────────────────────────────────────
-  # STAGING: Deploy to staging S3 for human testing
+  # STAGING: Build, then deploy via the reusable workflow (Phase 2.1)
   # ─────────────────────────────────────────────────────────────────────
-  build-and-deploy-staging:
-    name: Deploy to Staging
+  build-staging:
+    name: Build Staging Bundle
     runs-on: ubuntu-latest
     needs: [lint, typecheck, test, security, performance]
     # Hotfix dispatches (skip_staging=true) really do skip the staging deploy
@@ -270,9 +268,6 @@ jobs:
     # still deployed (Phase 0 audit SR-1). Quality gates still run on every
     # path; a hotfix must pass tests too.
     if: ${{ github.event.inputs.skip_staging != 'true' }}
-    permissions:
-      id-token: write
-      contents: read
     steps:
       - name: Checkout code
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
@@ -295,36 +290,18 @@ jobs:
           BUILD_ENV: staging
           PICASSO_STAGING_CONVERSATION_ENDPOINT: ${{ secrets.PICASSO_STAGING_CONVERSATION_ENDPOINT }}
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a  # v4
+      - name: Upload staging build artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         with:
-          # Q5 Phase 2: staging-account widget-deploy role (picasso-widget-deploy-staging).
-          # Distinct from the prod-account AWS_DEPLOY_ROLE_ARN used by the prod deploy job.
-          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN_STAGING }}
-          aws-region: ${{ env.AWS_REGION }}
+          name: staging-build
+          path: Picasso/dist/staging/
+          retention-days: 7
 
-      - name: Deploy to staging S3
-        working-directory: ./Picasso
+      - name: Testing guidance to summary
         run: |
-          aws s3 sync dist/staging/ ${{ env.S3_BUCKET_STAGING }} \
-            --exclude "*.map" \
-            --exclude "collateral/*" \
-            --exclude "tenants/*" \
-            --cache-control "public, max-age=60" \
-            --delete
-
-      - name: Invalidate staging CloudFront
-        if: env.CLOUDFRONT_STAGING_ID != ''
-        run: |
-          aws cloudfront create-invalidation \
-            --distribution-id ${{ env.CLOUDFRONT_STAGING_ID }} \
-            --paths '/*'
-
-      - name: Post staging URL to summary
-        run: |
-          echo "## Staging Deployed" >> $GITHUB_STEP_SUMMARY
+          echo "## Staging Build Ready" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Test at: **https://staging.chat.myrecruiter.ai**" >> $GITHUB_STEP_SUMMARY
+          echo "Deploy job follows; test at: **https://staging.chat.myrecruiter.ai**" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Use test tenant MYR384719 (hash \`my87674d777bf9\`)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -337,13 +314,40 @@ jobs:
             echo "Push-triggered run: production deploy is dispatch-only (run **Deploy to Production** manually to promote)." >> $GITHUB_STEP_SUMMARY
           fi
 
+  deploy-staging:
+    name: Deploy to Staging
+    needs: build-staging
+    permissions:
+      id-token: write        # OIDC role assumption (reusable caller contract)
+      contents: read         # artifact download
+    # Local-path reference: runs the reusable from the SAME commit as this
+    # caller, so the two files can never skew.
+    uses: ./.github/workflows/deploy-frontend.yml
+    with:
+      environment: staging
+      artifact_name: staging-build
+      bucket: picasso-widget-staging
+      # staging.chat.myrecruiter.ai distribution (staging acct 525); was the
+      # CLOUDFRONT_STAGING_DISTRIBUTION_ID secret — distribution ids aren't
+      # secret, and the staging deploy role's invalidation grant is pinned to
+      # exactly this id.
+      cloudfront_distribution_id: E3G30AUOEJTB36
+      website_url: https://staging.chat.myrecruiter.ai
+      smoke_path: /widget.js
+      cache_control: 'public, max-age=60'
+      sync_exclude: '*.map collateral/* tenants/*'
+    secrets:
+      # Q5 Phase 2: staging-account widget-deploy role (picasso-widget-deploy-staging).
+      # Distinct from the prod-account AWS_DEPLOY_ROLE_ARN used by the prod leg.
+      deploy_role_arn: ${{ secrets.AWS_DEPLOY_ROLE_ARN_STAGING }}
+
   # ─────────────────────────────────────────────────────────────────────
   # MANUAL APPROVAL GATE: Human tests staging before production
   # ─────────────────────────────────────────────────────────────────────
   approve-production:
     name: Approve Production Deploy
     runs-on: ubuntu-latest
-    needs: build-and-deploy-staging
+    needs: deploy-staging
     # Production leg is dispatch-only (see `on:` comment). On push this job is
     # skipped, which cascades: build + deploy skip too (their `if` requires
     # approve-production success or the dispatch-only skip_staging input).
@@ -405,25 +409,60 @@ jobs:
           path: Picasso/dist/production/
           retention-days: 30
 
-  deploy:
-    name: Deploy to S3
+  # Reusable-caller jobs can't carry `environment:` — this gate job holds the
+  # `production` environment (same pattern as config-builder's
+  # approve-production gate-job, Phase 2 wave 1).
+  production-gate:
+    name: Production Gate
     runs-on: ubuntu-latest
     needs: build
     environment:
       name: production
       url: https://chat.myrecruiter.ai
+    steps:
+      - name: Gate passed
+        run: echo "Production deploy approved by **${{ github.actor }}**" >> $GITHUB_STEP_SUMMARY
+
+  deploy-production:
+    name: Deploy to Production
+    needs: production-gate
+    permissions:
+      id-token: write        # OIDC role assumption (reusable caller contract)
+      contents: read         # artifact download
+    uses: ./.github/workflows/deploy-frontend.yml
+    with:
+      environment: production
+      artifact_name: production-build
+      bucket: picassocode
+      # chat.myrecruiter.ai distribution; was the CLOUDFRONT_DISTRIBUTION_ID
+      # secret. Invalidation remains opt-in on dispatch (prod leg is
+      # dispatch-only): unchecked = skip, and the 5-min Cache-Control on the
+      # entry points heals within minutes.
+      cloudfront_distribution_id: ${{ github.event.inputs.invalidate_cache != 'false' && 'E3G0LSWB1AQ9LP' || '' }}
+      website_url: https://chat.myrecruiter.ai
+      smoke_path: /widget.js
+      # Hashed assets (iframe-main.js, iframe-main.css, fonts/...) are
+      # referenced from HTML with a build-bumped ?v=<hash> query string —
+      # fresh deploy = fresh URLs, so 1-year immutable is safe. Entry points
+      # (short_cache_paths) have no version in their URL — bound to 5 min so
+      # a regression heals in minutes, not a year (the PR #48 incident).
+      cache_control: 'public, max-age=31536000, immutable'
+      short_cache_paths: 'widget.js iframe.html test-staging.html go/index.html'
+      short_cache_control: 'public, max-age=300, must-revalidate'
+      sync_exclude: '*.map collateral/* tenants/*'
+    secrets:
+      deploy_role_arn: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+
+  post-deploy:
+    name: Verify + Tag
+    runs-on: ubuntu-latest
+    needs: deploy-production
     permissions:
       id-token: write
-      contents: write
+      contents: write        # pushes the deploy-production-* tag
     steps:
       - name: Checkout code
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
-
-      - name: Download build artifacts
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
-        with:
-          name: production-build
-          path: Picasso/dist/production/
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a  # v4
@@ -431,71 +470,18 @@ jobs:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Create backup of current production
-        run: |
-          BACKUP_NAME="production-backup-$(date +%Y%m%d-%H%M%S)"
-          BACKUP_DIR="backups/$BACKUP_NAME"
-          mkdir -p $BACKUP_DIR
-          aws s3 sync ${{ env.S3_BUCKET_PRODUCTION }} $BACKUP_DIR --exclude "*.map" --exclude "collateral/*" --exclude "tenants/*"
-          echo "BACKUP_DIR=$BACKUP_DIR" >> $GITHUB_ENV
-          echo "BACKUP_NAME=$BACKUP_NAME" >> $GITHUB_ENV
-
-      # The runner is ephemeral — without this upload the backup evaporates
-      # when the job ends and the rollback instructions below point at
-      # nothing (Phase 0 audit B-1).
-      - name: Persist backup as workflow artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
-        with:
-          name: ${{ env.BACKUP_NAME }}
-          path: ${{ env.BACKUP_DIR }}
-          retention-days: 30
-
-      - name: Deploy to S3
-        working-directory: ./Picasso
-        run: |
-          # Hashed assets (iframe-main.js, iframe-main.css, fonts/...) are
-          # referenced from HTML with a build-bumped ?v=<hash> query string —
-          # a fresh deploy yields fresh URLs, so 1-year immutable is safe.
-          # Entry points (widget.js, iframe.html, *.html, go/index.html) have
-          # no version in their URL — bound them to 5 min so a future
-          # regression heals in minutes, not a year.
-          aws s3 sync dist/production/ ${{ env.S3_BUCKET_PRODUCTION }} \
-            --exclude "*.map" \
-            --exclude "collateral/*" \
-            --exclude "tenants/*" \
-            --exclude "widget.js" \
-            --exclude "iframe.html" \
-            --exclude "test-staging.html" \
-            --exclude "go/index.html" \
-            --cache-control "public, max-age=31536000, immutable" \
-            --delete
-
-          for f in widget.js iframe.html test-staging.html go/index.html; do
-            aws s3 cp "dist/production/$f" "${{ env.S3_BUCKET_PRODUCTION }}$f" \
-              --cache-control "public, max-age=300, must-revalidate"
-          done
-
       - name: Verify protected files
         run: |
-          if aws s3 ls ${{ env.S3_BUCKET_PRODUCTION }}collateral/MyRecruiterLogo.png; then
+          if aws s3 ls s3://picassocode/collateral/MyRecruiterLogo.png; then
             echo "Protected files preserved"
           else
             echo "ERROR: Protected files missing!"
             exit 1
           fi
 
-      - name: Invalidate CloudFront cache
-        # Always invalidate on push-triggered deploys; allow opt-out only on manual dispatch.
-        # Without this, the 1-year max-age on widget assets makes new code invisible to users
-        # for up to a year. PR #48 (analytics fix) sat dormant in S3 for 20 minutes after
-        # deploy until manually invalidated. PR #49 attempted this fix but on the wrong file
-        # (Picasso/.github/workflows/, which is unused — this is the actual workflow file).
-        if: github.event_name == 'push' || github.event.inputs.invalidate_cache != 'false'
-        run: |
-          aws cloudfront create-invalidation \
-            --distribution-id ${{ env.CLOUDFRONT_DISTRIBUTION_ID }} \
-            --paths '/*'
-
+      # prod-staleness-check.yml diffs Picasso/ since the newest
+      # deploy-production-* tag — this tag is load-bearing, keep it on every
+      # successful prod deploy.
       - name: Create deployment tag
         run: |
           git config user.name "GitHub Actions"
@@ -504,35 +490,14 @@ jobs:
           git tag -a $TAG_NAME -m "Production deployment $TAG_NAME"
           git push origin $TAG_NAME
 
-      - name: Deployment summary
-        run: |
-          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **Timestamp**: $(date '+%Y-%m-%d %H:%M:%S')" >> $GITHUB_STEP_SUMMARY
-          echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **S3 Bucket**: ${{ env.S3_BUCKET_PRODUCTION }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **CloudFront**: https://chat.myrecruiter.ai" >> $GITHUB_STEP_SUMMARY
-          echo "- **Backup artifact**: \`${{ env.BACKUP_NAME }}\` (30-day retention, attached to this run)" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Rollback Instructions" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
-          echo "gh run download ${{ github.run_id }} -n ${{ env.BACKUP_NAME }} -D /tmp/${{ env.BACKUP_NAME }} --repo ${{ github.repository }}" >> $GITHUB_STEP_SUMMARY
-          echo "aws s3 sync /tmp/${{ env.BACKUP_NAME }}/ ${{ env.S3_BUCKET_PRODUCTION }} --exclude 'collateral/*' --exclude 'tenants/*'" >> $GITHUB_STEP_SUMMARY
-          echo "aws cloudfront create-invalidation --distribution-id <CLOUDFRONT_DISTRIBUTION_ID> --paths '/*'" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "(No \`--delete\` on the rollback sync: the backup intentionally excludes \`collateral/\` and \`tenants/\`, which a \`--delete\` would wipe.)" >> $GITHUB_STEP_SUMMARY
-
   notify:
     name: Notify Deployment Status
     runs-on: ubuntu-latest
-    needs: deploy
+    needs: deploy-production
     # Only notify when a production deploy actually ran. Without the guard,
     # every push to main Slacks "Production Deployment skipped" — pure noise
     # that desensitizes the operator (Phase 0 audit SR-2).
-    if: always() && needs.deploy.result != 'skipped'
+    if: always() && needs.deploy-production.result != 'skipped'
     steps:
       - name: Send Slack notification
         if: always()
@@ -540,7 +505,7 @@ jobs:
         with:
           payload: |
             {
-              "text": "Picasso Production Deployment ${{ needs.deploy.result }}",
+              "text": "Picasso Production Deployment ${{ needs.deploy-production.result }}",
               "blocks": [
                 {
                   "type": "header",
@@ -554,7 +519,7 @@ jobs:
                   "fields": [
                     {
                       "type": "mrkdwn",
-                      "text": "*Status:*\n${{ needs.deploy.result }}"
+                      "text": "*Status:*\n${{ needs.deploy-production.result }}"
                     },
                     {
                       "type": "mrkdwn",
