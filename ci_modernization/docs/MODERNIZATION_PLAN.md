@@ -194,3 +194,20 @@ update the change log below.
   queue re-check (passive, ~2026-06-24). Ground-truth note: the dashboard's "staging" bucket
   `picasso-analytics-portal-staging` lives in the PROD account 614 (legacy) — candidate to re-home
   to 525 alongside 2.5-class naming work.
+- 2026-06-10 (later) — **Widget migrated to the reusable (picasso#496 MERGED) — 2.1 COMPLETE: all 3
+  front-ends on one deploy shape.** Reusable gained 3 optional inputs (`cache_control`,
+  `short_cache_paths`, `short_cache_control`) because the widget's cache split is load-bearing
+  (1-yr immutable hashed assets vs 5-min entry points — the PR #48 incident); defaults leave
+  dash/pcb byte-identical (simulated). Widget callers use **local-path `uses:`** (caller+reusable
+  same commit — no #493→#494 skew window). Preserved: quality gates, both builds, skip_staging
+  hotfix semantics, approve-production gate, notify guard; new `production-gate` job carries the
+  `production` environment (pcb pattern); new `post-deploy` job keeps the protected-files verify +
+  the load-bearing `deploy-production-*` tag (staleness check diffs against it). Phase-0 interim
+  artifact backup superseded by `releases/<sha>/` (as the Phase-0 audit planned). CF distribution
+  ids inline (E3G0LSWB1AQ9LP prod / E3G30AUOEJTB36 staging), verified live — staging role's
+  invalidation grant is pinned to exactly that id. **Staging leg LIVE-PROVEN on the merge-push**
+  (run 27251753021: reusable deployed picasso-widget-staging, smoke 200, prod leg + notify
+  correctly skipped; external curl: widget.js `cache-control: public, max-age=60`, fresh
+  last-modified). Prod leg validates on next operator dispatch (widget prod current — staleness
+  check green); the dispatch also covers the deferred 2.2 rollback rehearsal opportunity
+  (`releases/<sha>/` starts populating with the first dispatched prod deploy).
