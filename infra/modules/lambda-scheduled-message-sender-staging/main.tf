@@ -33,6 +33,15 @@ variable "sms_consent_table_arn" {
   type        = string
 }
 
+variable "sched_notif_template_table_arn" {
+  description = "ARN of picasso-scheduling-notif-template (E14). Sender does GetItem of the per-tenant reminder_24h/reminder_1h override at FIRE time (S4b). Read-only; fail-safe -> default copy on miss/error."
+  type        = string
+}
+
+variable "sched_notif_template_table_name" {
+  type = string
+}
+
 variable "sms_consent_table_name" {
   type = string
 }
@@ -176,6 +185,15 @@ data "aws_iam_policy_document" "sender_exec" {
     resources = [var.sms_consent_table_arn]
   }
 
+  # E14 S4b: per-tenant template override read at fire time. GetItem only, base
+  # table only (key {tenantId, moment}). Mirrors the ADA/BCH/lifecycle G2 read
+  # posture. Fail-safe in code: a miss/denial sends the default copy.
+  statement {
+    sid       = "DDBReadSchedNotifTemplate"
+    actions   = ["dynamodb:GetItem"]
+    resources = [var.sched_notif_template_table_arn]
+  }
+
   # Email floor: async-invoke the reusable send_email Lambda. Scoped to exactly
   # that function ARN -- no wildcard. Mirrors the BCH/consumer grant posture.
   statement {
@@ -235,6 +253,9 @@ resource "aws_lambda_function" "sender" {
       SMS_CONSENT_TABLE        = var.sms_consent_table_name
       SMS_SENDER_FUNCTION      = var.sms_sender_function_name
       SEND_EMAIL_FUNCTION      = var.send_email_function_name
+      # E14 S4b: per-tenant reminder template overrides, read at fire time.
+      # The code treats an unset/empty value as override-system-off (fail-safe).
+      SCHED_NOTIF_TEMPLATE_TABLE = var.sched_notif_template_table_name
       # STAGING_TEST_MODE is consumed by the sender's assertNotProdSynthetic guard
       # (mirrors Reminder_Scheduler). Set "true" so staging synthetic cycles can
       # exercise the sender without hitting Telnyx/SES unintentionally (operator Q4).
