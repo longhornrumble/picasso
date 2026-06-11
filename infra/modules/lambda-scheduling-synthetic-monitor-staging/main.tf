@@ -247,7 +247,7 @@ resource "aws_lambda_function" "monitor" {
       # Phase-2 time-compression flag (prod-guard input). The compression that gates the
       # reminder cycle runs inside BCH (its env, set in the BCH module) -- this one feeds
       # the monitor's own prod-guard. Double-gated by is_synthetic on the commit payload.
-      STAGING_TEST_MODE = "true"
+      STAGING_TEST_MODE   = "true"
       SYNTHETIC_TENANT_ID = var.synthetic_tenant_id
       # BCH takes the appointment type FROM the event (no registry) -- a stable label id.
       SYNTHETIC_APPOINTMENT_TYPE_ID = "synthetic-monitor-check"

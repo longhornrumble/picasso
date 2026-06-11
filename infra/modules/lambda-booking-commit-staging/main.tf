@@ -515,7 +515,7 @@ resource "aws_lambda_function" "commit" {
 
   environment {
     variables = {
-      ENVIRONMENT              = "staging"
+      ENVIRONMENT = "staging"
       # WS-E-CI6 activation: enables reminder-cadence TIME-COMPRESSION for SYNTHETIC
       # bookings only -- scheduleReminders gates on (STAGING_TEST_MODE && is_synthetic),
       # and only the Scheduling_Synthetic_Monitor's commit payload sets is_synthetic.
