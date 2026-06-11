@@ -369,13 +369,12 @@ resource "aws_lambda_function" "reconciler" {
 # 3d. Nightly EventBridge Scheduler for the reconciler
 #
 # This is the FIXED-NAME schedule that fires Reminder_Scheduler each night.
-# Its scheduler invoke role uses ArnEquals (not ArnLike) because the schedule
-# name is known at plan-time. Mirrors the renewer pattern exactly.
+# Its scheduler invoke role trust uses ArnLike on the dedicated-group pattern (see the
+# 2026-06-11 fix note on the condition below) — CreateSchedule rejected ArnEquals on the
+# exact ARN at validation time.
 # ==============================================================================
 
 # Dedicated invoke role for the reconciler's own nightly schedule.
-# Trust uses ArnEquals because this schedule name is fixed at plan-time --
-# different from the per-booking dynamic schedules whose exec role uses ArnLike.
 resource "aws_iam_role" "reconciler_scheduler" {
   name = "Reminder_Scheduler-scheduler-staging"
 
@@ -389,11 +388,17 @@ resource "aws_iam_role" "reconciler_scheduler" {
         StringEquals = {
           "aws:SourceAccount" = data.aws_caller_identity.current.account_id
         }
-        # ArnEquals: the reconciler schedule name is fixed at plan-time, so this
-        # is the exact ARN. Mirrors the renewer pattern (B4). No other schedule in
-        # the account can assume this role.
-        ArnEquals = {
-          "aws:SourceArn" = "arn:${data.aws_partition.current.partition}:scheduler:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:schedule/picasso-scheduling-reminders-staging/picasso-reminder-scheduler-nightly-staging"
+        # ArnLike on the dedicated-group pattern (NOT ArnEquals on the exact schedule ARN).
+        # FIX (2026-06-11): the first apply failed `CreateSchedule` with "must allow AWS
+        # EventBridge Scheduler to assume the role" — and a re-run with the role aged 6+ min
+        # failed identically, so it is NOT IAM propagation. Scheduler's CreateSchedule
+        # assume-role validation does not reliably satisfy an ArnEquals on the exact, not-yet-
+        # created schedule ARN; AWS's documented trust pattern (and the sibling scheduler_exec
+        # role above) use ArnLike on `schedule/<group>/*`. This keeps the confused-deputy
+        # scoping (dedicated group + SourceAccount) — the group holds only our schedules — while
+        # matching the form CreateSchedule accepts.
+        ArnLike = {
+          "aws:SourceArn" = "arn:${data.aws_partition.current.partition}:scheduler:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:schedule/picasso-scheduling-reminders-staging/*"
         }
       }
     }]
