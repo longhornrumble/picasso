@@ -11,20 +11,23 @@
 #
 #   2. aws_iam_role "scheduler_exec"  (the EventBridge Scheduler execution role)
 #      Assumed by scheduler.amazonaws.com when firing ANY schedule in the group.
-#      Trust condition uses ArnLike (NOT ArnEquals) on the group-pattern ARN
-#      because per-booking schedule names are dynamic. Invoke policy: only
-#      lambda:InvokeFunction on Scheduled_Message_Sender ARN.
+#      Trust = aws:SourceAccount ONLY (NO aws:SourceArn — see the 2026-06-11 fix note
+#      on the condition: Scheduler's CreateSchedule rejects an aws:SourceArn condition for
+#      schedules in a non-default group). Invoke policy: only lambda:InvokeFunction on
+#      Scheduled_Message_Sender ARN.
 #
 #   3. aws_lambda_function "reconciler"  (Reminder_Scheduler, the nightly sweep)
 #      Dedicated execution role; reserved_concurrent_executions=1; 300s timeout.
 #      Nightly EventBridge Scheduler cron(0 7 * * ? *) UTC drives it.
-#      The reconciler's OWN invocation is a FIXED schedule name; its scheduler
-#      invoke role uses ArnEquals (not ArnLike) -- same as the renewer pattern.
+#      The reconciler's OWN invocation has a FIXED schedule name; its scheduler invoke
+#      role trust is also aws:SourceAccount ONLY (same CreateSchedule constraint).
 #
 # HIGH-RISK:
 #   - iam:PassRole on BCH (lambda-booking-commit-staging) is scoped to EXACTLY
 #     scheduler_exec role ARN (see the edit to that module in main.tf).
-#   - confused-deputy ArnLike on group/* (per-booking dynamic names).
+#   - confused-deputy: aws:SourceAccount (cross-account) + single-target invoke policies +
+#     scheduler:CreateSchedule/PassRole held only by BCH. (aws:SourceArn dropped — not
+#     satisfiable by CreateSchedule validation for non-default-group schedules.)
 #   - Dedicated group is load-bearing: without it Create/Delete must be *.
 #
 # Dedicated execution role per CLAUDE.md "Never share IAM roles" rule.
@@ -126,14 +129,16 @@ resource "aws_iam_role" "scheduler_exec" {
         StringEquals = {
           "aws:SourceAccount" = data.aws_caller_identity.current.account_id
         }
-        # Confused-deputy: ArnLike because per-booking schedule names are dynamic
-        # (e.g. picasso-reminder-<bookingId>-48h). The group prefix is fixed,
-        # so "schedule/<group>/*" is the tightest possible scope. Any other account
-        # or group pattern will not match. BCH's iam:PassRole is scoped to this
-        # role ARN exactly (never *).
-        ArnLike = {
-          "aws:SourceArn" = "arn:${data.aws_partition.current.partition}:scheduler:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:schedule/picasso-scheduling-reminders-staging/*"
-        }
+        # NO aws:SourceArn condition. FIX (2026-06-11): EventBridge Scheduler's CreateSchedule
+        # assume-role validation does NOT satisfy an aws:SourceArn condition for schedules in a
+        # NON-DEFAULT group (both ArnEquals-exact and ArnLike-group/* were tried and both failed
+        # with "must allow AWS EventBridge Scheduler to assume the role" — see the nightly role
+        # below). aws:SourceAccount (cross-account confused-deputy protection) is retained; the
+        # residual intra-account scoping is provided by (a) this role's invoke policy being
+        # single-target (lambda:InvokeFunction on Scheduled_Message_Sender ONLY) and (b) only BCH
+        # holding scheduler:CreateSchedule + iam:PassRole (scoped to this exact role ARN). The
+        # renewer keeps aws:SourceArn only because it lives in the DEFAULT group, where the
+        # validation behaves differently.
       }
     }]
   })
@@ -388,18 +393,14 @@ resource "aws_iam_role" "reconciler_scheduler" {
         StringEquals = {
           "aws:SourceAccount" = data.aws_caller_identity.current.account_id
         }
-        # ArnLike on the dedicated-group pattern (NOT ArnEquals on the exact schedule ARN).
-        # FIX (2026-06-11): the first apply failed `CreateSchedule` with "must allow AWS
-        # EventBridge Scheduler to assume the role" — and a re-run with the role aged 6+ min
-        # failed identically, so it is NOT IAM propagation. Scheduler's CreateSchedule
-        # assume-role validation does not reliably satisfy an ArnEquals on the exact, not-yet-
-        # created schedule ARN; AWS's documented trust pattern (and the sibling scheduler_exec
-        # role above) use ArnLike on `schedule/<group>/*`. This keeps the confused-deputy
-        # scoping (dedicated group + SourceAccount) — the group holds only our schedules — while
-        # matching the form CreateSchedule accepts.
-        ArnLike = {
-          "aws:SourceArn" = "arn:${data.aws_partition.current.partition}:scheduler:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:schedule/picasso-scheduling-reminders-staging/*"
-        }
+        # NO aws:SourceArn condition. FIX (2026-06-11): two staging applies failed CreateSchedule
+        # with "must allow AWS EventBridge Scheduler to assume the role" — first with ArnEquals on
+        # the exact schedule ARN, then with ArnLike on schedule/<group>/* — and a re-run with the
+        # role aged 6+ min failed identically (ruling out IAM propagation). Scheduler's
+        # CreateSchedule assume-role validation does not satisfy an aws:SourceArn condition for a
+        # schedule in a NON-DEFAULT group. aws:SourceAccount is retained (cross-account confused-
+        # deputy); intra-account scope = this role's single-target invoke policy (the nightly
+        # Reminder_Scheduler only) + only the reconciler/CI creating this fixed schedule.
       }
     }]
   })
