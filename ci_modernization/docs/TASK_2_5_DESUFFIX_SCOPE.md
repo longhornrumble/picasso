@@ -1,6 +1,12 @@
 # Task 2.5 Scope — De-suffix the Staging Twins
 
-**Status:** Scoped 2026-06-10, awaiting operator decisions (§Decisions) before execution.
+**Status:** ✅ **COMPLETE 2026-06-11.** All 4 waves executed: 1a #500 · 1b #501+#502 ·
+lambda#273 · Wave 2 #505 (+#506 incident fix) · Wave 3 soak (operator sign-off 2026-06-11) ·
+Wave 4 #516 + 614 hand-CLI + lambda#281/#282. Decision #2 amended at Wave 4: the old BSH log
+group + its CMK were destroyed with the module (CMK-encrypted logs are unreadable once the key
+dies — retaining the group was dead weight; operator call 2026-06-10); only the old MFS log
+group is retained orphaned. Full execution history: `MODERNIZATION_PLAN.md` change log
+2026-06-10/11 entries. The doc below is the as-scoped record.
 **Parent:** `MODERNIZATION_PLAN.md` §Phase 2 row 2.5 (operator-requested 2026-06-09).
 **Ground rule:** every claim below was verified live 2026-06-10. Re-verify before executing.
 

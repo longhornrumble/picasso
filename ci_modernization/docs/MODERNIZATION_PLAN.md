@@ -77,7 +77,7 @@ One consistent, gated path from commit → staging → prod for all four product
 | 2.2 Versioned artifacts | Upload each prod bundle to `s3://<bucket>/releases/<sha>/` before syncing live. Rollback = re-sync a prior release prefix + invalidate. | Rollback rehearsed once per product |
 | 2.3 Config-builder staging bucket | Small TF module in `infra/` (staging account — fits existing staging belt + naming convention). Wire its staging deploy + un-stick the prod gate. | Config-builder PR deploys to staging; prod gate functional |
 | 2.4 Widget queue sanity re-check | After 0.3 + 2.1, confirm no waiting-run accumulation over 2 weeks. | `--status waiting` stays 0 |
-| 2.5 De-suffix the staging twins (operator-requested 2026-06-09; **SCOPED 2026-06-10 → `TASK_2_5_DESUFFIX_SCOPE.md`**) | Staging-account (525) `Master_Function_Staging` + `Bedrock_Streaming_Handler_Staging` → bare names, per uniform-env-rules (account = env; new staging fns are already bare — SMS_Sender, Calendar_*). **Not a rename-in-place** — create-new + cutover; discovery found both twins fully TF-managed (`var.function_name`-keyed), so the play is *parallel module instances*, cheaper than the ADA hand-managed playbook assumed. Blast surface, gates, waves, and 4 operator decisions: see the scope doc. **2026-06-10 live correction:** the prod-account relic Lambda is ALREADY deleted (614 has zero `*Staging*` functions; `kgvc8xnewf` routes all live traffic → `Master_Function:live`); what remains there is 3 route-less dangling integrations — trivial operator-run deletes. Sequence AFTER first successful prod dispatches (done — MFS v22 2026-06-10); coordinate w/ the active naming-alignment session (same infra tree, serialize applies). | Staging twins bare-named; widget/staging E2E green; dangling `kgvc8xnewf` integrations deleted; workflows updated |
+| 2.5 De-suffix the staging twins (operator-requested 2026-06-09; **✅ COMPLETE 2026-06-11** — all 4 waves executed; scope doc `TASK_2_5_DESUFFIX_SCOPE.md` closed out; see change log 2026-06-10/11) | Staging-account (525) `Master_Function_Staging` + `Bedrock_Streaming_Handler_Staging` → bare names, per uniform-env-rules (account = env; new staging fns are already bare — SMS_Sender, Calendar_*). **Not a rename-in-place** — create-new + cutover; discovery found both twins fully TF-managed (`var.function_name`-keyed), so the play is *parallel module instances*, cheaper than the ADA hand-managed playbook assumed. Blast surface, gates, waves, and 4 operator decisions: see the scope doc. **2026-06-10 live correction:** the prod-account relic Lambda is ALREADY deleted (614 has zero `*Staging*` functions; `kgvc8xnewf` routes all live traffic → `Master_Function:live`); what remains there is 3 route-less dangling integrations — trivial operator-run deletes. Sequence AFTER first successful prod dispatches (done — MFS v22 2026-06-10); coordinate w/ the active naming-alignment session (same infra tree, serialize applies). | Staging twins bare-named; widget/staging E2E green; dangling `kgvc8xnewf` integrations deleted; workflows updated |
 
 ## Phase 3 — Finish the IaC program (≈2–3 careful sessions, prod-IaC-owned)
 
@@ -260,3 +260,29 @@ update the change log below.
   **Phase 4 remaining:** 4.1 lambda+pcb extension (org-secret-gated). 1.5's write-side manifest
   remains deliberately unbuilt (whats-live read-side answers the question; build only if deploy
   HISTORY becomes a need).
+- 2026-06-11 — **2.5 Wave 4 EXECUTED — suffixed staging twins DECOMMISSIONED; task 2.5 COMPLETE.**
+  Operator soak sign-off → #516 (both suffixed module instances removed; the 5 transition policy
+  surfaces drop their suffixed entries; 183 deletions, all 20 added lines comments). CMK edit
+  shadow-key-gated AGAIN per runbook: zero DDB tables currently use the key (Apply-2 association
+  hasn't happened — empty sweep defeated by direct spot-checks), candidate ACCEPTED on the shadow,
+  admin decrypt → explicit-deny, post-apply policy canonically IDENTICAL to the candidate (diff
+  noise = AWS array reordering only; `jq -S` sorts keys, not arrays — walk-sort both sides).
+  **Decision #2 amended at execution:** old MFS log group `state rm`'d → retained orphaned
+  (unencrypted, 7d retention); old BSH log group + its CMK destroyed WITH the module — a
+  deletion-scheduled CMK is unusable immediately, so retaining its encrypted log group was dead
+  weight (operator call). **Belt apply: all 15 destroys + 5 policy updates COMPLETE**; the run's
+  failure marker is solely the parallel scheduling track's reminder-scheduler trust bug (#515/#517,
+  EventBridge Scheduler can't assume the execution role — identical at attempts 1/2/post-fix;
+  theirs to fix, zero interaction with 2.5). Verified live: suffixed functions ResourceNotFound;
+  bare pair Active; CF smokes 200/200; signer dual-action on the bare ARN only; JWT/BSH-cf-origin/
+  SQS policies suffixed-free with the deploy-role exception intact. 614 (operator hand-CLI):
+  KB-trust → exactly 3 principals (the 2 destroyed roles' statements had auto-canonicalized to
+  bare AROA unique-IDs — IAM's deleted-principal marker); 3 route-less `kgvc8xnewf` integrations
+  deleted (all 6 live routes pre-verified on `vxhbed5` → `Master_Function:live`). lambda#281
+  (whats-live bare names) + lambda#282 (stale 2.5-TRANSITIONAL comment sweep). **Sequencing
+  lessons:** run `state rm` AT the merge moment, not before — between rm and apply, any
+  parallel-track staging apply (two hit during execution; both waited out via the tfstate lock)
+  would plan a CREATE of the orphaned log group and fail on ResourceAlreadyExists. And zsh's
+  interactive mode doesn't honor `#` comments — operator paste-blocks must be comment-free.
+  **Phase 2 status: every task row complete (2.1–2.3, 2.5) except 2.4's calendar re-check
+  (~2026-06-24). Next gate: the Phase-2 completion audit.**

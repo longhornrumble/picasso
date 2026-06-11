@@ -120,11 +120,17 @@ jobs:
       - name: Find previous release (production)
         id: prev
         if: inputs.environment == 'production'
+        # Inputs reach the shell via env, never inline interpolation
+        # (uniform rule since lambda run 27248430578; extended to ALL
+        # inputs by the Phase-2 audit, finding D6).
+        env:
+          BUCKET: ${{ inputs.bucket }}
+          CUR_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          PREV_SHA=$(aws s3api list-objects-v2 --bucket "${{ inputs.bucket }}" --prefix "releases/" \
+          PREV_SHA=$(aws s3api list-objects-v2 --bucket "$BUCKET" --prefix "releases/" \
             --query 'Contents[].{k:Key,t:LastModified}' --output json 2>/dev/null \
-            | jq -r --arg cur "${{ github.sha }}" '
+            | jq -r --arg cur "$CUR_SHA" '
                 [ (. // [])[] | {sha: (.k | split("/")[1]), t} ]
                 | map(select(.sha != $cur and .sha != ""))
                 | group_by(.sha) | map({sha: .[0].sha, t: (map(.t) | max)})
@@ -134,16 +140,28 @@ jobs:
 
       - name: Upload immutable release copy (production)
         if: inputs.environment == 'production'
+        # Archive carries the same bulk Cache-Control as the live sync
+        # (audit D3): rollback re-syncs S3→S3, which preserves source-object
+        # metadata — without this, rolled-back bulk assets serve headerless.
+        env:
+          BUCKET: ${{ inputs.bucket }}
+          CUR_SHA: ${{ github.sha }}
+          CACHE_CONTROL: ${{ inputs.cache_control }}
         run: |
           set -euo pipefail
-          aws s3 sync dist/ "s3://${{ inputs.bucket }}/releases/${{ github.sha }}/"
-          echo "Release archived: s3://${{ inputs.bucket }}/releases/${{ github.sha }}/"
+          EXTRA=()
+          if [ -n "$CACHE_CONTROL" ]; then
+            EXTRA+=(--cache-control "$CACHE_CONTROL")
+          fi
+          aws s3 sync dist/ "s3://$BUCKET/releases/$CUR_SHA/" ${EXTRA[@]+"${EXTRA[@]}"}
+          echo "Release archived: s3://$BUCKET/releases/$CUR_SHA/"
 
       - name: Sync to live
         # sync_exclude reaches the shell via env, not inline interpolation
         # (uniform rule since lambda run 27248430578 — even caller-YAML
         # inputs get the safe path).
         env:
+          BUCKET: ${{ inputs.bucket }}
           SYNC_EXCLUDE: ${{ inputs.sync_exclude }}
           CACHE_CONTROL: ${{ inputs.cache_control }}
           SHORT_CACHE_PATHS: ${{ inputs.short_cache_paths }}
@@ -166,28 +184,44 @@ jobs:
           if [ -n "$CACHE_CONTROL" ]; then
             EXTRA+=(--cache-control "$CACHE_CONTROL")
           fi
-          aws s3 sync dist/ "s3://${{ inputs.bucket }}/" --delete "${EXCLUDES[@]}" ${EXTRA[@]+"${EXTRA[@]}"}
+          aws s3 sync dist/ "s3://$BUCKET/" --delete "${EXCLUDES[@]}" ${EXTRA[@]+"${EXTRA[@]}"}
           for key in $SHORT_CACHE_PATHS; do
-            aws s3 cp "dist/$key" "s3://${{ inputs.bucket }}/$key" \
+            aws s3 cp "dist/$key" "s3://$BUCKET/$key" \
               --cache-control "$SHORT_CACHE_CONTROL"
           done
 
       - name: Invalidate CloudFront
         if: inputs.cloudfront_distribution_id != ''
+        env:
+          CF_DIST: ${{ inputs.cloudfront_distribution_id }}
         run: |
           aws cloudfront create-invalidation \
-            --distribution-id ${{ inputs.cloudfront_distribution_id }} \
+            --distribution-id "$CF_DIST" \
             --paths '/*'
 
       - name: Smoke check
         id: smoke
+        # Retried (audit D2): a single unretried curl can false-fail on a
+        # CDN transient and — on production — trigger a SPURIOUS auto-
+        # rollback of a healthy deploy (the lambda#275 failure class).
+        # Budget 6×10s; a failure after that is genuine and the rollback
+        # step is correct to act on it.
+        env:
+          WEBSITE_URL: ${{ inputs.website_url }}
+          SMOKE_PATH: ${{ inputs.smoke_path }}
+          SMOKE_EXPECT: ${{ inputs.smoke_expect_status }}
         run: |
           set -euo pipefail
-          URL="${{ inputs.website_url }}${{ inputs.smoke_path }}"
-          STATUS=$(curl -s -o /dev/null -w '%{http_code}' -H 'Cache-Control: no-cache' "$URL")
-          echo "Smoke: GET $URL -> $STATUS"
-          if [ "$STATUS" != "${{ inputs.smoke_expect_status }}" ]; then
-            echo "::error::Expected ${{ inputs.smoke_expect_status }}, got $STATUS"
+          URL="${WEBSITE_URL}${SMOKE_PATH}"
+          STATUS=""
+          for attempt in $(seq 1 6); do
+            STATUS=$(curl -s -o /dev/null -w '%{http_code}' -H 'Cache-Control: no-cache' "$URL")
+            echo "Smoke attempt $attempt: GET $URL -> $STATUS (expect $SMOKE_EXPECT)"
+            [ "$STATUS" = "$SMOKE_EXPECT" ] && break
+            sleep 10
+          done
+          if [ "$STATUS" != "$SMOKE_EXPECT" ]; then
+            echo "::error::Expected $SMOKE_EXPECT, got $STATUS after 6 attempts (1m)"
             exit 1
           fi
 
@@ -198,6 +232,12 @@ jobs:
       - name: Auto-rollback on failed smoke (production)
         if: failure() && steps.smoke.outcome == 'failure' && inputs.environment == 'production' && steps.prev.outputs.prev_sha != ''
         env:
+          BUCKET: ${{ inputs.bucket }}
+          CF_DIST: ${{ inputs.cloudfront_distribution_id }}
+          WEBSITE_URL: ${{ inputs.website_url }}
+          SMOKE_PATH: ${{ inputs.smoke_path }}
+          SMOKE_EXPECT: ${{ inputs.smoke_expect_status }}
+          CUR_SHA: ${{ github.sha }}
           SYNC_EXCLUDE: ${{ inputs.sync_exclude }}
           SHORT_CACHE_PATHS: ${{ inputs.short_cache_paths }}
           SHORT_CACHE_CONTROL: ${{ inputs.short_cache_control }}
@@ -207,22 +247,22 @@ jobs:
           echo "::warning::Smoke failed — rolling live back to release $PREV_SHA"
           EXCLUDES=(--exclude "releases/*")
           for pat in $SYNC_EXCLUDE; do EXCLUDES+=(--exclude "$pat"); done
-          aws s3 sync "s3://${{ inputs.bucket }}/releases/$PREV_SHA/" "s3://${{ inputs.bucket }}/" --delete "${EXCLUDES[@]}"
+          aws s3 sync "s3://$BUCKET/releases/$PREV_SHA/" "s3://$BUCKET/" --delete "${EXCLUDES[@]}"
           for key in $SHORT_CACHE_PATHS; do
-            aws s3 cp "s3://${{ inputs.bucket }}/releases/$PREV_SHA/$key" "s3://${{ inputs.bucket }}/$key" \
+            aws s3 cp "s3://$BUCKET/releases/$PREV_SHA/$key" "s3://$BUCKET/$key" \
               --cache-control "$SHORT_CACHE_CONTROL"
           done
-          if [ -n "${{ inputs.cloudfront_distribution_id }}" ]; then
+          if [ -n "$CF_DIST" ]; then
             aws cloudfront create-invalidation \
-              --distribution-id ${{ inputs.cloudfront_distribution_id }} --paths '/*'
+              --distribution-id "$CF_DIST" --paths '/*'
           fi
-          STATUS=$(curl -s -o /dev/null -w '%{http_code}' -H 'Cache-Control: no-cache' "${{ inputs.website_url }}${{ inputs.smoke_path }}")
+          STATUS=$(curl -s -o /dev/null -w '%{http_code}' -H 'Cache-Control: no-cache' "${WEBSITE_URL}${SMOKE_PATH}")
           {
             echo "### ⚠️ AUTO-ROLLBACK executed"
             echo ""
-            echo "Smoke failed on \`${{ github.sha }}\`; live re-synced to previous release \`$PREV_SHA\`."
-            echo "Post-rollback smoke: \`$STATUS\` (expected ${{ inputs.smoke_expect_status }})."
-            echo "The failed release remains archived at \`s3://${{ inputs.bucket }}/releases/${{ github.sha }}/\` for diagnosis."
+            echo "Smoke failed on \`$CUR_SHA\`; live re-synced to previous release \`$PREV_SHA\`."
+            echo "Post-rollback smoke: \`$STATUS\` (expected $SMOKE_EXPECT)."
+            echo "The failed release remains archived at \`s3://$BUCKET/releases/$CUR_SHA/\` for diagnosis."
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Comment deployed URL on PR
