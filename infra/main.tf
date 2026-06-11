@@ -1894,6 +1894,6 @@ module "cloudfront_config_builder_staging" {
   count  = var.env == "staging" ? 1 : 0
   source = "./modules/cloudfront-config-builder-staging"
 
-  # Apply 2: flip to true once the cert shows ISSUED.
-  create_distribution = false
+  # Apply 2 (cert ISSUED 2026-06-11): distribution live.
+  create_distribution = true
 }
