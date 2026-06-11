@@ -124,6 +124,31 @@ variable "sms_sender_function_name" {
   type = string
 }
 
+# ── Track 1 S6: reminder-system wiring (scheduleReminders + rebindReminders) ──
+variable "scheduled_messages_table_arn" {
+  description = "ARN of picasso-scheduled-messages. BCH PutItem (scheduleReminders writes new rows at commit) + DeleteItem (rebindReminders removes old rows before re-scheduling)."
+  type        = string
+}
+
+variable "scheduled_messages_table_name" {
+  type = string
+}
+
+variable "scheduler_exec_role_arn" {
+  description = "ARN of the dedicated EventBridge Scheduler execution role (in lambda-reminder-scheduler-staging). BCH iam:PassRole is scoped to EXACTLY this ARN (never *). Passed as Target.RoleArn on every scheduler:CreateSchedule call."
+  type        = string
+}
+
+variable "scheduler_target_arn" {
+  description = "ARN of the Scheduled_Message_Sender Lambda (the EventBridge schedule target). BCH passes this as Target.Arn on every CreateSchedule."
+  type        = string
+}
+
+variable "scheduler_group_name" {
+  description = "Name of the dedicated reminder schedule group. BCH CreateSchedule + DeleteSchedule are scoped to this group."
+  type        = string
+}
+
 variable "scheduling_oauth_tenant_ids" {
   description = "Tenant IDs whose scheduling secrets the handler may read. secretsmanager:GetSecretValue is scoped to picasso/scheduling/oauth/{tenant}/* (Google OAuth + freeBusy) AND picasso/scheduling/zoom/{tenant} (Zoom S2S) for each — NOT a wildcard. Adding tenant #2 = append here in a reviewed PR, not a silent wildcard grant. A Zoom secret may not exist yet for a listed tenant (Zoom path is secret-gated at runtime); the grant is harmless until the secret is provisioned."
   type        = list(string)
@@ -402,6 +427,52 @@ data "aws_iam_policy_document" "commit_exec" {
     actions   = ["lambda:InvokeFunction"]
     resources = [var.sms_sender_function_arn]
   }
+
+  # ── Track 1 S6: reminder system (scheduleReminders + rebindReminders) ──
+
+  # EventBridge Scheduler: BCH calls scheduleReminders() at commit and
+  # rebindReminders() on reschedule -- both create and delete per-booking reminder
+  # schedules in the dedicated group. Scoped to the group pattern (not account-wide *).
+  statement {
+    sid = "SchedulerCreateDelete"
+    actions = [
+      "scheduler:CreateSchedule",
+      "scheduler:DeleteSchedule",
+    ]
+    resources = [
+      "arn:${data.aws_partition.current.partition}:scheduler:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:schedule/${var.scheduler_group_name}/*",
+    ]
+  }
+
+  # iam:PassRole: BCH sets Target.RoleArn on every CreateSchedule to the dedicated
+  # Scheduler execution role. Scoped to EXACTLY that role ARN -- never *.
+  # HIGH-RISK: a wildcard here would allow BCH to pass any role in the account
+  # to EventBridge Scheduler (privilege escalation). The ARN is the scheduler_exec
+  # role from lambda-reminder-scheduler-staging; BCH cannot vary it.
+  statement {
+    sid       = "PassReminderSchedulerRole"
+    actions   = ["iam:PassRole"]
+    resources = [var.scheduler_exec_role_arn]
+    # Defense-in-depth: the role may ONLY be passed to EventBridge Scheduler (the
+    # scheduler_exec trust policy already restricts who can assume it; this also
+    # restricts where BCH can hand it off).
+    condition {
+      test     = "StringEquals"
+      variable = "iam:PassedToService"
+      values   = ["scheduler.amazonaws.com"]
+    }
+  }
+
+  # Scheduled-messages table: PutItem (scheduleReminders writes new rows at commit)
+  # + DeleteItem (rebindReminders removes old rows before re-scheduling).
+  statement {
+    sid = "DDBScheduledMessagesWrite"
+    actions = [
+      "dynamodb:PutItem",
+      "dynamodb:DeleteItem",
+    ]
+    resources = [var.scheduled_messages_table_arn]
+  }
 }
 
 resource "aws_iam_role_policy" "commit_exec" {
@@ -466,6 +537,12 @@ resource "aws_lambda_function" "commit" {
       SMS_CONSENT_TABLE   = var.sms_consent_table_name
       CONFIG_BUCKET       = var.config_bucket_name
       S3_CONFIG_BUCKET    = var.config_bucket_name
+      # Track 1 S6: reminder system wiring. scheduleReminders() + rebindReminders()
+      # read these from env to create/delete per-booking EventBridge reminder schedules.
+      SCHEDULER_TARGET_ARN     = var.scheduler_target_arn
+      SCHEDULER_ROLE_ARN       = var.scheduler_exec_role_arn
+      SCHEDULER_GROUP_NAME     = var.scheduler_group_name
+      SCHEDULED_MESSAGES_TABLE = var.scheduled_messages_table_name
     }
   }
 
