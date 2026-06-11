@@ -29,7 +29,8 @@
 #     after a successful connect).
 #   - s3:GetObject on the tenant-config bucket /tenants/* (featureGate.js Flag-A
 #     gate read at index.js:209; fail-closes to DISABLED on any miss/error).
-# No DynamoDB, no SES/SNS, no Zoom — the consent flow does none of those.
+# No SES/SNS, no Zoom. DynamoDB = ONLY the jti-blacklist conditional PutItem
+# (Track 2 init-token single-use burn) — nothing else.
 
 # ------------------------------------------------------------------
 # Inputs
@@ -63,7 +64,16 @@ variable "ops_alerts_topic_arn" {
 variable "dashboard_return_url" {
   description = "Where the browser lands after a successful connect -> DASHBOARD_RETURN_URL env. The staging dashboard scheduling page (https)."
   type        = string
-  default     = "https://d2t5sxdcthprgd.cloudfront.net"
+  default     = "https://staging.app.myrecruiter.ai"
+}
+
+variable "jti_blacklist_table_arn" {
+  description = "ARN of picasso-token-jti-blacklist. Track 2 init-token single-use: /connect burns the init jti via conditional PutItem (attribute_not_exists) -- same footprint as the redemption handler. PutItem ONLY."
+  type        = string
+}
+
+variable "jti_blacklist_table_name" {
+  type = string
 }
 
 variable "log_retention_days" {
@@ -213,6 +223,14 @@ data "aws_iam_policy_document" "oauth_exec" {
 
   # Fire the B5 watch onboarder best-effort after a successful connect (index.js
   # InvokeCommand). lambda:InvokeFunction on the single onboarder ARN only.
+  # Track 2 init-token single-use: the /connect jti burn. Conditional PutItem is the
+  # entire footprint (no GetItem) -- mirrors the redemption handler's grant.
+  statement {
+    sid       = "DDBJtiBlacklistConditionalPut"
+    actions   = ["dynamodb:PutItem"]
+    resources = [var.jti_blacklist_table_arn]
+  }
+
   statement {
     sid       = "FireB5WatchOnboarder"
     actions   = ["lambda:InvokeFunction"]
@@ -278,6 +296,7 @@ resource "aws_lambda_function" "oauth" {
       DASHBOARD_RETURN_URL            = var.dashboard_return_url
       ONBOARDER_FUNCTION_NAME         = var.onboarder_function_name
       CONFIG_BUCKET                   = var.config_bucket_name
+      JTI_BLACKLIST_TABLE             = var.jti_blacklist_table_name
       STATE_TTL_SECONDS               = "600"
       OAUTH_HTTP_TIMEOUT_MS           = "5000"
       AWS_REQUEST_TIMEOUT_MS          = "5000"

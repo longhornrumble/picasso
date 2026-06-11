@@ -1250,6 +1250,11 @@ module "lambda_calendar_oauth_connect_staging" {
   onboarder_function_arn  = module.lambda_calendar_watch_onboarder_staging[0].onboarder_function_arn
   onboarder_function_name = module.lambda_calendar_watch_onboarder_staging[0].onboarder_function_name
 
+  # Track 2: init-token single-use burn table (jti) + the friendly return domain
+  # (DASHBOARD_RETURN_URL default in the module now points at staging.app.myrecruiter.ai).
+  jti_blacklist_table_arn  = module.ddb_token_jti_blacklist_staging[0].table_arn
+  jti_blacklist_table_name = module.ddb_token_jti_blacklist_staging[0].table_name
+
   # Ops alerts SNS topic (Errors/Throttles alarm target only — the handler does not publish).
   ops_alerts_topic_arn = module.ops_alarms_master_function_staging[0].topic_arn
 }
