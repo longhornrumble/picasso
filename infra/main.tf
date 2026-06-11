@@ -1884,3 +1884,16 @@ module "lambda_config_manager_staging" {
 
   ops_alerts_topic_arn = module.ops_alarms_master_function_staging[0].topic_arn
 }
+
+# staging.config.myrecruiter.ai -- HTTPS edge for the config-builder staging UI
+# (twin of prod's config.myrecruiter.ai). TWO-APPLY: this first apply creates
+# only the ACM cert; after the operator adds the GoDaddy validation CNAME and
+# the cert is ISSUED, a one-line PR sets create_distribution = true. See the
+# module header for the full sequence (incl. the Clerk allowed-origin step).
+module "cloudfront_config_builder_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/cloudfront-config-builder-staging"
+
+  # Apply 2: flip to true once the cert shows ISSUED.
+  create_distribution = false
+}
