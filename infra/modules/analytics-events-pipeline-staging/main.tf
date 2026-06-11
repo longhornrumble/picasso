@@ -221,7 +221,16 @@ resource "aws_sqs_queue_policy" "dlq" {
         Resource = aws_sqs_queue.dlq.arn
         Condition = {
           StringNotEquals = {
-            "aws:PrincipalArn" = aws_iam_role.exec.arn
+            # SELF-LOCKOUT FIX (Phase-2 audit D4, parity with the main
+            # queue's #502 fix): SetQueueAttributes is in the Deny set, so
+            # without the deploy role excepted, neither the belt nor admin
+            # can ever modify this policy again (escape hatch = operator
+            # `aws sqs remove-permission`). Control-plane exception only —
+            # the deploy role has no Allow for any DLQ data-plane action.
+            "aws:PrincipalArn" = [
+              aws_iam_role.exec.arn,
+              "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/GitHubActionsDeployRole",
+            ]
           }
         }
       }
