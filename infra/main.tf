@@ -632,11 +632,14 @@ module "lambda_analytics_dashboard_api_staging" {
   scheduling_notif_template_table_arn  = module.ddb_scheduling_notif_template_staging[0].table_arn
   scheduling_notif_template_table_name = module.ddb_scheduling_notif_template_staging[0].table_name
 
-  # G3/E0 OAuth init-token mint: the public Function URL the mint points the browser at,
-  # and the state-signing key it reads to sign init tokens (same key Calendar_OAuth_Connect
-  # state.verify reads). The URL references PR-1's module output (one atomic apply); the
-  # secret is the CLI-created _state-signing-key (-* covers the AWS suffix).
-  oauth_function_url             = module.lambda_calendar_oauth_connect_staging[0].function_url
+  # G3/E0 OAuth init-token mint: the browser-facing base for connect_url/status_url, and the
+  # state-signing key it reads to sign init tokens (same key Calendar_OAuth_Connect
+  # state.verify reads). The base is the FRIENDLY domain, not the raw Function URL: the
+  # CloudFront dist routes /connect, /oauth/callback, /connection/status to the OAuth Lambda,
+  # the dashboard pins this origin (assertOAuthUrl), CORS for the status fetch lives at the
+  # edge, and the Google-console redirect URI uses the same host. (2026-06-11 E2E: the raw
+  # Function URL here tripped the dashboard's origin pin.)
+  oauth_function_url             = "https://${module.scheduling_redemption_domain_staging[0].redemption_host}"
   oauth_state_signing_secret_arn = "arn:aws:secretsmanager:us-east-1:${data.aws_caller_identity.current.account_id}:secret:picasso/scheduling/oauth/_state-signing-key-*"
 
   # Tier-3 archive bucket is currently hand-created (Phase 2 of MFS cleanup).
