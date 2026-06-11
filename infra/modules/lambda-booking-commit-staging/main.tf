@@ -515,7 +515,12 @@ resource "aws_lambda_function" "commit" {
 
   environment {
     variables = {
-      ENVIRONMENT              = "staging"
+      ENVIRONMENT = "staging"
+      # WS-E-CI6 activation: enables reminder-cadence TIME-COMPRESSION for SYNTHETIC
+      # bookings only -- scheduleReminders gates on (STAGING_TEST_MODE && is_synthetic),
+      # and only the Scheduling_Synthetic_Monitor's commit payload sets is_synthetic.
+      # Real bookings keep real 24h/1h offsets. Never set in prod (prod-guard refuses).
+      STAGING_TEST_MODE        = "true"
       BOOKING_TABLE            = var.booking_table_name
       ROUTING_POLICY_TABLE     = var.routing_policy_table_name
       APPOINTMENT_TYPE_TABLE   = var.appointment_type_table_name
