@@ -1897,3 +1897,25 @@ module "cloudfront_config_builder_staging" {
   # Apply 2 (cert ISSUED 2026-06-11): distribution live.
   create_distribution = true
 }
+
+
+# WS-E-CI6 ACTIVATION: Scheduling_Synthetic_Monitor (synthetic booking/cancel/reminder/
+# cleanup cycles against the burn-in tenant). Code merged since lambda#245/#283; this
+# module provisions it. Pairs with STAGING_TEST_MODE=true on lambda_booking_commit_staging
+# (the cadence-compression gate, double-gated by is_synthetic). Spec:
+# Lambdas/lambda/Scheduling_Synthetic_Monitor/INFRA_NOTES.md.
+module "lambda_scheduling_synthetic_monitor_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/lambda-scheduling-synthetic-monitor-staging"
+
+  booking_commit_function_arn  = module.lambda_booking_commit_staging[0].commit_function_arn
+  booking_commit_function_name = module.lambda_booking_commit_staging[0].commit_function_name
+
+  booking_table_arn  = module.ddb_booking_staging[0].table_arn
+  booking_table_name = module.ddb_booking_staging[0].table_name
+
+  scheduled_messages_table_arn  = module.ddb_scheduled_messages_staging[0].table_arn
+  scheduled_messages_table_name = module.ddb_scheduled_messages_staging[0].table_name
+
+  ops_alerts_topic_arn = module.ops_alarms_master_function_staging[0].topic_arn
+}
