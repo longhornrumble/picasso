@@ -32,6 +32,14 @@ env:
   NODE_VERSION: '22'
   AWS_REGION: 'us-east-1'
 
+# Serialize runs (Phase-2 audit D1): two simultaneous dispatches would race
+# the live-bucket sync (--delete) and the prev-release lookup in the
+# reusable. Queue behind a mid-flight run, never cancel it — mirrors the
+# lambda prod workflow's guard.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
 jobs:
   lint:
     name: Code Quality - Linting
@@ -557,11 +565,11 @@ jobs:
                     },
                     {
                       "type": "mrkdwn",
-                      "text": "*Branch:*\n${{ github.ref_name }}"
+                      "text": ${{ toJSON(format('*Branch:* {0}', github.ref_name)) }}
                     },
                     {
                       "type": "mrkdwn",
-                      "text": "*Actor:*\n${{ github.actor }}"
+                      "text": ${{ toJSON(format('*Actor:* {0}', github.actor)) }}
                     }
                   ]
                 },
