@@ -1762,6 +1762,10 @@ module "lambda_scheduled_message_sender_staging" {
   sms_consent_table_arn  = module.picasso_form_tables.sms_consent_table_arn
   sms_consent_table_name = module.picasso_form_tables.sms_consent_table_name
 
+  # E14 S4b: per-tenant reminder template overrides (read-only, fire-time).
+  sched_notif_template_table_arn  = module.ddb_scheduling_notif_template_staging[0].table_arn
+  sched_notif_template_table_name = module.ddb_scheduling_notif_template_staging[0].table_name
+
   # Invoke grants scoped to exactly these ARNs (no wildcard).
   sms_sender_function_arn  = module.lambda_sms_twin_staging[0].sms_sender_function_arn
   sms_sender_function_name = module.lambda_sms_twin_staging[0].sms_sender_function_name
