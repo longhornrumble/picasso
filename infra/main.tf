@@ -1867,3 +1867,20 @@ resource "aws_iam_role_policy" "picasso_session_archiver_inline" {
     ]
   })
 }
+
+# Config-builder staging twin: Picasso_Config_Manager Lambda + Function URL.
+# Completes the frontend-first twin (picasso-config-builder-staging bucket) --
+# the staging UI had no backend in this account and its default VITE_API_URL
+# pointed at the PROD Function URL, which cannot serve the staging config
+# bucket across the account boundary. After apply: deploy the real code from
+# Lambdas/lambda/Picasso_Config_Manager, then rebuild the staging UI with
+# VITE_API_URL = this module's function_url output.
+module "lambda_config_manager_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/lambda-config-manager-staging"
+
+  config_bucket_name = module.tenant_config_staging[0].bucket_name
+  # clerk_jwks_url defaults to the prod Clerk instance (shared operator identity).
+
+  ops_alerts_topic_arn = module.ops_alarms_master_function_staging[0].topic_arn
+}
