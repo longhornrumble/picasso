@@ -902,6 +902,306 @@ notify.js `reengagement` kind (+ its STOP footer) · the `selectChannels`-into-`
 
 ---
 
+## §B17 — agentic scheduling slice seam — **LOCKED 2026-06-12** (integrator)
+
+Agent turn routing, two tool schemas, session-state line, bounded loop, audit events, and kill switches for the platform's first agent execution surface. Consumed by WS-AG-CORE, WS-AG-EVAL, WS-TRACKD-BE, WS-TRACKD-FE.
+
+### B17a — turn routing rule (BSH `index.js`) — LOCKED
+
+```
+// ROUTING RULE (added as a new branch in index.js AFTER the shipped deterministic click branches
+// and BEFORE the legacy newBookingFlow detector — the integrator wires this; WS-AG-CORE owns agentTurn.js only):
+//
+//   turn arrives (scheduling-enabled tenant, feature_flags.scheduling_enabled):
+//   ├─ scheduling_intent / scheduling_action click turn   → SHIPPED §B16b deterministic router. No model.
+//   ├─ bare-email turn in-flight confirming session        → SHIPPED §B16d deterministic capture. No model.
+//   ├─ AGENTIC_SCHEDULING on                              [increment 1]
+//   │   AND typed text (no scheduling_intent / scheduling_action signal)
+//   │   AND in-flight scheduling session row exists (state = qualifying | proposing | confirming)
+//   │                                                     → AGENT TURN (§B17b)
+//   ├─ AGENTIC_SCHEDULING_SUGGEST on                      [increment 2]
+//   │   AND suggestion-eligible general turn per §B17f    → AGENT TURN with suggestion rules (§B17b)
+//   └─ else                                               → normal chat turn (unchanged)
+//
+// FLAG OFF behaviour: when AGENTIC_SCHEDULING is off the legacy newBookingFlow detector still runs
+// post-stream (rollback intact). When AGENTIC_SCHEDULING_DISABLED env = 'true' (global override) both
+// agent branches are skipped unconditionally regardless of per-tenant flags.
+//
+// CLICK TURNS STAY DETERMINISTIC. This rule does not change §B16b chip-click / §B14 boundary semantics.
+// EVERY chip click (slot select, confirm) remains the shipped deterministic path.
+```
+
+### B17b — the agent turn (bounded tool loop in `scheduling/agentTurn.js`) — LOCKED
+
+```js
+// ENTRY POINT (called by the integrator routing branch in index.js):
+//   agentTurn({ event, context, sessionRow, tenantConfig, deps, streamWriter })
+//   → void (streams SSE text deltas + tool-result UI events; never returns a booking row)
+//
+// LOOP INVARIANT:
+//   const MAX_TOOL_ITERATIONS = 3;
+//   system = <persona/KB prompt from tenantConfig>
+//            + <scheduling instruction block per §B17e>
+//            + <state line: "[scheduling state: proposing | staged slot: Fri Jun 12 9:30 (s1) | email: known/unknown]">
+//   messages = [{ role:'user', content: userText }]
+//
+//   for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
+//     stream InvokeModelWithResponseStreamCommand({ model_id, system, tools, messages })
+//     → SSE text deltas via streamWriter (identical to the non-agent path)
+//     if (stop_reason !== 'tool_use') break
+//     const toolResult = await executeTool(toolUseBlock, { sessionRow, tenantConfig, deps })
+//       // executeTool emits the tool's UI SSE event (scheduling_slots OR scheduling_confirm)
+//       // toolResult = { type:'tool_result', tool_use_id, content: JSON.stringify(result) }
+//     messages = [...messages, { role:'assistant', content:[...assistantBlocks] },
+//                              { role:'user',      content:[toolResult] }]
+//     // LOOP CONTINUES with updated messages
+//   }
+//
+// OVERFLOW (i reaches MAX_TOOL_ITERATIONS with stop_reason still 'tool_use'):
+//   emit templated warm-honest copy: "I ran into a snag — let me get someone to help."
+//   emit scheduling_notice SSE (the shipped async-escape event) with notice:'agent_overflow' (PINNED 2026-06-12: `notice:` is the shipped scheduling_notice key — WS-AG-EVAL flag resolved)
+//   do NOT attempt another model call; do NOT leave the connection dead
+//
+// MODEL: tenant's model_id (Haiku 4.5 default). No new model config.
+// SESSION STATE: derived from the live sessionRow (read before entry); never from model-supplied args.
+// TENANT / APPT-TYPE: derived from JWT/config resolution (existing). NOT model args.
+// TOOL LATENCY: BCH invoke ~1-3s mid-turn; SSE keeps the connection warm (no timeout risk).
+// NO TOOL BOOKS: the commit path (§B16c / §B14 confirm_book) is reachable only by the shipped
+//   deterministic confirm-click handler. agentTurn has no reference to invokeBookingCommit.
+```
+
+### B17c — tool catalog (Phase-0 format; these two entries are the full v1 catalog) — LOCKED
+
+```js
+// ── TOOL 1: get_available_times ───────────────────────────────────────────────────────────────────
+//
+// Description to model:
+//   "Look up real, bookable appointment times. Use whenever the user wants to schedule, see times,
+//    or asks about a specific day or time of day. Never invent times — only ones returned here exist."
+//
+// Input schema:
+//   { date?: 'YYYY-MM-DD',            // optional: constrain to a specific calendar day
+//     exclude_slot_ids?: string[] }   // optional: already-rejected slot IDs (re-propose fresh times)
+//
+// Implementation:
+//   server-side call to deps.invokeProposal (§B16a BCH scheduling_propose route — the SHIPPED path).
+//   tenantId, appointmentTypeId, userTimeZone sourced from server context/config — NEVER model args.
+//   date     → date_window constraint (§B16e passthrough param, shipped)
+//   exclude_slot_ids → alreadyRejected array
+//   On success: persists candidate_slots to sessionRow (state 'proposing');
+//               emits scheduling_slots SSE → existing widget chips (unchanged widget contract)
+//
+// Output to model:
+//   { slots: [ { slot_id: string, label: string, starts_at_iso: string } ],
+//     user_time_zone: string,
+//     note: string }
+//   starts_at_iso is included so the model can REASON about times ("after 3pm", "the later one")
+//   without parsing localised labels. AUTHORITY NOTE: the model understands times but has no write
+//   authority over them — the staging path accepts only slot_id validated against server-persisted
+//   candidates; model-supplied timestamps are not an input anywhere in the pipeline.
+//
+// Errors to model:
+//   { error: 'no_availability' | 'lookup_failed', note: string }
+//   Model instructed to apologise honestly and offer the email fallback; never to fabricate times.
+//
+// Side effects: persists candidate_slots; emits scheduling_slots SSE
+// Tenant scope: derived from session JWT/config (existing — not model-supplied)
+// Permissions: visitor chat context only
+//
+// ── TOOL 2: request_booking_confirmation ─────────────────────────────────────────────────────────
+//
+// Description to model:
+//   "Stage a booking for the user's chosen time so they can confirm it. Requires their email.
+//    This does NOT book — the user must press the Confirm button."
+//
+// Input schema:
+//   { slot_id: string,           // REQUIRED — must be a slot from the current session's candidates
+//     attendee_email: string,    // REQUIRED — the user's email; ask naturally if not yet known
+//     attendee_name?: string }   // optional
+//
+// Implementation:
+//   server-side validation (in agentTools.js, the tool executor module):
+//     1. slot_id MUST be in sessionRow.candidate_slots (else → { error: 'unknown_slot' })
+//     2. attendee_email MUST match EMAIL_SHAPE (imported from newBookingEntry — DO NOT copy)
+//        (else → { error: 'invalid_email' })
+//     3. ANTI-HALLUCINATION GUARD (governance pass 2026-06-12; Phase-0 #2): attendee_email is
+//        REJECTED unless it appears verbatim in this session's user-side transcript or equals
+//        the session row's captured attendee_email (else → { error: 'invalid_email' }).
+//        The model cannot stage an address the user never typed.
+//     4. saveState({ state: 'confirming', selected_slot, attendee_email }) — the SAME staging
+//        path the shipped deterministic pipeline uses; one implementation, two callers
+//     5. emit scheduling_confirm SSE → the SHIPPED SchedulingConfirmCard (picasso#538)
+//        { type: 'scheduling_confirm', session_id, slot: { slotId, label }, attendee_email }
+//
+// Output to model:
+//   { staged: true, label: string }         — success
+//   { error: 'unknown_slot' | 'invalid_email' }  — validation failure
+//
+// Side effects: session row → state:'confirming'; emits scheduling_confirm SSE
+// BOOKING? NO. The model cannot reach invokeBookingCommit under any input. Commit is the
+//   shipped deterministic confirm-click path (§B16c / §B14 boundary). This tool stages only.
+//
+// Injection analysis (operator-reviewed 2026-06-12): worst hostile case = visible staged card
+//   with attacker-chosen email; no write occurs; tenant and appointment type are not model-
+//   controllable; slot_ids must pre-exist in server state. Constraints live in tools, not prompts.
+```
+
+### B17d — session-state line format — LOCKED
+
+```
+// SHAPE (injected into the system prompt at the start of every agent turn):
+//   "[scheduling state: <state> | staged slot: <label> (<slotId>) | email: <known|unknown>]"
+//
+// Examples:
+//   "[scheduling state: proposing | staged slot: none | email: unknown]"
+//   "[scheduling state: confirming | staged slot: Fri Jun 12 9:30 (s1) | email: known]"
+//   "[scheduling state: qualifying | staged slot: none | email: known]"
+//
+// Source: the live sessionRow read before agentTurn entry.
+// Purpose: lets the model narrate correctly even though click turns never reach it.
+// NEVER fabricated or taken from model output — always derived from server state.
+//
+// PII RULE (pinned wording — governance pass 2026-06-12): the email segment is EXACTLY
+//   "email: known" or "email: unknown". The raw address NEVER appears in the state line.
+//   Jest-asserted (see §B17g tests): the state line never contains the raw email.
+```
+
+### B17e — agent narration rules (scheduling instruction block) — LOCKED
+
+```
+// Full text appended to the system prompt for every agent turn (eval-tested at build;
+// amended by the governance + PII advisory pass 2026-06-12 — mirrors design-doc §5):
+//
+//   1. You have live scheduling tools: you can look up REAL times and stage NEW bookings.
+//      You cannot reschedule, cancel, or see existing bookings — offer the email/human
+//      fallback for those. If a tool fails, say the lookup failed right now; never say you
+//      lack scheduling access, never invent times.
+//   2. Never state or imply a booking exists. Confirmed bookings are announced by the
+//      system, not you.
+//   3. Only mention times returned by get_available_times this conversation.
+//   4. Before staging you must have the user's email — ask naturally; one question at a time.
+//   5. Mid-booking, no KB tangents; answer side-questions briefly and return to the flow.
+//   6. After staging, state plainly that nothing is booked until they press Confirm.
+//   7. Never repeat the user's email back in your text — the confirmation card displays it.
+//   8. When asking for the email, say why (to send the calendar invite).
+//   9. Never imply a human has already been involved; the MEETING is with a human, the
+//      scheduler is an AI assistant.
+//   10. Avoid guarantee language about offered times (a slot can be taken until confirmed).
+//   11. (increment 2 only) Offer booking only when the suggestion gate (§B17f) passes;
+//       "just exploring" gets learning content, never a booking pitch.
+//
+// UX REQUIREMENT: all model-generated narration around tool calls must be warm and honest.
+// Templated fallback copy (overflow, lookup_failed) must use the same voice — never robotic.
+```
+
+### B17f — sensitive-context suppression + increment-2 suggestion gate — LOCKED
+
+```
+// SUPPRESSION PRE-CHECK (governance pass 2026-06-12) — runs on EVERY agent turn
+// (increments 1 AND 2), BEFORE the model call:
+//   - scans for sensitive-context categories; scan window = the FULL session, not just this turn
+//   - once tripped, the suppression LATCHES STICKY for the session
+//   - FAILS CLOSED: a scan error is treated as tripped
+//   - ships with a NON-EMPTY DEFAULT category list: self-harm/suicide; abuse/neglect/CPS;
+//     domestic violence; trafficking; runaway/homeless; medical emergency/overdose;
+//     psychiatric crisis; custody/legal proceedings; minor self-identification; grief/death.
+//     Tenants may TRIM the list but may NOT start empty.
+//   - on trip mid-flow: pause the booking flow with warm human-contact copy + the
+//     tenant-configured crisis resources; do NOT resume the booking flow unprompted
+//   - minor self-identification ADDITIONALLY stops agent email solicitation (tenant opt-in to change)
+//   - a suppressed-context user who ASKS to book still gets the deterministic path WITH
+//     crisis-resource copy alongside (documented asymmetry)
+//   - keyword lists are language-bound (known gap; multi-language is v2)
+//
+// The agent MAY offer booking (never start one) only when ALL of the following hold:
+//   1. AGENTIC_SCHEDULING_SUGGEST flag is on for the tenant
+//   2. a start_scheduling CTA with ai_available:true exists in the tenant config (same consent
+//      bit V4 uses — if the operator did not add the CTA, no suggestion)
+//   3. the turn shows a stuck / dead-end signal:
+//        - KB retrieval scored empty or thin, OR
+//        - the user re-asked the same intent >=2 turns in this session, OR
+//        - explicit "this isn't helping" / frustration language
+//   4. the SUPPRESSION PRE-CHECK above has NOT tripped: crisis / health / legal / minor-related
+//      context → warm human-contact copy, NEVER a calendar offer. Enforced as a pre-gate in
+//      code, not prompt vibes.
+//   5. Explorer / learning traffic is excluded: "just exploring", "curious about" patterns →
+//      learning content only (the V4 "LEARNING FIRST / committed only" rule, verbatim).
+//      NOTE: explorer exclusion is PROMPT-LEVEL only — not an enforced gate (harm = annoyance,
+//      not safety), unlike the suppression pre-check.
+//
+// GATE CHECK is a pre-agent code check (not a second model call). Fails fast if any hold is false.
+// Every gate evaluation emits a suggestion_gate_decision audit event (§B17g).
+```
+
+### B17g — audit event shapes — LOCKED
+
+```js
+// emitted via the existing audit-log path (same writer as other scheduling audit events)
+// FIELD ALLOWLIST IS EXHAUSTIVE (governance + PII advisory pass 2026-06-12):
+// a field not listed here MUST NOT be emitted.
+//
+// agent_tool_call:
+//   { event_type: 'agent_tool_call',
+//     tenant_id: string,            // from server context — NOT model args
+//     session_id: string,           // from server context — NOT model args
+//     tool: 'get_available_times' | 'request_booking_confirmation',   // enum
+//     outcome: 'ok' | 'staged' | 'unknown_slot' | 'invalid_email'
+//            | 'no_availability' | 'lookup_failed' | 'overflow',      // enum
+//     latency_ms: number,
+//     iteration: number,            // 1-based loop index
+//     slot_id?: string,             // optional — opaque server-issued id
+//     date?: string,                // optional — the YYYY-MM-DD tool arg
+//     exclude_slot_ids?: string[],  // optional — opaque server-issued ids
+//     email_present: boolean }      // whether the call carried an email — NEVER the email itself
+//
+// agent_turn_summary:
+//   { event_type: 'agent_turn_summary',
+//     tenant_id: string,
+//     session_id: string,
+//     iterations: number,              // total tool calls made this turn
+//     stop_reason_sequence: string[],  // per-iteration stop_reasons ('end_turn' | 'tool_use' | etc.)
+//     overflow: boolean,
+//     prompt_version: string,
+//     model_id: string,
+//     flags_active: string[] }
+//
+// suggestion_gate_decision (NEW — emitted on every §B17f gate evaluation):
+//   { event_type: 'suggestion_gate_decision',
+//     tenant_id: string,
+//     session_id: string,
+//     offered: boolean,
+//     reason_codes: string[],          // enumerated gate-hold codes
+//     suppression_category?: string }  // category CODE only — NEVER raw matched text
+//
+// ⚠ FORBIDDEN in ALL events: raw attendee_email; ANY email hash (PII advisory: hashes are
+//   reversible pseudonymous data; session_id already joins to the single deletable copy);
+//   message / narration text; tool_result bodies. Error logging = err.name only.
+// ⚠ TESTS (required): jest assertion that serialized log lines for an email-bearing turn
+//   never contain '@'; jest assertion that the §B17d state line never contains the raw
+//   email (it is "email: known/unknown" — wording pinned in §B17d).
+```
+
+### B17h — kill-switch semantics — LOCKED
+
+```
+// Per-tenant flags (in tenant config feature_flags):
+//   feature_flags.AGENTIC_SCHEDULING          — enables increment-1 agent turns
+//   feature_flags.AGENTIC_SCHEDULING_SUGGEST  — enables increment-2 suggestion gate (§B17f)
+//   Both default false. Setting either to false silently falls back to the pre-agent path for
+//   that tenant. No error is emitted; the user sees normal chat.
+//
+// Global env override (BSH environment):
+//   AGENTIC_SCHEDULING_DISABLED=true
+//   When set, BOTH agent branches (increment-1 and increment-2) are bypassed unconditionally
+//   for ALL tenants, regardless of per-tenant feature_flags. Use for emergency rollback without
+//   a config deploy. Checked first in the routing branch before any flag reads.
+//
+// Flag-off guarantees: flag-off tenants MUST be byte-identical in behavior to the pre-agent
+//   baseline (existing suite green); verified by §B17 eval suite (WS-AG-EVAL).
+```
+
+---
+
 ## C. Contract-change protocol
 1. A workstream that believes a contract is wrong/insufficient **stops and posts the issue to the integrator** (PR comment or status report) — it does NOT edit this file or fork the contract.
 2. The integrator decides: amend the contract (and notify every consuming workstream) or hold.
@@ -942,3 +1242,5 @@ notify.js `reengagement` kind (+ its STOP footer) · the `selectChannels`-into-`
 | 2026-06-12 | **§B16e LOCKED** (Surface-4 day-picker fallback seam: trigger rule, `scheduling_day_picker` SSE shape, deterministic `scheduling_day_selected` widget signal, backwards-compatible `dateWindow`/`date_window` slot-gen extension). **§E11b LOCKED** (user-initiated disconnect: ADA Clerk-authed POST + server-side body-carried init-token hop; OAuth Lambda POST route = best-effort Google revoke → shipped `markDisconnected` stamp → best-effort Offboarder; NO secret deletion, NO jti burn — rationale inline). Track 3 lanes consume these. NOTE: the plan's legacy "§B16c" label for the fallback = §B16e here (real §B16c = commit seam). |
 | 2026-06-12 | **§B16e + §E11b amended post-audit** (Track-3 weave): §B16e ratifies the conventional `session_id` SSE key; §E11b adds the `purpose:'disconnect'` claim (cross-purpose init-token replay closed; lambda#294) + honest async `watch:'pending'` semantics. No consumer re-sync needed (FE tolerates extra keys; dash#29 treats pending as success). |
 | 2026-06-12 | **§B16b + §B16d AMENDED — deterministic booking pipeline** (QA P0-1/P0-3 close; lambda#297/#298 + this FE PR). Scheduling CLICK turns bypass Bedrock (entry/select/confirm — the show_showcase pattern); the widget's `scheduling_action` (+`scheduling_slot_id`) signal is consumed deterministically BEFORE the LLM detector (detector = typed-text fallback only); NEW `scheduling_confirm` SSE = server-driven confirm card (FE local confirm removed); chat email capture for `confirming` sessions persists `attendee_email` on the session row (saveState whitelist +1; form-injection wins; capture never commits per §B14). |
+| 2026-06-12 | **§B17 LOCKED — agentic scheduling slice seam (integrator).** Agent-turn routing rule (typed text + in-flight session under AGENTIC_SCHEDULING; suggestion turns under AGENTIC_SCHEDULING_SUGGEST per suggestion gate; click turns stay §B16b deterministic). Two tool schemas: `get_available_times` (wraps §B16a `scheduling_propose`, emits `scheduling_slots`, includes `starts_at_iso` for model time-reasoning; authority note: model understands times but cannot supply them as inputs) + `request_booking_confirmation` (validates slot_id vs server-persisted candidates + EMAIL_SHAPE, saveState confirming + emits `scheduling_confirm` SSE — the SHIPPED confirm card; NEVER books). Session-state line format "[scheduling state: ... | staged slot: ... | email: known/unknown]". MAX_TOOL_ITERATIONS=3; overflow → warm-honest templated copy + `scheduling_notice` SSE. Audit events: `agent_tool_call` {tenant_id, session_id, tool, outcome, latency_ms, iteration} + `agent_turn_summary` {tenant_id, session_id, iterations, overflow, stop_reason} — no raw args, no email. Kill switches: per-tenant `AGENTIC_SCHEDULING` + `AGENTIC_SCHEDULING_SUGGEST` flags; global env `AGENTIC_SCHEDULING_DISABLED=true` override (bypasses both branches unconditionally). Rule: no tool books — commit remains the deterministic confirm-click path (§B16c / §B14). §B16a/§B16c consumed unchanged. §B16b/§B16d as amended 2026-06-12 are consumed by the agent (shared staging path). Consumed by: WS-AG-CORE (keystone), WS-AG-EVAL, WS-TRACKD-BE, WS-TRACKD-FE. |
+| 2026-06-12 | **§B17 AMENDED — governance + PII advisory pass (pre-build; integrator).** (1) **§B17g re-locked as an EXHAUSTIVE field allowlist:** `agent_tool_call` {tenant_id, session_id, tool (enum), outcome (enum: ok\|staged\|unknown_slot\|invalid_email\|no_availability\|lookup_failed\|overflow), latency_ms, iteration, slot_id?, date?, exclude_slot_ids?, email_present (bool)} + `agent_turn_summary` {tenant_id, session_id, iterations, stop_reason_sequence, overflow, prompt_version, model_id, flags_active} + NEW `suggestion_gate_decision` {tenant_id, session_id, offered, reason_codes[], suppression_category?} (category code, never raw text). FORBIDDEN in all events: raw attendee_email, **ANY email hash** (hashes are reversible pseudonymous data; session_id already joins to the single deletable copy), message/narration text, tool_result bodies; error logging = `err.name` only; jest '@'-free-log + state-line assertions required. (2) **§B17d** email segment pinned to exactly `email: known`/`email: unknown` — raw address never in the state line. (3) **§B17c tool 2** gains the anti-hallucination guard: attendee_email REJECTED unless verbatim in this session's user-side transcript or equal to the session row's captured attendee_email (Phase-0 #2). (4) **§B17f extended + retitled:** the sensitive-context suppression pre-check runs on EVERY agent turn (increments 1 AND 2), latches sticky per session, fails closed, ships with a non-empty default category list (trim-only; self-harm/suicide, abuse/neglect/CPS, DV, trafficking, runaway/homeless, medical emergency/overdose, psychiatric crisis, custody/legal, minor self-ID, grief/death); trip mid-flow → pause + crisis resources, no unprompted resume; minor self-ID stops email solicitation (tenant opt-in); suppressed-context users who ASK to book get the deterministic path with crisis-resource copy alongside (documented asymmetry); keyword lists language-bound (v2 gap). (5) **§B17e narration rules re-synced to the amended design-doc §5 prompt block** (rule 1 re-phrased positively — capabilities + honest-failure wording; new rules: post-staging "nothing is booked until Confirm", never echo the email (card displays it), say why the email is needed (calendar invite), never imply a human was already involved, no guarantee language on offered times). Consumers re-synced same-day (WS-AG-CORE + WS-AG-EVAL work-orders; pre-launch — no worker had built against the old shapes). |
