@@ -527,11 +527,14 @@ resource "aws_lambda_function" "commit" {
       EMPLOYEE_REGISTRY_TABLE  = var.employee_registry_table_name
       OAUTH_SECRET_PATH_PREFIX = "picasso/scheduling/oauth"
       ZOOM_SECRET_PATH_PREFIX  = "picasso/scheduling/zoom"
-      SES_FROM_EMAIL           = "notify@myrecruiter.ai"
-      SES_CONFIGURATION_SET    = "picasso-emails"
-      SCHEDULE_BASE_URL        = "https://staging.schedule.myrecruiter.ai"
-      OPS_ALERTS_TOPIC_ARN     = var.ops_alerts_topic_arn
-      JWT_SECRET_KEY_NAME      = "picasso/staging/jwt/signing-key"
+      # Subdomain sender for DKIM/DMARC alignment: myrecruiter.ai DKIM is
+      # NOT_STARTED in this account (verified in prod only) -> p=quarantine
+      # spam-folders root-domain sends. staging.myrecruiter.ai has DKIM SUCCESS.
+      SES_FROM_EMAIL        = "notify@staging.myrecruiter.ai"
+      SES_CONFIGURATION_SET = "picasso-emails"
+      SCHEDULE_BASE_URL     = "https://staging.schedule.myrecruiter.ai"
+      OPS_ALERTS_TOPIC_ARN  = var.ops_alerts_topic_arn
+      JWT_SECRET_KEY_NAME   = "picasso/staging/jwt/signing-key"
       # G6 reschedule_link: notify.js emails the guest via the send_email Lambda + honors the
       # per-tenant §E14 template override (fail-safe → default if the table/row is absent).
       SEND_EMAIL_FUNCTION        = var.send_email_function_name
