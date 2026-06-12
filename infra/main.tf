@@ -632,11 +632,14 @@ module "lambda_analytics_dashboard_api_staging" {
   scheduling_notif_template_table_arn  = module.ddb_scheduling_notif_template_staging[0].table_arn
   scheduling_notif_template_table_name = module.ddb_scheduling_notif_template_staging[0].table_name
 
-  # G3/E0 OAuth init-token mint: the public Function URL the mint points the browser at,
-  # and the state-signing key it reads to sign init tokens (same key Calendar_OAuth_Connect
-  # state.verify reads). The URL references PR-1's module output (one atomic apply); the
-  # secret is the CLI-created _state-signing-key (-* covers the AWS suffix).
-  oauth_function_url             = module.lambda_calendar_oauth_connect_staging[0].function_url
+  # G3/E0 OAuth init-token mint: the browser-facing base for connect_url/status_url, and the
+  # state-signing key it reads to sign init tokens (same key Calendar_OAuth_Connect
+  # state.verify reads). The base is the FRIENDLY domain, not the raw Function URL: the
+  # CloudFront dist routes /connect, /oauth/callback, /connection/status to the OAuth Lambda,
+  # the dashboard pins this origin (assertOAuthUrl), CORS for the status fetch lives at the
+  # edge, and the Google-console redirect URI uses the same host. (2026-06-11 E2E: the raw
+  # Function URL here tripped the dashboard's origin pin.)
+  oauth_function_url             = "https://${module.scheduling_redemption_domain_staging[0].redemption_host}"
   oauth_state_signing_secret_arn = "arn:aws:secretsmanager:us-east-1:${data.aws_caller_identity.current.account_id}:secret:picasso/scheduling/oauth/_state-signing-key-*"
 
   # Tier-3 archive bucket is currently hand-created (Phase 2 of MFS cleanup).
@@ -1249,6 +1252,10 @@ module "lambda_calendar_oauth_connect_staging" {
   # B5 watch onboarder — best-effort invoke after a successful connect.
   onboarder_function_arn  = module.lambda_calendar_watch_onboarder_staging[0].onboarder_function_arn
   onboarder_function_name = module.lambda_calendar_watch_onboarder_staging[0].onboarder_function_name
+
+  # T3 (§E11b disconnect, lambda#294): best-effort watch teardown on disconnect.
+  offboarder_function_arn  = module.lambda_calendar_watch_offboarder_staging[0].offboarder_function_arn
+  offboarder_function_name = module.lambda_calendar_watch_offboarder_staging[0].offboarder_function_name
 
   # Track 2: init-token single-use burn table (jti) + the friendly return domain
   # (DASHBOARD_RETURN_URL default in the module now points at staging.app.myrecruiter.ai).
@@ -1916,6 +1923,10 @@ module "lambda_scheduling_synthetic_monitor_staging" {
   booking_commit_function_arn  = module.lambda_booking_commit_staging[0].commit_function_arn
   booking_commit_function_name = module.lambda_booking_commit_staging[0].commit_function_name
 
+  # T3 disposition cycle (lambda#292): the 5th CI-6 cycle's invoke target.
+  attendance_disposition_function_arn  = module.lambda_attendance_disposition_staging[0].function_arn
+  attendance_disposition_function_name = module.lambda_attendance_disposition_staging[0].function_name
+
   booking_table_arn  = module.ddb_booking_staging[0].table_arn
   booking_table_name = module.ddb_booking_staging[0].table_name
 
@@ -1923,4 +1934,19 @@ module "lambda_scheduling_synthetic_monitor_staging" {
   scheduled_messages_table_name = module.ddb_scheduled_messages_staging[0].table_name
 
   ops_alerts_topic_arn = module.ops_alarms_master_function_staging[0].topic_arn
+}
+
+# Attendance_Disposition_Handler (WS-E-ATTEND #243) -- T3 ACTIVATION. The E5/E10/C13
+# missed-event handler: provisioned here (role + placeholder), real code ships via the
+# lambda-repo CI matrix. Invoked by the monitor's disposition cycle today; the REMIND
+# attendance-schedule wiring (E5-TRIGGER SEAM) is a tracked follow-up.
+module "lambda_attendance_disposition_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/lambda-attendance-disposition-staging"
+
+  booking_table_arn  = module.ddb_booking_staging[0].table_arn
+  booking_table_name = module.ddb_booking_staging[0].table_name
+
+  tenant_config_bucket_arn  = module.tenant_config_staging[0].bucket_arn
+  tenant_config_bucket_name = module.tenant_config_staging[0].bucket_name
 }
