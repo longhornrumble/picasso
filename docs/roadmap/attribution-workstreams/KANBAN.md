@@ -9,14 +9,14 @@
 |---|---|---|---|---|---|---|---|
 | A | Widget events: CONVERSATION_STARTED + LINK_CLICKED emission, PAGE_VIEW ping, `?ep=` capture (C1, C2-stamp) | picasso / `staging` | `feature/attribution-ws-a-widget-events` | `Picasso/src/analytics/` + emission call sites | — | LAUNCHED | First task: ground-truth LINK_CLICKED emission status (recon ambiguous re MessageBubble.jsx:941,950) |
 | B | Mint service: registry writes + Dub client (mint/repoint/QR) (C3, C4, C4b) | lambda / `main` | `feature/attribution-ws-b-mint-service` | NEW dir `Attribution_Mint_Service/` | — | LAUNCHED | Degrades gracefully without Dub secret (C4); live Dub calls deferred to staging E2E |
-| C | Pipeline: PAGE_VIEW tolerance + attribution monthly rollups + Dub reach poll (C1, C2-resolve, C5) | lambda / `main` | `feature/attribution-ws-c-pipeline` | `Analytics_Event_Processor/` + `Analytics_Aggregator/` | — | LAUNCHED | Landmine: recon read Aggregator source from deployment.zip — worker verifies source exists in dir, STOPs + reports if zip-only |
+| C | Pipeline: PAGE_VIEW tolerance + attribution monthly rollups + Dub reach poll (C1, C2-resolve, C5) | lambda / `main` | `feature/attribution-ws-c-pipeline` | `Analytics_Event_Processor/` + NEW `Attribution_Aggregator/` | — | LAUNCHED | **C5 re-homed 2026-06-12:** legacy Analytics_Aggregator confirmed zip-only + dead/dormant + not twinned to staging (cleanup project tracks removal) → rollups live in new clean-shape `Attribution_Aggregator` Lambda + new `picasso-attribution-aggregates` table; key patterns unchanged |
 | D | `/attribution` API + recommendations rule pack, against C5 fixtures (C6) | lambda / `main` | `feature/attribution-ws-d-api` | `Analytics_Dashboard_API/` | — | LAUNCHED | Builds against fixture aggregates, not WS-C's code |
 
 ## Integrator glue (not worker-owned)
 
 | Item | Status | Notes |
 |---|---|---|
-| G1 Terraform staging: `picasso-entry-points-staging` table · `picasso-attribution-mint-staging` Lambda + dedicated role · secret `picasso-dub-api-key-staging` (empty placeholder) · invoke + secret grants | TODO | `infra/` PR → base `staging`; charset grep + fmt/validate before push |
+| G1 Terraform staging: `picasso-entry-points` table · `picasso-attribution-aggregates` table · `Attribution_Mint_Service` Lambda + role · `Attribution_Aggregator` Lambda + role + hourly schedule · secret `picasso/staging/dub/api-key` (placeholder) · ADA env/grants (registry read + aggregates read + mint invoke) | IN PROGRESS | `infra/` PR → base `staging` (branch `infra/attribution-wave1-glue`); bare names per uniform-env-rules; charset grep + fmt/validate before push |
 | G2 Register `Attribution_Mint_Service` in lambda deploy workflow (4 points: filter, outputs, if-clause, matrix) | TODO | After WS-B's PR shape is known |
 | G3 pii-inventory.md rows (§B new table, §B/§C amendments, §G Dub vendor row) — advisor-drafted | TODO | Apply with the PRs that create each surface (Living-Inventory rule); coordinate with other sessions before editing |
 | G4 Phase-0 docs PR (contracts + this kanban) → main | IN REVIEW | pure docs → main per branch routing |

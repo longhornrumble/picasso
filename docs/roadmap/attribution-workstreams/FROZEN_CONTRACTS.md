@@ -12,6 +12,7 @@
 | 2026-06-12 | Initial lock | Phase 0 complete: recon + PII advisory folded in |
 | 2026-06-12 | `created_by` REMOVED from registry + mint payloads | PII advisor: operator identity = Tier-2 reclassification; v1 registry holds no person fields |
 | 2026-06-12 | F5 idle-cap locked at 5 min; work-weeks = hours/40 | F5 said "idle-capped" without a value |
+| 2026-06-12 | **C5 re-homed:** rollups in NEW `Attribution_Aggregator` Lambda + NEW `picasso-attribution-aggregates` table (env `ATTRIBUTION_AGGREGATES_TABLE`, TTL attr `ttl`); key patterns unchanged. Physical names bare in the staging acct per uniform-env-rules | Live state beat plan F4: legacy `Analytics_Aggregator` is zip-only in-repo, dead/dormant in prod (cleanup project tracks removal), deliberately NOT twinned to staging (`infra/main.tf` analytics-pipeline comment). Extending a removal-slated component violates clean-shape SOP |
 
 ## Producer/consumer matrix
 
@@ -87,7 +88,7 @@ Canonical resolved shape (umbrella F3): `{ "channel": "website|messenger|standal
 
 ## C3 — Mint registry record 🔒
 
-DynamoDB **`picasso-entry-points-{env}`** (Terraform module = integrator glue, per `infra/modules/ddb-*-staging` conventions: PAY_PER_REQUEST, PITR on, no TTL — config data).
+DynamoDB **`picasso-entry-points`** (bare name per the staging account's uniform-env-rules — the account boundary IS the env; code reads env var `ENTRY_POINTS_TABLE`). Terraform module = integrator glue, per `infra/modules/ddb-*-staging` conventions: PAY_PER_REQUEST, PITR on, no TTL — config data.
 
 | Attribute | Type | Notes |
 |---|---|---|
@@ -113,7 +114,7 @@ DynamoDB **`picasso-entry-points-{env}`** (Terraform module = integrator glue, p
 
 House conventions: `picasso-webscraping/rag-scraper/lib/dub.mjs` (auth/error/429 patterns — do NOT reuse its externalId namespace or `/links/upsert` for attribution).
 
-- **Base** `https://api.dub.co`, `Authorization: Bearer <key>`. **Key handling (C8/Tier-4):** Secrets Manager secret **`picasso-dub-api-key-{env}`**, fetched at runtime via env `DUB_SECRET_NAME` (never a plaintext env var, never logged). Operator places the staging value (escalation boundary — batched). Local dev key: `.firecrawl/Dub/.env`. **If the secret is absent/empty, Dub-dependent code paths MUST degrade gracefully** (mint → `DUB_ERROR`; poll → skip with warning, write zero-reach) so staging soaks before the key lands.
+- **Base** `https://api.dub.co`, `Authorization: Bearer <key>`. **Key handling (C8/Tier-4):** Secrets Manager secret **`picasso/staging/dub/api-key`** (house naming, mirrors the JWT secret), fetched at runtime via env `DUB_SECRET_NAME` (never a plaintext env var, never logged). Operator places the staging value (escalation boundary — batched). Local dev key: `.firecrawl/Dub/.env`. **If the secret is absent/empty, Dub-dependent code paths MUST degrade gracefully** (mint → `DUB_ERROR`; poll → skip with warning, write zero-reach) so staging soaks before the key lands.
 - **Mint (WS-B):** `POST /links` `{ url: <destination + "?ep={id}">, domain: "myrctr.link", key: <optional custom suffix ≤190>, externalId: <entry_point_id>, tenantId: <tenant_id>, tagNames: [<tenant_id>], comments: "Attribution entry point — minted by MyRecruiter" }`. **409 semantics:** externalId is workspace-unique → 409 = already-minted; treat as success IFF the registry row exists, else surface `CONFLICT`. Deliberately POST (not house upsert): mint must fail loudly on suffix collision, never silently repoint an existing link.
 - **Destination validation (C8.15, v1):** `https:` only; no userinfo; query params limited to `utm_*` (`ep` appended by the service); reject `mailto:`/`javascript:`. Domain allow-list enforced against tenant-config site-domain fields when present (schema-tolerant read), else accept + emit warning metric (v1 softening — config has no universal domain registry; noted in kanban).
 - **Repoint:** `PATCH /links/ext_{entry_point_id}` `{ url }` — printed QR stays valid. Not dashboard-exposed v1; registry `destination_url` updates in the same operation.
@@ -137,19 +138,19 @@ Failure: `{ "ok": false, "error": { "code": "SUFFIX_TAKEN|DUB_ERROR|VALIDATION|C
 
 ---
 
-## C5 — Aggregate rows 🔒
+## C5 — Aggregate rows 🔒 (re-homed 2026-06-12 — see change-log)
 
-Written by WS-C into **`picasso-dashboard-aggregates`** (existing: PK `TENANT#{tenant_id}`, SK `METRIC#{type}#{range}`, hourly EventBridge run, existing rows TTL 24 h). Attribution rows are **monthly history, NOT 24 h cache**:
+Written by WS-C's **NEW `Attribution_Aggregator` Lambda** (Python 3.13, new dir, dedicated role; hourly EventBridge schedule = integrator Terraform glue) into the **NEW table `picasso-attribution-aggregates`** (bare name in the staging acct; env var `ATTRIBUTION_AGGREGATES_TABLE`; TTL attribute `ttl`). The legacy `Analytics_Aggregator` dir (zip-only, removal-slated) and the legacy `picasso-dashboard-aggregates` table are NOT touched. Key patterns:
 
 ```
 PK  TENANT#{tenant_id}
 SK  METRIC#attribution_summary#{YYYY-MM}
 SK  METRIC#attribution_channel#{YYYY-MM}#{channel}
 SK  METRIC#attribution_entrypoint#{YYYY-MM}#{entry_point_id}
-TTL = now + 420 days  (table's existing TTL attribute — WS-C confirms attribute name from Aggregator source and notes it in the report-back)
+ttl = now + 420 days
 ```
 
-Recompute model: each hourly run idempotently recomputes the **current** tenant-local month from `picasso-session-events` (GSI `tenant-date-index`); prior month finalized on runs during the first 3 days of a new month (events 90-d TTL makes this safe). Month boundaries = tenant-local (C7 timezone).
+Recompute model: each hourly run idempotently recomputes the **current** tenant-local month from `picasso-session-events` (GSI `tenant-date-index`); prior month finalized on runs during the first 3 days of a new month (events 90-d TTL makes this safe). Month boundaries = tenant-local (C7 timezone). Tenant config (for `timezone`) read from the staging config bucket via env `TENANT_CONFIG_BUCKET`, schema-tolerantly.
 
 Fields:
 1. **`attribution_summary`** — `conversations`, `engaged`, `applications`, `leads`, `after_hours_conversations`, `conversation_minutes` (int, C7 active-time), `reach_page_views_sessions` (sessionized PAGE_VIEW: ga_client_id where present else pv session id, 30-min windows), `self_booked_pct` + `median_first_response_minutes` (nullable v1 when source absent).
@@ -159,6 +160,8 @@ Fields:
 Aggregates contain **counts only** — no `ga_client_id`, `session_id`, or `path` below tenant×month×channel×entry-point granularity (C8.7). 6-month trend = read 6 monthly rows. All attributes additive; readers MUST tolerate old rows without them (contract/fixture test per Schema Discipline).
 
 **Topics v1:** WS-C embeds a verbatim copy of `categorize_question(question: str) -> str` from `Analytics_Dashboard_API/lambda_function.py:5374` (6 categories: Volunteer/Donation/Events/Services/Supplies/General), source-cited in a comment, applied at aggregation time. Phase-2 dedupe noted.
+
+**WS-C owned surface (amended):** `Analytics_Event_Processor/**` + NEW `Attribution_Aggregator/**`. The zip-only `Analytics_Aggregator/` dir is OUT OF SCOPE for everyone.
 
 ---
 
