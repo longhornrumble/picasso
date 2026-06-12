@@ -15,5 +15,11 @@ exports[`SchedulingSlots — generic chips snapshot: chip markup contains the la
       Tue, Jun 3 · 2:00 PM
     </button>
   </div>
+  <p
+    class="scheduling-microcopy-close"
+    data-testid="scheduling-microcopy-close"
+  >
+    If none of these work, just tell me what does — like 'Thursday afternoon.'
+  </p>
 </div>
 `;
