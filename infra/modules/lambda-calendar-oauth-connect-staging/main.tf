@@ -56,6 +56,16 @@ variable "onboarder_function_name" {
   type        = string
 }
 
+variable "offboarder_function_arn" {
+  description = "ARN of Calendar_Watch_Offboarder. The §E11b /connection/disconnect route best-effort async-invokes it (lambda#294)."
+  type        = string
+}
+
+variable "offboarder_function_name" {
+  description = "Name of Calendar_Watch_Offboarder -> OFFBOARDER_FUNCTION_NAME env."
+  type        = string
+}
+
 variable "ops_alerts_topic_arn" {
   description = "ARN of the ops-alerts SNS topic. The Errors/Throttles alarms target it. The handler itself does NOT publish to SNS, so no sns:Publish grant."
   type        = string
@@ -237,6 +247,14 @@ data "aws_iam_policy_document" "oauth_exec" {
     resources = [var.onboarder_function_arn]
   }
 
+  # §E11b disconnect: stop + delete the coordinator's watch channels (best-effort,
+  # async Event invoke -- mirrors the Onboarder pattern above).
+  statement {
+    sid       = "FireB5WatchOffboarder"
+    actions   = ["lambda:InvokeFunction"]
+    resources = [var.offboarder_function_arn]
+  }
+
   # featureGate.js Flag-A gate read (index.js:209): GetObject on the tenant-config
   # bucket /tenants/* only. Fail-closes to DISABLED on any miss/error.
   statement {
@@ -295,6 +313,7 @@ resource "aws_lambda_function" "oauth" {
       OAUTH_REDIRECT_URI              = "https://staging.schedule.myrecruiter.ai/oauth/callback"
       DASHBOARD_RETURN_URL            = var.dashboard_return_url
       ONBOARDER_FUNCTION_NAME         = var.onboarder_function_name
+      OFFBOARDER_FUNCTION_NAME        = var.offboarder_function_name
       CONFIG_BUCKET                   = var.config_bucket_name
       JTI_BLACKLIST_TABLE             = var.jti_blacklist_table_name
       STATE_TTL_SECONDS               = "600"

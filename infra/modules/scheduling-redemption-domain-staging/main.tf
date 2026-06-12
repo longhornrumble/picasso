@@ -173,6 +173,23 @@ resource "aws_cloudfront_distribution" "redemption" {
   # (the routes carry no subpaths; query strings are not part of the match). The callback
   # path MUST equal the Google console redirect_uri + the Lambda's OAUTH_REDIRECT_URI.
   # Same CachingDisabled + AllViewerExceptHostHeader as the redemption default.
+  # §E11b (T3, lambda#294): the disconnect route is a POST (the only non-GET OAuth
+  # path), so it gets its OWN behavior -- CloudFront's allowed_methods sets are
+  # GET/HEAD, GET/HEAD/OPTIONS, or all-7; POST forces the 7-method set. The Lambda
+  # method-enforces POST-only on this path, so the extra verbs die at the origin.
+  # Server-called by ADA (body-carried init token; no browser CORS involved) --
+  # no response-headers policy.
+  ordered_cache_behavior {
+    path_pattern             = "/connection/disconnect"
+    target_origin_id         = local.oauth_origin_id
+    viewer_protocol_policy   = "redirect-to-https"
+    allowed_methods          = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
+    cached_methods           = local.read_methods
+    cache_policy_id          = local.cache_disabled_id
+    origin_request_policy_id = local.orp_all_viewer_xh_id
+    compress                 = true
+  }
+
   dynamic "ordered_cache_behavior" {
     for_each = toset(["/connect", "/oauth/callback", "/connection/status"])
     content {
