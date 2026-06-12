@@ -44,6 +44,8 @@ import { SCHEDULING_DAY_STRIP_ENGAGED } from '../../analytics/eventConstants';
 function emitAnalyticsEvent(eventType, payload) {
   if (typeof window !== 'undefined' && window.notifyParentEvent) {
     window.notifyParentEvent(eventType, payload);
+  } else {
+    console.warn('[SchedulingDayPicker] notifyParentEvent not available for:', eventType);
   }
 }
 
@@ -114,10 +116,15 @@ export default function SchedulingDayPicker({ days = [], user_time_zone: _tz }) 
 
     // §B18d analytics: emit SCHEDULING_DAY_STRIP_ENGAGED with scalar args only (PII gate).
     // Emitted ALONGSIDE the existing sendMessage dispatch.
-    emitAnalyticsEvent(
-      SCHEDULING_DAY_STRIP_ENGAGED,
-      buildDayStripPayload(day.date, index)
-    );
+    // try/catch: analytics MUST NEVER prevent the deterministic sendMessage call below.
+    try {
+      emitAnalyticsEvent(
+        SCHEDULING_DAY_STRIP_ENGAGED,
+        buildDayStripPayload(day.date, index)
+      );
+    } catch (e) {
+      console.warn('[SchedulingDayPicker] emitAnalyticsEvent threw (swallowed):', e);
+    }
 
     // §B16e: deterministic signal — mirrors how C12 sends scheduling_slot_id.
     // The visible user turn is the day label (natural transcript line);

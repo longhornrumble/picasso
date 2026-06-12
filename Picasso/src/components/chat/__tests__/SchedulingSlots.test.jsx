@@ -240,9 +240,9 @@ describe('buildChipClickedPayload (§B18d PII gate)', () => {
     expect(Object.keys(payload).sort()).toEqual(['position', 'slot_count', 'slot_id']);
   });
 
-  it('slot_id matches ^slot# pattern', () => {
+  it('slot_id matches full ISO-datetime prefix ^slot#\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}', () => {
     const payload = buildChipClickedPayload('slot#2026-06-03T14:00:00Z', 0, 3);
-    expect(payload.slot_id).toMatch(/^slot#/);
+    expect(payload.slot_id).toMatch(/^slot#\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
   });
 
   it('position and slot_count are numbers', () => {
@@ -260,6 +260,29 @@ describe('buildChipClickedPayload (§B18d PII gate)', () => {
     const payload = buildChipClickedPayload('slot#2026-06-03T14:00:00Z', 0, 3);
     const serialized = JSON.stringify(payload);
     expect(serialized).not.toMatch(/maya|example\.org|@/);
+  });
+});
+
+// ─── Item 1: emitter-throws safety (analytics must never block sendMessage) ───
+
+describe('SchedulingSlots — emitter-throws safety (item 1)', () => {
+  it('sendMessage is still called with correct routing_metadata when notifyParentEvent throws', () => {
+    // Simulate notifyParentEvent throwing (e.g. storage quota exceeded inside a listener)
+    Object.defineProperty(window, 'notifyParentEvent', {
+      value: () => { throw new Error('storage quota exceeded'); },
+      configurable: true,
+      writable: true
+    });
+
+    const ctx = makeChatContext();
+    renderWithChat(<SchedulingSlots slots={SLOTS} />, ctx);
+    // Should not throw; sendMessage must still be called
+    expect(() => fireEvent.click(screen.getByText('Tue, Jun 3 · 2:00 PM'))).not.toThrow();
+    expect(ctx.sendMessage).toHaveBeenCalledTimes(1);
+    expect(ctx.sendMessage).toHaveBeenCalledWith('Tue, Jun 3 · 2:00 PM', {
+      scheduling_action: 'select_slot',
+      scheduling_slot_id: SLOTS[0].slotId,
+    });
   });
 });
 

@@ -64,6 +64,8 @@ import {
 function emitAnalyticsEvent(eventType, payload) {
   if (typeof window !== 'undefined' && window.notifyParentEvent) {
     window.notifyParentEvent(eventType, payload);
+  } else {
+    console.warn('[SchedulingSlots] notifyParentEvent not available for:', eventType);
   }
 }
 
@@ -112,7 +114,7 @@ export const SCHEDULING_STRINGS = {
 export function buildContextLine(ctx) {
   if (!ctx || typeof ctx !== 'object') return null;
   const parts = [
-    ctx.duration_minutes != null ? `${ctx.duration_minutes} min` : null,
+    ctx.duration_minutes != null && ctx.duration_minutes > 0 ? `${ctx.duration_minutes} min` : null,
     ctx.conference_label || null,
     ctx.tz_label || null
   ].filter(Boolean);
@@ -154,10 +156,15 @@ export default function SchedulingSlots({ slots = [], schedulingContext }) {
 
     // §B18d analytics: emit SCHEDULING_CHIP_CLICKED with scalar args only (PII gate).
     // Emitted ALONGSIDE the existing sendMessage dispatch — does not replace or alter it.
-    emitAnalyticsEvent(
-      SCHEDULING_CHIP_CLICKED,
-      buildChipClickedPayload(slot.slotId, position, slots.length)
-    );
+    // try/catch: analytics MUST NEVER prevent the deterministic sendMessage call below.
+    try {
+      emitAnalyticsEvent(
+        SCHEDULING_CHIP_CLICKED,
+        buildChipClickedPayload(slot.slotId, position, slots.length)
+      );
+    } catch (e) {
+      console.warn('[SchedulingSlots] emitAnalyticsEvent threw (swallowed):', e);
+    }
 
     // §B16b (amended): elicit `select_slot`. The visible user turn is the slot label
     // (a natural transcript line); the slotId is the DETERMINISTIC backend signal.

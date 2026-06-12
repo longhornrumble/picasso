@@ -66,9 +66,9 @@ describe('buildChipClickedPayload (§B18d — SCHEDULING_CHIP_CLICKED)', () => {
     );
   });
 
-  test('slot_id matches ^slot# (contracted prefix)', () => {
+  test('slot_id matches full ISO-datetime prefix ^slot#\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}', () => {
     const { slot_id } = buildChipClickedPayload(SLOT_ID, 0, 3);
-    expect(slot_id).toMatch(/^slot#/);
+    expect(slot_id).toMatch(/^slot#\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
   });
 
   test('position is a number', () => {

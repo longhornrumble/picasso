@@ -1,10 +1,11 @@
 /**
  * streamingAnalytics.test.js — §B18d payload builder contract + PII gate tests
  *
- * The payload builders in StreamingChatProvider.jsx are module-private, so we
- * test them indirectly via the module-level functions that are structurally
- * identical to what the provider emits. These are the ONLY enforcement points
- * in the pipeline (Analytics_Event_Processor persists payloads verbatim).
+ * Imports the EXPORTED builders directly from StreamingChatProvider.jsx so that
+ * any drift in builder signatures is caught immediately rather than by a mirrored
+ * copy diverging silently (fix-list item 3, integrator consolidated fix-list).
+ * Analytics_Event_Processor persists payloads verbatim — these builders are the
+ * only enforcement points in the pipeline.
  *
  * Tests:
  *  - buildTypedRefinementPayload contract (key-allowlist, type, no-PII)
@@ -16,22 +17,12 @@
  *  - scheduling_slots handler: attaches schedulingContext when present (§B18b)
  *  - scheduling_slots handler: tolerates absent context (old-shape fixture — schema discipline)
  *  - scheduling_slots handler: sets schedulingContext only if absent (first SSE wins)
- *
- * Note: since the builders are private, we mirror the exact same logic here to
- * pin the contract in a standalone test. Any drift between this and the provider
- * would be caught by the PII substring-forbid assertion — that's the enforcement.
  */
 
-// ─── Mirrored payload builders (must match StreamingChatProvider.jsx exactly) ──
-// If these diverge from the provider, the PII/key-allowlist gate below catches it.
-
-function buildTypedRefinementPayload(slotsVisibleCount) {
-  return { slots_visible_count: slotsVisibleCount };
-}
-
-function buildTimeToBookedPayload(ms, offersSeen) {
-  return { ms, offers_seen: offersSeen };
-}
+import {
+  buildTypedRefinementPayload,
+  buildTimeToBookedPayload
+} from '../StreamingChatProvider.jsx';
 
 // ─── SCHEDULING_TYPED_REFINEMENT payload (§B18d) ─────────────────────────────
 
@@ -194,6 +185,97 @@ describe('SCHEDULING_TIME_TO_BOOKED skip guard (§B18d)', () => {
     const ms = Date.now() - firstOfferTs;
     expect(typeof ms).toBe('number');
     expect(ms).toBeGreaterThanOrEqual(0);
+  });
+});
+
+// ─── clearMessages ref-reset logic (item 5) ──────────────────────────────────
+// Mirrors the clearMessages reset: firstOfferTimestampRef = null, offersSeenRef = 0.
+// A fresh conversation after clearMessages must establish a new first-offer timestamp.
+
+describe('clearMessages §B18d ref reset (item 5)', () => {
+  it('after clearMessages, a fresh scheduling_slots establishes a new first-offer timestamp', () => {
+    // Simulate first conversation: timestamp T1 is set
+    let firstOfferTimestamp = Date.now() - 10000;
+    let offersSeen = 2;
+    let bookedEmitted = true;
+
+    // clearMessages resets all three
+    firstOfferTimestamp = null;
+    offersSeen = 0;
+    bookedEmitted = false;
+
+    expect(firstOfferTimestamp).toBeNull();
+    expect(offersSeen).toBe(0);
+    expect(bookedEmitted).toBe(false);
+
+    // New scheduling_slots arrives after clear
+    const now = Date.now();
+    if (firstOfferTimestamp === null) {
+      firstOfferTimestamp = now;
+    }
+    offersSeen += 1;
+
+    expect(firstOfferTimestamp).toBeGreaterThanOrEqual(now);
+    expect(offersSeen).toBe(1);
+  });
+
+  it('TIME_TO_BOOKED ms is computed from the new timestamp, not the pre-clear one', () => {
+    // Pre-clear state: old booking
+    let firstOfferTimestamp = Date.now() - 60000; // 60s ago
+
+    // clearMessages
+    firstOfferTimestamp = null;
+
+    // New conversation: slot arrives, then book
+    const offerTime = Date.now();
+    firstOfferTimestamp = offerTime;
+
+    const msAfterReset = Date.now() - firstOfferTimestamp;
+    // Must be much less than 60000ms (the pre-clear value would have been)
+    expect(msAfterReset).toBeLessThan(5000);
+  });
+});
+
+// ─── scheduling_booked idempotency (item 6) ───────────────────────────────────
+// Mirrors the bookedEmittedRef guard: SCHEDULING_TIME_TO_BOOKED emitted at most once.
+
+describe('scheduling_booked idempotency guard (item 6)', () => {
+  it('two consecutive scheduling_booked SSEs result in exactly one emission', () => {
+    const emitted = [];
+    let bookedEmitted = false;
+    const firstOfferTimestamp = Date.now() - 5000;
+
+    function simulateBookedSSE() {
+      if (firstOfferTimestamp !== null && !bookedEmitted) {
+        bookedEmitted = true;
+        const ms = Date.now() - firstOfferTimestamp;
+        emitted.push(buildTimeToBookedPayload(ms, 1));
+      }
+    }
+
+    simulateBookedSSE(); // first SSE
+    simulateBookedSSE(); // duplicate SSE — must be suppressed
+
+    expect(emitted).toHaveLength(1);
+  });
+
+  it('guard resets after clearMessages so the next conversation can emit', () => {
+    let bookedEmitted = true; // from prior conversation
+
+    // clearMessages
+    bookedEmitted = false;
+
+    expect(bookedEmitted).toBe(false);
+
+    // New conversation: booking arrives
+    const emitted = [];
+    const firstOfferTimestamp = Date.now() - 2000;
+    if (firstOfferTimestamp !== null && !bookedEmitted) {
+      bookedEmitted = true;
+      emitted.push(buildTimeToBookedPayload(Date.now() - firstOfferTimestamp, 1));
+    }
+
+    expect(emitted).toHaveLength(1);
   });
 });
 

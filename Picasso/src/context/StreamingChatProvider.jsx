@@ -49,7 +49,7 @@ import {
  * @param {number} slotsVisibleCount
  * @returns {{ slots_visible_count: number }}
  */
-function buildTypedRefinementPayload(slotsVisibleCount) {
+export function buildTypedRefinementPayload(slotsVisibleCount) {
   return { slots_visible_count: slotsVisibleCount };
 }
 
@@ -61,7 +61,7 @@ function buildTypedRefinementPayload(slotsVisibleCount) {
  * @param {number} offersSeen
  * @returns {{ ms: number, offers_seen: number }}
  */
-function buildTimeToBookedPayload(ms, offersSeen) {
+export function buildTimeToBookedPayload(ms, offersSeen) {
   return { ms, offers_seen: offersSeen };
 }
 
@@ -451,9 +451,12 @@ export default function StreamingChatProvider({ children }) {
   // §B18d SCHEDULING_TIME_TO_BOOKED: in-memory tracking of first slot offer.
   // firstOfferTimestampRef: ms timestamp of the FIRST scheduling_slots SSE in this session.
   // offersSeenRef: count of scheduling_slots events received (incremented per SSE).
-  // Both are in-memory only (no session persistence — page reload resets, skipping the event).
+  // bookedEmittedRef: idempotency guard — SCHEDULING_TIME_TO_BOOKED emitted at most ONCE
+  //   per conversation (double scheduling_booked SSE → single emission). Reset in clearMessages.
+  // All are in-memory only (no session persistence — page reload resets, skipping the event).
   const firstOfferTimestampRef = useRef(null);
   const offersSeenRef = useRef(0);
+  const bookedEmittedRef = useRef(false);
 
   // Get config
   const { config: tenantConfig } = useConfig();
@@ -675,6 +678,10 @@ export default function StreamingChatProvider({ children }) {
     // §B18d SCHEDULING_TYPED_REFINEMENT: fire when the user sends FREE TEXT while
     // the LATEST assistant message carries schedulingSlots AND this send carries no
     // scheduling_action / scheduling_day_selected routing_metadata.
+    // Code checks scheduling_action OR scheduling_day_selected because BOTH chip types
+    // (slot-select and day-strip) carry scheduling_action in their routing_metadata
+    // (slot chips send scheduling_action='select_slot'; day chips send scheduling_day_selected
+    // and NO scheduling_action — hence the two-key check covers both paths).
     // The payload builder signature accepts ONLY slots_visible_count — typed text is
     // structurally never captured (PII gate; §B18d advisory N-1).
     const isSchedulingClick = !!(
@@ -976,9 +983,12 @@ export default function StreamingChatProvider({ children }) {
         onSchedulingBooked: () => {
           // §B18d SCHEDULING_TIME_TO_BOOKED: analytics-only SSE.
           // UI behavior unchanged — the booked narration is server-driven prose.
-          // Skip the event entirely if no first-offer timestamp (e.g. page reload mid-flow).
+          // Skip if no first-offer timestamp (e.g. page reload mid-flow).
+          // Idempotency guard (bookedEmittedRef): emit at most ONCE per conversation
+          // — a double scheduling_booked SSE from the server must not double-count.
           logger.info('Received scheduling_booked SSE (analytics-only)');
-          if (firstOfferTimestampRef.current !== null) {
+          if (firstOfferTimestampRef.current !== null && !bookedEmittedRef.current) {
+            bookedEmittedRef.current = true;
             const ms = Date.now() - firstOfferTimestampRef.current;
             emitAnalyticsEvent(
               SCHEDULING_TIME_TO_BOOKED,
@@ -1455,6 +1465,13 @@ export default function StreamingChatProvider({ children }) {
 
     // Reset CONVERSATION_STARTED guard so next session emits again
     conversationStartedRef.current = false;
+
+    // Reset §B18d scheduling analytics refs so the next conversation starts clean.
+    // Without this, a second scheduling flow in the same page load would inherit
+    // the first session's firstOfferTimestamp, inflating TIME_TO_BOOKED.ms.
+    firstOfferTimestampRef.current = null;
+    offersSeenRef.current = 0;
+    bookedEmittedRef.current = false;
 
     // Reset session - generate new analytics-compatible session ID
     // Use same format as analytics (sess_<timestamp36>_<random>) for form→conversation linking

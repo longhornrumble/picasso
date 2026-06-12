@@ -307,6 +307,27 @@ describe('buildDayStripPayload (§B18d PII gate)', () => {
   });
 });
 
+// ─── Item 2: emitter-throws safety (analytics must never block sendMessage) ───
+
+describe('SchedulingDayPicker — emitter-throws safety (item 2)', () => {
+  it('sendMessage is still called with correct routing_metadata when notifyParentEvent throws', () => {
+    // Simulate notifyParentEvent throwing (e.g. storage quota exceeded inside a listener)
+    Object.defineProperty(window, 'notifyParentEvent', {
+      value: () => { throw new Error('storage quota exceeded'); },
+      configurable: true,
+      writable: true
+    });
+
+    const ctx = makeChatContext();
+    renderWithChat(<SchedulingDayPicker days={DAYS} />, ctx);
+    expect(() => fireEvent.click(screen.getByText(DAYS[0].label))).not.toThrow();
+    expect(ctx.sendMessage).toHaveBeenCalledTimes(1);
+    expect(ctx.sendMessage).toHaveBeenCalledWith(DAYS[0].label, {
+      scheduling_day_selected: DAYS[0].date,
+    });
+  });
+});
+
 // ─── §B18d analytics: SCHEDULING_DAY_STRIP_ENGAGED emission ──────────────────
 
 describe('SchedulingDayPicker — §B18d SCHEDULING_DAY_STRIP_ENGAGED emission', () => {
