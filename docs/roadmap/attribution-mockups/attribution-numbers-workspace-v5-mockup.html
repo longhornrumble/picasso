@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Numbers — Attribution &amp; ROI · Mission Intelligence (v5)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --emerald-50:#ecfdf5; --emerald-100:#d1fae5; --emerald-200:#a7f3d0; --emerald-300:#6ee7b7; --emerald-400:#34d399;
+    --emerald-500:#50C878; --emerald-600:#059669; --emerald-700:#047857; --emerald-800:#065f46; --emerald-900:#064e3b;
+    --slate-50:#f8fafc; --slate-100:#f1f5f9; --slate-200:#e2e8f0; --slate-300:#cbd5e1;
+    --slate-400:#94a3b8; --slate-500:#64748b; --slate-600:#475569; --slate-700:#334155; --slate-900:#0f172a;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Plus Jakarta Sans',system-ui,sans-serif; background:var(--slate-100); color:var(--slate-900); padding:30px 18px 50px; }
+  .page { max-width:1020px; margin:0 auto; display:flex; flex-direction:column; gap:16px; }
+  .card { background:#fff; border:1px solid var(--slate-200); border-radius:14px; box-shadow:0 1px 2px rgba(15,23,42,.04); overflow:hidden; }
+
+  /* ---------- top bar ---------- */
+  .topbar { display:flex; align-items:center; justify-content:space-between; padding:18px 24px; gap:14px; flex-wrap:wrap; }
+  .tb-left .crumb { font-size:.7rem; font-weight:600; color:var(--slate-400); }
+  .tb-left .crumb b { color:var(--emerald-600); font-weight:700; }
+  .tb-left h1 { font-size:1.3rem; font-weight:800; letter-spacing:-.015em; margin-top:2px; }
+  .tb-right { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .month-pick { display:flex; align-items:center; gap:8px; border:1px solid var(--slate-200); border-radius:10px; padding:8px 14px; font-size:.8rem; font-weight:700; background:#fff; }
+  .month-pick span { color:var(--slate-400); font-weight:600; font-size:.72rem; }
+  .mint-btn { font-size:.78rem; font-weight:700; color:#fff; background:var(--emerald-500); border-radius:999px; padding:9px 18px; box-shadow:0 4px 12px rgba(80,200,120,.3); }
+  .pill-btn { font-size:.74rem; font-weight:700; color:var(--slate-500); background:var(--slate-50); border:1px solid var(--slate-200); border-radius:999px; padding:8px 15px; }
+
+  /* ============ ECOSYSTEM LEDE ============ */
+  .lede-head { display:flex; justify-content:space-between; align-items:baseline; padding:18px 24px 0; }
+  .lede-head h2 { font-size:1rem; font-weight:800; letter-spacing:-.01em; }
+  .lede-head span { font-size:.72rem; color:var(--slate-400); }
+  .lede-grid { display:grid; grid-template-columns:260px 1fr; gap:30px; align-items:center; padding:18px 28px 6px; }
+
+  .donut-wrap { position:relative; width:230px; height:230px; margin:0 auto; }
+  .donut-wrap svg { width:230px; height:230px; transform:rotate(-90deg); }
+  .donut-wrap circle { fill:none; stroke-width:30; }
+  .donut-center { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; }
+  .donut-center b { font-size:1.9rem; font-weight:800; letter-spacing:-.02em; line-height:1; }
+  .donut-center .lab { font-size:.6rem; font-weight:700; letter-spacing:.07em; text-transform:uppercase; color:var(--slate-400); margin-top:4px; }
+  .donut-center .ah { font-size:.68rem; font-weight:800; color:var(--emerald-700); background:var(--emerald-50); border-radius:999px; padding:3px 10px; margin-top:7px; }
+
+  .outcomes table { width:100%; border-collapse:collapse; }
+  .outcomes th { font-size:.6rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--slate-400); text-align:left; padding:7px 10px 7px 0; border-bottom:1px solid var(--slate-100); }
+  .outcomes th.num, .outcomes td.num { text-align:right; }
+  .outcomes td { padding:11px 10px 11px 0; border-bottom:1px solid var(--slate-100); font-size:.84rem; vertical-align:middle; }
+  .outcomes tr.total td { border-bottom:none; padding-top:12px; font-size:.76rem; color:var(--slate-500); }
+  .outcomes tr.total td b { color:var(--slate-900); font-weight:800; }
+  .sw { display:inline-block; width:11px; height:11px; border-radius:4px; margin-right:9px; vertical-align:-1px; }
+  .outcomes .chname { font-weight:700; }
+  .outcomes td.num { font-weight:700; }
+  .outcomes td.num.lead { color:var(--emerald-700); font-weight:800; }
+  .outcomes td.rate { text-align:right; font-weight:800; font-size:.78rem; }
+  .outcomes td.rate.star { color:var(--emerald-700); }
+  .outcomes td.rate.low { color:var(--slate-400); font-weight:600; font-size:.7rem; }
+  .outcomes .share { color:var(--slate-400); font-weight:600; font-size:.74rem; }
+
+  .lede-insight { margin:14px 24px 20px; border-left:3px solid var(--emerald-500); background:var(--emerald-50); border-radius:0 10px 10px 0; padding:13px 18px; font-size:.95rem; font-weight:600; color:var(--slate-700); line-height:1.6; }
+  .lede-insight b { color:var(--emerald-800); }
+
+  /* ============ JOURNEY BAND ============ */
+  .funnel-strip { display:flex; align-items:center; gap:10px; padding:16px 24px 12px; flex-wrap:wrap; }
+  .fs-chip { background:#fff; border:1px solid var(--slate-200); border-radius:11px; padding:10px 18px; }
+  .fs-chip b { display:block; font-size:1.45rem; font-weight:800; letter-spacing:-.015em; }
+  .fs-chip b em { font-style:normal; font-size:.7rem; color:var(--emerald-600); font-weight:800; margin-left:5px; }
+  .fs-chip span { font-size:.6rem; font-weight:700; color:var(--slate-400); text-transform:uppercase; letter-spacing:.05em; }
+  .fs-chip.context { border-style:dashed; background:var(--slate-50); }
+  .fs-chip.context b { color:var(--slate-500); }
+  .fs-chip.final { background:var(--emerald-50); border-color:var(--emerald-200); }
+  .fs-chip.final b { color:var(--emerald-800); }
+  .fs-arrow { color:var(--slate-300); font-weight:800; }
+  .fs-rate { margin-left:auto; text-align:right; }
+  .fs-rate b { display:block; font-size:1.5rem; font-weight:800; color:var(--emerald-700); letter-spacing:-.01em; }
+  .fs-rate b em { font-style:normal; font-size:.74rem; margin-left:4px; }
+  .fs-rate span { font-size:.6rem; font-weight:700; color:var(--slate-400); text-transform:uppercase; letter-spacing:.05em; }
+  .journey-note { font-size:.66rem; color:var(--slate-400); padding:0 24px 14px; }
+
+  /* ============ MONEY BAND ============ */
+  .money {
+    border-radius:14px; overflow:hidden; border:1px solid var(--emerald-800);
+    background:linear-gradient(135deg, var(--slate-900) 0%, var(--emerald-900) 65%, var(--emerald-800) 100%);
+    color:#fff; display:flex; align-items:stretch; gap:0; flex-wrap:wrap;
+  }
+  .money .cell { flex:1; min-width:220px; padding:24px 28px; border-right:1px solid rgba(255,255,255,.1); }
+  .money .cell:last-child { border-right:none; }
+  .money .kicker { font-size:.62rem; font-weight:700; letter-spacing:.13em; text-transform:uppercase; color:var(--emerald-200); }
+  .money b { display:block; font-size:2.3rem; font-weight:800; letter-spacing:-.025em; line-height:1.05; margin-top:8px; }
+  .money span { display:block; font-size:.8rem; color:var(--emerald-100); margin-top:6px; line-height:1.5; }
+
+  /* ---------- section label ---------- */
+  .sec-label { display:flex; justify-content:space-between; align-items:baseline; padding:8px 6px 0; }
+  .sec-label h2 { font-size:1rem; font-weight:800; letter-spacing:-.01em; }
+  .sec-label span { font-size:.72rem; color:var(--slate-400); }
+
+  /* ---------- channel rows (drill layer, v4) ---------- */
+  .chrow { display:flex; align-items:center; gap:16px; padding:17px 24px 14px; }
+  .ch-icon { width:40px; height:40px; flex:none; border-radius:11px; background:var(--slate-100); display:flex; align-items:center; justify-content:center; }
+  .ch-icon svg { width:19px; height:19px; stroke:var(--slate-500); }
+  .expanded .ch-icon { background:var(--emerald-100); }
+  .expanded .ch-icon svg { stroke:var(--emerald-700); }
+  .ch-id { flex:1; min-width:0; }
+  .ch-id .name { font-size:1rem; font-weight:800; letter-spacing:-.01em; }
+  .ch-id .meta { font-size:.72rem; color:var(--slate-400); margin-top:3px; }
+  .ch-id .meta b { color:var(--emerald-600); }
+  .ch-nums { display:flex; gap:26px; align-items:center; }
+  .cn { text-align:right; min-width:70px; }
+  .cn b { display:block; font-size:1.2rem; font-weight:800; letter-spacing:-.015em; }
+  .cn.lead b { color:var(--emerald-700); }
+  .cn span { font-size:.6rem; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--slate-400); }
+  .spark { width:84px; height:26px; flex:none; }
+  .spark polyline { fill:none; stroke:var(--slate-300); stroke-width:2.2; stroke-linecap:round; stroke-linejoin:round; }
+  .chev { color:var(--slate-300); font-size:.85rem; flex:none; width:14px; text-align:center; }
+  .expanded .chev { color:var(--emerald-600); }
+  .heldtag { font-size:.6rem; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:var(--slate-400); background:var(--slate-100); border-radius:6px; padding:3px 8px; margin-left:8px; vertical-align:2px; }
+  .sharebar { height:4px; background:var(--slate-100); position:relative; }
+  .sharebar i { position:absolute; inset:0; width:var(--w); background:var(--emerald-200); }
+  .expanded .sharebar i { background:var(--emerald-500); }
+
+  .expanded { border-color:#6ee7b7; box-shadow:0 4px 20px rgba(15,23,42,.07); }
+  .ch-strip { background:var(--slate-50); border-top:1px solid var(--slate-100); border-bottom:1px solid var(--slate-100); }
+  .ch-strip .funnel-strip { padding:13px 24px; }
+  .ch-strip .fs-chip { padding:8px 15px; }
+  .ch-strip .fs-chip b { font-size:1.2rem; }
+  .ch-strip .fs-rate b { font-size:1.3rem; }
+
+  .exp-body { padding:20px 24px 22px; display:flex; flex-direction:column; gap:20px; }
+  .panel-label { font-size:.64rem; font-weight:700; letter-spacing:.09em; text-transform:uppercase; color:var(--slate-400); margin-bottom:9px; }
+
+  table.drill { width:100%; border-collapse:collapse; }
+  table.drill thead th { font-size:.6rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--slate-400); text-align:left; padding:8px 10px 8px 0; border-bottom:1px solid var(--slate-100); }
+  table.drill thead th.num, table.drill td.num { text-align:right; }
+  table.drill tbody td { padding:11px 10px 11px 0; border-bottom:1px solid var(--slate-100); font-size:.82rem; vertical-align:middle; }
+  table.drill tbody tr:last-child td { border-bottom:none; }
+  .ep-name { font-weight:700; }
+  .tax { margin-top:4px; display:flex; gap:5px; flex-wrap:wrap; }
+  .tax span { font-size:.58rem; font-weight:700; border-radius:5px; padding:2px 7px; background:var(--slate-100); color:var(--slate-500); }
+  .tax span.ch { background:var(--emerald-50); color:var(--emerald-700); }
+  table.drill td.num { font-weight:700; }
+  table.drill td.num.lead { color:var(--emerald-700); font-weight:800; }
+  table.drill td.rate { text-align:right; font-weight:800; font-size:.76rem; }
+  table.drill td.rate.low { color:var(--slate-400); font-weight:600; }
+  .minted { font-size:.68rem; color:var(--slate-400); }
+  .newtag { font-size:.56rem; font-weight:800; color:var(--emerald-700); background:var(--emerald-50); border-radius:5px; padding:2px 6px; margin-left:6px; }
+
+  .pair { display:grid; grid-template-columns:1fr 1fr; gap:22px; align-items:start; }
+  .topic-row { display:flex; flex-direction:column; gap:4px; padding:7px 0; }
+  .topic-row .lab { display:flex; justify-content:space-between; align-items:baseline; font-size:.78rem; }
+  .topic-row .lab b { font-weight:700; }
+  .topic-row .lab span { color:var(--slate-400); font-size:.7rem; font-weight:600; }
+  .topic-row .lab span i { font-style:normal; color:var(--emerald-700); font-weight:800; }
+  .tbar { height:6px; border-radius:999px; background:var(--slate-100); position:relative; }
+  .tbar i { position:absolute; inset:0; width:var(--w); border-radius:999px; background:var(--emerald-400); }
+
+  .res-list { margin-top:16px; }
+  .res-row { display:flex; justify-content:space-between; align-items:baseline; padding:6px 0; border-bottom:1px solid var(--slate-100); font-size:.76rem; }
+  .res-row:last-child { border-bottom:none; }
+  .res-row b { font-weight:700; }
+  .res-row span { color:var(--slate-400); font-weight:600; font-size:.7rem; }
+
+  .chart { border:1px solid var(--slate-100); border-radius:12px; padding:12px 14px 6px; }
+  .chart svg { width:100%; height:auto; display:block; }
+  .bar-conv { fill:var(--slate-200); }
+  .bar-lead { fill:var(--emerald-500); }
+  .axis-label { font-size:9px; fill:var(--slate-400); font-family:'Plus Jakarta Sans',sans-serif; font-weight:600; }
+  .chart-foot { display:flex; gap:14px; font-size:.64rem; color:var(--slate-500); padding:7px 2px 4px; }
+  .dot { display:inline-block; width:7px; height:7px; border-radius:99px; margin-right:4px; }
+
+  .advice { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .advice .box { border-left:3px solid var(--emerald-500); background:var(--emerald-50); border-radius:0 10px 10px 0; padding:13px 16px; font-size:.8rem; color:var(--slate-700); line-height:1.6; }
+  .advice .box .k { display:block; font-size:.6rem; font-weight:800; letter-spacing:.1em; text-transform:uppercase; color:var(--emerald-700); margin-bottom:5px; }
+
+  .exp-foot { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
+  .mint-inline { font-size:.74rem; font-weight:700; color:var(--emerald-600); }
+  .floor-note { font-size:.7rem; color:var(--slate-400); }
+  .floor-note b { color:var(--slate-600); }
+
+  footer { text-align:center; font-size:.68rem; color:var(--slate-400); padding-top:10px; line-height:1.6; }
+
+  @media (max-width:840px) {
+    .lede-grid { grid-template-columns:1fr; }
+    .ch-nums { gap:14px; }
+    .spark { display:none; }
+    .pair, .advice { grid-template-columns:1fr; }
+    .fs-rate { margin-left:0; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ============ TOP BAR ============ -->
+  <div class="card topbar">
+    <div class="tb-left">
+      <div class="crumb">Mission Intelligence · Attribution &amp; ROI · <b>← back to briefing</b></div>
+      <h1>The Numbers</h1>
+    </div>
+    <div class="tb-right">
+      <div class="month-pick">October 2025 ▾ <span>vs September</span></div>
+      <span class="mint-btn">+ Mint a link or QR</span>
+      <span class="pill-btn">Export CSV</span>
+    </div>
+  </div>
+
+  <!-- ============ ECOSYSTEM LEDE ============ -->
+  <div class="card">
+    <div class="lede-head">
+      <h2>Your engagement ecosystem — October</h2>
+      <span>where MyRecruiter is working for you</span>
+    </div>
+    <div class="lede-grid">
+      <div class="donut-wrap">
+        <svg viewBox="0 0 230 230">
+          <!-- r=85, C=534.07 · website 63% / messenger 20% / QR 13% / campaign 4% -->
+          <circle cx="115" cy="115" r="85" stroke="#cbd5e1" stroke-dasharray="336.46 197.61" stroke-dashoffset="0"/>
+          <circle cx="115" cy="115" r="85" stroke="#6ee7b7" stroke-dasharray="106.81 427.26" stroke-dashoffset="-336.46"/>
+          <circle cx="115" cy="115" r="85" stroke="#50C878" stroke-dasharray="69.43 464.64" stroke-dashoffset="-443.27"/>
+          <circle cx="115" cy="115" r="85" stroke="#e2e8f0" stroke-dasharray="21.36 512.71" stroke-dashoffset="-512.70"/>
+        </svg>
+        <div class="donut-center">
+          <b>1,045</b>
+          <div class="lab">conversations</div>
+          <div class="ah">41% after hours</div>
+        </div>
+      </div>
+      <div class="outcomes">
+        <table>
+          <thead>
+            <tr><th>Channel</th><th class="num">Share</th><th class="num">Conv</th><th class="num">Leads</th><th class="num">Rate</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="chname"><span class="sw" style="background:#cbd5e1"></span>Website widget</td>
+              <td class="num share">63%</td><td class="num">660</td><td class="num lead">82</td><td class="rate">12.4%</td>
+            </tr>
+            <tr>
+              <td class="chname"><span class="sw" style="background:#6ee7b7"></span>Messenger &amp; Instagram</td>
+              <td class="num share">20%</td><td class="num">210</td><td class="num lead">24</td><td class="rate">11.4%</td>
+            </tr>
+            <tr>
+              <td class="chname"><span class="sw" style="background:#50C878"></span>QR codes &amp; standalone</td>
+              <td class="num share">13%</td><td class="num">136</td><td class="num lead">29</td><td class="rate star">21.3%</td>
+            </tr>
+            <tr>
+              <td class="chname"><span class="sw" style="background:#e2e8f0"></span>Campaign links</td>
+              <td class="num share">4%</td><td class="num">39</td><td class="num lead">7</td><td class="rate low">held · n&lt;50</td>
+            </tr>
+            <tr class="total">
+              <td>October total</td>
+              <td class="num">100%</td><td class="num"><b>1,045</b></td><td class="num"><b>142</b></td><td class="num"><b>13.6%</b></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="lede-insight">
+      <b>This month's read:</b> your in-person QR codes converted at <b>1.7× your website rate</b> — the best-performing marketing investment you made in October.
+    </div>
+  </div>
+
+  <!-- ============ JOURNEY BAND ============ -->
+  <div class="card">
+    <div class="lede-head">
+      <h2>The journey</h2>
+      <span>from reached to lead, all channels</span>
+    </div>
+    <div class="funnel-strip">
+      <div class="fs-chip context"><b>12,976</b><span>reached *</span></div>
+      <span class="fs-arrow">→</span>
+      <div class="fs-chip"><b>1,045 <em>▲ 18%</em></b><span>conversations</span></div>
+      <span class="fs-arrow">→</span>
+      <div class="fs-chip"><b>612</b><span>engaged</span></div>
+      <span class="fs-arrow">→</span>
+      <div class="fs-chip"><b>287</b><span>applications</span></div>
+      <span class="fs-arrow">→</span>
+      <div class="fs-chip final"><b>142 <em>▲ 21%</em></b><span>leads delivered</span></div>
+      <div class="fs-rate"><b>13.6% <em>▲ 0.4 pt</em></b><span>conversation → lead</span></div>
+    </div>
+    <div class="journey-note">* reach = site visits, scans &amp; link clicks, measured by MyRecruiter — context above the funnel; Messenger entries count straight into conversations</div>
+  </div>
+
+  <!-- ============ MONEY BAND ============ -->
+  <div class="money">
+    <div class="cell">
+      <div class="kicker">The night shift you never had to staff</div>
+      <b>428</b>
+      <span>conversations held after your office closed — nights, weekends, 11 PMs</span>
+    </div>
+    <div class="cell">
+      <div class="kicker">Staff-hours you didn't hire for</div>
+      <b>~140</b>
+      <span>hours of conversations your team never had to take — no overhead, no burnout</span>
+    </div>
+    <div class="cell">
+      <div class="kicker">In coverage terms</div>
+      <b>3.5 weeks</b>
+      <span>of full-time work, absorbed by your AI team member this month</span>
+    </div>
+  </div>
+
+  <!-- ============ SECTION LABEL ============ -->
+  <div class="sec-label">
+    <h2>Where is it working?</h2>
+    <span>every row opens in place — channel → entry point</span>
+  </div>
+
+  <!-- ============ website ============ -->
+  <div class="card">
+    <div class="chrow">
+      <div class="ch-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg></div>
+      <div class="ch-id">
+        <div class="name">Website widget</div>
+        <div class="meta">63% of all conversations · <b>▲ 4%</b> vs September</div>
+      </div>
+      <div class="ch-nums">
+        <div class="cn"><b>660</b><span>conversations</span></div>
+        <div class="cn lead"><b>82</b><span>leads</span></div>
+        <div class="cn"><b>12.4%</b><span>rate</span></div>
+        <svg class="spark" viewBox="0 0 84 26"><polyline points="0,22 17,15 34,18 50,8 67,12 84,4"/></svg>
+        <span class="chev">▸</span>
+      </div>
+    </div>
+    <div class="sharebar"><i style="--w:63%"></i></div>
+  </div>
+
+  <!-- ============ QR & standalone — EXPANDED ============ -->
+  <div class="card expanded">
+    <div class="chrow">
+      <div class="ch-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="3" width="7" height="7" rx="1"></rect><rect x="3" y="14" width="7" height="7" rx="1"></rect><path d="M14 14h3v3h-3zM21 14v3M14 21h3M21 21h.01"></path></svg></div>
+      <div class="ch-id">
+        <div class="name">QR codes &amp; standalone links</div>
+        <div class="meta">13% of all conversations · 5 entry points · <b>▲ 33%</b> vs September</div>
+      </div>
+      <div class="ch-nums">
+        <span class="chev">▾</span>
+      </div>
+    </div>
+
+    <div class="ch-strip">
+      <div class="funnel-strip">
+        <div class="fs-chip"><b>136 <em>▲ 33%</em></b><span>conversations</span></div>
+        <span class="fs-arrow">→</span>
+        <div class="fs-chip"><b>89</b><span>engaged</span></div>
+        <span class="fs-arrow">→</span>
+        <div class="fs-chip"><b>54</b><span>applications</span></div>
+        <span class="fs-arrow">→</span>
+        <div class="fs-chip final"><b>29 <em>▲ 45%</em></b><span>leads</span></div>
+        <div class="fs-rate"><b>21.3% <em>▲ 1.7 pt</em></b><span>conversation → lead</span></div>
+      </div>
+    </div>
+
+    <div class="exp-body">
+
+      <div>
+        <div class="panel-label">The 5 entry points inside this channel — each minted with its own provenance</div>
+        <table class="drill">
+          <thead>
+            <tr><th>Entry point</th><th>Minted</th><th class="num">Conv</th><th class="num">Leads</th><th class="num">Rate</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><div class="ep-name">Volunteer Fair — banner</div><div class="tax"><span class="ch">QR</span><span>print</span><span>volunteer-fair</span></div></td>
+              <td class="minted">Aug 12</td>
+              <td class="num">28</td><td class="num lead">8</td><td class="rate">28.6%</td>
+            </tr>
+            <tr>
+              <td><div class="ep-name">Spring Gala — table tents</div><div class="tax"><span class="ch">QR</span><span>print</span><span>spring-gala</span></div></td>
+              <td class="minted">Apr 3</td>
+              <td class="num">34</td><td class="num lead">8</td><td class="rate">23.5%</td>
+            </tr>
+            <tr>
+              <td><div class="ep-name">Ask Angel — Instagram Linktree</div><div class="tax"><span class="ch">standalone</span><span>social</span><span>linktree-bio</span></div></td>
+              <td class="minted">Feb 19</td>
+              <td class="num">60</td><td class="num lead">11</td><td class="rate">18.3%</td>
+            </tr>
+            <tr>
+              <td><div class="ep-name">Coffee shop — counter poster</div><div class="tax"><span class="ch">QR</span><span>print</span><span>mozarts-cafe</span></div></td>
+              <td class="minted">Oct 2 <span class="newtag">NEW</span></td>
+              <td class="num">9</td><td class="num lead">1</td><td class="rate low">small sample</td>
+            </tr>
+            <tr>
+              <td><div class="ep-name">Church bulletin — insert</div><div class="tax"><span class="ch">QR</span><span>print</span><span>st-davids-oct</span></div></td>
+              <td class="minted">Oct 5 <span class="newtag">NEW</span></td>
+              <td class="num">5</td><td class="num lead">1</td><td class="rate low">small sample</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="pair">
+        <div>
+          <div class="panel-label">What they asked about here</div>
+          <div class="topic-row">
+            <div class="lab"><b>Volunteering</b><span>71 conv → <i>19 leads</i></span></div>
+            <div class="tbar"><i style="--w:100%"></i></div>
+          </div>
+          <div class="topic-row">
+            <div class="lab"><b>Love Box program</b><span>32 conv → <i>7 leads</i></span></div>
+            <div class="tbar"><i style="--w:45%"></i></div>
+          </div>
+          <div class="topic-row">
+            <div class="lab"><b>Donations</b><span>12 conv → <i>2 leads</i></span></div>
+            <div class="tbar"><i style="--w:17%"></i></div>
+          </div>
+          <div class="topic-row">
+            <div class="lab"><b>Everything else</b><span>21 conv → <i>1 lead</i></span></div>
+            <div class="tbar"><i style="--w:30%"></i></div>
+          </div>
+          <div class="res-list">
+            <div class="panel-label">Most-clicked resources here</div>
+            <div class="res-row"><b>Volunteer Application PDF</b><span>48 clicks</span></div>
+            <div class="res-row"><b>Love Box info page</b><span>26 clicks</span></div>
+            <div class="res-row"><b>Events calendar</b><span>9 clicks</span></div>
+          </div>
+        </div>
+        <div>
+          <div class="panel-label">Six-month trajectory</div>
+          <div class="chart">
+            <svg viewBox="0 0 420 122">
+              <rect class="bar-conv" x="20"  y="88" width="18" height="28" rx="3"/><rect class="bar-lead" x="41"  y="112" width="8" height="4" rx="2"/><text class="axis-label" x="34" y="121" text-anchor="middle">May</text>
+              <rect class="bar-conv" x="88"  y="78" width="18" height="38" rx="3"/><rect class="bar-lead" x="109" y="110" width="8" height="6" rx="2"/><text class="axis-label" x="102" y="121" text-anchor="middle">Jun</text>
+              <rect class="bar-conv" x="156" y="71" width="18" height="45" rx="3"/><rect class="bar-lead" x="177" y="108" width="8" height="8" rx="2"/><text class="axis-label" x="170" y="121" text-anchor="middle">Jul</text>
+              <rect class="bar-conv" x="224" y="59" width="18" height="57" rx="3"/><rect class="bar-lead" x="245" y="106" width="8" height="10" rx="2"/><text class="axis-label" x="238" y="121" text-anchor="middle">Aug</text>
+              <rect class="bar-conv" x="292" y="41" width="18" height="75" rx="3"/><rect class="bar-lead" x="313" y="101" width="8" height="15" rx="2"/><text class="axis-label" x="306" y="121" text-anchor="middle">Sep</text>
+              <rect class="bar-conv" x="360" y="16" width="18" height="100" rx="3"/><rect class="bar-lead" x="381" y="95"  width="8" height="21" rx="2"/><text class="axis-label" x="374" y="121" text-anchor="middle">Oct</text>
+            </svg>
+            <div class="chart-foot">
+              <span><span class="dot" style="background:var(--slate-200)"></span>Conversations</span>
+              <span><span class="dot" style="background:var(--emerald-500)"></span>Leads</span>
+              <span style="margin-left:auto;color:var(--emerald-700);font-weight:700;">growing 6 months straight</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="advice">
+        <div class="box">
+          <span class="k">Read</span>
+          In-person placements out-convert the Linktree link — people who scan at an event arrive warmer.
+          62% of this channel's conversations happened after hours; most of these leads wouldn't exist without it.
+        </div>
+        <div class="box">
+          <span class="k">Suggested move</span>
+          The two new October placements look promising but are too small to judge — leave them running.
+          Mint a unique QR per event so November can rank them individually.
+        </div>
+      </div>
+
+      <div class="exp-foot">
+        <span class="mint-inline">+ Mint a new QR or link in this channel</span>
+        <span class="floor-note">rates shown per entry point; comparisons held until an entry point clears <b>50 conversations</b></span>
+      </div>
+    </div>
+    <div class="sharebar"><i style="--w:13%"></i></div>
+  </div>
+
+  <!-- ============ messenger ============ -->
+  <div class="card">
+    <div class="chrow">
+      <div class="ch-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-9 8.4 8.5 8.5 0 0 1-3.4-.7L3 21l1.8-5.6a8.38 8.38 0 0 1-.7-3.4 8.5 8.5 0 1 1 16.9-.5z"></path></svg></div>
+      <div class="ch-id">
+        <div class="name">Messenger &amp; Instagram</div>
+        <div class="meta">20% of all conversations · <b>▲ 12%</b> vs September</div>
+      </div>
+      <div class="ch-nums">
+        <div class="cn"><b>210</b><span>conversations</span></div>
+        <div class="cn lead"><b>24</b><span>leads</span></div>
+        <div class="cn"><b>11.4%</b><span>rate</span></div>
+        <svg class="spark" viewBox="0 0 84 26"><polyline points="0,23 17,19 34,15 50,12 67,7 84,3"/></svg>
+        <span class="chev">▸</span>
+      </div>
+    </div>
+    <div class="sharebar"><i style="--w:20%"></i></div>
+  </div>
+
+  <!-- ============ campaign links ============ -->
+  <div class="card">
+    <div class="chrow">
+      <div class="ch-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg></div>
+      <div class="ch-id">
+        <div class="name">Campaign links <span class="heldtag">new — comparisons held until n ≥ 50</span></div>
+        <div class="meta">4% of all conversations · 1 entry point — End-of-Year Newsletter, minted Oct 1</div>
+      </div>
+      <div class="ch-nums">
+        <div class="cn"><b>39</b><span>conversations</span></div>
+        <div class="cn lead"><b>7</b><span>leads</span></div>
+        <div class="cn"><b>—</b><span>rate</span></div>
+        <svg class="spark" viewBox="0 0 84 26"><polyline points="0,23 17,23 34,23 50,23 67,23 84,4"/></svg>
+        <span class="chev">▸</span>
+      </div>
+    </div>
+    <div class="sharebar"><i style="--w:4%"></i></div>
+  </div>
+
+  <footer>
+    MyRecruiter Mission Intelligence · The Numbers v5 (briefing-spine: ecosystem → journey → worth → drill) · 2026-06-12 · all numbers illustrative<br>
+    static mock — "QR codes &amp; standalone links" shown expanded; every channel row opens the same way
+  </footer>
+</div>
+</body>
+</html>
