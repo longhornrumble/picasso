@@ -143,10 +143,11 @@ Failure: `{ "ok": false, "error": { "code": "SUFFIX_TAKEN|DUB_ERROR|VALIDATION|C
 Written by WS-C's **NEW `Attribution_Aggregator` Lambda** (Python 3.13, new dir, dedicated role; hourly EventBridge schedule = integrator Terraform glue) into the **NEW table `picasso-attribution-aggregates`** (bare name in the staging acct; env var `ATTRIBUTION_AGGREGATES_TABLE`; TTL attribute `ttl`). The legacy `Analytics_Aggregator` dir (zip-only, removal-slated) and the legacy `picasso-dashboard-aggregates` table are NOT touched. Key patterns:
 
 ```
-PK  TENANT#{tenant_id}
-SK  METRIC#attribution_summary#{YYYY-MM}
-SK  METRIC#attribution_channel#{YYYY-MM}#{channel}
-SK  METRIC#attribution_entrypoint#{YYYY-MM}#{entry_point_id}
+attribute names: pk / sk (lowercase, matches the session-events convention) · TTL attribute: ttl
+pk  TENANT#{tenant_id}
+sk  METRIC#attribution_summary#{YYYY-MM}
+sk  METRIC#attribution_channel#{YYYY-MM}#{channel}
+sk  METRIC#attribution_entrypoint#{YYYY-MM}#{entry_point_id}
 ttl = now + 420 days
 ```
 
