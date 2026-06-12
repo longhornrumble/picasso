@@ -188,6 +188,44 @@ variable "booking_commit_function_name" {
   default     = "Booking_Commit_Handler"
 }
 
+# Attribution Wave-1 (C4b, C5, C6 contracts)
+
+variable "entry_points_table_arn" {
+  description = "ARN of picasso-entry-points. ADA reads entry-point registry records for GET /attribution/entry-points (read-only: Query/GetItem)."
+  type        = string
+  default     = ""
+}
+
+variable "entry_points_table_name" {
+  description = "Name of picasso-entry-points (for ENTRY_POINTS_TABLE env var)."
+  type        = string
+  default     = ""
+}
+
+variable "attribution_aggregates_table_arn" {
+  description = "ARN of picasso-attribution-aggregates. ADA reads monthly rollup rows for /attribution/* routes (read-only: Query/GetItem)."
+  type        = string
+  default     = ""
+}
+
+variable "attribution_aggregates_table_name" {
+  description = "Name of picasso-attribution-aggregates (for ATTRIBUTION_AGGREGATES_TABLE env var)."
+  type        = string
+  default     = ""
+}
+
+variable "mint_function_arn" {
+  description = "ARN of Attribution_Mint_Service. ADA invokes it for POST /attribution/entry-points (C4b proxy). Default empty renders ZERO grant."
+  type        = string
+  default     = ""
+}
+
+variable "mint_function_name" {
+  description = "Name of Attribution_Mint_Service (for MINT_FUNCTION_NAME env var). ADA passes this to the C4b invoke path."
+  type        = string
+  default     = "Attribution_Mint_Service"
+}
+
 # ------------------------------------------------------------------
 # IAM role + minimum-scope inline policy (with explicit Denies on prod)
 # ------------------------------------------------------------------
@@ -426,6 +464,43 @@ data "aws_iam_policy_document" "exec" {
     resources = ["${var.archive_bucket_arn}/sessions/tenant=*/*"]
   }
 
+  # Attribution Wave-1 (C4b, C5, C6): read-only on the two attribution tables.
+  # Renders ZERO statements when the ARNs are not wired (default "").
+  dynamic "statement" {
+    for_each = var.entry_points_table_arn != "" ? [1] : []
+    content {
+      sid     = "AttributionEntryPointsRead"
+      actions = ["dynamodb:Query", "dynamodb:GetItem"]
+      resources = [
+        var.entry_points_table_arn,
+      ]
+    }
+  }
+
+  dynamic "statement" {
+    for_each = var.attribution_aggregates_table_arn != "" ? [1] : []
+    content {
+      sid     = "AttributionAggregatesRead"
+      actions = ["dynamodb:Query", "dynamodb:GetItem"]
+      resources = [
+        var.attribution_aggregates_table_arn,
+      ]
+    }
+  }
+
+  # C4b: ADA proxies POST /attribution/entry-points to Attribution_Mint_Service
+  # via direct Lambda invoke (same-account 525->525, no resource-policy entry
+  # needed on the mint function). Renders ZERO statements when mint_function_arn
+  # is "" (default) -- matches the tenant_purge / booking_commit pattern above.
+  dynamic "statement" {
+    for_each = var.mint_function_arn != "" ? [1] : []
+    content {
+      sid       = "InvokeMintService"
+      actions   = ["lambda:InvokeFunction"]
+      resources = [var.mint_function_arn]
+    }
+  }
+
   # Defense-in-depth: never write to the prod tenant-config bucket even
   # if an allow rule above is later widened by accident (Plan Security F4).
   statement {
@@ -551,6 +626,10 @@ resource "aws_lambda_function" "this" {
       # SchedulingOAuthStatusRead IAM fence can never silently diverge (code default matches).
       OAUTH_SECRET_PATH_PREFIX = "picasso/scheduling/oauth"
       USE_DYNAMO_CACHE         = "false"
+      # Attribution Wave-1 (C4b, C5, C6)
+      ENTRY_POINTS_TABLE           = var.entry_points_table_name
+      ATTRIBUTION_AGGREGATES_TABLE = var.attribution_aggregates_table_name
+      MINT_FUNCTION_NAME           = var.mint_function_name
       # Plan Security F8: restrict test-send endpoints to recipients whose
       # email domain is in this comma-list. Without it, an authenticated
       # admin could trigger a test send to any address (including real
