@@ -945,28 +945,16 @@ export default function MessageBubble({
               ? { __html: content }
               : undefined
           }
-          // Analytics: Track link clicks via event delegation
+          // Analytics: Track link clicks via event delegation (C1.2 payload shape)
           onClick={(e) => {
             const anchor = e.target.closest('a');
             if (anchor && anchor.href) {
-              try {
-                const url = new URL(anchor.href);
-                emitAnalyticsEvent(LINK_CLICKED, {
-                  url: anchor.href,
-                  link_text: anchor.textContent || anchor.innerText || '',
-                  link_domain: url.hostname,
-                  category: url.protocol === 'mailto:' ? 'email' :
-                           url.protocol === 'tel:' ? 'phone' : 'web'
-                });
-              } catch {
-                // Invalid URL, still track basic info
-                emitAnalyticsEvent(LINK_CLICKED, {
-                  url: anchor.href,
-                  link_text: anchor.textContent || '',
-                  link_domain: 'unknown',
-                  category: 'unknown'
-                });
-              }
+              const rawLabel = (anchor.textContent || anchor.innerText || '').trim();
+              emitAnalyticsEvent(LINK_CLICKED, {
+                url: anchor.href,
+                label: rawLabel.slice(0, 120),
+                source: 'message'
+              });
             }
           }}
           style={{

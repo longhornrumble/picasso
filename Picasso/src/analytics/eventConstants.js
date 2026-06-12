@@ -32,6 +32,15 @@ export const WIDGET_CLOSED = 'WIDGET_CLOSED';
  */
 export const CONVERSATION_STARTED = 'CONVERSATION_STARTED';
 
+/**
+ * Page view ping emitted by the loader (widget-host.js) — independent of the iframe.
+ * Payload (C1.3, EXHAUSTIVE — any other field is forbidden per C8.1-2):
+ *   { path: string (pathname ≤512), referrer_host: string|null, device_class: "mobile"|"tablet"|"desktop" }
+ * Transport: single-event batch POST identical to other analytics events.
+ * Kill switch: feature_flags.REACH_PING !== false (default ON).
+ */
+export const PAGE_VIEW = 'PAGE_VIEW';
+
 // ============================================================================
 // ITEM CLICK EVENTS
 // ============================================================================
@@ -49,8 +58,8 @@ export const ACTION_CHIP_CLICKED = 'ACTION_CHIP_CLICKED';
 export const CTA_CLICKED = 'CTA_CLICKED';
 
 /**
- * Link clicked within message content
- * Payload: { url: string, link_text: string, link_domain: string, category: string }
+ * Link clicked within message content or outbound resource links.
+ * Payload (C1.2): { url: string, label: string (≤120), source: "message"|"cta"|"resource" }
  */
 export const LINK_CLICKED = 'LINK_CLICKED';
 
@@ -131,7 +140,7 @@ export const MESSAGE_RECEIVED = 'MESSAGE_RECEIVED';
 // ============================================================================
 
 export const EVENT_CATEGORIES = {
-  LIFECYCLE: [WIDGET_OPENED, WIDGET_CLOSED, CONVERSATION_STARTED],
+  LIFECYCLE: [WIDGET_OPENED, WIDGET_CLOSED, CONVERSATION_STARTED, PAGE_VIEW],
   CLICKS: [ACTION_CHIP_CLICKED, CTA_CLICKED, LINK_CLICKED, HELP_MENU_CLICKED, SHOWCASE_CTA_CLICKED],
   FORMS: [FORM_VIEWED, FORM_STARTED, FORM_FIELD_SUBMITTED, FORM_COMPLETED, FORM_ABANDONED],
   MESSAGES: [MESSAGE_SENT, MESSAGE_RECEIVED]
@@ -286,6 +295,7 @@ export default {
   WIDGET_OPENED,
   WIDGET_CLOSED,
   CONVERSATION_STARTED,
+  PAGE_VIEW,
 
   // Click events
   ACTION_CHIP_CLICKED,
