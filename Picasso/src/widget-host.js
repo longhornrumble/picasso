@@ -148,7 +148,10 @@ import { getBindingSessionId } from './utils/bindingSession.js';
       this.createIframe();
       this.setupEventListeners();
       this.setupResizeObserver();
-      // C1.3: emit PAGE_VIEW reach ping from loader (independent of iframe)
+      // C1.3: emit PAGE_VIEW reach ping from loader (independent of iframe).
+      // emitReachPing() is async — it fetches the S3 tenant config first so
+      // the operator-side REACH_PING kill switch (C8.9 / F3) is honoured
+      // without requiring changes to the embedding tenant site.
       this.emitReachPing();
     },
     
@@ -484,13 +487,58 @@ import { getBindingSessionId } from './utils/bindingSession.js';
     },
 
     /**
+     * Fetch the S3 tenant config (same GET the iframe uses; CDN-cached).
+     * Returns the parsed JSON config object, or null on any failure.
+     * Used by emitReachPing() to honour the operator-side REACH_PING kill
+     * switch (C8.9 / F3) without requiring changes to the embedding site.
+     *
+     * @returns {Promise<Object|null>}
+     */
+    async _fetchTenantConfig() {
+      try {
+        const configUrl = environmentConfig.getConfigUrl(this.tenantHash);
+        const resp = await fetch(configUrl, {
+          method: 'GET',
+          // 4-second timeout (config is CDN-cached; slow = infra problem)
+          signal: AbortSignal.timeout ? AbortSignal.timeout(4000) : (() => {
+            const ctrl = new AbortController();
+            setTimeout(() => ctrl.abort(), 4000);
+            return ctrl.signal;
+          })()
+        });
+        if (!resp.ok) return null;
+        return await resp.json();
+      } catch {
+        return null;
+      }
+    },
+
+    /**
      * Emit a PAGE_VIEW ping via the existing analytics transport.
      * All C1.3 constraints enforced here; callers pass no arguments.
-     * Kill switch: feature_flags.REACH_PING !== false (default ON when absent).
+     *
+     * Kill switch (C8.9 / F3): fires ONLY when feature_flags.REACH_PING !== false
+     * in EITHER the embed-snippet customConfig OR the S3 tenant config.
+     * EITHER source can disable (operator doesn't need a site deploy to turn off).
+     * Fail closed — no ping if the tenant config cannot be fetched.
+     *
+     * This function is async; the caller (init) does not await it so the
+     * widget continues loading while the config fetch + ping happen in background.
      */
-    emitReachPing() {
-      // Kill switch — default ON when absent (C1.3 / C8.9)
+    async emitReachPing() {
+      // Kill switch — embed-snippet side (fast path, no network required).
+      // If the embed explicitly disables, bail before the config fetch.
       if (this.config?.feature_flags?.REACH_PING === false) return;
+
+      // Kill switch — S3 tenant config side (C8.9 / F3 operator control).
+      // Fetch the same config the iframe fetches (CDN-cached GET).
+      // Fail closed: if the fetch fails, do NOT ping (C1.3: "fail closed").
+      const tenantConfig = await this._fetchTenantConfig();
+      if (tenantConfig === null) return; // fail closed
+
+      // Merge: EITHER source can disable (logical AND — both must be non-false).
+      const tenantFlags = tenantConfig?.feature_flags ?? tenantConfig?.config?.feature_flags ?? {};
+      if (tenantFlags.REACH_PING === false) return;
 
       try {
         // pv_ session identity — sessionStorage only, no cookie, no localStorage (C8.3)

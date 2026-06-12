@@ -945,15 +945,34 @@ export default function MessageBubble({
               ? { __html: content }
               : undefined
           }
-          // Analytics: Track link clicks via event delegation (C1.2 payload shape)
+          // Analytics: Track link clicks via event delegation.
+          // C1.2 (amended 2026-06-12): payload is ADDITIVE — new fields + legacy-compat
+          // fields retained so the live dashboard (SessionTimelineEvent.tsx:186) can still
+          // render payload.link_text until Wave-2 migrates to payload.label.
           onClick={(e) => {
             const anchor = e.target.closest('a');
             if (anchor && anchor.href) {
               const rawLabel = (anchor.textContent || anchor.innerText || '').trim();
+              // Compute legacy fields the same way the pre-existing code did
+              // (reference: origin/staging MessageBubble.jsx:941-950)
+              let linkDomain = 'unknown';
+              let category = 'unknown';
+              try {
+                const u = new URL(anchor.href);
+                linkDomain = u.hostname;
+                category = u.protocol === 'mailto:' ? 'email'
+                         : u.protocol === 'tel:'    ? 'phone'
+                         : 'web';
+              } catch { /* invalid URL — leave defaults */ }
               emitAnalyticsEvent(LINK_CLICKED, {
+                // C1.2 new fields
                 url: anchor.href,
                 label: rawLabel.slice(0, 120),
-                source: 'message'
+                source: 'message',
+                // Legacy-compat fields (drop after Wave-2 dashboard update)
+                link_text: rawLabel,
+                link_domain: linkDomain,
+                category
               });
             }
           }}
