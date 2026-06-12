@@ -1993,8 +1993,9 @@ module "secrets_dub_staging" {
 }
 
 module "lambda_attribution_mint_staging" {
-  count  = var.env == "staging" ? 1 : 0
-  source = "./modules/lambda-attribution-mint-staging"
+  dub_workspace_id = "ws_1JQ7P29YHBZBY3YX9961NCST7"
+  count            = var.env == "staging" ? 1 : 0
+  source           = "./modules/lambda-attribution-mint-staging"
 
   entry_points_table_arn  = module.ddb_entry_points_staging[0].table_arn
   entry_points_table_name = module.ddb_entry_points_staging[0].table_name
@@ -2004,8 +2005,9 @@ module "lambda_attribution_mint_staging" {
 }
 
 module "lambda_attribution_aggregator_staging" {
-  count  = var.env == "staging" ? 1 : 0
-  source = "./modules/lambda-attribution-aggregator-staging"
+  dub_workspace_id = "ws_1JQ7P29YHBZBY3YX9961NCST7"
+  count            = var.env == "staging" ? 1 : 0
+  source           = "./modules/lambda-attribution-aggregator-staging"
 
   session_events_table_arn  = module.ddb_session_events_staging[0].table_arn
   session_events_table_name = module.ddb_session_events_staging[0].table_name

@@ -60,6 +60,12 @@ data "aws_iam_policy_document" "trust" {
 # IAM -- dedicated execution role (never shared -- hard repo rule)
 # ------------------------------------------------------------------
 
+variable "dub_workspace_id" {
+  description = "Dub workspace id (ws_...) appended as ?workspaceId= - required for personal-type Dub API keys, harmless with workspace keys. Empty disables."
+  type        = string
+  default     = ""
+}
+
 resource "aws_iam_role" "exec" {
   name               = "Attribution_Mint_Service-role"
   assume_role_policy = data.aws_iam_policy_document.trust.json
@@ -132,6 +138,7 @@ resource "aws_lambda_function" "this" {
       ENVIRONMENT        = "staging"
       ENTRY_POINTS_TABLE = var.entry_points_table_name
       DUB_SECRET_NAME    = var.dub_secret_name
+      DUB_WORKSPACE_ID   = var.dub_workspace_id
     }
   }
 
