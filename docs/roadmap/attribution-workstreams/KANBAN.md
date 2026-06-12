@@ -16,9 +16,10 @@
 
 | WS | Slice | Repo | PR | Status | Gate |
 |---|---|---|---|---|---|
-| E | Numbers workspace N1 (read-only, v5 design) | picasso-analytics-dashboard | [#30](https://github.com/longhornrumble/picasso-analytics-dashboard/pull/30) | **IN REVIEW — DO NOT MERGE** | merge = PROD deploy → operator-gated. 32 tests; zero new deps; inline-SVG charts; flag-off path untouched. |
-| F | Briefing B1 (default view) + B3 print-PDF + B4 variants | picasso-analytics-dashboard | — | BUILDING | Stacked on E's branch; §03 ships the aggregate-only fallback (exemplar endpoint = Phase 2, PII-gated). Operator-gated merge, after E. |
-| H | `Attribution_Recap_Generator` (monthly email) | lambda | — | BUILDING | Ships DRY-RUN by default (`RECAP_SEND_ENABLED` gate); first real send gated on communications-consent advisory + operator. Needs CI/deploy registration + Terraform schedule (glue) when PR lands. |
+| E | Numbers workspace N1 (read-only, v5 design) | picasso-analytics-dashboard | [#30](https://github.com/longhornrumble/picasso-analytics-dashboard/pull/30) | **MERGED by operator** — prod-deployed behind the flag (all tenants `dashboard_attribution:false` → PremiumLock unchanged) | 32 tests; zero new deps. |
+| F | Briefing B1 (default view) + B3 print-PDF + B4 variants | picasso-analytics-dashboard | [#31](https://github.com/longhornrumble/picasso-analytics-dashboard/pull/31) | **MERGED by operator** (with #30) — prod-deployed behind the flag | 98 tests; §03 aggregate-only fallback pending exemplar endpoint (Phase 2, PII-gated). |
+| H | `Attribution_Recap_Generator` (monthly email) | lambda | [#313](https://github.com/longhornrumble/lambda/pull/313) | **MERGED** | LIVE dry-run (`RECAP_SEND_ENABLED=false`); Terraform #550 + CI #314. |
+| I | Recap CAN-SPAM conditions: postal address (fail-closed), per-recipient HMAC unsubscribe, suppression store + NEW public `Attribution_Unsubscribe` Lambda | lambda | [#316](https://github.com/longhornrumble/lambda/pull/316) | **MERGED** | Security review (4-item fix-list applied: token cap, marker fail-closed, suppression pagination, method gate); 42+151 tests; Terraform picasso#553 APPLIED (public Function URL, HMAC=auth); CI lambda#317/#318; signing key placed; endpoint smoked (uniform 403). |
 
 ## Glue (integrator-owned) — all landed
 
@@ -33,12 +34,12 @@
 
 | # | Item | State |
 |---|---|---|
-| 1 | **Dub key copy** — key found at Secrets Manager `staging/dub/api` (staging acct; `prod/dub/api` in prod). Operator runs the one-liner copy into `picasso/staging/dub/api-key` (classifier correctly blocks the agent from reading credential values). | WAITING — command in session notes |
-| 2 | Confirm after-hours default tz `America/Chicago` (C7 PROVISIONAL; no tenant-config field exists) | WAITING |
-| 3 | Compliance parallel track before F2 PROD enablement: tenant notice template + Dub DPA/subprocessor check (privacy-data-governance-advisor), GPC/CMP configurability, MSA scope read (attorney, recommended) | OPEN (not build-blocking) |
-| 4 | Dashboard prod merges: E (#30) then F — operator-gated | WAITING on review |
-| 5 | First recap-email send: communications-consent advisory + `RECAP_SEND_ENABLED` flip | BLOCKED until H lands + advisory |
-| 6 | Phase sign-off after staging E2E (mint → scan → `?ep=` → provenance → aggregates → API → UI) — needs #1 first | PENDING |
+| 1 | **Dub key RE-copy** — first copy done but mint got Dub 404 = `staging/dub/api` key's workspace doesn't own `myrctr.link`; re-run sourcing **`prod/dub/api`** into `picasso/staging/dub/api-key` | **WAITING (the E2E blocker)** |
+| 2 | ~~Chicago tz~~ | ✅ CONFIRMED 2026-06-12 |
+| 3 | Compliance package → [PROD_ENABLEMENT_COMPLIANCE.md](PROD_ENABLEMENT_COMPLIANCE.md) (merged #552): notice templates DONE, DPA checklist DONE (operator evidence capture remains), **GPC decision OPEN** (rec: honor by default), MSA brief ready for counsel | OPEN (gates first PROD tenant only) |
+| 4 | ~~Dashboard merges~~ | ✅ #30 + #31 MERGED by operator (prod, flag-off) |
+| 5 | First recap send: CAN-SPAM conditions BUILT (WS-I); remaining = operator supplies **postal address** (Terraform var `recap_postal_address`) + flips `RECAP_SEND_ENABLED` | WAITING on address |
+| 6 | Phase sign-off after staging E2E (mint → scan → `?ep=` → provenance → aggregates → API → UI) — needs #1 | PENDING |
 
 ## Staging E2E checklist (after Dub key lands)
 
