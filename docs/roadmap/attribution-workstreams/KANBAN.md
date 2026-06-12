@@ -34,13 +34,14 @@
 
 | # | Item | State |
 |---|---|---|
-| 1 | **Dub key RE-copy** — first copy done but mint got Dub 404 = `staging/dub/api` key's workspace doesn't own `myrctr.link`; re-run sourcing **`prod/dub/api`** into `picasso/staging/dub/api-key` | **WAITING (the E2E blocker)** |
+| 1 | ~~Dub key~~ | ✅ RESOLVED 2026-06-12 after a 4-layer debug: personal-type keys need `?workspaceId=` (lambda#321 + infra#556, ws id from house tooling env) + console key/value storage wraps the secret in JSON (lambda#322 made both readers tolerant) + dropped doomed `tagNames` (lambda#319) + Dub error bodies now surfaced (lambda#320). Aggregator also gained `s3:ListBucket` on mappings/ (infra#558) after enumerating 0 tenants. |
 | 2 | ~~Chicago tz~~ | ✅ CONFIRMED 2026-06-12 |
 | 3 | Compliance package → [PROD_ENABLEMENT_COMPLIANCE.md](PROD_ENABLEMENT_COMPLIANCE.md) (merged #552): notice templates DONE, DPA checklist DONE (operator evidence capture remains), **GPC decision OPEN** (rec: honor by default), MSA brief ready for counsel | OPEN (gates first PROD tenant only) |
 | 4 | ~~Dashboard merges~~ | ✅ #30 + #31 MERGED by operator (prod, flag-off) |
 | 5 | First recap send: CAN-SPAM conditions BUILT (WS-I); remaining = operator supplies **postal address** (Terraform var `recap_postal_address`) + flips `RECAP_SEND_ENABLED` | WAITING on address |
 | 6 | Phase sign-off after staging E2E (mint → scan → `?ep=` → provenance → aggregates → API → UI) — needs #1 | PENDING |
 
-## Staging E2E checklist (after Dub key lands)
+## Staging E2E — PASSED 2026-06-12 (automatable links)
 
-mint via `POST /attribution/entry-points` (real Dub link on `myrctr.link`) → scan QR → standalone chat opens with `?ep=` → CONVERSATION_STARTED stamped → hourly aggregate rows appear → `GET /attribution/summary` reconciles → Numbers UI renders from staging API.
+✅ mint live: `https://myrctr.link/e2e-smoke-myr` → `ep_01KTYZYQ978ZF76YKN9FTW1TS8` + registry row · ✅ 302 redirect preserves `?ep=` · ✅ QR endpoint serves print-spec PNG · ✅ aggregator run: 1 tenant, rows written (`METRIC#attribution_summary#2026-06` + `#website` channel from real staging events) incl. clean Dub reach poll.
+**Remaining (human/visual):** scan the QR with a phone → chat opens → next hourly run shows the session under `standalone` → Numbers UI (flag a staging tenant) renders it. Then operator phase sign-off.
