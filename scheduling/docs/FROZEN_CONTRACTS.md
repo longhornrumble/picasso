@@ -319,6 +319,13 @@ boundary). So the `proposing` step (availability + routing + slot-gen) AND the `
 //   NO coordinator name, §10.4) — coordinator is revealed at confirm by the FLOW + bound at commit by pool.lockSlot().
 // READ-ONLY: no Booking write, no round-robin advance (the commit owns that). PII: the propose payload carries NO
 // attendee identity (it stays in the BSH flow until commit); never log identity here.
+//
+// AMENDED 2026-06-12 (§B18 offer presentation; WS-OP-BE): the propose route now ALWAYS requests
+// §B18a diverse-3 sampling from pool.select (presentation-only change; per-chip shape UNCHANGED;
+// alreadyRejected/date_window semantics unchanged), and the OUT envelope gains an ADDITIVE optional
+// field per §B18b:
+//   context?: { duration_minutes, conference_type, conference_label, tz_label }   // null fields allowed
+// Readers MUST tolerate its absence (CLAUDE.md schema discipline; old-shape fixture tests required).
 ```
 
 ### B16b — new-booking action vocabulary + the §B14 boundary (WS-NEWBOOK-FLOW internal; the rule is LOCKED)
@@ -970,6 +977,16 @@ Agent turn routing, two tool schemas, session-state line, bounded loop, audit ev
 //   deterministic confirm-click handler. agentTurn has no reference to invokeBookingCommit.
 ```
 
+**AMENDED 2026-06-12 (lambda#303, live-eval A9 root cause — this records the SHIPPED shape):** `messages`
+is NOT the single user message shown in the LOOP INVARIANT above — it is the bounded history thread built
+by `buildAgentMessages(conversationHistory, userText)`: prior turns role-filtered to user/assistant,
+`{content}`/`{text}` shapes coerced to text, empties dropped, capped at the LAST `MAX_HISTORY_MESSAGES = 12`,
+an in-flight duplicate of the current turn dropped, consecutive same-role turns merged (the API rejects
+non-alternating roles), leading non-user turns shifted so the thread opens with `user`, and the current
+`userText` appended (merged into a trailing user turn when present). The loop's tool_use/tool_result
+appends are unchanged. Without this the model saw a context-free lone sentence and multi-turn flows died
+with zero tool calls (A9).
+
 ### B17c — tool catalog (Phase-0 format; these two entries are the full v1 catalog) — LOCKED
 
 ```js
@@ -1094,6 +1111,13 @@ Agent turn routing, two tool schemas, session-state line, bounded loop, audit ev
 // Templated fallback copy (overflow, lookup_failed) must use the same voice — never robotic.
 ```
 
+**AMENDED 2026-06-12 (§B18c; WS-OP-BE — prompt bumps to `b17e.v6`):** rule 12 added:
+*When you present available times, do not append your own closing question (e.g. "Which works best?") —
+the interface renders the refinement microcopy under the chips; end after the times (a short warm lead-in
+before them is fine).* (The shipped prompt's later soak-fix rules — today-line, dated-query, no-time-
+enumeration, day-part bounds from lambda#304/#309 — carry the prompt's own numbering; this contract's
+numbered list governs content, not prompt-internal numbering.)
+
 ### B17f — sensitive-context suppression + increment-2 suggestion gate — LOCKED
 
 ```
@@ -1202,6 +1226,110 @@ Agent turn routing, two tool schemas, session-state line, bounded loop, audit ev
 
 ---
 
+## §B18 — offer-presentation seam (diverse-3 sampling + context envelope + microcopy + analytics) — **LOCKED 2026-06-12** (integrator; minted by operator design ruling 2026-06-12)
+
+Operator-minted scope (binding): diversity sampling, microcopy close, context labels, analytics events.
+Explicitly decided AGAINST: a "More times" chip. Explicitly PARKED: the expanded-iframe calendar picker
+(build only if §B18d analytics show users failing to reach their date).
+
+### B18a — diverse-3 slot sampling (pool layer; produced by WS-OP-BE)
+
+```js
+// pool.select gains an OPTIONAL `sampling` option: { mode: 'daypart-diverse', count: 3 }.
+//   Absent → behavior UNCHANGED (earliest-first slice at maxSlots, default 5) — regression-pinned.
+// In diverse mode:
+//   - generateSlots is called with maxSlots = CANDIDATE_CAP = 48 per resource (lifts the
+//     earliest-5 generation early-stop — the root of the homogeneity defect; slots.js itself
+//     is UNCHANGED, pool just passes the wider cap), searchDays unchanged (14).
+//   - after the existing byStart merge + alreadyRejected filter, SAMPLE `count` chips:
+//       pick 1: earliest candidate overall (the soonest option is always present);
+//       pick 2: earliest candidate in a DIFFERENT DAYPART, preferring pick-1's day ("dayparts
+//               first"); if pick-1's day has no other daypart, earliest different-daypart on any
+//               later day; if no other daypart exists at all, earliest on a DIFFERENT day;
+//       pick 3: earliest candidate in the remaining third daypart (same preference order);
+//               else earliest on a day not yet represented; else earliest remaining.
+//   - output sorted chronologically; if ≤count candidates remain after filtering, return all.
+//   - per-chip shape UNCHANGED (§B16a {slotId,start,end,label,candidateResourceIds}).
+// DAYPARTS — computed in userTimeZone (what the user sees; labels already render in it):
+//   morning: start < 12:00 · midday: 12:00 ≤ start < 15:00 · afternoon: start ≥ 15:00.
+// scheduling_propose requests diverse-3 UNCONDITIONALLY (no new flag; staging-only surface;
+//   revert = revert PR). ALL propose consumers inherit: deterministic flow, get_available_times,
+//   postFormOffer. A single-day §B16e date_window → diversity WITHIN that day (the algorithm
+//   degrades gracefully: dayparts → days → earliest). after_time/before_time constrained calls
+//   (all candidates one daypart) degrade to day-spread within that daypart.
+```
+
+### B18b — offer context envelope (ADDITIVE; §B16a OUT + `scheduling_slots` SSE + FE metadata)
+
+```js
+// propose OUT (§B16a amendment): context?: { duration_minutes,        // number (e.g. 30)
+//                                            conference_type,         // raw config value
+//                                            conference_label,        // mapped, may be null
+//                                            tz_label }               // may be null
+//   conference_label map: google_meet→'Google Meet' · zoom→'Zoom' · phone→'Phone call' ·
+//     in_person→'In person' · unknown→null. Built in scheduling-propose.js from the resolved
+//     AppointmentType row (duration_minutes, conference_type) — NO new data source.
+//   tz_label: human-friendly GENERIC zone name in userTimeZone (e.g. 'Central Time';
+//     Intl longGeneric, fallback to shortGeneric/short on RangeError). Never an IANA id in UI.
+// EVERY scheduling_slots emitter forwards it when present (newBookingFlow._propose,
+//   agentTools get_available_times executor, postFormOffer):
+//   { type:'scheduling_slots', slots, context?, session_id }
+// FE attaches it as metadata.schedulingContext and renders the joined non-null parts with ' · '
+//   above the chips: "30 min · Google Meet · Central Time".
+// FORWARD-COMPAT (schema discipline): FE tolerates missing context (old BSH); BSH tolerates a
+//   propose result without it (old BCH). Old-shape fixture tests REQUIRED on both readers.
+// PII: context carries NO identity — appointment metadata only.
+```
+
+### B18c — microcopy close (FE-rendered, deterministic; produced by WS-OP-FE)
+
+```
+// Under EVERY rendered slot-chip set the FE renders EXACTLY:
+//   "If none of these work, just tell me what does — like 'Thursday afternoon.'"
+// Rendered by SchedulingSlots.jsx (covers deterministic + agent paths at one point).
+// NO "More times" chip (operator decision 2026-06-12): typed refinement is the step-2 path;
+//   the §B16e day strip remains the automatic fallback for silent strugglers (unchanged).
+// Agent-side complement: §B17e rule 12 (no model-authored closing question after times; b17e.v6).
+// Deterministic-side complement: if the deterministic offer copy ends in a dead-end closing
+//   question ("Which works best?"), WS-OP-BE drops/softens it — the microcopy owns the close.
+```
+
+### B18d — analytics events (FE-only; existing envelope/endpoint; Analytics_Event_Processor is type-generic — NO backend change)
+
+```js
+// New eventConstants.js types (emitted via the EXISTING createAnalyticsEvent → notifyParentEvent
+// → queue/flush path; added to ALL_EVENT_TYPES):
+//   SCHEDULING_CHIP_CLICKED      { slot_id, position, slot_count }     // SchedulingSlots chip click
+//   SCHEDULING_DAY_STRIP_ENGAGED { day /* YYYY-MM-DD */, position }    // SchedulingDayPicker click
+//   SCHEDULING_TYPED_REFINEMENT  { slots_visible_count }               // free-text user send while the
+//                                                                      // latest assistant message carries
+//                                                                      // schedulingSlots (no scheduling_*
+//                                                                      // routing_metadata on the send)
+//   SCHEDULING_TIME_TO_BOOKED    { ms, offers_seen }                   // on the scheduling_booked SSE;
+//                                                                      // ms measured from the FIRST
+//                                                                      // scheduling_slots of the session
+//                                                                      // (in-memory; SKIP the event if no
+//                                                                      // first-offer timestamp, e.g. reload)
+// FE adds a scheduling_booked SSE handler (analytics-only; UI behavior unchanged — the booked
+//   narration stays server-driven).
+// HARD RULE (PII; pii-data-lifecycle advisory pass 2026-06-12): payload builders take SCALAR
+//   args — NEVER the slot object (slot-object growth is the live leak vector; the scheduling
+//   session row's roundRobinCursor already carries coordinator identity elsewhere). The jest
+//   gate is a KEY-ALLOWLIST + type/pattern assertion per event (exactly the contracted keys;
+//   counts/ms are numbers; slot_id matches ^slot#<ISO-8601>; day matches ^\d{4}-\d{2}-\d{2}$)
+//   PLUS the substring forbid (no message text, no email, no name, no '@').
+//   SCHEDULING_TYPED_REFINEMENT's builder signature accepts ONLY slots_visible_count — it
+//   cannot capture what isn't an argument. The client gate is the ONLY enforcement point in
+//   the pipeline (Analytics_Event_Processor persists payloads verbatim, no server allowlist).
+// Living-Inventory: the four event types are recorded on the picasso-session-events row
+//   (pii-inventory.md, same PR as this lock) — no tier change; the scheduling-only-subject
+//   DSAR-discovery deferral is named there (sub-phase F owns the underlying gap).
+// Purpose (operator ruling): these four events are the evidence base for the parked calendar-
+//   picker decision and the offer-shape tuning. Dashboard visualization is OUT OF SCOPE.
+```
+
+---
+
 ## C. Contract-change protocol
 1. A workstream that believes a contract is wrong/insufficient **stops and posts the issue to the integrator** (PR comment or status report) — it does NOT edit this file or fork the contract.
 2. The integrator decides: amend the contract (and notify every consuming workstream) or hold.
@@ -1244,3 +1372,5 @@ Agent turn routing, two tool schemas, session-state line, bounded loop, audit ev
 | 2026-06-12 | **§B16b + §B16d AMENDED — deterministic booking pipeline** (QA P0-1/P0-3 close; lambda#297/#298 + this FE PR). Scheduling CLICK turns bypass Bedrock (entry/select/confirm — the show_showcase pattern); the widget's `scheduling_action` (+`scheduling_slot_id`) signal is consumed deterministically BEFORE the LLM detector (detector = typed-text fallback only); NEW `scheduling_confirm` SSE = server-driven confirm card (FE local confirm removed); chat email capture for `confirming` sessions persists `attendee_email` on the session row (saveState whitelist +1; form-injection wins; capture never commits per §B14). |
 | 2026-06-12 | **§B17 LOCKED — agentic scheduling slice seam (integrator).** Agent-turn routing rule (typed text + in-flight session under AGENTIC_SCHEDULING; suggestion turns under AGENTIC_SCHEDULING_SUGGEST per suggestion gate; click turns stay §B16b deterministic). Two tool schemas: `get_available_times` (wraps §B16a `scheduling_propose`, emits `scheduling_slots`, includes `starts_at_iso` for model time-reasoning; authority note: model understands times but cannot supply them as inputs) + `request_booking_confirmation` (validates slot_id vs server-persisted candidates + EMAIL_SHAPE, saveState confirming + emits `scheduling_confirm` SSE — the SHIPPED confirm card; NEVER books). Session-state line format "[scheduling state: ... | staged slot: ... | email: known/unknown]". MAX_TOOL_ITERATIONS=3; overflow → warm-honest templated copy + `scheduling_notice` SSE. Audit events: `agent_tool_call` {tenant_id, session_id, tool, outcome, latency_ms, iteration} + `agent_turn_summary` {tenant_id, session_id, iterations, overflow, stop_reason} — no raw args, no email. Kill switches: per-tenant `AGENTIC_SCHEDULING` + `AGENTIC_SCHEDULING_SUGGEST` flags; global env `AGENTIC_SCHEDULING_DISABLED=true` override (bypasses both branches unconditionally). Rule: no tool books — commit remains the deterministic confirm-click path (§B16c / §B14). §B16a/§B16c consumed unchanged. §B16b/§B16d as amended 2026-06-12 are consumed by the agent (shared staging path). Consumed by: WS-AG-CORE (keystone), WS-AG-EVAL, WS-TRACKD-BE, WS-TRACKD-FE. |
 | 2026-06-12 | **§B17 AMENDED — governance + PII advisory pass (pre-build; integrator).** (1) **§B17g re-locked as an EXHAUSTIVE field allowlist:** `agent_tool_call` {tenant_id, session_id, tool (enum), outcome (enum: ok\|staged\|unknown_slot\|invalid_email\|no_availability\|lookup_failed\|overflow), latency_ms, iteration, slot_id?, date?, exclude_slot_ids?, email_present (bool)} + `agent_turn_summary` {tenant_id, session_id, iterations, stop_reason_sequence, overflow, prompt_version, model_id, flags_active} + NEW `suggestion_gate_decision` {tenant_id, session_id, offered, reason_codes[], suppression_category?} (category code, never raw text). FORBIDDEN in all events: raw attendee_email, **ANY email hash** (hashes are reversible pseudonymous data; session_id already joins to the single deletable copy), message/narration text, tool_result bodies; error logging = `err.name` only; jest '@'-free-log + state-line assertions required. (2) **§B17d** email segment pinned to exactly `email: known`/`email: unknown` — raw address never in the state line. (3) **§B17c tool 2** gains the anti-hallucination guard: attendee_email REJECTED unless verbatim in this session's user-side transcript or equal to the session row's captured attendee_email (Phase-0 #2). (4) **§B17f extended + retitled:** the sensitive-context suppression pre-check runs on EVERY agent turn (increments 1 AND 2), latches sticky per session, fails closed, ships with a non-empty default category list (trim-only; self-harm/suicide, abuse/neglect/CPS, DV, trafficking, runaway/homeless, medical emergency/overdose, psychiatric crisis, custody/legal, minor self-ID, grief/death); trip mid-flow → pause + crisis resources, no unprompted resume; minor self-ID stops email solicitation (tenant opt-in); suppressed-context users who ASK to book get the deterministic path with crisis-resource copy alongside (documented asymmetry); keyword lists language-bound (v2 gap). (5) **§B17e narration rules re-synced to the amended design-doc §5 prompt block** (rule 1 re-phrased positively — capabilities + honest-failure wording; new rules: post-staging "nothing is booked until Confirm", never echo the email (card displays it), say why the email is needed (calendar invite), never imply a human was already involved, no guarantee language on offered times). Consumers re-synced same-day (WS-AG-CORE + WS-AG-EVAL work-orders; pre-launch — no worker had built against the old shapes). |
+| 2026-06-12 | **§B17b AMENDED — history threading (records the SHIPPED lambda#303 shape; the owed amendment from the inc-1 close).** `messages` = `buildAgentMessages(conversationHistory, userText)`: bounded thread (last `MAX_HISTORY_MESSAGES = 12`), role-filtered, `{content}`/`{text}` tolerant, in-flight-turn dedup, same-role merge, opens with `user`, current text appended/merged last. Root cause it fixed: live-eval A9 (bare-email turn dead — model had no conversation context, 0 tool calls). No consumer re-sync (records shipped behavior). |
+| 2026-06-12 | **§B18 LOCKED — offer-presentation seam (integrator; operator-minted 2026-06-12).** B18a diverse-3 sampling (pool.select optional `sampling:{mode:'daypart-diverse',count:3}`; CANDIDATE_CAP=48 generation; dayparts in userTimeZone morning/<12 · midday/12–15 · afternoon/≥15; picks = earliest, then different-daypart preferring same day, then third daypart/day-spread; propose requests it unconditionally — all consumers inherit). B18b ADDITIVE `context` envelope (§B16a OUT + every `scheduling_slots` emitter + FE `metadata.schedulingContext`; "30 min · Google Meet · Central Time"; old-shape fixture tests both sides). B18c FE-rendered microcopy close (exact string; NO "More times" chip per operator decision; §B17e rule 12 / b17e.v6 complement). B18d four FE-only analytics events (CHIP_CLICKED / DAY_STRIP_ENGAGED / TYPED_REFINEMENT / TIME_TO_BOOKED; existing envelope+endpoint; processor type-generic so no BE change; HARD no-PII rule, typed text NEVER captured). Calendar picker stays PARKED pending B18d evidence. Consumed by WS-OP-BE (lambda) + WS-OP-FE (picasso). |
