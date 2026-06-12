@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Your October, by the numbers — MyRecruiter monthly recap</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --emerald-50:#ecfdf5; --emerald-100:#d1fae5; --emerald-200:#a7f3d0; --emerald-400:#34d399;
+    --emerald-500:#50C878; --emerald-600:#059669; --emerald-700:#047857; --emerald-800:#065f46; --emerald-900:#064e3b;
+    --slate-50:#f8fafc; --slate-100:#f1f5f9; --slate-200:#e2e8f0; --slate-400:#94a3b8;
+    --slate-500:#64748b; --slate-600:#475569; --slate-900:#0f172a;
+    --amber-400:#fbbf24;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Plus Jakarta Sans',system-ui,sans-serif; background:var(--slate-100); color:var(--slate-900); padding:36px 16px 56px; }
+  .preheader { max-width:620px; margin:0 auto 10px; font-size:.7rem; color:var(--slate-400); text-align:center; }
+  .email { max-width:620px; margin:0 auto; background:#fff; border-radius:20px; overflow:hidden; border:1px solid var(--slate-200); box-shadow:0 4px 24px rgba(15,23,42,.08); }
+  .inner { padding:0 36px; }
+
+  /* brand row */
+  .brand { display:flex; align-items:center; gap:10px; padding:26px 36px 0; }
+  .brand-mark { width:30px; height:30px; border-radius:8px; background:var(--emerald-500); display:flex; align-items:center; justify-content:center; }
+  .brand-mark svg { width:16px; height:16px; stroke:#fff; }
+  .brand span { font-size:.78rem; font-weight:800; letter-spacing:-.01em; }
+  .brand em { font-style:normal; font-size:.66rem; font-weight:600; color:var(--slate-400); margin-left:auto; }
+
+  /* title */
+  .title { padding:22px 36px 6px; }
+  .title .for { font-size:.66rem; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:var(--emerald-600); }
+  .title h1 { font-size:1.85rem; font-weight:800; letter-spacing:-.025em; line-height:1.12; margin-top:6px; }
+  .title p { font-size:.88rem; color:var(--slate-500); margin-top:8px; }
+
+  /* hero */
+  .hero {
+    margin:22px 36px 0; border-radius:18px; padding:30px 28px 26px;
+    background:linear-gradient(150deg, var(--slate-900) 0%, var(--emerald-900) 70%, var(--emerald-800) 100%);
+    color:#fff; position:relative; overflow:hidden;
+  }
+  .hero .moon { position:absolute; top:22px; right:26px; width:44px; height:44px; opacity:.9; }
+  .hero .kicker { font-size:.64rem; font-weight:700; letter-spacing:.14em; text-transform:uppercase; color:var(--emerald-200); }
+  .hero .big { font-size:4.4rem; font-weight:800; letter-spacing:-.04em; line-height:1; margin:10px 0 4px; }
+  .hero .what { font-size:1rem; font-weight:600; color:var(--emerald-100); line-height:1.45; max-width:380px; }
+  .hero .chips { display:flex; gap:8px; margin-top:18px; flex-wrap:wrap; }
+  .hero .chip { font-size:.66rem; font-weight:700; background:rgba(255,255,255,.12); border:1px solid rgba(255,255,255,.18); border-radius:999px; padding:5px 12px; color:#fff; }
+  .hero .chip b { color:var(--emerald-200); }
+
+  /* big three -->
+  */
+  .three { display:flex; gap:12px; padding:22px 36px 0; }
+  .stat { flex:1; border:1px solid var(--slate-200); border-radius:14px; padding:16px 14px 14px; text-align:center; }
+  .stat b { display:block; font-size:1.7rem; font-weight:800; letter-spacing:-.02em; }
+  .stat .up { font-size:.68rem; font-weight:800; color:var(--emerald-600); }
+  .stat span { display:block; font-size:.66rem; font-weight:600; color:var(--slate-500); margin-top:4px; line-height:1.4; }
+  .stat.hours { background:var(--emerald-50); border-color:var(--emerald-200); }
+  .stat.hours b { color:var(--emerald-800); }
+
+  /* MVP */
+  .mvp {
+    margin:22px 36px 0; border:1px solid var(--emerald-200); border-radius:16px;
+    background:linear-gradient(180deg,#fff 30%, var(--emerald-50)); padding:20px 22px; display:flex; gap:16px; align-items:center;
+  }
+  .mvp .trophy { width:46px; height:46px; flex:none; border-radius:12px; background:var(--emerald-100); display:flex; align-items:center; justify-content:center; font-size:1.3rem; }
+  .mvp .k { font-size:.62rem; font-weight:800; letter-spacing:.12em; text-transform:uppercase; color:var(--emerald-700); }
+  .mvp h3 { font-size:1.02rem; font-weight:800; letter-spacing:-.01em; margin:3px 0 2px; }
+  .mvp p { font-size:.78rem; color:var(--slate-500); line-height:1.5; }
+  .mvp p b { color:var(--emerald-700); }
+
+  /* topics */
+  .topics { padding:26px 36px 0; }
+  .sec-k { font-size:.64rem; font-weight:800; letter-spacing:.12em; text-transform:uppercase; color:var(--slate-400); margin-bottom:12px; }
+  .tbar { margin-bottom:12px; }
+  .tbar .lab { display:flex; justify-content:space-between; font-size:.78rem; margin-bottom:5px; }
+  .tbar .lab b { font-weight:700; }
+  .tbar .lab span { color:var(--slate-400); font-weight:600; font-size:.72rem; }
+  .tbar .track { height:10px; border-radius:999px; background:var(--slate-100); position:relative; }
+  .tbar .track i { position:absolute; inset:0; width:var(--w); border-radius:999px; background:var(--emerald-500); }
+  .tbar.t2 .track i { background:var(--emerald-400); }
+  .tbar.t3 .track i { background:var(--emerald-200); }
+  .topics .note { font-size:.74rem; color:var(--slate-500); margin-top:10px; }
+  .topics .note b { color:var(--emerald-700); }
+
+  /* superlatives */
+  .supers { margin:24px 36px 0; border:1px dashed var(--slate-200); border-radius:14px; padding:16px 20px; display:flex; gap:0; }
+  .sup { flex:1; padding:0 14px; border-right:1px solid var(--slate-100); }
+  .sup:first-child { padding-left:0; }
+  .sup:last-child { border-right:none; }
+  .sup .e { font-size:1.05rem; }
+  .sup b { display:block; font-size:.8rem; font-weight:800; margin-top:4px; }
+  .sup span { font-size:.66rem; color:var(--slate-400); line-height:1.4; display:block; margin-top:2px; }
+
+  /* cta */
+  .cta { text-align:center; padding:30px 36px 8px; }
+  .btn {
+    display:inline-block; background:var(--emerald-500); color:#fff; font-weight:800; font-size:.9rem;
+    border-radius:999px; padding:14px 34px; box-shadow:0 8px 20px rgba(80,200,120,.35);
+  }
+  .cta p { font-size:.74rem; color:var(--slate-400); margin-top:12px; }
+  .cta p b { color:var(--slate-600); }
+
+  .foot { text-align:center; font-size:.64rem; color:var(--slate-400); padding:22px 36px 26px; line-height:1.6; border-top:1px solid var(--slate-100); margin-top:22px; }
+  .colophon { max-width:620px; margin:14px auto 0; text-align:center; font-size:.66rem; color:var(--slate-400); }
+</style>
+</head>
+<body>
+  <div class="preheader">Your mission worked nights this month. Here's the proof — in one scroll.</div>
+
+  <div class="email">
+
+    <div class="brand">
+      <div class="brand-mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="3 17 9 11 13 15 21 7"></polyline><polyline points="15 7 21 7 21 13"></polyline>
+        </svg>
+      </div>
+      <span>MyRecruiter</span>
+      <em>Monthly recap · October 2025</em>
+    </div>
+
+    <div class="title">
+      <div class="for">Prepared for Austin Angels</div>
+      <h1>Your October,<br>by the numbers.</h1>
+      <p>While your team was doing the mission, your AI team member was answering the door. Here's what happened.</p>
+    </div>
+
+    <!-- HERO -->
+    <div class="hero">
+      <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="#a7f3d0" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+      </svg>
+      <div class="kicker">The night shift you never had to staff</div>
+      <div class="big">428</div>
+      <div class="what">conversations happened <b>after your office closed</b> — nights, weekends, and one 11:42 PM volunteer application.</div>
+      <div class="chips">
+        <span class="chip"><b>41%</b> of all engagement</span>
+        <span class="chip">top <b>13%</b> of nonprofits your size</span>
+      </div>
+    </div>
+
+    <!-- BIG THREE -->
+    <div class="three">
+      <div class="stat">
+        <b>1,045</b><span class="up">▲ 18% vs September</span>
+        <span>conversations across web, social, QR &amp; links</span>
+      </div>
+      <div class="stat">
+        <b>142</b><span class="up">▲ 21%</span>
+        <span>leads delivered to your team, ready for follow-up</span>
+      </div>
+      <div class="stat hours">
+        <b>~140 hrs</b><span class="up">≈ 3.5 work-weeks</span>
+        <span>of conversations your staff never had to take</span>
+      </div>
+    </div>
+
+    <!-- MVP -->
+    <div class="mvp">
+      <div class="trophy">🏆</div>
+      <div>
+        <div class="k">Channel MVP</div>
+        <h3>QR codes at your in-person events</h3>
+        <p>Scans turned into leads at <b>1.7× your website's rate</b> — 29 leads from 136 conversations. The gala table tents and the volunteer fair banner did the heavy lifting.</p>
+      </div>
+    </div>
+
+    <!-- TOPICS -->
+    <div class="topics">
+      <div class="sec-k">What people asked about</div>
+      <div class="tbar">
+        <div class="lab"><b>Volunteering</b><span>340 conversations</span></div>
+        <div class="track"><i style="--w:100%"></i></div>
+      </div>
+      <div class="tbar t2">
+        <div class="lab"><b>Program eligibility</b><span>210 conversations</span></div>
+        <div class="track"><i style="--w:62%"></i></div>
+      </div>
+      <div class="tbar t3">
+        <div class="lab"><b>Hours &amp; location</b><span>180 conversations</span></div>
+        <div class="track"><i style="--w:53%"></i></div>
+      </div>
+      <div class="note">Quiet overachiever: <b>donation questions converted at 35%</b> — the highest of any topic.</div>
+    </div>
+
+    <!-- SUPERLATIVES -->
+    <div class="supers">
+      <div class="sup"><span class="e">⚡</span><b>Fastest application</b><span>9 minutes, start to finish</span></div>
+      <div class="sup"><span class="e">📅</span><b>58% self-booked</b><span>leads who scheduled themselves — zero waiting</span></div>
+      <div class="sup"><span class="e">🦉</span><b>Busiest hour</b><span>Tuesdays, 8–9 PM</span></div>
+    </div>
+
+    <!-- CTA -->
+    <div class="cta">
+      <span class="btn">Read your full October briefing →</span>
+      <p><b>Board meeting coming up?</b> The briefing exports as a board-ready PDF in one click.</p>
+    </div>
+
+    <div class="foot">
+      You're receiving this because Mission Intelligence is enabled for Austin Angels.<br>
+      Every number is something MyRecruiter directly witnessed. ·
+      Monthly recap settings · Unsubscribe
+    </div>
+  </div>
+
+  <div class="colophon">Infographic email concept v1 · 2026-06-11 · all numbers illustrative · production version would be table-based MJML for email-client compatibility</div>
+</body>
+</html>

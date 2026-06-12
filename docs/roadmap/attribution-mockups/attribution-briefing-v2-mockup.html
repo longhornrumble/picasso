@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mission Briefing — October 2025 · Mission Intelligence</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --emerald-50:#ecfdf5; --emerald-100:#d1fae5; --emerald-200:#a7f3d0; --emerald-500:#50C878;
+    --emerald-600:#059669; --emerald-700:#047857; --emerald-800:#065f46;
+    --slate-50:#f8fafc; --slate-100:#f1f5f9; --slate-200:#e2e8f0; --slate-300:#cbd5e1;
+    --slate-400:#94a3b8; --slate-500:#64748b; --slate-600:#475569; --slate-700:#334155; --slate-900:#0f172a;
+    --amber-50:#fffbeb; --amber-600:#d97706;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family:'Plus Jakarta Sans', system-ui, sans-serif;
+    background:var(--slate-100); color:var(--slate-900);
+    padding:40px 20px 64px; line-height:1.6;
+  }
+  .doc {
+    max-width:780px; margin:0 auto; background:#fff;
+    border:1px solid var(--slate-200); border-radius:6px;
+    box-shadow:0 2px 16px rgba(15,23,42,.06);
+    padding:58px 68px 48px;
+  }
+
+  /* ---------- masthead ---------- */
+  .masthead { display:flex; justify-content:space-between; align-items:flex-start; gap:20px; padding-bottom:26px; border-bottom:2px solid var(--slate-900); }
+  .eyebrow { font-size:.68rem; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:var(--emerald-600); }
+  h1 { font-size:2rem; font-weight:800; letter-spacing:-.02em; line-height:1.15; margin-top:6px; }
+  .prepared { font-size:.78rem; color:var(--slate-500); margin-top:8px; }
+  .actions { display:flex; flex-direction:column; gap:8px; align-items:flex-end; flex:none; padding-top:4px; }
+  .btn-primary {
+    background:var(--emerald-500); color:#fff; font-weight:700; font-size:.82rem;
+    border-radius:999px; padding:11px 22px; white-space:nowrap;
+    box-shadow:0 6px 16px rgba(80,200,120,.3);
+  }
+  .btn-quiet { font-size:.74rem; font-weight:600; color:var(--slate-500); }
+  .btn-quiet b { color:var(--emerald-600); }
+
+  /* ---------- lede ---------- */
+  .lede { padding:34px 0 8px; font-size:1.22rem; line-height:1.75; color:var(--slate-700); font-weight:500; }
+  .lede .n { color:var(--emerald-700); font-weight:800; }
+  .lede .dark { color:var(--slate-900); font-weight:700; }
+
+  /* ---------- sections ---------- */
+  section { padding:30px 0 6px; }
+  .sec-eyebrow { font-size:.66rem; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:var(--slate-400); display:flex; align-items:center; gap:10px; }
+  .sec-eyebrow::after { content:""; flex:1; height:1px; background:var(--slate-200); }
+  .sec-eyebrow .no { color:var(--emerald-600); }
+  h2 { font-size:1.18rem; font-weight:800; letter-spacing:-.01em; margin:10px 0 10px; }
+  p.body { font-size:.95rem; color:var(--slate-600); margin-bottom:12px; }
+  p.body .n { color:var(--slate-900); font-weight:700; }
+  p.body .pos { color:var(--emerald-700); font-weight:700; }
+
+  /* funnel sentence */
+  .flow { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:16px 0 8px; }
+  .flow .step { background:var(--slate-50); border:1px solid var(--slate-200); border-radius:9px; padding:8px 14px; text-align:center; }
+  .flow .step b { display:block; font-size:1.05rem; font-weight:800; letter-spacing:-.01em; }
+  .flow .step span { font-size:.64rem; font-weight:600; text-transform:uppercase; letter-spacing:.06em; color:var(--slate-400); }
+  .flow .step.final { background:var(--emerald-50); border-color:var(--emerald-200); }
+  .flow .step.final b { color:var(--emerald-800); }
+  .flow .arrow { color:var(--slate-300); font-weight:700; }
+  .flow-note { font-size:.72rem; color:var(--slate-400); }
+
+  /* value ledger */
+  .ledger { display:flex; flex-direction:column; gap:0; margin:14px 0 10px; border:1px solid var(--slate-200); border-radius:12px; overflow:hidden; }
+  .tier-row { display:flex; gap:18px; padding:15px 18px; align-items:baseline; border-bottom:1px solid var(--slate-100); }
+  .tier-row:last-child { border-bottom:none; }
+  .tier-tag { flex:none; width:96px; font-size:.62rem; font-weight:800; letter-spacing:.09em; text-transform:uppercase; padding-top:2px; }
+  .tier-tag.measured { color:var(--emerald-700); }
+  .tier-tag.estimated { color:var(--amber-600); }
+  .tier-tag.confirmed { color:var(--slate-400); }
+  .tier-body { font-size:.88rem; color:var(--slate-600); }
+  .tier-body b { color:var(--slate-900); }
+  .tier-body .big { font-size:1.3rem; font-weight:800; color:var(--slate-900); margin-right:6px; }
+  .tier-row.estimated-row { background:var(--amber-50); }
+  .math { font-size:.74rem; color:var(--slate-400); margin-top:3px; }
+
+  /* story timeline */
+  .story { border-left:3px solid var(--emerald-500); background:var(--emerald-50); border-radius:0 12px 12px 0; padding:18px 22px 14px; margin:14px 0 8px; }
+  .story-kicker { font-size:.66rem; font-weight:800; letter-spacing:.1em; text-transform:uppercase; color:var(--emerald-700); margin-bottom:10px; }
+  .moment { display:flex; gap:14px; padding:5px 0; }
+  .moment .t { flex:none; width:74px; font-size:.72rem; font-weight:700; color:var(--emerald-700); padding-top:2px; }
+  .moment .what { font-size:.88rem; color:var(--slate-700); }
+  .moment .what b { color:var(--slate-900); }
+  .story-coda { font-size:.82rem; color:var(--emerald-800); font-weight:700; margin-top:10px; padding-top:10px; border-top:1px solid var(--emerald-200); }
+
+  /* channels */
+  .channel-list { display:flex; flex-direction:column; margin-top:4px; }
+  .ch { padding:13px 0; border-bottom:1px solid var(--slate-100); }
+  .ch:last-child { border-bottom:none; }
+  .ch-top { display:flex; justify-content:space-between; align-items:baseline; gap:12px; }
+  .ch-name { font-size:.92rem; font-weight:700; }
+  .ch-stat { font-size:.78rem; color:var(--slate-500); white-space:nowrap; }
+  .ch-stat b { color:var(--emerald-700); font-weight:800; font-size:.88rem; }
+  .ch-read { font-size:.82rem; color:var(--slate-500); margin-top:3px; }
+  .ch-bar { height:4px; border-radius:999px; background:var(--slate-100); margin-top:8px; position:relative; }
+  .ch-bar i { position:absolute; inset:0; width:var(--w); background:var(--emerald-500); border-radius:999px; }
+
+  /* recommendations */
+  .recs { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-top:6px; }
+  .rec { border:1px solid var(--slate-200); border-radius:12px; padding:16px 16px 14px; display:flex; flex-direction:column; gap:8px; }
+  .rec-tag { font-size:.6rem; font-weight:800; letter-spacing:.1em; text-transform:uppercase; border-radius:999px; padding:3px 10px; align-self:flex-start; }
+  .rec.go { border-color:var(--emerald-200); background:linear-gradient(180deg,#fff 30%, var(--emerald-50)); }
+  .rec.go .rec-tag { background:var(--emerald-100); color:var(--emerald-800); }
+  .rec.look .rec-tag { background:#fef3c7; color:#92400e; }
+  .rec.wait .rec-tag { background:var(--slate-100); color:var(--slate-500); }
+  .rec h3 { font-size:.9rem; font-weight:700; line-height:1.35; }
+  .rec p { font-size:.76rem; color:var(--slate-500); line-height:1.5; }
+  .rec .why { font-size:.68rem; color:var(--slate-400); border-top:1px solid var(--slate-100); padding-top:8px; margin-top:auto; }
+  .rec .why b { color:var(--slate-500); }
+
+  /* time given back */
+  .time-strip { display:flex; gap:0; border:1px solid var(--slate-200); border-radius:12px; overflow:hidden; margin-top:6px; }
+  .time-cell { flex:1; padding:16px 18px; border-right:1px solid var(--slate-100); }
+  .time-cell:last-child { border-right:none; }
+  .time-cell b { display:block; font-size:1.35rem; font-weight:800; letter-spacing:-.01em; color:var(--slate-900); }
+  .time-cell span { font-size:.74rem; color:var(--slate-500); line-height:1.45; display:block; margin-top:3px; }
+  .time-cell.hero { background:var(--emerald-800); }
+  .time-cell.hero b { color:#fff; }
+  .time-cell.hero span { color:var(--emerald-200); }
+
+  /* footer */
+  .epistemic {
+    margin-top:34px; border-top:2px solid var(--slate-900); padding-top:16px;
+    font-size:.76rem; color:var(--slate-500); line-height:1.65;
+  }
+  .epistemic b { color:var(--slate-700); }
+  .colophon { text-align:center; font-size:.68rem; color:var(--slate-400); padding-top:22px; }
+
+  @media (max-width:700px) {
+    .doc { padding:34px 26px; }
+    .recs { grid-template-columns:1fr; }
+    .time-strip { flex-direction:column; }
+    .time-cell { border-right:none; border-bottom:1px solid var(--slate-100); }
+    .masthead { flex-direction:column; }
+    .actions { align-items:flex-start; }
+  }
+</style>
+</head>
+<body>
+<div class="doc">
+
+  <!-- ============ MASTHEAD ============ -->
+  <div class="masthead">
+    <div>
+      <div class="eyebrow">Mission Intelligence · Prepared for Austin Angels</div>
+      <h1>Your October Briefing</h1>
+      <div class="prepared">From your AI team member · covering Oct 1 – Oct 31, 2025 · 4 channels measured</div>
+    </div>
+    <div class="actions">
+      <span class="btn-primary">Download board report</span>
+      <span class="btn-quiet">prefer charts? <b>open the numbers →</b></span>
+    </div>
+  </div>
+
+  <!-- ============ LEDE ============ -->
+  <div class="lede">
+    In October, MyRecruiter held <span class="n">1,045 conversations</span> on your behalf —
+    <span class="n">428 of them</span> after your office had closed for the day. Those conversations
+    became <span class="n">142 leads</span> delivered to your team, and absorbed
+    <span class="n">~140 staff-hours</span> of conversation — three and a half work-weeks of coverage
+    you never had to hire. Your best investment this month wasn't digital at all:
+    <span class="dark">the QR codes at your in-person events out-recruited your website, nearly two to one.</span>
+  </div>
+
+  <!-- ============ 01 WHAT HAPPENED ============ -->
+  <section>
+    <div class="sec-eyebrow"><span class="no">01</span> What happened</div>
+    <h2>People reached out. Most of them got what they came for.</h2>
+    <p class="body">
+      Of the 1,045 people who started a conversation, <span class="n">612 engaged deeply</span> —
+      they clicked a resource, explored a program, or went past surface questions.
+      <span class="n">287 began an application</span>, answering questions right in the conversation,
+      and <span class="n">142 finished</span> — completing the handoff to your team.
+      Volunteering was the most common reason people came (340 conversations), and people who asked about
+      <span class="pos">donating converted at the highest rate of any topic — 35%</span>.
+    </p>
+    <div class="flow">
+      <div class="step"><b>1,045</b><span>conversations</span></div>
+      <span class="arrow">→</span>
+      <div class="step"><b>612</b><span>engaged</span></div>
+      <span class="arrow">→</span>
+      <div class="step"><b>287</b><span>applications started</span></div>
+      <span class="arrow">→</span>
+      <div class="step final"><b>142</b><span>leads delivered</span></div>
+    </div>
+    <div class="flow-note">Same four stages on every channel — website, Messenger &amp; Instagram, QR codes, campaign links.</div>
+  </section>
+
+  <!-- ============ 02 WHAT IT WAS WORTH ============ -->
+  <section>
+    <div class="sec-eyebrow"><span class="no">02</span> What it was worth</div>
+    <h2>Your team never worked a night shift. Your mission did.</h2>
+    <div class="time-strip">
+      <div class="time-cell hero">
+        <b>428</b>
+        <span>conversations held while your office was closed — nights, weekends, 11 PMs</span>
+      </div>
+      <div class="time-cell">
+        <b>~140 hrs</b>
+        <span>of conversations your team never had to take — staff-hours you didn't hire for</span>
+      </div>
+      <div class="time-cell">
+        <b>3.5 weeks</b>
+        <span>of full-time coverage, absorbed by your AI team member this month</span>
+      </div>
+    </div>
+    <p class="body" style="margin-top:14px;">
+      And the leads rarely waited either: <span class="n">58% booked their own appointment</span> — zero wait
+      on a human. Median first response for the rest: <span class="n">22 hours</span>, visible in your Lead Workspace.
+    </p>
+    <p class="body" style="font-size:.8rem; color:var(--slate-400);">
+      When your team marks outcomes in the Lead Workspace ("became a volunteer", "donated"), this section will
+      also report <b>confirmed outcomes</b> — not just deliveries.
+    </p>
+  </section>
+
+  <!-- ============ 03 ONE STORY ============ -->
+  <section>
+    <div class="sec-eyebrow"><span class="no">03</span> One story from this month</div>
+    <h2>Tuesday, October 14th. Your office had been closed for five hours.</h2>
+    <div class="story">
+      <div class="story-kicker">One of October's 142 — anonymized</div>
+      <div class="moment"><div class="t">9:47 PM</div><div class="what">Someone scanned the QR code on the <b>volunteer fair banner</b> and a conversation opened on their phone.</div></div>
+      <div class="moment"><div class="t">9:48 PM</div><div class="what">They asked what <b>Love Box</b> actually involves. They got a real answer, and asked three more questions.</div></div>
+      <div class="moment"><div class="t">9:58 PM</div><div class="what">They started the volunteer application — <b>nine questions, answered in conversation</b>, no form to find.</div></div>
+      <div class="moment"><div class="t">10:09 PM</div><div class="what">Application complete. They <b>booked themselves</b> into Thursday's 10 AM intro call. Your team was notified the same minute.</div></div>
+      <div class="story-coda">Human staff time spent: zero — until the handshake. Without the QR code, this person goes home and is lost.</div>
+    </div>
+  </section>
+
+  <!-- ============ 04 WHERE THEY CAME FROM ============ -->
+  <section>
+    <div class="sec-eyebrow"><span class="no">04</span> Where they came from</div>
+    <h2>The website does the volume. The events do the converting.</h2>
+    <div class="channel-list">
+      <div class="ch">
+        <div class="ch-top"><span class="ch-name">Website widget</span><span class="ch-stat">660 conversations → 82 leads · <b>12.4%</b></span></div>
+        <div class="ch-read">Your workhorse — steady volume, reliable conversion. Nothing to fix here.</div>
+        <div class="ch-bar"><i style="--w:58%"></i></div>
+      </div>
+      <div class="ch">
+        <div class="ch-top"><span class="ch-name">QR codes &amp; standalone link</span><span class="ch-stat">136 conversations → 29 leads · <b>21.3%</b></span></div>
+        <div class="ch-read">Your most efficient recruiter: people who scan at an event are already half-convinced. The gala and the volunteer fair did most of this.</div>
+        <div class="ch-bar"><i style="--w:100%"></i></div>
+      </div>
+      <div class="ch">
+        <div class="ch-top"><span class="ch-name">Messenger &amp; Instagram</span><span class="ch-stat">210 conversations → 24 leads · <b>11.4%</b></span></div>
+        <div class="ch-read">Solid and growing — these are people who found you on social and never had to leave it to talk to you.</div>
+        <div class="ch-bar"><i style="--w:53%"></i></div>
+      </div>
+      <div class="ch">
+        <div class="ch-top"><span class="ch-name">Campaign links</span><span class="ch-stat">39 conversations → 7 leads · <b>too early to judge</b></span></div>
+        <div class="ch-read">First month with minted links in the newsletter. Not enough data yet to call it — we'll tell you when there is.</div>
+        <div class="ch-bar"><i style="--w:10%"></i></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 05 WHAT TO DO NEXT ============ -->
+  <section>
+    <div class="sec-eyebrow"><span class="no">05</span> What to do next</div>
+    <h2>Three moves, in order of confidence.</h2>
+    <div class="recs">
+      <div class="rec go">
+        <span class="rec-tag">Double down</span>
+        <h3>Put a QR code at every in-person event.</h3>
+        <p>Event scans converted at 1.7× your website rate. Mint a separate code per placement so next month we can tell you which table, banner, or flyer did the work.</p>
+        <div class="why"><b>Why we say this:</b> 29 leads from 136 conversations — your highest rate, on real volume.</div>
+      </div>
+      <div class="rec look">
+        <span class="rec-tag">Worth a look</span>
+        <h3>Program-eligibility answers may be turning people away.</h3>
+        <p>210 people asked if they qualify; only 10 became leads. Either the answer screens correctly — or it discourages people who would qualify. We can't tell from here. You can.</p>
+        <div class="why"><b>Why we say this:</b> 4.8% conversion vs. 25.9% for volunteering questions.</div>
+      </div>
+      <div class="rec wait">
+        <span class="rec-tag">Too early</span>
+        <h3>Don't judge the newsletter links yet.</h3>
+        <p>39 conversations is below the bar where we're willing to draw conclusions. Keep them running; we'll flag it the moment the data can speak.</p>
+        <div class="why"><b>Why we say this:</b> we hold insights until n ≥ 50 per channel.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ EPISTEMIC FOOTER ============ -->
+  <div class="epistemic">
+    <b>How to read this briefing:</b> every number here is something MyRecruiter directly witnessed —
+    a conversation it held, a question it answered, an application it collected, a booking it made.
+    We don't claim credit for things we can't see, and we don't guess: there are no estimated dollars
+    in this briefing — <b>time is measured, not modeled</b> — and recommendations are held back until
+    the sample size can support them. When your team confirms outcomes in the Lead Workspace,
+    deliveries become confirmed outcomes.
+  </div>
+  <div class="colophon">MyRecruiter Mission Intelligence · Briefing concept v2.1 (no dollars — measured time + confirmed outcomes; value section promoted to §02, briefing closes on "what to do next") · 2026-06-12 · all numbers illustrative</div>
+</div>
+</body>
+</html>
