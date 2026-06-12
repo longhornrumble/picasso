@@ -2023,6 +2023,24 @@ module "lambda_attribution_aggregator_staging" {
   tenant_config_bucket_name = module.tenant_config_staging[0].bucket_name
 }
 
+# Attribution_Recap_Generator -- Wave-2 WS-H.
+# Runs monthly (1st of month 14:00 UTC), reads prior-month aggregates from
+# picasso-attribution-aggregates, and dispatches recap emails via send_email.
+# RECAP_SEND_ENABLED defaults to "false" (safety gate; flip after consent advisory).
+module "lambda_attribution_recap_generator_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/lambda-attribution-recap-generator-staging"
+
+  attribution_aggregates_table_arn  = module.ddb_attribution_aggregates_staging[0].table_arn
+  attribution_aggregates_table_name = module.ddb_attribution_aggregates_staging[0].table_name
+
+  tenant_config_bucket_arn  = module.tenant_config_staging[0].bucket_arn
+  tenant_config_bucket_name = module.tenant_config_staging[0].bucket_name
+
+  send_email_function_arn  = module.lambda_send_email_staging[0].function_arn
+  send_email_function_name = module.lambda_send_email_staging[0].function_name
+}
+
 # Dub secret resource policy -- restricts GetSecretValue to the two
 # attribution Lambda exec roles only. Root-level (not in the secrets
 # module) to avoid the circular dep: policy needs role ARNs; Lambda
