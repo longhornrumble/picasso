@@ -34,7 +34,7 @@ import { config as envConfig } from '../config/environment';
 import { streamingRegistry } from '../utils/streamingRegistry';
 import { createConversationManager } from '../utils/conversationManager';
 import { getBindingSessionId } from '../utils/bindingSession';
-import { MESSAGE_SENT, MESSAGE_RECEIVED } from '../analytics/eventConstants';
+import { MESSAGE_SENT, MESSAGE_RECEIVED, CONVERSATION_STARTED } from '../analytics/eventConstants';
 
 /**
  * Emit analytics event via global notifyParentEvent
@@ -405,6 +405,8 @@ export default function StreamingChatProvider({ children }) {
   const pendingCtasRef = useRef(null); // Fix: Use ref instead of closure variable
   const pendingShowcaseCardRef = useRef(null); // Ref for staging showcase card
   const pendingSuggestedChipsRef = useRef(null); // v3.0: AI-generated follow-up chips
+  // C1.1: emit CONVERSATION_STARTED exactly once per session (first user message)
+  const conversationStartedRef = useRef(false);
 
   // Get config
   const { config: tenantConfig } = useConfig();
@@ -611,6 +613,15 @@ export default function StreamingChatProvider({ children }) {
         content_preview: userInput.substring(0, 500),
         content_length: userInput.length,
         step_number: stepNumber
+      });
+    }
+
+    // C1.1: CONVERSATION_STARTED — once per session, on first user message
+    if (!conversationStartedRef.current) {
+      conversationStartedRef.current = true;
+      emitAnalyticsEvent(CONVERSATION_STARTED, {
+        entry_point_id: window.analyticsState?.attribution?.entry_point_id ?? null,
+        attribution: window.analyticsState?.attribution ?? null
       });
     }
 
@@ -1341,6 +1352,9 @@ export default function StreamingChatProvider({ children }) {
     if (clearCompletionState) {
       clearCompletionState();
     }
+
+    // Reset CONVERSATION_STARTED guard so next session emits again
+    conversationStartedRef.current = false;
 
     // Reset session - generate new analytics-compatible session ID
     // Use same format as analytics (sess_<timestamp36>_<random>) for form→conversation linking

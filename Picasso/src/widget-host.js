@@ -75,6 +75,16 @@ import { getBindingSessionId } from './utils/bindingSession.js';
      * Called once during widget initialization.
      * @returns {Object} Attribution data object
      */
+    // C2: Validate and capture ?ep= entry-point id from the page URL.
+    // Regex locked by C2: ^ep_[0-9A-Za-z]{8,64}$
+    getEntryPointId() {
+      const raw = this.getUrlParam('ep');
+      if (raw && /^ep_[0-9A-Za-z]{8,64}$/.test(raw)) {
+        return raw;
+      }
+      return null;
+    },
+
     captureAttribution() {
       const attribution = {
         // GA4 session stitching key
@@ -91,6 +101,9 @@ import { getBindingSessionId } from './utils/bindingSession.js';
         gclid: this.getUrlParam('gclid'),   // Google Ads
         fbclid: this.getUrlParam('fbclid'), // Facebook Ads
 
+        // C2: Entry-point id (null when absent or malformed)
+        entry_point_id: this.getEntryPointId(),
+
         // Referrer and landing page
         referrer: document.referrer || null,
         landing_page: window.location.pathname,
@@ -104,10 +117,11 @@ import { getBindingSessionId } from './utils/bindingSession.js';
                             attribution.utm_source ||
                             attribution.referrer;
       if (hasAttribution) {
-        console.log('📊 Attribution captured:', {
+        console.log('[Picasso] Attribution captured:', {
           ga_client_id: attribution.ga_client_id ? '✓' : '✗',
           utm_source: attribution.utm_source || '(none)',
           utm_medium: attribution.utm_medium || '(none)',
+          entry_point_id: attribution.entry_point_id || '(none)',
           referrer: attribution.referrer ? new URL(attribution.referrer).hostname : '(direct)'
         });
       }
@@ -134,6 +148,11 @@ import { getBindingSessionId } from './utils/bindingSession.js';
       this.createIframe();
       this.setupEventListeners();
       this.setupResizeObserver();
+      // C1.3: emit PAGE_VIEW reach ping from loader (independent of iframe).
+      // emitReachPing() is async — it fetches the S3 tenant config first so
+      // the operator-side REACH_PING kill switch (C8.9 / F3) is honoured
+      // without requiring changes to the embedding tenant site.
+      this.emitReachPing();
     },
     
     // Create the widget container with positioning
@@ -447,6 +466,179 @@ import { getBindingSessionId } from './utils/bindingSession.js';
       }
     },
     
+    // ========================================================================
+    // C1.3 PAGE_VIEW REACH PING
+    // Emitted by the loader, independent of the iframe.
+    // All emission goes through emitReachPing() — single consent/GPC choke point (C8.9).
+    // MUST NOT set cookies or write localStorage (C8.3).
+    // Payload allow-list is EXHAUSTIVE per C8.1-2 — do not add fields.
+    // ========================================================================
+
+    /**
+     * Build the C1.3-compliant device_class string from window dimensions.
+     * Breakpoints mirror the widget's expand() logic.
+     * @returns {"mobile"|"tablet"|"desktop"}
+     */
+    _getDeviceClass() {
+      const w = window.innerWidth;
+      if (w <= 768) return 'mobile';
+      if (w <= 1024) return 'tablet';
+      return 'desktop';
+    },
+
+    /**
+     * Fetch the S3 tenant config (same GET the iframe uses; CDN-cached).
+     * Returns the parsed JSON config object, or null on any failure.
+     * Used by emitReachPing() to honour the operator-side REACH_PING kill
+     * switch (C8.9 / F3) without requiring changes to the embedding site.
+     *
+     * @returns {Promise<Object|null>}
+     */
+    async _fetchTenantConfig() {
+      try {
+        const configUrl = environmentConfig.getConfigUrl(this.tenantHash);
+        const resp = await fetch(configUrl, {
+          method: 'GET',
+          // 4-second timeout (config is CDN-cached; slow = infra problem)
+          signal: AbortSignal.timeout ? AbortSignal.timeout(4000) : (() => {
+            const ctrl = new AbortController();
+            setTimeout(() => ctrl.abort(), 4000);
+            return ctrl.signal;
+          })()
+        });
+        if (!resp.ok) return null;
+        return await resp.json();
+      } catch {
+        return null;
+      }
+    },
+
+    /**
+     * Emit a PAGE_VIEW ping via the existing analytics transport.
+     * All C1.3 constraints enforced here; callers pass no arguments.
+     *
+     * Kill switch (C8.9 / F3): fires ONLY when feature_flags.REACH_PING !== false
+     * in EITHER the embed-snippet customConfig OR the S3 tenant config.
+     * EITHER source can disable (operator doesn't need a site deploy to turn off).
+     * Fail closed — no ping if the tenant config cannot be fetched.
+     *
+     * This function is async; the caller (init) does not await it so the
+     * widget continues loading while the config fetch + ping happen in background.
+     */
+    async emitReachPing() {
+      // Kill switch — embed-snippet side (fast path, no network required).
+      // If the embed explicitly disables, bail before the config fetch.
+      if (this.config?.feature_flags?.REACH_PING === false) return;
+
+      // Kill switch — S3 tenant config side (C8.9 / F3 operator control).
+      // Fetch the same config the iframe fetches (CDN-cached GET).
+      // Fail closed: if the fetch fails, do NOT ping (C1.3: "fail closed").
+      const tenantConfig = await this._fetchTenantConfig();
+      if (tenantConfig === null) return; // fail closed
+
+      // Merge: EITHER source can disable (logical AND — both must be non-false).
+      const tenantFlags = tenantConfig?.feature_flags ?? tenantConfig?.config?.feature_flags ?? {};
+      if (tenantFlags.REACH_PING === false) return;
+
+      try {
+        // pv_ session identity — sessionStorage only, no cookie, no localStorage (C8.3)
+        const PV_SESSION_KEY = '_pv_sid';
+        const PV_SEEN_KEY = '_pv_seen';
+        const PV_STEP_KEY = '_pv_step';
+        const PV_COUNT_KEY = '_pv_count';
+
+        let pvSession;
+        try {
+          pvSession = sessionStorage.getItem(PV_SESSION_KEY);
+          if (!pvSession) {
+            pvSession = 'pv_' + Math.random().toString(36).substring(2, 10) +
+                        Math.random().toString(36).substring(2, 10);
+            sessionStorage.setItem(PV_SESSION_KEY, pvSession);
+          }
+        } catch {
+          // sessionStorage unavailable (privacy mode) — fail closed per C1.3
+          return;
+        }
+
+        const pathname = window.location.pathname.slice(0, 512);
+
+        // Throttle: once per (pathname, tab session) (C1.3 / C8.5)
+        let seen;
+        try {
+          seen = new Set(JSON.parse(sessionStorage.getItem(PV_SEEN_KEY) || '[]'));
+        } catch {
+          return; // fail closed
+        }
+        if (seen.has(pathname)) return;
+
+        // Hard cap: 100 pings per session (C1.3 / C8.5)
+        let count;
+        try {
+          count = parseInt(sessionStorage.getItem(PV_COUNT_KEY) || '0', 10);
+        } catch {
+          return; // fail closed
+        }
+        if (count >= 100) return;
+
+        // Mark seen and increment counter
+        try {
+          seen.add(pathname);
+          sessionStorage.setItem(PV_SEEN_KEY, JSON.stringify([...seen]));
+          sessionStorage.setItem(PV_COUNT_KEY, String(count + 1));
+        } catch {
+          return; // fail closed if storage throws mid-write
+        }
+
+        // Step counter for envelope ordering
+        let stepNumber;
+        try {
+          stepNumber = parseInt(sessionStorage.getItem(PV_STEP_KEY) || '0', 10) + 1;
+          sessionStorage.setItem(PV_STEP_KEY, String(stepNumber));
+        } catch {
+          stepNumber = count + 1; // fallback
+        }
+
+        // Referrer host — hostname only, never full referrer (C8.2)
+        let referrerHost = null;
+        try {
+          if (document.referrer) {
+            referrerHost = new URL(document.referrer).hostname || null;
+          }
+        } catch { /* malformed referrer — leave null */ }
+
+        // Build envelope (C1.0 shape, adapted for loader context)
+        const envelope = {
+          schema_version: '1.0.0',
+          tenant_id: this.tenantHash,
+          session_id: pvSession,
+          timestamp: new Date().toISOString(),
+          step_number: stepNumber,
+          event: {
+            type: 'PAGE_VIEW',
+            // Payload allow-list EXHAUSTIVE (C8.1-2) — no other fields permitted
+            payload: {
+              path: pathname,
+              referrer_host: referrerHost,
+              device_class: this._getDeviceClass()
+            }
+          }
+        };
+
+        // Add ga_client_id read-only from _ga cookie — no write (C8.3)
+        const gaClientId = this.getGAClientId();
+        if (gaClientId) {
+          envelope.ga_client_id = gaClientId;
+        }
+
+        this.queueAnalyticsEvent(envelope);
+        // IDs and counts only — no payload logging (C8.10)
+        console.log('[Picasso] PAGE_VIEW queued:', pvSession, 'step', stepNumber);
+      } catch (err) {
+        // Never surface errors on tenant pages
+        console.warn('[Picasso] PAGE_VIEW skipped:', err && err.message);
+      }
+    },
+
     // Send PRD-compliant commands to iframe
     sendCommand(action, payload = {}) {
       if (this.iframe.contentWindow) {
