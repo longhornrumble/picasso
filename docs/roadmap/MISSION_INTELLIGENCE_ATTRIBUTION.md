@@ -60,10 +60,11 @@ What exists vs net-new was ground-truthed 2026-06-11. Capture infra largely exis
 New lightweight `PAGE_VIEW` event from the widget loader (`Picasso/src/widget-host.js` — attribution capture already lives here), throttled once per page per session. Sessionize on the GA client ID we already read (30-min windows, GA's definition). Card label everywhere: "measured by MyRecruiter."
 ⚠️ This makes us a site-wide measurement vendor → tenant privacy-notice implications → **pii-data-lifecycle-advisor review before build** (see Compliance).
 
-### F3 — Provenance stamping + mint registry
+### F3 — Provenance stamping + mint registry (Dub.co-backed — decision 2026-06-12)
 - Session provenance object: `{channel, entry_point_id?, campaign?, placement?}`. Website = existing UTM/referrer attribution object; standalone/fullpage = link params; Messenger = derivable from `meta:{pageId}:{psid}` session prefix (its `ref`/`messaging_referrals` capture is Phase 2 — `Lambdas/lambda/Meta_Webhook_Handler` does not read them today).
-- **Mint registry:** new DynamoDB table `picasso-entry-points-{env}` (per `{name}-{env}` convention) — tenant PK, entry-point id SK, taxonomy fields, target URL, created date. Redirect Lambda behind `go.myrecruiter.ai/{id}`: 302 + click event. QR = generated PNG of the minted URL.
-- Decision (recommended): build the redirect in-house rather than on Dub.co — keeps click data in-purview; Dub (`picasso-webscraping/rag-scraper/create-dub-links.js`) remains for KB links.
+- **Mint registry:** new DynamoDB table `picasso-entry-points-{env}` (per `{name}-{env}` convention) — tenant PK, entry-point id SK, taxonomy fields, Dub link id, destination URL, created date. The registry is the source of truth for what each link *means* (the taxonomy); Dub holds the link itself.
+- **Short links + QR via Dub.co** (operator decision — Dub is already in production use with the branded domain **`myrctr.link`** and customizable suffixes, e.g. `myrctr.link/gala-tents`): minting calls the Dub API to create the link (tenant tag/externalId per the conventions in `picasso-webscraping/rag-scraper/create-dub-links.js`) with the destination carrying `?ep={entry_point_id}` so provenance lands in OUR pipeline at conversation start. QR PNGs come from Dub. **Dub destinations are dynamic** — printed artifacts can be repointed after the fact (a product feature an in-house redirect wouldn't have had). Per-link "opens/scans" reach counts come from Dub analytics (mechanism — poll vs click-webhook — locked in Phase 0 after a targeted read of the Dub API docs); the funnel from conversation onward is measured entirely by us.
+- In-house redirect Lambda + `go.myrecruiter.ai`: **rejected** (don't rebuild a service the operator already runs); revisit only if Dub becomes a constraint. No DNS work needed — `myrctr.link` is already configured.
 
 ### F4 — Attribution aggregates
 Extend the hourly `Analytics_Aggregator` (EventBridge) rollups in `picasso-dashboard-aggregates`: per tenant × month × channel × entry point — conversations, engaged, applications, leads, after-hours count, conversation-minutes, topic counts, resource-link clicks. Topics v1 = the existing keyword categorizer (`Analytics_Dashboard_API/lambda_function.py:5258`) applied **at aggregation time** (stored, not query-time). LLM topic classification = Phase 2, gated on ai-governance review.
@@ -94,7 +95,7 @@ Per Deployment SOP: all build work staging-first (acct isolation), Terraform in 
 
 ## Compliance checkpoints (before build, not after)
 
-- **pii-data-lifecycle-advisor:** pageview ping (site-wide measurement, GA client ID sessionization), provenance data classification, mint-registry/click-event PII posture. Living-Inventory rule applies to implementation PRs (new tables/Lambdas → `docs/roadmap/PII-Project/pii-inventory.md`).
+- **pii-data-lifecycle-advisor:** pageview ping (site-wide measurement, GA client ID sessionization), provenance data classification, mint-registry PII posture, and **Dub.co as a processor in the click path** (scanner IPs/click metadata flow through a third party — hits the "sends data to a third party" PII trigger). Living-Inventory rule applies to implementation PRs (new tables/Lambdas → `docs/roadmap/PII-Project/pii-inventory.md`).
 - **ai-governance-advisor:** LLM topic classification + LLM narrative/insights (Phase 2 gates).
 - **communications-consent-advisor:** infographic push email (see its plan).
 - **nonprofit-volunteer-donor-risk-advisor:** no longer needed for dollar claims (dollars removed); revisit if confirmed-outcome claims become donor-facing.
@@ -103,5 +104,5 @@ Per Deployment SOP: all build work staging-first (acct isolation), Terraform in 
 
 1. Topics quality gate: keyword v1 ships in Numbers drill; does LLM classification gate Briefing GA? (Recommend: yes — the briefing's recommendations lean on topic quality.)
 2. Tenant timezone source for after-hours (config field audit).
-3. Redirect domain (`go.myrecruiter.ai`) DNS/cert ownership.
+3. Dub reach-count mechanism: poll Dub analytics API on aggregate cycles vs click-event webhooks (decide in Phase 0 after targeted Dub API doc read; poll is simpler, webhook is fresher).
 4. Infographic cross-tenant benchmark ("top 13%") — deferred; needs anonymized cross-tenant aggregates design.

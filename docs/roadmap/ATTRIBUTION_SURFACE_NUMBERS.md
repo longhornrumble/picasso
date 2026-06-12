@@ -25,8 +25,8 @@ Recursive component: **one funnel-strip component at three scopes** (page / chan
 - Insight line + Read/Suggested-move v1 = **rule pack, not LLM** (e.g., best-rate channel above floor → "converted at X× website"; new entry points below floor → "leave them running"). Rules live server-side so all surfaces share them.
 
 ### N2 — Mint a link or QR
-- Modal: label, channel family, campaign, placement (taxonomy required at mint time — locked decision #2), target (chat standalone / site URL).
-- `POST /attribution/entry-points` → registry row + short URL; QR PNG generated client-side from the minted URL; download/copy actions.
+- Modal: label, channel family, campaign, placement (taxonomy required at mint time — locked decision #2), target (chat standalone / site URL), optional custom suffix (`myrctr.link/<suffix>`).
+- `POST /attribution/entry-points` → registry row + **Dub API link creation** on `myrctr.link` (tenant tag/externalId per `create-dub-links.js` conventions; destination carries `?ep={id}`); QR PNG from Dub; download/copy actions. Destination stays editable post-print (Dub dynamic links).
 - Mint affordances in both the top bar and inside channel expansions.
 
 ### N3 — Polish + export
