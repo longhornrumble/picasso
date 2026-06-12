@@ -67,6 +67,7 @@ async function streamChat({
   onShowcaseCard, // Callback for handling showcase cards
   onSuggestedChips, // v3.0 Evolution: callback for AI-generated follow-up chips
   onSchedulingSlots, // Scheduling v1 (WS-C12): generic slot chips from `scheduling_slots`
+  onSchedulingConfirm, // Deterministic pipeline: server-driven confirm card from `scheduling_confirm`
   onSchedulingNotice, // Scheduling v1 (WS-C12): inline notice from `scheduling_notice`
   onSchedulingDayPicker, // Scheduling v1 (WS-T3-DAYPICK-FE §B16e): day-picker strip from `scheduling_day_picker`
   onDone,
@@ -249,6 +250,14 @@ async function streamChat({
           if (obj.type === 'scheduling_slots' && Array.isArray(obj.slots)) {
             logger.info('Received scheduling slots', { count: obj.slots.length });
             onSchedulingSlots?.(obj.slots);
+            continue;
+          }
+
+          // Deterministic pipeline (§B16b/§B16d amendments): server-driven confirm
+          // affordance — slot staged (identity resolved), user must tap to commit.
+          if (obj.type === 'scheduling_confirm' && obj.slot) {
+            logger.info('Received scheduling confirm', { slotId: obj.slot.slotId });
+            onSchedulingConfirm?.({ slot: obj.slot, attendee_email: obj.attendee_email });
             continue;
           }
 
@@ -804,6 +813,21 @@ export default function StreamingChatProvider({ children }) {
             const updated = prev.map(msg =>
               msg.id === streamingMessageId
                 ? { ...msg, metadata: { ...msg.metadata, schedulingSlots: slots } }
+                : msg
+            );
+            saveToSession('picasso_messages', updated);
+            return updated;
+          });
+        },
+        onSchedulingConfirm: (confirm) => {
+          // Deterministic pipeline: attach the server-driven confirm card to the
+          // streaming message's metadata (mirrors onSchedulingSlots). MessageBubble
+          // renders <SchedulingConfirmCard>; tapping it sends confirm_book.
+          logger.info('Received scheduling confirm', { slotId: confirm?.slot?.slotId });
+          setMessages(prev => {
+            const updated = prev.map(msg =>
+              msg.id === streamingMessageId
+                ? { ...msg, metadata: { ...msg.metadata, schedulingConfirm: confirm } }
                 : msg
             );
             saveToSession('picasso_messages', updated);
