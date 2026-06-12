@@ -1,5 +1,5 @@
 import { describe, it, expect } from '@jest/globals';
-import { trimHistoryForSend } from '../messageHelpers';
+import { trimHistoryForSend, mergeSchedulingSlots } from '../messageHelpers';
 
 const u = (content) => ({ role: 'user', content });
 const a = (content) => ({ role: 'assistant', content });
@@ -56,5 +56,54 @@ describe('trimHistoryForSend', () => {
     const msgs = [u('hi'), { role: 'system', content: 'x' }, a('there')];
     const out = trimHistoryForSend(msgs);
     expect(out.every((m) => m.role === 'user' || m.role === 'assistant')).toBe(true);
+  });
+});
+
+// Multi-day slots fix (companion to lambda fix/agent-multiday-slots): an agent
+// turn emits one scheduling_slots SSE PER dated lookup; replacing
+// metadata.schedulingSlots left only the LAST event's chips rendered.
+describe('mergeSchedulingSlots', () => {
+  const slot = (id, label = `slot ${id}`) => ({
+    slotId: id,
+    start: '2026-06-15T14:00:00Z',
+    end: '2026-06-15T14:30:00Z',
+    label,
+  });
+
+  it('first event on a message (no existing slots) → incoming slots as-is', () => {
+    const incoming = [slot('s1'), slot('s2')];
+    expect(mergeSchedulingSlots(undefined, incoming)).toEqual(incoming);
+    expect(mergeSchedulingSlots(null, incoming)).toEqual(incoming);
+    expect(mergeSchedulingSlots([], incoming)).toEqual(incoming);
+  });
+
+  it('second event APPENDS after the existing slots (order preserved — both days render)', () => {
+    const monday = [slot('s1', 'Mon · 9:00 AM'), slot('s2', 'Mon · 2:30 PM')];
+    const tuesday = [slot('s3', 'Tue · 3:00 PM')];
+    expect(mergeSchedulingSlots(monday, tuesday)).toEqual([...monday, ...tuesday]);
+  });
+
+  it('dedupes by slotId — first occurrence wins, including dupes within the incoming batch', () => {
+    const existing = [slot('s1', 'kept label')];
+    const incoming = [slot('s1', 'replaced label — must not win'), slot('s2'), slot('s2')];
+    const out = mergeSchedulingSlots(existing, incoming);
+    expect(out.map((s) => s.slotId)).toEqual(['s1', 's2']);
+    expect(out[0].label).toBe('kept label');
+  });
+
+  it('caps the merged list at 10 (existing slots win the cap — matches the backend union cap)', () => {
+    const existing = Array.from({ length: 9 }, (_, i) => slot(`e${i}`));
+    const incoming = [slot('n1'), slot('n2'), slot('n3')];
+    const out = mergeSchedulingSlots(existing, incoming);
+    expect(out).toHaveLength(10);
+    expect(out.slice(0, 9)).toEqual(existing);
+    expect(out[9].slotId).toBe('n1');
+  });
+
+  it('skips malformed entries (no slotId / null) and tolerates a non-array incoming value', () => {
+    const existing = [slot('s1')];
+    expect(mergeSchedulingSlots(existing, [null, { label: 'orphan' }, slot('s2')]))
+      .toEqual([slot('s1'), slot('s2')]);
+    expect(mergeSchedulingSlots(existing, undefined)).toEqual(existing);
   });
 });

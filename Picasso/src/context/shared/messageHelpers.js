@@ -300,5 +300,32 @@ export const trimHistoryForSend = (messages, { maxUserTurns = 20, maxAssistant =
   return messages.filter((_, i) => keepUser.has(i) || keepAssistant.has(i));
 };
 
+/**
+ * Merge incoming scheduling slots into a message's existing schedulingSlots.
+ *
+ * Multi-day fix (companion to lambda fix/agent-multiday-slots): an agent turn
+ * emits one `scheduling_slots` SSE event PER dated lookup ("Monday or Tuesday?"
+ * → two events on the same streaming message). Replacing metadata.schedulingSlots
+ * left only the LAST event's chips rendered. Merge instead: append new slots
+ * after the existing ones (order preserved — mirrors the backend's §B16b union
+ * order), dedupe by slotId (first occurrence wins), cap at 10 (the backend
+ * persists the same cap, so every rendered chip stays stageable).
+ *
+ * @param {Array} existing - the message's current metadata.schedulingSlots (may be absent)
+ * @param {Array} incoming - slots from the new scheduling_slots event
+ * @returns {Array} merged slots (≤ 10)
+ */
+export const mergeSchedulingSlots = (existing, incoming) => {
+  const base = Array.isArray(existing) ? existing : [];
+  const seen = new Set(base.map(s => s?.slotId));
+  const merged = [...base];
+  for (const s of (Array.isArray(incoming) ? incoming : [])) {
+    if (!s?.slotId || seen.has(s.slotId)) continue;
+    seen.add(s.slotId);
+    merged.push(s);
+  }
+  return merged.slice(0, 10);
+};
+
 // Export storage helpers for direct callers that bypass saveToSession/getFromSession
 export { _storeGet, _storeSet, _storeRemove, _storeKeys };
