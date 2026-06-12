@@ -1253,6 +1253,10 @@ module "lambda_calendar_oauth_connect_staging" {
   onboarder_function_arn  = module.lambda_calendar_watch_onboarder_staging[0].onboarder_function_arn
   onboarder_function_name = module.lambda_calendar_watch_onboarder_staging[0].onboarder_function_name
 
+  # T3 (§E11b disconnect, lambda#294): best-effort watch teardown on disconnect.
+  offboarder_function_arn  = module.lambda_calendar_watch_offboarder_staging[0].offboarder_function_arn
+  offboarder_function_name = module.lambda_calendar_watch_offboarder_staging[0].offboarder_function_name
+
   # Track 2: init-token single-use burn table (jti) + the friendly return domain
   # (DASHBOARD_RETURN_URL default in the module now points at staging.app.myrecruiter.ai).
   jti_blacklist_table_arn  = module.ddb_token_jti_blacklist_staging[0].table_arn
@@ -1919,6 +1923,10 @@ module "lambda_scheduling_synthetic_monitor_staging" {
   booking_commit_function_arn  = module.lambda_booking_commit_staging[0].commit_function_arn
   booking_commit_function_name = module.lambda_booking_commit_staging[0].commit_function_name
 
+  # T3 disposition cycle (lambda#292): the 5th CI-6 cycle's invoke target.
+  attendance_disposition_function_arn  = module.lambda_attendance_disposition_staging[0].function_arn
+  attendance_disposition_function_name = module.lambda_attendance_disposition_staging[0].function_name
+
   booking_table_arn  = module.ddb_booking_staging[0].table_arn
   booking_table_name = module.ddb_booking_staging[0].table_name
 
@@ -1926,4 +1934,19 @@ module "lambda_scheduling_synthetic_monitor_staging" {
   scheduled_messages_table_name = module.ddb_scheduled_messages_staging[0].table_name
 
   ops_alerts_topic_arn = module.ops_alarms_master_function_staging[0].topic_arn
+}
+
+# Attendance_Disposition_Handler (WS-E-ATTEND #243) -- T3 ACTIVATION. The E5/E10/C13
+# missed-event handler: provisioned here (role + placeholder), real code ships via the
+# lambda-repo CI matrix. Invoked by the monitor's disposition cycle today; the REMIND
+# attendance-schedule wiring (E5-TRIGGER SEAM) is a tracked follow-up.
+module "lambda_attendance_disposition_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/lambda-attendance-disposition-staging"
+
+  booking_table_arn  = module.ddb_booking_staging[0].table_arn
+  booking_table_name = module.ddb_booking_staging[0].table_name
+
+  tenant_config_bucket_arn  = module.tenant_config_staging[0].bucket_arn
+  tenant_config_bucket_name = module.tenant_config_staging[0].bucket_name
 }

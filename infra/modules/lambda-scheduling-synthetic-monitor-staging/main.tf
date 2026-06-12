@@ -29,6 +29,16 @@ variable "booking_commit_function_name" {
   type = string
 }
 
+variable "attendance_disposition_function_arn" {
+  description = "ARN of the staging Attendance_Disposition_Handler (the T3 disposition cycle fires action:'attendance_check' against it; lambda#292)."
+  type        = string
+}
+
+variable "attendance_disposition_function_name" {
+  description = "Name of Attendance_Disposition_Handler (ATTEND_FUNCTION_NAME env)."
+  type        = string
+}
+
 variable "booking_table_arn" {
   description = "ARN of picasso-booking-staging. GetItem/UpdateItem/DeleteItem/Query on the BASE table only (no GSI -- the monitor queries by PK)."
   type        = string
@@ -165,6 +175,21 @@ data "aws_iam_policy_document" "monitor_exec" {
     }
   }
 
+  # Disposition cycle (T3, lambda#292): fire action:'attendance_check' against the shipped
+  # WS-E-ATTEND handler. Same ResourceAccount backstop as the BCH invoke. The disposition
+  # transition itself runs in-process via the DDBBookingSyntheticLifecycle UpdateItem grant
+  # (didnt_connect -> coordinator_no_show; no outbound, no signing key -- monitor README).
+  statement {
+    sid       = "InvokeAttendanceDispositionHandler"
+    actions   = ["lambda:InvokeFunction"]
+    resources = [var.attendance_disposition_function_arn]
+    condition {
+      test     = "StringEquals"
+      variable = "aws:ResourceAccount"
+      values   = [data.aws_caller_identity.current.account_id]
+    }
+  }
+
   # Booking table: read-back, stamp is_synthetic, nightly cleanup. Base table only.
   statement {
     sid       = "DDBBookingSyntheticLifecycle"
@@ -255,8 +280,10 @@ resource "aws_lambda_function" "monitor" {
       BOOKING_TABLE                = var.booking_table_name
       SCHEDULED_MESSAGES_TABLE     = var.scheduled_messages_table_name
       BOOKING_COMMIT_FUNCTION_NAME = var.booking_commit_function_name
-      REDEMPTION_BASE_URL          = "https://staging.schedule.myrecruiter.ai"
-      OPS_ALERTS_TOPIC_ARN         = var.ops_alerts_topic_arn
+      # T3 disposition cycle target (lambda#292).
+      ATTEND_FUNCTION_NAME = var.attendance_disposition_function_name
+      REDEMPTION_BASE_URL  = "https://staging.schedule.myrecruiter.ai"
+      OPS_ALERTS_TOPIC_ARN = var.ops_alerts_topic_arn
     }
   }
 
@@ -284,6 +311,8 @@ locals {
     cancel   = { schedule = "rate(1 hour)", input = { cycle = "cancel" } }
     reminder = { schedule = "cron(0 8 * * ? *)", input = { cycle = "reminder" } }
     cleanup  = { schedule = "cron(0 7 * * ? *)", input = { cycle = "cleanup" } }
+    # T3 (lambda#292): the CI-6 5th cycle. Daily, after the reminder cycle's window.
+    disposition = { schedule = "cron(0 9 * * ? *)", input = { cycle = "disposition" } }
   }
 }
 
