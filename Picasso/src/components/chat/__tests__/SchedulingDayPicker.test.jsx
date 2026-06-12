@@ -10,15 +10,33 @@
  *  5. Strip becomes unavailable after selection (no double-tap)
  *  6. Does not dispatch when typing is in progress
  *  7. Post-selection status announcement (aria-live=polite)
+ *
+ * Extended for §B18d WS-OP-FE:
+ *  - buildDayStripPayload: key-allowlist, type assertions, no-PII
+ *  - SCHEDULING_DAY_STRIP_ENGAGED emission: contracted payload, position, no-@ assertion
  */
 
 import React from 'react';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import '@testing-library/jest-dom';
-import SchedulingDayPicker, { DAY_PICKER_STRINGS } from '../SchedulingDayPicker';
+import SchedulingDayPicker, { DAY_PICKER_STRINGS, buildDayStripPayload } from '../SchedulingDayPicker';
 import { ChatContext } from '../../../context/shared/ChatContext';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+// Mock window.notifyParentEvent for analytics assertions.
+const mockNotify = jest.fn();
+beforeEach(() => {
+  mockNotify.mockClear();
+  Object.defineProperty(window, 'notifyParentEvent', {
+    value: mockNotify,
+    configurable: true,
+    writable: true
+  });
+});
+afterEach(() => {
+  delete window.notifyParentEvent;
+});
 
 const makeChatContext = (overrides = {}) => ({
   messages: [],
@@ -255,5 +273,112 @@ describe('SchedulingDayPicker — snapshot', () => {
       <SchedulingDayPicker days={[DAYS[0]]} user_time_zone="America/Chicago" />
     );
     expect(container.querySelector('.scheduling-day-picker')).toMatchSnapshot();
+  });
+});
+
+// ─── §B18d analytics: buildDayStripPayload ────────────────────────────────────
+
+describe('buildDayStripPayload (§B18d PII gate)', () => {
+  it('returns EXACTLY the contracted keys', () => {
+    const payload = buildDayStripPayload('2026-06-15', 0);
+    expect(Object.keys(payload).sort()).toEqual(['day', 'position']);
+  });
+
+  it('day matches YYYY-MM-DD pattern', () => {
+    const payload = buildDayStripPayload('2026-06-15', 0);
+    expect(payload.day).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it('position is a number', () => {
+    const payload = buildDayStripPayload('2026-06-15', 2);
+    expect(typeof payload.position).toBe('number');
+    expect(payload.position).toBe(2);
+  });
+
+  it('JSON.stringify contains no @ (no-PII / substring-forbid gate)', () => {
+    const payload = buildDayStripPayload('2026-06-15', 0);
+    expect(JSON.stringify(payload)).not.toContain('@');
+  });
+
+  it('JSON.stringify contains no name, email, or message text', () => {
+    const payload = buildDayStripPayload('2026-06-15', 0);
+    const serialized = JSON.stringify(payload);
+    expect(serialized).not.toMatch(/maya|example\.org|coordinator/);
+  });
+});
+
+// ─── Item 2: emitter-throws safety (analytics must never block sendMessage) ───
+
+describe('SchedulingDayPicker — emitter-throws safety (item 2)', () => {
+  it('sendMessage is still called with correct routing_metadata when notifyParentEvent throws', () => {
+    // Simulate notifyParentEvent throwing (e.g. storage quota exceeded inside a listener)
+    Object.defineProperty(window, 'notifyParentEvent', {
+      value: () => { throw new Error('storage quota exceeded'); },
+      configurable: true,
+      writable: true
+    });
+
+    const ctx = makeChatContext();
+    renderWithChat(<SchedulingDayPicker days={DAYS} />, ctx);
+    expect(() => fireEvent.click(screen.getByText(DAYS[0].label))).not.toThrow();
+    expect(ctx.sendMessage).toHaveBeenCalledTimes(1);
+    expect(ctx.sendMessage).toHaveBeenCalledWith(DAYS[0].label, {
+      scheduling_day_selected: DAYS[0].date,
+    });
+  });
+});
+
+// ─── §B18d analytics: SCHEDULING_DAY_STRIP_ENGAGED emission ──────────────────
+
+describe('SchedulingDayPicker — §B18d SCHEDULING_DAY_STRIP_ENGAGED emission', () => {
+  it('emits SCHEDULING_DAY_STRIP_ENGAGED with contracted payload when day chip is clicked', () => {
+    renderWithChat(<SchedulingDayPicker days={DAYS} />);
+    fireEvent.click(screen.getByText(DAYS[0].label));
+
+    expect(mockNotify).toHaveBeenCalledWith(
+      'SCHEDULING_DAY_STRIP_ENGAGED',
+      expect.objectContaining({
+        day: DAYS[0].date,
+        position: 0
+      })
+    );
+  });
+
+  it('emits with correct position for chips beyond the first', () => {
+    renderWithChat(<SchedulingDayPicker days={DAYS} />);
+    fireEvent.click(screen.getByText(DAYS[3].label)); // Thu, Jun 18 = index 3
+
+    expect(mockNotify).toHaveBeenCalledWith(
+      'SCHEDULING_DAY_STRIP_ENGAGED',
+      expect.objectContaining({ day: '2026-06-18', position: 3 })
+    );
+  });
+
+  it('emitted payload has EXACTLY the contracted keys (key-allowlist gate)', () => {
+    renderWithChat(<SchedulingDayPicker days={DAYS} />);
+    fireEvent.click(screen.getByText(DAYS[1].label));
+
+    const calls = mockNotify.mock.calls.filter(c => c[0] === 'SCHEDULING_DAY_STRIP_ENGAGED');
+    expect(calls).toHaveLength(1);
+    const [, payload] = calls[0];
+    expect(Object.keys(payload).sort()).toEqual(['day', 'position']);
+  });
+
+  it('emitted payload contains no @ (no-PII / substring-forbid gate)', () => {
+    renderWithChat(<SchedulingDayPicker days={DAYS} />);
+    fireEvent.click(screen.getByText(DAYS[0].label));
+
+    const calls = mockNotify.mock.calls.filter(c => c[0] === 'SCHEDULING_DAY_STRIP_ENGAGED');
+    const [, payload] = calls[0];
+    expect(JSON.stringify(payload)).not.toContain('@');
+  });
+
+  it('does NOT emit when isTyping is true', () => {
+    const ctx = makeChatContext({ isTyping: true });
+    renderWithChat(<SchedulingDayPicker days={DAYS} />, ctx);
+    fireEvent.click(screen.getByText(DAYS[0].label));
+
+    const calls = mockNotify.mock.calls.filter(c => c[0] === 'SCHEDULING_DAY_STRIP_ENGAGED');
+    expect(calls).toHaveLength(0);
   });
 });

@@ -4,6 +4,11 @@
  * Verifies: PAGE_VIEW constant exists, is in ALL_EVENT_TYPES, and that
  * createAnalyticsEvent produces the correct envelope shape for all three
  * new attribution events.
+ *
+ * Extended for §B18d WS-OP-FE (2026-06-12):
+ *  - Four scheduling analytics event constants present + in ALL_EVENT_TYPES
+ *    + in EVENT_CATEGORIES.SCHEDULING
+ *  - Payload builder contract tests (key-allowlist, type, no-PII)
  */
 
 import {
@@ -12,8 +17,91 @@ import {
   LINK_CLICKED,
   ALL_EVENT_TYPES,
   EVENT_CATEGORIES,
-  createAnalyticsEvent
+  createAnalyticsEvent,
+  SCHEDULING_CHIP_CLICKED,
+  SCHEDULING_DAY_STRIP_ENGAGED,
+  SCHEDULING_TYPED_REFINEMENT,
+  SCHEDULING_TIME_TO_BOOKED
 } from '../eventConstants.js';
+
+// ─── §B18d scheduling event constants ────────────────────────────────────────
+
+describe('§B18d scheduling analytics event constants', () => {
+  const SCHEDULING_EVENTS = [
+    ['SCHEDULING_CHIP_CLICKED', SCHEDULING_CHIP_CLICKED],
+    ['SCHEDULING_DAY_STRIP_ENGAGED', SCHEDULING_DAY_STRIP_ENGAGED],
+    ['SCHEDULING_TYPED_REFINEMENT', SCHEDULING_TYPED_REFINEMENT],
+    ['SCHEDULING_TIME_TO_BOOKED', SCHEDULING_TIME_TO_BOOKED]
+  ];
+
+  test.each(SCHEDULING_EVENTS)('%s constant has the correct string value', (name, value) => {
+    expect(value).toBe(name);
+  });
+
+  test.each(SCHEDULING_EVENTS)('%s is in ALL_EVENT_TYPES', (name, value) => {
+    expect(ALL_EVENT_TYPES).toContain(value);
+  });
+
+  test.each(SCHEDULING_EVENTS)('%s is in EVENT_CATEGORIES.SCHEDULING', (name, value) => {
+    expect(EVENT_CATEGORIES.SCHEDULING).toContain(value);
+  });
+
+  test('EVENT_CATEGORIES.SCHEDULING contains exactly 4 events', () => {
+    expect(EVENT_CATEGORIES.SCHEDULING).toHaveLength(4);
+  });
+});
+
+// ─── §B18d payload builders — contract / PII gate ────────────────────────────
+// These tests import the builders from the component files (the ONLY enforcement point).
+
+import { buildChipClickedPayload } from '../../components/chat/SchedulingSlots.jsx';
+import { buildDayStripPayload } from '../../components/chat/SchedulingDayPicker.jsx';
+
+describe('buildChipClickedPayload (§B18d — SCHEDULING_CHIP_CLICKED)', () => {
+  const SLOT_ID = 'slot#2026-06-15T14:00:00Z-res1';
+
+  test('returns EXACTLY the contracted keys', () => {
+    expect(Object.keys(buildChipClickedPayload(SLOT_ID, 0, 3)).sort()).toEqual(
+      ['position', 'slot_count', 'slot_id']
+    );
+  });
+
+  test('slot_id matches full ISO-datetime prefix ^slot#\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}', () => {
+    const { slot_id } = buildChipClickedPayload(SLOT_ID, 0, 3);
+    expect(slot_id).toMatch(/^slot#\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
+  });
+
+  test('position is a number', () => {
+    expect(typeof buildChipClickedPayload(SLOT_ID, 1, 3).position).toBe('number');
+  });
+
+  test('slot_count is a number', () => {
+    expect(typeof buildChipClickedPayload(SLOT_ID, 0, 5).slot_count).toBe('number');
+  });
+
+  test('JSON.stringify contains no @ (no-PII substring-forbid)', () => {
+    expect(JSON.stringify(buildChipClickedPayload(SLOT_ID, 0, 3))).not.toContain('@');
+  });
+});
+
+describe('buildDayStripPayload (§B18d — SCHEDULING_DAY_STRIP_ENGAGED)', () => {
+  test('returns EXACTLY the contracted keys', () => {
+    expect(Object.keys(buildDayStripPayload('2026-06-15', 0)).sort()).toEqual(['day', 'position']);
+  });
+
+  test('day matches \\d{4}-\\d{2}-\\d{2}$ pattern', () => {
+    const { day } = buildDayStripPayload('2026-06-15', 0);
+    expect(day).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  test('position is a number', () => {
+    expect(typeof buildDayStripPayload('2026-06-15', 2).position).toBe('number');
+  });
+
+  test('JSON.stringify contains no @ (no-PII substring-forbid)', () => {
+    expect(JSON.stringify(buildDayStripPayload('2026-06-15', 0))).not.toContain('@');
+  });
+});
 
 describe('PAGE_VIEW constant (C1.3)', () => {
   test('PAGE_VIEW constant is the string "PAGE_VIEW"', () => {

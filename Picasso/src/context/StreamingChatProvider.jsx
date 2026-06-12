@@ -34,7 +34,36 @@ import { config as envConfig } from '../config/environment';
 import { streamingRegistry } from '../utils/streamingRegistry';
 import { createConversationManager } from '../utils/conversationManager';
 import { getBindingSessionId } from '../utils/bindingSession';
-import { MESSAGE_SENT, MESSAGE_RECEIVED, CONVERSATION_STARTED } from '../analytics/eventConstants';
+import {
+  MESSAGE_SENT,
+  MESSAGE_RECEIVED,
+  CONVERSATION_STARTED,
+  SCHEDULING_TYPED_REFINEMENT,
+  SCHEDULING_TIME_TO_BOOKED
+} from '../analytics/eventConstants';
+
+/**
+ * §B18d payload builder — SCHEDULING_TYPED_REFINEMENT.
+ * Accepts ONLY slots_visible_count — structurally unable to capture typed text (PII gate).
+ *
+ * @param {number} slotsVisibleCount
+ * @returns {{ slots_visible_count: number }}
+ */
+export function buildTypedRefinementPayload(slotsVisibleCount) {
+  return { slots_visible_count: slotsVisibleCount };
+}
+
+/**
+ * §B18d payload builder — SCHEDULING_TIME_TO_BOOKED.
+ * Accepts SCALAR args only. NEVER booking details or attendee identity.
+ *
+ * @param {number} ms
+ * @param {number} offersSeen
+ * @returns {{ ms: number, offers_seen: number }}
+ */
+export function buildTimeToBookedPayload(ms, offersSeen) {
+  return { ms, offers_seen: offersSeen };
+}
 
 /**
  * Emit analytics event via global notifyParentEvent
@@ -71,6 +100,7 @@ async function streamChat({
   onSchedulingConfirm, // Deterministic pipeline: server-driven confirm card from `scheduling_confirm`
   onSchedulingNotice, // Scheduling v1 (WS-C12): inline notice from `scheduling_notice`
   onSchedulingDayPicker, // Scheduling v1 (WS-T3-DAYPICK-FE §B16e): day-picker strip from `scheduling_day_picker`
+  onSchedulingBooked, // §B18d analytics-only: fires SCHEDULING_TIME_TO_BOOKED on scheduling_booked SSE
   onDone,
   onError,
   abortControllersRef,
@@ -248,9 +278,20 @@ async function streamChat({
 
           // Scheduling v1 (WS-C12): generic slot chips. Already emitted on the
           // wire by the recovery loop (schedulingFlow.js) + new-booking proposing.
+          // §B18b: forward the ADDITIVE `context` field (absent on old BSH → tolerated).
           if (obj.type === 'scheduling_slots' && Array.isArray(obj.slots)) {
             logger.info('Received scheduling slots', { count: obj.slots.length });
-            onSchedulingSlots?.(obj.slots);
+            // Pass context alongside slots so the handler can attach it to metadata.
+            onSchedulingSlots?.(obj.slots, obj.context ?? null);
+            continue;
+          }
+
+          // §B18d scheduling_booked SSE: analytics-only. UI behavior unchanged —
+          // the booked narration is server-driven prose. Emits SCHEDULING_TIME_TO_BOOKED
+          // only when the first-offer timestamp is known (skip on page-reload mid-flow).
+          if (obj.type === 'scheduling_booked') {
+            logger.info('Received scheduling_booked SSE (analytics-only)');
+            onSchedulingBooked?.();
             continue;
           }
 
@@ -407,6 +448,15 @@ export default function StreamingChatProvider({ children }) {
   const pendingSuggestedChipsRef = useRef(null); // v3.0: AI-generated follow-up chips
   // C1.1: emit CONVERSATION_STARTED exactly once per session (first user message)
   const conversationStartedRef = useRef(false);
+  // §B18d SCHEDULING_TIME_TO_BOOKED: in-memory tracking of first slot offer.
+  // firstOfferTimestampRef: ms timestamp of the FIRST scheduling_slots SSE in this session.
+  // offersSeenRef: count of scheduling_slots events received (incremented per SSE).
+  // bookedEmittedRef: idempotency guard — SCHEDULING_TIME_TO_BOOKED emitted at most ONCE
+  //   per conversation (double scheduling_booked SSE → single emission). Reset in clearMessages.
+  // All are in-memory only (no session persistence — page reload resets, skipping the event).
+  const firstOfferTimestampRef = useRef(null);
+  const offersSeenRef = useRef(0);
+  const bookedEmittedRef = useRef(false);
 
   // Get config
   const { config: tenantConfig } = useConfig();
@@ -625,6 +675,31 @@ export default function StreamingChatProvider({ children }) {
       });
     }
 
+    // §B18d SCHEDULING_TYPED_REFINEMENT: fire when the user sends FREE TEXT while
+    // the LATEST assistant message carries schedulingSlots AND this send carries no
+    // scheduling_action / scheduling_day_selected routing_metadata.
+    // Code checks scheduling_action OR scheduling_day_selected because BOTH chip types
+    // (slot-select and day-strip) carry scheduling_action in their routing_metadata
+    // (slot chips send scheduling_action='select_slot'; day chips send scheduling_day_selected
+    // and NO scheduling_action — hence the two-key check covers both paths).
+    // The payload builder signature accepts ONLY slots_visible_count — typed text is
+    // structurally never captured (PII gate; §B18d advisory N-1).
+    const isSchedulingClick = !!(
+      metadata?.scheduling_action ||
+      metadata?.scheduling_day_selected
+    );
+    if (!isSchedulingClick) {
+      // Find the latest assistant message in current state.
+      const latestAssistant = [...messages].reverse().find(m => m.role === 'assistant');
+      const slotsVisible = latestAssistant?.metadata?.schedulingSlots;
+      if (Array.isArray(slotsVisible) && slotsVisible.length > 0) {
+        emitAnalyticsEvent(
+          SCHEDULING_TYPED_REFINEMENT,
+          buildTypedRefinementPayload(slotsVisible.length)
+        );
+      }
+    }
+
     setIsTyping(true);
     setError(null);
 
@@ -816,7 +891,7 @@ export default function StreamingChatProvider({ children }) {
           logger.info('Received suggested chips', { count: chips.length });
           pendingSuggestedChipsRef.current = chips;
         },
-        onSchedulingSlots: (slots) => {
+        onSchedulingSlots: (slots, context) => {
           // Scheduling v1 (WS-C12): attach generic slot chips to the streaming
           // message's metadata (mirrors onCards). onDone preserves them via
           // `...msg.metadata`. MessageBubble renders <SchedulingSlots>.
@@ -826,19 +901,38 @@ export default function StreamingChatProvider({ children }) {
           // existing slots (append new, keep order, cap 10) instead of replacing —
           // replacement left only the LAST call's chips rendered. Scoped to the
           // same streamingMessageId; a new message starts fresh.
+          //
+          // §B18b: also attaches `context` (when present in the SSE envelope) as
+          // `metadata.schedulingContext`. Set only if absent — the appointment type
+          // is fixed per session so the value is identical across multi-SSE turns.
+          // Old BSH without context field → tolerated (schema discipline).
+          //
+          // §B18d SCHEDULING_TIME_TO_BOOKED: track first-offer timestamp + count
+          // (in-memory only; page reload resets → skips the TIME_TO_BOOKED event).
           logger.info('Received scheduling slots', { count: slots.length });
+
+          // Update first-offer timestamp on the very first scheduling_slots of the session.
+          if (firstOfferTimestampRef.current === null) {
+            firstOfferTimestampRef.current = Date.now();
+          }
+          offersSeenRef.current += 1;
+
           setMessages(prev => {
-            const updated = prev.map(msg =>
-              msg.id === streamingMessageId
-                ? {
-                    ...msg,
-                    metadata: {
-                      ...msg.metadata,
-                      schedulingSlots: mergeSchedulingSlots(msg.metadata?.schedulingSlots, slots)
-                    }
-                  }
-                : msg
-            );
+            const updated = prev.map(msg => {
+              if (msg.id !== streamingMessageId) return msg;
+              const existing = msg.metadata ?? {};
+              return {
+                ...msg,
+                metadata: {
+                  ...existing,
+                  schedulingSlots: mergeSchedulingSlots(existing.schedulingSlots, slots),
+                  // §B18b: set schedulingContext only if not already present
+                  ...(existing.schedulingContext == null && context != null
+                    ? { schedulingContext: context }
+                    : {})
+                }
+              };
+            });
             saveToSession('picasso_messages', updated);
             return updated;
           });
@@ -885,6 +979,22 @@ export default function StreamingChatProvider({ children }) {
             saveToSession('picasso_messages', updated);
             return updated;
           });
+        },
+        onSchedulingBooked: () => {
+          // §B18d SCHEDULING_TIME_TO_BOOKED: analytics-only SSE.
+          // UI behavior unchanged — the booked narration is server-driven prose.
+          // Skip if no first-offer timestamp (e.g. page reload mid-flow).
+          // Idempotency guard (bookedEmittedRef): emit at most ONCE per conversation
+          // — a double scheduling_booked SSE from the server must not double-count.
+          logger.info('Received scheduling_booked SSE (analytics-only)');
+          if (firstOfferTimestampRef.current !== null && !bookedEmittedRef.current) {
+            bookedEmittedRef.current = true;
+            const ms = Date.now() - firstOfferTimestampRef.current;
+            emitAnalyticsEvent(
+              SCHEDULING_TIME_TO_BOOKED,
+              buildTimeToBookedPayload(ms, offersSeenRef.current)
+            );
+          }
         },
         onDone: async (fullText) => {
           const totalTime = Date.now() - startTime;
@@ -1355,6 +1465,13 @@ export default function StreamingChatProvider({ children }) {
 
     // Reset CONVERSATION_STARTED guard so next session emits again
     conversationStartedRef.current = false;
+
+    // Reset §B18d scheduling analytics refs so the next conversation starts clean.
+    // Without this, a second scheduling flow in the same page load would inherit
+    // the first session's firstOfferTimestamp, inflating TIME_TO_BOOKED.ms.
+    firstOfferTimestampRef.current = null;
+    offersSeenRef.current = 0;
+    bookedEmittedRef.current = false;
 
     // Reset session - generate new analytics-compatible session ID
     // Use same format as analytics (sess_<timestamp36>_<random>) for form→conversation linking

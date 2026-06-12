@@ -1037,7 +1037,7 @@ export default function MessageBubble({
         {/* Scheduling slot chips (WS-C12) — generic, label-only; coordinator
             identity is revealed only by the backend's confirm prose (§10.4). */}
         {(role === "assistant" || role === "bot") && metadata?.schedulingSlots?.length > 0 && (
-          <SchedulingSlots slots={metadata.schedulingSlots} />
+          <SchedulingSlots slots={metadata.schedulingSlots} schedulingContext={metadata.schedulingContext} />
         )}
 
         {/* Server-driven confirm card (§B16b/§B16d amendments) — slot staged +
