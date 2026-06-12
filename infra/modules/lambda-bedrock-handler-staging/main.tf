@@ -581,6 +581,12 @@ resource "aws_lambda_function" "this" {
         SMS_CONSENT_TABLE        = var.sms_consent_table_name
         SMS_USAGE_TABLE          = var.sms_usage_table_name
 
+        # De-hardcoded sender (lambda PR #315): form_handler.js
+        # getSESFromEmail() reads this. Unset -> hardcoded prod sender +
+        # SENDER_ENV_MISSING warning; pinning the staging-verified identity
+        # here means staging never exercises that fallback.
+        SES_FROM_EMAIL = "notify@staging.myrecruiter.ai"
+
         # Scheduling recovery loop (B-minimal deps-wiring): the binding/state table
         # (resolveBinding + loadState/saveState) and the Booking table (loadBooking).
         SCHEDULING_SESSION_TABLE = var.scheduling_session_table_name
