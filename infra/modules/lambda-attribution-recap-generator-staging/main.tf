@@ -53,6 +53,27 @@ variable "dashboard_base_url" {
   default     = "https://d3r39xkfb0snuq.cloudfront.net"
 }
 
+variable "recap_postal_address" {
+  description = "Postal address rendered into recap email footer (CAN-SPAM requirement). Leave empty to fail-closed: sends are blocked when RECAP_SEND_ENABLED=true until operator supplies this value."
+  type        = string
+  default     = ""
+}
+
+variable "unsubscribe_base_url" {
+  description = "Base URL of the Attribution_Unsubscribe Function URL. Recap Generator appends ?t={token} to build one-click unsubscribe links."
+  type        = string
+}
+
+variable "unsub_secret_arn" {
+  description = "ARN of picasso/staging/attribution/unsub-signing-key. Recap Generator signs unsubscribe tokens using this key."
+  type        = string
+}
+
+variable "unsub_secret_name" {
+  description = "Name of the unsub signing key secret (for UNSUB_SECRET_NAME env var)."
+  type        = string
+}
+
 variable "log_retention_days" {
   description = "CloudWatch log retention in days."
   type        = number
@@ -125,6 +146,14 @@ data "aws_iam_policy_document" "exec" {
     actions   = ["lambda:InvokeFunction"]
     resources = [var.send_email_function_arn]
   }
+
+  # Unsub signing key read for HMAC token generation.
+  # Recap Generator SIGNS the tokens; Attribution_Unsubscribe VALIDATES them.
+  statement {
+    sid       = "UnsubSecretRead"
+    actions   = ["secretsmanager:GetSecretValue"]
+    resources = ["${var.unsub_secret_arn}*"]
+  }
 }
 
 resource "aws_iam_role_policy" "exec" {
@@ -172,6 +201,15 @@ resource "aws_lambda_function" "this" {
       SEND_EMAIL_FUNCTION_NAME     = var.send_email_function_name
       DASHBOARD_BASE_URL           = var.dashboard_base_url
       RECAP_SEND_ENABLED           = "false"
+      # CAN-SPAM postal address footer. Empty = fail-closed (sends blocked even
+      # when RECAP_SEND_ENABLED=true) until operator supplies via tfvars/root.
+      RECAP_POSTAL_ADDRESS = var.recap_postal_address
+      # Unsubscribe link base URL (Attribution_Unsubscribe Function URL output).
+      # Recap appends ?t={hmac_token} to build per-recipient one-click links.
+      UNSUBSCRIBE_BASE_URL = var.unsubscribe_base_url
+      # Secrets Manager name for HMAC token signing (same secret that
+      # Attribution_Unsubscribe uses to VALIDATE -- Recap SIGNS).
+      UNSUB_SECRET_NAME = var.unsub_secret_name
     }
   }
 

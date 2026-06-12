@@ -2023,10 +2023,32 @@ module "lambda_attribution_aggregator_staging" {
   tenant_config_bucket_name = module.tenant_config_staging[0].bucket_name
 }
 
+# Attribution_Unsubscribe -- Wave-2 WS-I.
+# Public Function URL (AuthType=NONE; HMAC token is the auth layer).
+# Validates one-click unsubscribe tokens and writes permanent suppression rows
+# to picasso-attribution-aggregates (sk=SUPPRESS#recap#{email}).
+# Reviewed by communications-consent-advisor (WS-I consent gate, 2026-06).
+module "secrets_attribution_unsub_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/secrets-attribution-unsub-staging"
+}
+
+module "lambda_attribution_unsubscribe_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/lambda-attribution-unsubscribe-staging"
+
+  attribution_aggregates_table_arn  = module.ddb_attribution_aggregates_staging[0].table_arn
+  attribution_aggregates_table_name = module.ddb_attribution_aggregates_staging[0].table_name
+
+  unsub_secret_arn  = module.secrets_attribution_unsub_staging[0].secret_arn
+  unsub_secret_name = module.secrets_attribution_unsub_staging[0].secret_name
+}
+
 # Attribution_Recap_Generator -- Wave-2 WS-H.
 # Runs monthly (1st of month 14:00 UTC), reads prior-month aggregates from
 # picasso-attribution-aggregates, and dispatches recap emails via send_email.
 # RECAP_SEND_ENABLED defaults to "false" (safety gate; flip after consent advisory).
+# RECAP_POSTAL_ADDRESS defaults to "" (fail-closed; operator sets via envs/staging.tfvars).
 module "lambda_attribution_recap_generator_staging" {
   count  = var.env == "staging" ? 1 : 0
   source = "./modules/lambda-attribution-recap-generator-staging"
@@ -2039,6 +2061,10 @@ module "lambda_attribution_recap_generator_staging" {
 
   send_email_function_arn  = module.lambda_send_email_staging[0].function_arn
   send_email_function_name = module.lambda_send_email_staging[0].function_name
+
+  unsubscribe_base_url = module.lambda_attribution_unsubscribe_staging[0].function_url
+  unsub_secret_arn     = module.secrets_attribution_unsub_staging[0].secret_arn
+  unsub_secret_name    = module.secrets_attribution_unsub_staging[0].secret_name
 }
 
 # Dub secret resource policy -- restricts GetSecretValue to the two
@@ -2074,6 +2100,47 @@ resource "aws_secretsmanager_secret_policy" "dub_api_key_staging" {
             "aws:PrincipalArn" = [
               module.lambda_attribution_mint_staging[0].role_arn,
               module.lambda_attribution_aggregator_staging[0].role_arn,
+            ]
+          }
+        }
+      },
+    ]
+  })
+}
+
+# Unsub signing key resource policy -- restricts GetSecretValue to the two
+# attribution Lambda roles that need it: Unsubscribe (validates) and
+# Recap_Generator (signs). Root-level (not in the secrets module) to avoid
+# the circular dep: policy needs role ARNs; Lambda modules need the secret ARN.
+# Same pattern as dub_api_key_staging and jwt_signing_key_staging above.
+resource "aws_secretsmanager_secret_policy" "attribution_unsub_staging" {
+  count      = var.env == "staging" ? 1 : 0
+  secret_arn = module.secrets_attribution_unsub_staging[0].secret_arn
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AllowAttributionUnsubRoles"
+        Effect = "Allow"
+        Principal = { AWS = [
+          module.lambda_attribution_unsubscribe_staging[0].role_arn,
+          module.lambda_attribution_recap_generator_staging[0].role_arn,
+        ] }
+        Action   = "secretsmanager:GetSecretValue"
+        Resource = "*"
+      },
+      {
+        Sid       = "DenyAllOtherStagingPrincipals"
+        Effect    = "Deny"
+        Principal = "*"
+        Action    = "secretsmanager:GetSecretValue"
+        Resource  = "*"
+        Condition = {
+          StringNotEquals = {
+            "aws:PrincipalArn" = [
+              module.lambda_attribution_unsubscribe_staging[0].role_arn,
+              module.lambda_attribution_recap_generator_staging[0].role_arn,
             ]
           }
         }
