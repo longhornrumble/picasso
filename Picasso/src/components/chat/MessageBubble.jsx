@@ -12,6 +12,7 @@ import CTAButton, { CTAButtonGroup } from './CTAButton';
 import FormCompletionCard from '../forms/FormCompletionCard';
 import ShowcaseCard from './ShowcaseCard';
 import SchedulingSlots, { SchedulingNotice } from './SchedulingSlots';
+import SchedulingDayPicker from './SchedulingDayPicker';
 import { ACTION_CHIP_CLICKED, LINK_CLICKED } from '../../analytics/eventConstants.js';
 
 /**
@@ -1035,6 +1036,14 @@ export default function MessageBubble({
         {/* Scheduling inline notice (WS-C12) — "we'll confirm by email" fallback. */}
         {(role === "assistant" || role === "bot") && metadata?.schedulingNotice && (
           <SchedulingNotice notice={metadata.schedulingNotice} />
+        )}
+
+        {/* Scheduling day-picker strip (WS-T3-DAYPICK-FE §B16e) — Surface-4 fallback. */}
+        {(role === "assistant" || role === "bot") && metadata?.schedulingDayPicker?.days?.length > 0 && (
+          <SchedulingDayPicker
+            days={metadata.schedulingDayPicker.days}
+            user_time_zone={metadata.schedulingDayPicker.user_time_zone}
+          />
         )}
 
         {/* Showcase Card (assistant/bot only) */}
