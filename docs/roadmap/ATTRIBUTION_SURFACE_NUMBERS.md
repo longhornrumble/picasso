@@ -26,7 +26,7 @@ Recursive component: **one funnel-strip component at three scopes** (page / chan
 
 ### N2 — Mint a link or QR
 - Modal: label, channel family, campaign, placement (taxonomy required at mint time — locked decision #2), target (chat standalone / site URL), optional custom suffix (`myrctr.link/<suffix>`).
-- `POST /attribution/entry-points` → registry row + **Dub API link creation** on `myrctr.link` (tenant tag/externalId per `create-dub-links.js` conventions; destination carries `?ep={id}`); QR PNG from Dub; download/copy actions. Destination stays editable post-print (Dub dynamic links).
+- `POST /attribution/entry-points` → registry row + **Dub `POST /links`** on `myrctr.link` (`tenantId` = org, `externalId` = entry-point id — 409 = already-minted idempotency guard; destination carries `?ep={id}`); QR PNG from Dub `GET /qr` (print spec: size ≥ 1000px, level `H`; tenant logo/colors on Pro); download/copy actions. Destination stays editable post-print — `PATCH /links/ext_{id}` repoints printed QR codes without invalidating them.
 - Mint affordances in both the top bar and inside channel expansions.
 
 ### N3 — Polish + export
