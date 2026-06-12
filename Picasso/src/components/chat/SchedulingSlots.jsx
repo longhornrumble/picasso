@@ -13,11 +13,16 @@
  * existing MessageBubble renders). This component renders no coordinator name and
  * holds no attendee/coordinator PII.
  *
- * Dispatch (FROZEN_CONTRACTS §B16b, §B14): tapping a chip / the confirm button
- * REUSES the existing message dispatch (`sendMessage`) — it does NOT invent a new
- * transport and does NOT add a new `cta.action`. The backend's focused post-stream
- * detector reads the resulting user turn as `select_slot` / `confirm_book`; the
- * `slotId` rides along in routing_metadata as a deterministic hint.
+ * Dispatch (FROZEN_CONTRACTS §B16b as amended, §B14): tapping a chip / the confirm
+ * button REUSES the existing message dispatch (`sendMessage`) — it does NOT invent a
+ * new transport and does NOT add a new `cta.action`. The backend consumes the
+ * `scheduling_action` (+ `scheduling_slot_id`) signal DETERMINISTICALLY (§B16b
+ * amendment); the LLM detector remains the fallback for typed text only.
+ *
+ * The confirm affordance is SERVER-driven: the backend's `scheduling_confirm` SSE
+ * (slot staged + identity resolved) renders <SchedulingConfirmCard>. The slot list
+ * itself no longer shows a local confirm button — selection sends the signal and the
+ * server decides whether to ask for an email first or arm the confirm.
  *
  * Styling reuses the global `.suggested-chip` / `.cta-button` token classes
  * (theme.css) so affordances inherit per-tenant branding without a new stylesheet.
@@ -28,7 +33,7 @@
  * swap. See the PR report-back.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useChat } from '../../hooks/useChat';
 
 // Centralized user-facing copy. Swap to `t()` once A8b lands (see header note).
@@ -50,37 +55,40 @@ export const SCHEDULING_STRINGS = {
  * @param {Array<{slotId:string,start:string,end:string,label:string}>} props.slots
  *        generic slots from the `scheduling_slots` event (label-only display).
  */
+// Scroll the scheduling affordance into view when it mounts — the chips/card arrive
+// AFTER the streamed text and previously rendered below the fold (QA 2026-06-12 P1-6).
+function useRevealOnMount() {
+  const ref = useRef(null);
+  useEffect(() => {
+    if (ref.current && typeof ref.current.scrollIntoView === 'function') {
+      ref.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  }, []);
+  return ref;
+}
+
 export default function SchedulingSlots({ slots = [] }) {
   const { sendMessage, isTyping } = useChat();
   const [selectedSlotId, setSelectedSlotId] = useState(null);
-  const [confirmed, setConfirmed] = useState(false);
+  const ref = useRevealOnMount();
 
   if (!Array.isArray(slots) || slots.length === 0) return null;
 
   const handleSelect = (slot) => {
     if (isTyping || selectedSlotId || !slot || !sendMessage) return;
     setSelectedSlotId(slot.slotId);
-    // §B16b: elicit `select_slot`. The visible user turn is the slot label (a
-    // natural transcript line); the slotId is a deterministic backend hint.
+    // §B16b (amended): elicit `select_slot`. The visible user turn is the slot label
+    // (a natural transcript line); the slotId is the DETERMINISTIC backend signal.
     sendMessage(slot.label, {
       scheduling_action: 'select_slot',
       scheduling_slot_id: slot.slotId,
     });
   };
 
-  const handleConfirm = () => {
-    if (isTyping || confirmed || !sendMessage) return;
-    setConfirmed(true);
-    // §B16b: elicit `confirm_book`. Generic affirmative — carries no PII.
-    sendMessage(SCHEDULING_STRINGS.confirmAffirmative, {
-      scheduling_action: 'confirm_book',
-    });
-  };
-
   const selectedSlot = slots.find((s) => s.slotId === selectedSlotId);
 
   return (
-    <div className="scheduling-slots" data-testid="scheduling-slots">
+    <div className="scheduling-slots" data-testid="scheduling-slots" ref={ref}>
       <div className="suggested-chips">
         {!selectedSlotId ? (
           slots.map((slot) => (
@@ -95,20 +103,55 @@ export default function SchedulingSlots({ slots = [] }) {
             </button>
           ))
         ) : (
-          <>
-            {selectedSlot && (
-              <span className="scheduling-slot-selected">{selectedSlot.label}</span>
-            )}
-            <button
-              type="button"
-              className="cta-button cta-primary scheduling-confirm-button"
-              disabled={isTyping || confirmed}
-              onClick={handleConfirm}
-            >
-              {SCHEDULING_STRINGS.confirmAffirmative}
-            </button>
-          </>
+          selectedSlot && (
+            <span className="scheduling-slot-selected">{selectedSlot.label}</span>
+          )
         )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Server-driven confirm card — renders the backend's `scheduling_confirm` SSE
+ * (slot staged, identity resolved). Tapping sends the deterministic `confirm_book`
+ * signal; the backend commits only from `confirming` with a persisted slot (§B14).
+ * One-shot per card: the server re-arms by emitting a fresh event when needed.
+ *
+ * @param {object} props
+ * @param {{slot:{slotId:string,label:string}, attendee_email?:string}} props.confirm
+ */
+export function SchedulingConfirmCard({ confirm }) {
+  const { sendMessage, isTyping } = useChat();
+  const [confirmed, setConfirmed] = useState(false);
+  const ref = useRevealOnMount();
+
+  if (!confirm || !confirm.slot) return null;
+
+  const handleConfirm = () => {
+    if (isTyping || confirmed || !sendMessage) return;
+    setConfirmed(true);
+    // §B16b (amended): elicit `confirm_book` deterministically — carries no PII.
+    sendMessage(SCHEDULING_STRINGS.confirmAffirmative, {
+      scheduling_action: 'confirm_book',
+    });
+  };
+
+  return (
+    <div className="scheduling-slots scheduling-confirm-card" data-testid="scheduling-confirm" ref={ref}>
+      <div className="suggested-chips">
+        <span className="scheduling-slot-selected">{confirm.slot.label}</span>
+        {confirm.attendee_email && (
+          <span className="scheduling-confirm-email">{confirm.attendee_email}</span>
+        )}
+        <button
+          type="button"
+          className="cta-button cta-primary scheduling-confirm-button"
+          disabled={isTyping || confirmed}
+          onClick={handleConfirm}
+        >
+          {SCHEDULING_STRINGS.confirmAffirmative}
+        </button>
       </div>
     </div>
   );
