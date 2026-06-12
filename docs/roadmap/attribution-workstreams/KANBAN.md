@@ -1,39 +1,45 @@
 # Attribution build — workstream kanban
 
 **Owner:** integrator (sole writer). Statuses: LAUNCHED · BUILDING · IN REVIEW · FIXING · MERGED · BLOCKED · DEAD(relaunched).
-**Contracts:** [FROZEN_CONTRACTS.md](FROZEN_CONTRACTS.md) (locked 2026-06-12). **Plan:** [../MISSION_INTELLIGENCE_ATTRIBUTION.md](../MISSION_INTELLIGENCE_ATTRIBUTION.md).
+**Contracts:** [FROZEN_CONTRACTS.md](FROZEN_CONTRACTS.md) (locked 2026-06-12; amendments in its change-log). **Plan:** [../MISSION_INTELLIGENCE_ATTRIBUTION.md](../MISSION_INTELLIGENCE_ATTRIBUTION.md).
 
-## Wave 1 — foundation (launched 2026-06-12)
+## Wave 1 — foundation (launched + WOVEN 2026-06-12; staging-live)
 
-| WS | Slice | Repo / base | Branch | Owned surface | PR | Status | Blockers / notes |
-|---|---|---|---|---|---|---|---|
-| A | Widget events: CONVERSATION_STARTED + LINK_CLICKED emission, PAGE_VIEW ping, `?ep=` capture (C1, C2-stamp) | picasso / `staging` | `feature/attribution-ws-a-widget-events` | `Picasso/src/analytics/` + call sites (incl. Streaming/ChatProvider) | [#546](https://github.com/longhornrumble/picasso/pull/546) | FIXING | Task-0: LINK_CLICKED WAS live w/ `{url,link_text,link_domain,category}` (dashboard timeline reads `link_text`) → C1.2 amended additive. Fix-list: restore legacy fields, HTTP-path CONVERSATION_STARTED, kill switch must read S3 tenant config |
-| B | Mint service: registry writes + Dub client (mint/repoint/QR) (C3, C4, C4b) | lambda / `main` | `feature/attribution-ws-b-mint-service` | NEW dir `Attribution_Mint_Service/` | [lambda#306](https://github.com/longhornrumble/lambda/pull/306) | IN REVIEW | 50/50 tests; adversarial panel (security + code) running — HIGH-risk (secret path) |
-| C | Pipeline: PAGE_VIEW tolerance + attribution monthly rollups + Dub reach poll (C1, C2-resolve, C5) | lambda / `main` | `feature/attribution-ws-c-pipeline` | `Analytics_Event_Processor/` + NEW `Attribution_Aggregator/` | — | LAUNCHED | **C5 re-homed 2026-06-12:** legacy Analytics_Aggregator confirmed zip-only + dead/dormant + not twinned to staging (cleanup project tracks removal) → rollups live in new clean-shape `Attribution_Aggregator` Lambda + new `picasso-attribution-aggregates` table; key patterns unchanged |
-| D | `/attribution` API + recommendations rule pack, against C5 fixtures (C6) | lambda / `main` | `feature/attribution-ws-d-api` | `Analytics_Dashboard_API/` | [lambda#307](https://github.com/longhornrumble/lambda/pull/307) | FIXING | 54/54 tests; built pre-C5-re-home → fix-list: env `ATTRIBUTION_AGGREGATES_TABLE` → `picasso-attribution-aggregates`, attr names `pk`/`sk`; review running |
+| WS | Slice | Repo / base | PR | Status | Notes |
+|---|---|---|---|---|---|
+| A | Widget events (C1) + `?ep=` capture (C2-stamp) | picasso / staging | [#546](https://github.com/longhornrumble/picasso/pull/546) | **MERGED** | Fix round 1: LINK_CLICKED kept additive (live dashboard timeline reads `link_text` → C1.2 amended); CONVERSATION_STARTED on BOTH providers; REACH_PING kill switch reads S3 tenant config (loader fetches the same CDN config URL; fail closed). 415 tests. |
+| B | Mint service (C3/C4/C4b) | lambda / main | [#306](https://github.com/longhornrumble/lambda/pull/306) | **MERGED** | Adversarial panel (security+code): 14-item fix-list fully applied (409-idempotency registry lookup, NFKC `@` guard, URL-fragment `?ep=` fix, secrets-cache retry, Retry-After hardening, +more). 64 tests. Staging smoke: validation invoke returns contract-exact error. |
+| C | Pipeline: Event_Processor + NEW `Attribution_Aggregator` (C5) | lambda / main | [#308](https://github.com/longhornrumble/lambda/pull/308) | **MERGED** | Re-homed out of zip-only legacy dir (C5 amendment); GSI alignment fix (Query now partitions on `tenant_hash` — the `tenant_id` query would have returned 0 rows every run). 106 tests. Hourly schedule live; degrades gracefully until Dub key lands. |
+| D | /attribution API + rule pack (C6) | lambda / main | [#307](https://github.com/longhornrumble/lambda/pull/307) | **MERGED** | Review: authz/tenant-isolation/key-injection clean; fix round 1 (env/table re-home, pk/sk case, target allow-list, suffix validation, utm_*-only destinations, DDB error-leak); fix round 2 (sys.modules test pollution — full dir suite 424 green). Deployed 20:13Z after include_globs guard fix. |
 
-## Integrator glue (not worker-owned)
+## Wave 2 — surfaces
 
-| Item | Status | Notes |
+| WS | Slice | Repo | PR | Status | Gate |
+|---|---|---|---|---|---|
+| E | Numbers workspace N1 (read-only, v5 design) | picasso-analytics-dashboard | [#30](https://github.com/longhornrumble/picasso-analytics-dashboard/pull/30) | **IN REVIEW — DO NOT MERGE** | merge = PROD deploy → operator-gated. 32 tests; zero new deps; inline-SVG charts; flag-off path untouched. |
+| F | Briefing B1 (default view) + B3 print-PDF + B4 variants | picasso-analytics-dashboard | — | BUILDING | Stacked on E's branch; §03 ships the aggregate-only fallback (exemplar endpoint = Phase 2, PII-gated). Operator-gated merge, after E. |
+| H | `Attribution_Recap_Generator` (monthly email) | lambda | — | BUILDING | Ships DRY-RUN by default (`RECAP_SEND_ENABLED` gate); first real send gated on communications-consent advisory + operator. Needs CI/deploy registration + Terraform schedule (glue) when PR lands. |
+
+## Glue (integrator-owned) — all landed
+
+| Item | Status |
+|---|---|
+| G1 Terraform staging (entry-points + attribution-aggregates tables, mint + aggregator twins w/ dedicated roles, `picasso/staging/dub/api-key` secret + root resource policy, hourly schedule, ADA env/grants) | **APPLIED** — picasso [#547](https://github.com/longhornrumble/picasso/pull/547) (plan: 15 add / 2 change / 0 destroy) |
+| G2 deploy-staging matrix registration (both new Lambdas) | **MERGED** — lambda [#310](https://github.com/longhornrumble/lambda/pull/310) |
+| G2b pr-checks matrices registration (both) + ESM NODE_OPTIONS plumbing + ADA include_globs | **MERGED** — lambda #310 / [#311](https://github.com/longhornrumble/lambda/pull/311) / [#312](https://github.com/longhornrumble/lambda/pull/312) |
+| G3 pii-inventory rows (§B entry-points + PAGE_VIEW amendments, §C NDJSON, §G Dub vendor) | **MERGED** with #547 (Living-Inventory rule satisfied in the surface-creating PR) |
+
+## Escalations queue (operator)
+
+| # | Item | State |
 |---|---|---|
-| G1 Terraform staging: `picasso-entry-points` table · `picasso-attribution-aggregates` table · `Attribution_Mint_Service` Lambda + role · `Attribution_Aggregator` Lambda + role + hourly schedule · secret `picasso/staging/dub/api-key` (placeholder) · ADA env/grants (registry read + aggregates read + mint invoke) | IN PROGRESS | `infra/` PR → base `staging` (branch `infra/attribution-wave1-glue`); bare names per uniform-env-rules; charset grep + fmt/validate before push |
-| G2 Register `Attribution_Mint_Service` in lambda deploy workflow (4 points: filter, outputs, if-clause, matrix) | TODO | After WS-B's PR shape is known |
-| G3 pii-inventory.md rows (§B new table, §B/§C amendments, §G Dub vendor row) — advisor-drafted | TODO | Apply with the PRs that create each surface (Living-Inventory rule); coordinate with other sessions before editing |
-| G4 Phase-0 docs PR (contracts + this kanban) → main | IN REVIEW | pure docs → main per branch routing |
+| 1 | **Dub key copy** — key found at Secrets Manager `staging/dub/api` (staging acct; `prod/dub/api` in prod). Operator runs the one-liner copy into `picasso/staging/dub/api-key` (classifier correctly blocks the agent from reading credential values). | WAITING — command in session notes |
+| 2 | Confirm after-hours default tz `America/Chicago` (C7 PROVISIONAL; no tenant-config field exists) | WAITING |
+| 3 | Compliance parallel track before F2 PROD enablement: tenant notice template + Dub DPA/subprocessor check (privacy-data-governance-advisor), GPC/CMP configurability, MSA scope read (attorney, recommended) | OPEN (not build-blocking) |
+| 4 | Dashboard prod merges: E (#30) then F — operator-gated | WAITING on review |
+| 5 | First recap-email send: communications-consent advisory + `RECAP_SEND_ENABLED` flip | BLOCKED until H lands + advisory |
+| 6 | Phase sign-off after staging E2E (mint → scan → `?ep=` → provenance → aggregates → API → UI) — needs #1 first | PENDING |
 
-## Wave 2 (after staging API live) — not launched
+## Staging E2E checklist (after Dub key lands)
 
-| WS | Slice | Repo | Gate |
-|---|---|---|---|
-| E | Numbers workspace UI (v5) | picasso-analytics-dashboard | **merge = PROD deploy → operator-gated** |
-| F | Briefing view + PDF export | picasso-analytics-dashboard | after E; operator-gated merge |
-| H | Infographic generator (`Attribution_Recap_Generator`) | lambda | parallel-ok with E; communications-consent-advisor before first send |
-
-## Escalations queue (batched for operator)
-
-| # | Item | Needed when |
-|---|---|---|
-| 1 | Place Dub API key value into Secrets Manager `picasso-dub-api-key-staging` (key currently at `.firecrawl/Dub/.env`) | before staging mint/poll E2E |
-| 2 | Confirm after-hours default timezone `America/Chicago` (no tenant-config tz field exists; C7 PROVISIONAL) | before staging E2E sign-off |
-| 3 | Parallel compliance track: tenant notice-language template + Dub DPA/subprocessor check (privacy-data-governance-advisor), GPC/CMP configurability decision, MSA scope read (attorney, recommended) | before PROD enablement of F2 (not build-blocking) |
-| 4 | Phase sign-off after staging E2E (mint → scan → `?ep=` → provenance → aggregates → API) | end of Wave 1 |
+mint via `POST /attribution/entry-points` (real Dub link on `myrctr.link`) → scan QR → standalone chat opens with `?ep=` → CONVERSATION_STARTED stamped → hourly aggregate rows appear → `GET /attribution/summary` reconciles → Numbers UI renders from staging API.
