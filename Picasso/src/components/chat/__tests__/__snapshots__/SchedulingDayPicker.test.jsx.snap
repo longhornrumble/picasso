@@ -14,6 +14,7 @@ exports[`SchedulingDayPicker — snapshot snapshot: strip markup for a single da
     <button
       aria-label="Select Mon, Jun 15"
       class="suggested-chip scheduling-day-chip"
+      style="flex: 0 0 auto; border-radius: 16px;"
       type="button"
     >
       Mon, Jun 15
