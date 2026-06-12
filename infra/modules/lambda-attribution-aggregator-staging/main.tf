@@ -155,6 +155,19 @@ data "aws_iam_policy_document" "exec" {
     actions   = ["s3:GetObject"]
     resources = ["${var.tenant_config_bucket_arn}/*"]
   }
+
+  # Tenant enumeration lists mappings/ (one JSON per tenant hash) - GetObject
+  # alone denied ListObjectsV2 and the hourly run saw zero tenants (2026-06-12).
+  statement {
+    sid       = "TenantMappingsList"
+    actions   = ["s3:ListBucket"]
+    resources = [var.tenant_config_bucket_arn]
+    condition {
+      test     = "StringLike"
+      variable = "s3:prefix"
+      values   = ["mappings/*"]
+    }
+  }
 }
 
 resource "aws_iam_role_policy" "exec" {
