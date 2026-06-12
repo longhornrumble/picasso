@@ -212,6 +212,43 @@ describe('SchedulingDayPicker — label clamping (≤28 chars)', () => {
   });
 });
 
+describe('SchedulingDayPicker — chip shape (P1-7: labels must not clip to circles)', () => {
+  // Root cause: the strip is a NON-wrapping flex row and .suggested-chip's
+  // `overflow: hidden` zeroes the flex automatic minimum size, so default
+  // flex-shrink:1 squeezed all 7 chips into the container width — each chip
+  // collapsed to a circle with its label clipped. The fix pins each chip at
+  // its natural width (`flex: 0 0 auto`; the strip scrolls instead) with the
+  // same 16px pill radius SchedulingSlots chips render with.
+
+  it('every chip keeps its natural width in the strip (flex: 0 0 auto — no squeeze)', () => {
+    renderWithChat(<SchedulingDayPicker days={DAYS} />);
+    const chips = screen.getAllByRole('button');
+    expect(chips).toHaveLength(DAYS.length);
+    chips.forEach((chip) => {
+      expect(chip.style.flexGrow).toBe('0');
+      expect(chip.style.flexShrink).toBe('0');
+      expect(chip.style.flexBasis).toBe('auto');
+    });
+  });
+
+  it('every chip is a pill, not a circle (border-radius 16px, never 50%)', () => {
+    renderWithChat(<SchedulingDayPicker days={DAYS} />);
+    screen.getAllByRole('button').forEach((chip) => {
+      expect(chip.style.borderRadius).toBe('16px');
+      expect(chip.style.borderRadius).not.toBe('50%');
+    });
+  });
+
+  it('renders the full label text untruncated for in-contract (≤28 char) labels', () => {
+    renderWithChat(<SchedulingDayPicker days={DAYS} />);
+    DAYS.forEach((d) => {
+      // Full label (e.g. "Mon, Jun 15") — identical to how SchedulingSlots
+      // renders slot labels; nothing shortened or elided at render time.
+      expect(screen.getByText(d.label).textContent).toBe(d.label);
+    });
+  });
+});
+
 describe('SchedulingDayPicker — snapshot', () => {
   it('snapshot: strip markup for a single day', () => {
     const { container } = renderWithChat(
