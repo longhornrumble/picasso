@@ -93,6 +93,7 @@ Every D2 row + every D3-surfaced new node has a row below.
 | `picasso-session-summaries-staging` | **3** | AI-inferred summaries → Tier 3 (rule 3). Only PII-adjacent table with DDB streams. |
 | `picasso-audit-staging` | **2** | Tier 2 operator audit events keyed by `tenant_hash`. Retain for audit integrity. |
 | `picasso-booking-staging` | **3** floor (when populated) — heterogeneous | Counseling / case-management / crisis-intake bookings = strongest Tier 3 (vulnerable population + crisis + free-text). Volunteer-orientation / event-RSVP bookings = closer to Tier 2 absent free-text. **D4 records Tier 3 floor; D5 / Step 10 must capture booking-type heterogeneity when first writer lands and the discriminator is known.** Living-inventory PR rule fires at that point. |
+| `picasso-conversation-scheduling-session-staging` | **2** (added 2026-06-12, agentic slice) | `attendee_email` (consumer email, at rest since lambda#298 capture + agent staging) + `selected_slot`/`candidate_slots` + §9.2 state keyed by `session_id` — contact PII + booking state, **no free text on the row** → Tier 2 (rule-2 Tier-3 trigger not met). |
 | `picasso-billing-events-staging` | **1** | Tenant-level billing events only. Not consumer. |
 | `picasso-employee-registry-v2-staging` | **2** | Operator (tenant employee) Tier 2 email + Clerk user id. CPRA-employee-rights = counsel-input (gap G-H), not a tier change. |
 | `picasso-tenant-registry-staging` | **1** | Tenant org metadata, Clerk org id, Stripe customer id (tenant-level). Not consumer. |
