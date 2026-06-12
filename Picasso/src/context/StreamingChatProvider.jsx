@@ -68,6 +68,7 @@ async function streamChat({
   onSuggestedChips, // v3.0 Evolution: callback for AI-generated follow-up chips
   onSchedulingSlots, // Scheduling v1 (WS-C12): generic slot chips from `scheduling_slots`
   onSchedulingNotice, // Scheduling v1 (WS-C12): inline notice from `scheduling_notice`
+  onSchedulingDayPicker, // Scheduling v1 (WS-T3-DAYPICK-FE §B16e): day-picker strip from `scheduling_day_picker`
   onDone,
   onError,
   abortControllersRef,
@@ -255,6 +256,13 @@ async function streamChat({
           if (obj.type === 'scheduling_notice' && obj.notice) {
             logger.info('Received scheduling notice', { notice: obj.notice });
             onSchedulingNotice?.(obj.notice);
+            continue;
+          }
+
+          // Scheduling v1 (WS-T3-DAYPICK-FE §B16e): day-picker strip fallback.
+          if (obj.type === 'scheduling_day_picker' && Array.isArray(obj.days)) {
+            logger.info('Received scheduling day picker', { count: obj.days.length });
+            onSchedulingDayPicker?.({ days: obj.days, user_time_zone: obj.user_time_zone });
             continue;
           }
 
@@ -809,6 +817,21 @@ export default function StreamingChatProvider({ children }) {
             const updated = prev.map(msg =>
               msg.id === streamingMessageId
                 ? { ...msg, metadata: { ...msg.metadata, schedulingNotice: notice } }
+                : msg
+            );
+            saveToSession('picasso_messages', updated);
+            return updated;
+          });
+        },
+        onSchedulingDayPicker: ({ days, user_time_zone }) => {
+          // Scheduling v1 (WS-T3-DAYPICK-FE §B16e): attach day-picker data to the
+          // streaming message's metadata (mirrors onSchedulingSlots pattern).
+          // MessageBubble renders <SchedulingDayPicker>.
+          logger.info('Received scheduling day picker', { count: days.length });
+          setMessages(prev => {
+            const updated = prev.map(msg =>
+              msg.id === streamingMessageId
+                ? { ...msg, metadata: { ...msg.metadata, schedulingDayPicker: { days, user_time_zone } } }
                 : msg
             );
             saveToSession('picasso_messages', updated);

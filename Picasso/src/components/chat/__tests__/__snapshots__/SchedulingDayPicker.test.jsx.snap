@@ -1,0 +1,23 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`SchedulingDayPicker — snapshot snapshot: strip markup for a single day 1`] = `
+<div
+  class="scheduling-day-picker"
+  data-testid="scheduling-day-picker"
+>
+  <div
+    aria-label="Select a day"
+    class="scheduling-day-strip"
+    role="group"
+    style="overflow-x: auto; display: flex; gap: 0.5rem; padding-inline: 0.25rem;"
+  >
+    <button
+      aria-label="Select Mon, Jun 15"
+      class="suggested-chip scheduling-day-chip"
+      type="button"
+    >
+      Mon, Jun 15
+    </button>
+  </div>
+</div>
+`;
