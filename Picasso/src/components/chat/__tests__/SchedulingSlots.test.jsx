@@ -11,7 +11,7 @@
 import React from 'react';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import '@testing-library/jest-dom';
-import SchedulingSlots, { SchedulingNotice, SCHEDULING_STRINGS } from '../SchedulingSlots';
+import SchedulingSlots, { SchedulingNotice, SchedulingConfirmCard, SCHEDULING_STRINGS } from '../SchedulingSlots';
 import { ChatContext } from '../../../context/shared/ChatContext';
 
 const makeChatContext = (overrides = {}) => ({
@@ -90,14 +90,16 @@ describe('SchedulingSlots — select_slot dispatch (§B16b)', () => {
     });
   });
 
-  it('after selecting, chips are replaced by a confirm affirmative', () => {
+  it('after selecting, chips collapse to the selected label — confirm is SERVER-driven (no local button)', () => {
     renderWithChat(<SchedulingSlots slots={SLOTS} />);
     fireEvent.click(screen.getByText('Tue, Jun 3 · 2:00 PM'));
-    // The other chip is gone; the confirm button is shown.
+    // The other chip is gone; the selected label remains; NO local confirm button —
+    // the backend's scheduling_confirm event renders <SchedulingConfirmCard> instead.
     expect(screen.queryByText('Wed, Jun 4 · 4:00 PM')).not.toBeInTheDocument();
+    expect(screen.getByText('Tue, Jun 3 · 2:00 PM')).toBeInTheDocument();
     expect(
-      screen.getByText(SCHEDULING_STRINGS.confirmAffirmative)
-    ).toBeInTheDocument();
+      screen.queryByText(SCHEDULING_STRINGS.confirmAffirmative)
+    ).not.toBeInTheDocument();
   });
 
   it('does not dispatch when typing is in progress', () => {
@@ -108,20 +110,34 @@ describe('SchedulingSlots — select_slot dispatch (§B16b)', () => {
   });
 });
 
-describe('SchedulingSlots — confirm_book dispatch (§B16b)', () => {
-  it('tapping confirm sends a confirm_book-eliciting turn (no PII)', () => {
-    const { ctx } = renderWithChat(<SchedulingSlots slots={SLOTS} />);
-    fireEvent.click(screen.getByText('Tue, Jun 3 · 2:00 PM')); // select first
-    fireEvent.click(screen.getByText(SCHEDULING_STRINGS.confirmAffirmative));
+describe('SchedulingConfirmCard — confirm_book dispatch (§B16b amended, server-driven)', () => {
+  const CONFIRM = { slot: { slotId: 's1', label: 'Tue, Jun 3 · 2:00 PM' }, attendee_email: 'vol@example.com' };
 
-    expect(ctx.sendMessage).toHaveBeenCalledTimes(2);
+  it('renders slot label + attendee email + the confirm button', () => {
+    renderWithChat(<SchedulingConfirmCard confirm={CONFIRM} />);
+    expect(screen.getByText('Tue, Jun 3 · 2:00 PM')).toBeInTheDocument();
+    expect(screen.getByText('vol@example.com')).toBeInTheDocument();
+    expect(screen.getByText(SCHEDULING_STRINGS.confirmAffirmative)).toBeInTheDocument();
+  });
+
+  it('tapping confirm sends a confirm_book-eliciting turn (no PII), one-shot', () => {
+    const { ctx } = renderWithChat(<SchedulingConfirmCard confirm={CONFIRM} />);
+    fireEvent.click(screen.getByText(SCHEDULING_STRINGS.confirmAffirmative));
+    fireEvent.click(screen.getByText(SCHEDULING_STRINGS.confirmAffirmative)); // double-tap guarded
+
+    expect(ctx.sendMessage).toHaveBeenCalledTimes(1);
     expect(ctx.sendMessage).toHaveBeenLastCalledWith(
       SCHEDULING_STRINGS.confirmAffirmative,
       { scheduling_action: 'confirm_book' }
     );
     // The affirmative carries no coordinator identity.
-    const [text] = ctx.sendMessage.mock.calls[1];
+    const [text] = ctx.sendMessage.mock.calls[0];
     expect(text).not.toMatch(/maya/i);
+  });
+
+  it('renders nothing without a staged slot (schema discipline)', () => {
+    const { container } = renderWithChat(<SchedulingConfirmCard confirm={null} />);
+    expect(container.querySelector('[data-testid="scheduling-confirm"]')).toBeNull();
   });
 });
 

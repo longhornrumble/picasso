@@ -11,7 +11,7 @@ import DOMPurify from 'dompurify';
 import CTAButton, { CTAButtonGroup } from './CTAButton';
 import FormCompletionCard from '../forms/FormCompletionCard';
 import ShowcaseCard from './ShowcaseCard';
-import SchedulingSlots, { SchedulingNotice } from './SchedulingSlots';
+import SchedulingSlots, { SchedulingNotice, SchedulingConfirmCard } from './SchedulingSlots';
 import SchedulingDayPicker from './SchedulingDayPicker';
 import { ACTION_CHIP_CLICKED, LINK_CLICKED } from '../../analytics/eventConstants.js';
 
@@ -1031,6 +1031,12 @@ export default function MessageBubble({
             identity is revealed only by the backend's confirm prose (§10.4). */}
         {(role === "assistant" || role === "bot") && metadata?.schedulingSlots?.length > 0 && (
           <SchedulingSlots slots={metadata.schedulingSlots} />
+        )}
+
+        {/* Server-driven confirm card (§B16b/§B16d amendments) — slot staged +
+            identity resolved; tapping sends the deterministic confirm_book signal. */}
+        {(role === "assistant" || role === "bot") && metadata?.schedulingConfirm?.slot && (
+          <SchedulingConfirmCard confirm={metadata.schedulingConfirm} />
         )}
 
         {/* Scheduling inline notice (WS-C12) — "we'll confirm by email" fallback. */}
