@@ -392,6 +392,40 @@ boundary). So the `proposing` step (availability + routing + slot-gen) AND the `
 // owns the index.js entry-hook wiring + the qualifying-context resolution glue (NOT a worker slice).
 ```
 
+### B16e — Surface-4 day-picker fallback seam (produced by WS-T3-DAYPICK-BE, consumed by WS-T3-DAYPICK-FE) — UI plan §Surface-4 / canonical §9.3 — **LOCKED 2026-06-12** (integrator)
+
+> NOTE: the plan's older "§B16c track" label for this surface predates the actual §B16c (commit-seam) lock above —
+> this is the fallback contract; numbering continues the B-remainder series.
+
+```
+// TRIGGER (flow-side rule): the BSH flow emits the day-picker when EITHER
+//   (a) invokeProposal returns outcome:'no_availability'  (tier-1 "suggest a different day" — never say "no availability"), OR
+//   (b) the 'proposing' none-self-loop has re-proposed >=2 times (alreadyRejected accumulation per §B16b) and still no pick.
+// STATE RULE (strand-prevention, mirrors §B16b): emitting the picker does NOT advance state — (a) stays in 'qualifying',
+// (b) stays in 'proposing'. A day selection re-runs invokeProposal; only an 'ok' propose advances per §B16b.
+//
+// SSE MESSAGE (BSH → widget; rides the same stream writer as scheduling_slots):
+//   { type: 'scheduling_day_picker',
+//     days: [ { date: 'YYYY-MM-DD', label: '<Intl-formatted, e.g. "Mon, Jun 15">' } x7 ],  // next 7 candidate days,
+//     user_time_zone: '<IANA tz>' }                                                        // clipped to max_advance_days
+//   v1 does NOT precompute per-day availability (7x freeBusy is a v2 enhancement); the strip is date-only.
+//
+// WIDGET SIGNAL (widget → BSH on tap; DETERMINISTIC, mirrors C12's scheduling_intent / scheduling_slot_id hint —
+// NOT an LLM action; the §B14 boundary is unaffected because day selection never commits anything):
+//   { scheduling_day_selected: 'YYYY-MM-DD' }   // rides the next turn's request body like scheduling_intent
+//
+// FLOW HANDLING of the signal: re-run invokeProposal with the dateWindow constraint for that day; on 'ok' → present
+// slots ('proposing' per §B16b ordering); on 'no_availability' → re-emit the picker (same 7 days), LLM text says that
+// day had no fit. >3 total picker cycles → the §9.3 async escape (the shipped scheduling_notice email fallback).
+//
+// SLOT-GEN EXTENSION (backwards-compatible, mirrors the §B3 resourceId precedent): generateSlots gains OPTIONAL
+//   dateWindow: { startISO, endISO }   // constrains candidate generation to the window; absent → unchanged behavior
+// BCH scheduling_propose gains OPTIONAL passthrough input `date_window: { start, end }` → threads to generateSlots.
+// The frozen 4-key generateSlots call and the shipped propose contract (§B16a) are UNCHANGED when absent.
+// Widget rendering constraints (UI plan): 7-day strip, swipe-able <=375px, Intl.DateTimeFormat in user_time_zone
+// (no tz lib), CSS logical properties, chip label <=28 chars.
+```
+
 ---
 
 ## E. Sub-phase E interfaces — **LOCKED 2026-06-05** (integrator M0; verified — Security-Reviewer + tech-lead informed pass)
@@ -694,6 +728,37 @@ async function generateReengagementCopy({ purpose, booking, tenant, rescheduleUr
 //   state-signing secrets, the Google redirect_uri registration, Flag B provisioning, and the §B7 exclusion filter.
 ```
 
+### E11b — user-initiated calendar DISCONNECT (produced by WS-T3-DISC-BE; consumed by WS-T3-DISC-FE) — the §E11 inverse — **LOCKED 2026-06-12** (integrator)
+```
+// DASHBOARD → ADA (Clerk-authed; SELF-ONLY — the caller disconnects their OWN coordinator identity, same identity
+// resolution as the §E0 mint; admins do NOT disconnect others in v1):
+//   POST /scheduling/connection/disconnect   (no body)  → 200 { status: 'disconnected', watch: 'stopped'|'pending'|'none' }
+//                                                       → 4xx/5xx { error } (generic; no secret-path leakage)
+// ADA SERVER-SIDE HOP (token never reaches the browser; NOT a redirect): mint a standard init token (§E0 signer,
+// typ:'init', 300s) and POST it to `${OAUTH_FUNCTION_URL}/connection/disconnect` as JSON body { init: '<token>' } —
+// body-carried (NOT query) so the token never lands in CloudFront/access logs. Relay the JSON result.
+//
+// Calendar_OAuth_Connect — NEW route, METHOD-ENFORCED POST /connection/disconnect, body { init }:
+//   1. state.verify(init, typ:'init')  — claims-sourced tenant/coordinator, same as /connect (reserved `_*` guard applies).
+//   2. Best-effort Google revocation: POST https://oauth2.googleapis.com/revoke (refresh_token) — new oauth.revokeToken();
+//      network/4xx failure is logged (`disconnect_google_revoke_failed`, WARN) and does NOT block the disconnect.
+//   3. secrets.markDisconnected() — the SHIPPED non-destructive stamp (status:'revoked' + disconnected_at). NO secret
+//      deletion in v1 (audit trail + §B7 pool-exclusion reads the status field; deletion is a PII-retention decision
+//      owned by the purge pipeline, not this flow).
+//   4. Best-effort async-invoke Calendar_Watch_Offboarder { tenant_id, coordinator_id } (mirrors the callback's
+//      Onboarder pattern); response `watch` field reflects the invoke outcome, never blocks.
+//   5. NO jti burn on this route (replay = re-disconnect = idempotent + harmless; the token is server-held only).
+//   Idempotent: already-revoked/missing secret → 200 { status:'disconnected', watch:'none' } (no detail leak).
+// DOWNSTREAM (already shipped, verified): §B7 candidate-resolver excludes status:'revoked'; /connection/status reports
+// 'disconnected'; booking paths degrade via the coordinator_degraded marker if a stale pool races the stamp.
+// INTEGRATOR GLUE (not worker-owned): CloudFront ordered behavior `/connection/disconnect` → oauth origin with POST
+// in allowed_methods (the 3 existing behaviors are GET-set), + lambda:InvokeFunction grant on Calendar_Watch_Offboarder
+// for the oauth Lambda role, + (if absent) outbound HTTPS allowance is N/A (Lambda has internet egress).
+// UI (DISC-FE): Disconnect button visible when status ∈ {connected, stale_connected}; native confirm dialog is
+// acceptable v1; on success flip to disconnected + banner; on error inline message + retry. Copy must say bookings
+// stop routing to this calendar and existing events are NOT deleted.
+```
+
 ### E0 — scheduling OAuth init-token MINT (integrator glue; WS-E-PORTAL G3) — **LOCKED 2026-06-06** (integrator)
 ```js
 // The Clerk-authed dashboard backend (Analytics_Dashboard_API) mints the short-lived init token the
@@ -853,3 +918,4 @@ notify.js `reengagement` kind (+ its STOP footer) · the `selectChannels`-into-`
 | 2026-06-09 | **§E14 SMS editor surface (items 1-3) LOCKED (integrator; WS-E-PORTAL G7a).** Extends §E14 with the SMS override READ/WRITE surface so the portal builds the E14 SMS editor **stub-then-wire**. GET `/scheduling/notification-templates`: each moment ALSO returns `sms_text` (effective override-or-default), `sms_is_override`, `sms_default`, `sms_available_variables` (plain-text vars — NO html-only `{{rebookHtml}}`) + a top-level `sms_footer_note`. PATCH `/scheduling/notification-templates/{moment}`: accepts `sms_text` (own **480-char** max ≈3 segments; empty clears; same upsert-merge as the email fields). Storage: `sms_text` additive on `picasso-scheduling-notif-template-{env}`. ⚠ **EDITOR SURFACE ONLY** — the actual SMS **SEND** (items 4-5: notify.js SMS dispatch reads the override + appends the TCPA STOP/HELP footer AFTER render; notify.js authoritative defaults + parity test) stays **HELD** until the SMS_Sender twin + WS-E-TCPA (notify.js SMS is a no-send stub today). ADA defines the SMS defaults now (`_SCHED_NOTIF_SMS_DEFAULTS`); notify.js MUST mirror them when the sender lands (parity test ships then). Scope: the 3 dispatched moments (reschedule_link/reoffer/cancel_notice); reminders when WS-E-REMIND lands. Backend lambda#271; **NO new IaC** (additive field on the existing table + grant). Consumed by the WS-E-PORTAL E14 SMS editor (one SMS input/moment + segment-count hint + a 'STOP appended automatically, can't be removed' note). |
 | 2026-06-10 | **§E12-actions + §E13c-G8 consumer ratifications (WS-E-PORTAL phase-completion audit; integrator-owned, neither forked — §C).** The adversarial 3-reviewer audit of the merged Customer-Portal surfaces flagged two consumer-vs-contract divergences; the operator ruled both, confirming the LOCKED contracts govern — **no contract behavior change, no consumer re-sync.** (1) **§E12-actions permission RATIFIED authoritative over AC#18 wording (audit row 1).** The shipped `BookingActions.canAct` gate is **own-or-admin** (a staff member may cancel / reschedule-link their OWN booking; admin/super_admin any in-tenant), exactly per the §E12-actions §8 PERMISSION block + the `scheduling_ui_plan` §8 matrix. `SCHEDULING_PATH_TO_LAUNCH_PLAN` AC#18's literal "only admin sees these buttons" is **superseded** by the later-locked §E12-actions / §8 — the contract, not the AC prose, is the source of truth. (2) **§E13c-G8 D3-warning participation-gating RATIFIED — KEEP (audit row 5).** The portal's `staffStatus.ts` renders the connect-calendar warning (= `!calendar_connected`) ONLY for staff who participate in scheduling (bookable / tagged), not for every unconnected member — a stricter consumer-side **display** refinement of the §E13c-G8 addendum's literal `connect-calendar = !calendar_connected`, kept to avoid non-participant warning noise. The §E13c-G8 backend signal (`calendar_connected` = secret-exists-and-not-`revoked`) is **UNCHANGED**; the refinement lives entirely in the dashboard warning-layer, not in this contract. Audit record: `project_ws_e_portal_phase_audit_2026-06-09` (rows 1 + 5); shipped surfaces dash#19 (§E12-actions) / dash#20 (§E13c-G8). |
 | 2026-06-10 | **§E14 SMS SEND path LOCKED (G7b items 4-5; integrator glue, HIGH-risk).** Activates the SMS half the G7a editor was saving copy for: notify.js `dispatchVolunteerNotice` now SENDS SMS (not a stub) for the 3 dispatched moments (reschedule_link / reoffer / cancel_notice) when the CALL-SITE opts in. **Architecture:** SMS is the opt-in SUPPLEMENT, email the unconditional floor. The TCPA gate is **caller-owned** via the shipped `selectChannels` (§E3): SMS attempted ONLY when `orgSmsEnabled && live-consent && !quiet-hours`. notify.js never reads consent — it just renders the body (sms_text override-or-default), appends the STOP/HELP footer AFTER render (structurally outside the editable override → can't be removed OR duplicated), and async-invokes the **SMS_Sender twin** with `sendType:'contact'` (which RE-CHECKS consent server-side, defense-in-depth). An SMS-native kind dispatched without an explicit `channels` object now THROWS (no silent default-to-send). **First wired call-site:** the G6 `reschedule_link` action — BCH `handleRescheduleLink` reads the guest's consent (`sms-consent.js` GetItem, fail-safe→suppress), runs `selectChannels(fireTime=now)`, passes `channels` to notify. **ADA** threads `org_sms_enabled` (= tenant config `notificationPrefs.sms is True`, fail-closed) in the BCH payload. notify SMS defaults are byte-parity-tested against ADA `_SCHED_NOTIF_SMS_DEFAULTS` (CI merge gate). Backend lambda#274 (notify.js + BCH scheduling-mutate/sms-consent + ADA + SMS_Sender phone-hash PII fix); IaC picasso#503 (BCH role += `DDBReadSmsConsent` GetItem on picasso-sms-consent-staging + `InvokeSmsSender` on the twin; env). **HIGH-risk 3-reviewer phase-completion-audit ran pre-merge** (Security + code + test); all blockers + makes-sense findings fixed: {{org}} now rendered in SMS, SMS-native-kind TCPA throw, phone hashed in SMS_Sender logs, sms_text-projection + org_sms-strict-bool + attendee_phone-forward + opted_out-NULL tests, symmetric parity. pii-inventory updated (BCH = new reader of picasso-sms-consent). **Still HELD:** reminder-moment SMS (confirmation/reminder_24h/reminder_1h) — those don't dispatch at all yet (Reminder_Scheduler merged-but-INERT; see `REMINDER_ACTIVATION_DEFERRED.md`). Audit record: `project_scheduling_g7b_sms_send_phase_audit_2026-06-10`. |
+| 2026-06-12 | **§B16e LOCKED** (Surface-4 day-picker fallback seam: trigger rule, `scheduling_day_picker` SSE shape, deterministic `scheduling_day_selected` widget signal, backwards-compatible `dateWindow`/`date_window` slot-gen extension). **§E11b LOCKED** (user-initiated disconnect: ADA Clerk-authed POST + server-side body-carried init-token hop; OAuth Lambda POST route = best-effort Google revoke → shipped `markDisconnected` stamp → best-effort Offboarder; NO secret deletion, NO jti burn — rationale inline). Track 3 lanes consume these. NOTE: the plan's legacy "§B16c" label for the fallback = §B16e here (real §B16c = commit seam). |
