@@ -25,6 +25,7 @@ import {
   getFromSession,
   clearSession,
   trimHistoryForSend,
+  mergeSchedulingSlots,
   _storeGet,
   _storeKeys
 } from './shared/messageHelpers';
@@ -808,11 +809,23 @@ export default function StreamingChatProvider({ children }) {
           // Scheduling v1 (WS-C12): attach generic slot chips to the streaming
           // message's metadata (mirrors onCards). onDone preserves them via
           // `...msg.metadata`. MessageBubble renders <SchedulingSlots>.
+          // Multi-day fix (companion to lambda fix/agent-multiday-slots): an agent
+          // turn emits one scheduling_slots event PER dated lookup ("Monday or
+          // Tuesday?" → two). MERGE-dedupe by slotId into the streaming message's
+          // existing slots (append new, keep order, cap 10) instead of replacing —
+          // replacement left only the LAST call's chips rendered. Scoped to the
+          // same streamingMessageId; a new message starts fresh.
           logger.info('Received scheduling slots', { count: slots.length });
           setMessages(prev => {
             const updated = prev.map(msg =>
               msg.id === streamingMessageId
-                ? { ...msg, metadata: { ...msg.metadata, schedulingSlots: slots } }
+                ? {
+                    ...msg,
+                    metadata: {
+                      ...msg.metadata,
+                      schedulingSlots: mergeSchedulingSlots(msg.metadata?.schedulingSlots, slots)
+                    }
+                  }
                 : msg
             );
             saveToSession('picasso_messages', updated);
