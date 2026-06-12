@@ -443,6 +443,11 @@ resource "aws_lambda_function" "this" {
       # any KB Retrieve call. Empty in environments where Lambda + KB share
       # an account (no assume-role needed).
       KB_RETRIEVER_ROLE_ARN = length(var.kb_retriever_role_arns) > 0 ? var.kb_retriever_role_arns[0] : ""
+      # De-hardcoded sender (lambda PR #315): form_handler.py's default
+      # applicant-confirmation sender. Unset -> hardcoded prod sender +
+      # SENDER_ENV_MISSING warning; pinning the staging-verified identity
+      # here means staging never exercises that fallback.
+      SES_FROM_EMAIL = "notify@staging.myrecruiter.ai"
     }
   }
 
