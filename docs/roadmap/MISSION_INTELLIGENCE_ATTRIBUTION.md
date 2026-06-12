@@ -35,6 +35,7 @@ The platform thesis: nonprofits are understaffed and time is the enemy. MyRecrui
 7. **Confidence floors are UI.** Insights and rate comparisons are held until n ≥ 50 conversations (per channel / per entry point) — rendered as "held · n<50" states, not footnotes.
 8. **Lead latency is measured only on our surface.** First-human-touch = authenticated workspace actions (lead viewed, outcome marked, booking). Email opens/clicks are polluted (Apple MPP prefetch, SafeLinks bot clicks); SMS has no read receipts. Detail lives in Lead Workspace; Attribution carries summary stats only (58% self-booked, median first response).
 9. **Conversational forms are channel-agnostic.** A "form" is a structured collection episode inside a conversation; FORM_* events apply identically on any channel.
+10. **Every attribution surface ships behind `dashboard_attribution`** — the tab views (Numbers, Briefing), the `/attribution` API (server-side check), AND the monthly recap email (generator skips unflagged tenants). Data *capture* (event emission, pageview ping, provenance stamping) runs platform-wide so a tenant that upgrades has history on day one — the widget already captures GA/UTM attribution for all tenants today; the pageview ping is the marginal new collection and is in scope for the Phase-0 PII review.
 
 ## The three surfaces (one data layer, three genres)
 

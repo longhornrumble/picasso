@@ -20,7 +20,7 @@ Wrapped/Grammarly genre, ~620px single column:
 ## Work breakdown
 
 ### I1 — Generator
-- Monthly EventBridge schedule (first business day, after the month's final aggregate run) → new `Attribution_Recap_Generator` Lambda (dedicated execution role per hard rule): reads the same attribution aggregates payload as Briefing/Numbers, selects template variant, renders email HTML.
+- Monthly EventBridge schedule (first business day, after the month's final aggregate run) → new `Attribution_Recap_Generator` Lambda (dedicated execution role per hard rule): iterates tenants **with `dashboard_attribution` enabled only** (locked decision #10 — the email is a surface of the gated feature and must never fire for unflagged tenants), reads the same attribution aggregates payload as Briefing/Numbers, selects template variant, renders email HTML.
 - **Production email = table-based MJML build** of the approved design (the mockup is the design spec, not the sendable artifact). Render snapshot tests against the mock.
 - Send via existing `send_email` Lambda (SES) with `ses_event_handler` bounce/complaint handling.
 
