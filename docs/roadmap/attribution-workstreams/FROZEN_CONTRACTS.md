@@ -54,9 +54,9 @@ Transport: batched (1000 ms debounce) HTTP POST to `${STREAMING_ENDPOINT}?action
 - Emit ONCE per session, on the **first user message** (C7 definition), not on widget open.
 - `payload`: `{ "entry_point_id": "<ep_…|null>", "attribution": <the existing widget attribution object, verbatim — ga_client_id/utm_*/gclid/fbclid/referrer/landing_page/captured_at> }`.
 
-### C1.2 `LINK_CLICKED` (existing constant — recon found possible existing emission at `MessageBubble.jsx:941,950`; WS-A ground-truths and wires/extends to match)
+### C1.2 `LINK_CLICKED` (existing emission CONFIRMED at `MessageBubble.jsx:941,950` — amended 2026-06-12)
 - Emit on click of any link inside message content, including outbound resource links.
-- `payload`: `{ "url": "<href>", "label": "<anchor text, ≤120 chars>", "source": "message" | "cta" | "resource" }`.
+- `payload`: `{ "url": "<href>", "label": "<anchor text, ≤120 chars>", "source": "message" | "cta" | "resource" }` **PLUS legacy-compat fields `link_text`, `link_domain`, `category` retained additively** — the live dashboard session timeline renders `payload.link_text` (`SessionTimelineEvent.tsx:186`) and that repo cannot update before Wave 2 (prod-gated). Legacy fields drop only after the Wave-2 dashboard reads `label`.
 
 ### C1.3 `PAGE_VIEW` (NEW constant — add to `eventConstants.js`)
 - Emitted by the **loader** (`Picasso/src/widget-host.js`), same envelope + transport (single-event batch POST), independent of the iframe.
