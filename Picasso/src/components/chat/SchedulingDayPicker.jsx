@@ -119,6 +119,15 @@ export default function SchedulingDayPicker({ days = [], user_time_zone: _tz }) 
                 className="suggested-chip scheduling-day-chip"
                 disabled={isTyping}
                 aria-label={DAY_PICKER_STRINGS.chipAriaLabel(displayLabel)}
+                // P1-7 fix: the strip is a NON-wrapping flex row, and
+                // .suggested-chip's `overflow: hidden` zeroes the flex
+                // automatic minimum size — so default flex-shrink:1 squeezed
+                // all 7 chips into the container width, clipping each label
+                // to a circle. `flex: 0 0 auto` keeps the chip at its natural
+                // label width (the strip scrolls instead, as designed), and
+                // the 16px radius pins the same pill shape SchedulingSlots
+                // chips get from .suggested-chip.
+                style={{ flex: '0 0 auto', borderRadius: '16px' }}
                 onClick={() => handleSelect(day)}
               >
                 {displayLabel}
