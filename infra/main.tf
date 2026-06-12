@@ -646,6 +646,15 @@ module "lambda_analytics_dashboard_api_staging" {
   # ARN inlined here rather than via module output until the bucket itself is
   # Terraformed. Follow-up tracked in project memory.
   archive_bucket_arn = "arn:aws:s3:::picasso-archive-${var.env}"
+
+  # Attribution Wave-1 (C4b, C5, C6): entry-points + aggregates read access
+  # and mint function invoke for /attribution/* routes.
+  entry_points_table_arn            = module.ddb_entry_points_staging[0].table_arn
+  entry_points_table_name           = module.ddb_entry_points_staging[0].table_name
+  attribution_aggregates_table_arn  = module.ddb_attribution_aggregates_staging[0].table_arn
+  attribution_aggregates_table_name = module.ddb_attribution_aggregates_staging[0].table_name
+  mint_function_arn                 = module.lambda_attribution_mint_staging[0].function_arn
+  mint_function_name                = module.lambda_attribution_mint_staging[0].function_name
 }
 
 # Phase C (BSH staging-twin): analytics-events pipeline.
@@ -1949,4 +1958,108 @@ module "lambda_attendance_disposition_staging" {
 
   tenant_config_bucket_arn  = module.tenant_config_staging[0].bucket_arn
   tenant_config_bucket_name = module.tenant_config_staging[0].bucket_name
+}
+
+# ──────────────────────────────────────────────────────────────────────
+# Attribution Wave-1 -- staging glue (G1)
+#
+# Resources:
+#   - picasso-entry-points DDB table (C3 registry)
+#   - picasso-attribution-aggregates DDB table (C5 rollups, TTL 420d)
+#   - picasso/staging/dub/api-key Secrets Manager secret (C4 Dub key;
+#     value operator-injected post-apply via put-secret-value)
+#   - Attribution_Mint_Service Lambda (WS-B, nodejs20.x, placeholder)
+#   - Attribution_Aggregator Lambda (WS-C, python3.13, hourly EventBridge)
+#   - Dub secret resource policy scoped to the two Lambda exec roles
+#   - ADA (lambda_analytics_dashboard_api_staging) extended with
+#     read grants on both tables + InvokeFunction on the mint Lambda
+#
+# Placeholder-code pattern: real code deploys via lambda-repo CI matrix.
+# ──────────────────────────────────────────────────────────────────────
+
+module "ddb_entry_points_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/ddb-entry-points-staging"
+}
+
+module "ddb_attribution_aggregates_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/ddb-attribution-aggregates-staging"
+}
+
+module "secrets_dub_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/secrets-dub-staging"
+}
+
+module "lambda_attribution_mint_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/lambda-attribution-mint-staging"
+
+  entry_points_table_arn  = module.ddb_entry_points_staging[0].table_arn
+  entry_points_table_name = module.ddb_entry_points_staging[0].table_name
+
+  dub_secret_arn  = module.secrets_dub_staging[0].secret_arn
+  dub_secret_name = module.secrets_dub_staging[0].secret_name
+}
+
+module "lambda_attribution_aggregator_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/lambda-attribution-aggregator-staging"
+
+  session_events_table_arn  = module.ddb_session_events_staging[0].table_arn
+  session_events_table_name = module.ddb_session_events_staging[0].table_name
+
+  entry_points_table_arn  = module.ddb_entry_points_staging[0].table_arn
+  entry_points_table_name = module.ddb_entry_points_staging[0].table_name
+
+  attribution_aggregates_table_arn  = module.ddb_attribution_aggregates_staging[0].table_arn
+  attribution_aggregates_table_name = module.ddb_attribution_aggregates_staging[0].table_name
+
+  dub_secret_arn  = module.secrets_dub_staging[0].secret_arn
+  dub_secret_name = module.secrets_dub_staging[0].secret_name
+
+  tenant_config_bucket_arn  = module.tenant_config_staging[0].bucket_arn
+  tenant_config_bucket_name = module.tenant_config_staging[0].bucket_name
+}
+
+# Dub secret resource policy -- restricts GetSecretValue to the two
+# attribution Lambda exec roles only. Root-level (not in the secrets
+# module) to avoid the circular dep: policy needs role ARNs; Lambda
+# modules need the secret ARN. Same pattern as jwt_signing_key_staging
+# and clerk_secret_key_staging above.
+resource "aws_secretsmanager_secret_policy" "dub_api_key_staging" {
+  count      = var.env == "staging" ? 1 : 0
+  secret_arn = module.secrets_dub_staging[0].secret_arn
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AllowAttributionLambdaRoles"
+        Effect = "Allow"
+        Principal = { AWS = [
+          module.lambda_attribution_mint_staging[0].role_arn,
+          module.lambda_attribution_aggregator_staging[0].role_arn,
+        ] }
+        Action   = "secretsmanager:GetSecretValue"
+        Resource = "*"
+      },
+      {
+        Sid       = "DenyAllOtherStagingPrincipals"
+        Effect    = "Deny"
+        Principal = "*"
+        Action    = "secretsmanager:GetSecretValue"
+        Resource  = "*"
+        Condition = {
+          StringNotEquals = {
+            "aws:PrincipalArn" = [
+              module.lambda_attribution_mint_staging[0].role_arn,
+              module.lambda_attribution_aggregator_staging[0].role_arn,
+            ]
+          }
+        }
+      },
+    ]
+  })
 }
