@@ -83,7 +83,7 @@ data "aws_iam_policy_document" "exec" {
 
   statement {
     sid     = "EntryPointsReadWrite"
-    actions = ["dynamodb:PutItem", "dynamodb:GetItem", "dynamodb:Query"]
+    actions = ["dynamodb:PutItem", "dynamodb:GetItem", "dynamodb:Query", "dynamodb:UpdateItem"]
     resources = [
       var.entry_points_table_arn,
     ]
