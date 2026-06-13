@@ -945,28 +945,35 @@ export default function MessageBubble({
               ? { __html: content }
               : undefined
           }
-          // Analytics: Track link clicks via event delegation
+          // Analytics: Track link clicks via event delegation.
+          // C1.2 (amended 2026-06-12): payload is ADDITIVE — new fields + legacy-compat
+          // fields retained so the live dashboard (SessionTimelineEvent.tsx:186) can still
+          // render payload.link_text until Wave-2 migrates to payload.label.
           onClick={(e) => {
             const anchor = e.target.closest('a');
             if (anchor && anchor.href) {
+              const rawLabel = (anchor.textContent || anchor.innerText || '').trim();
+              // Compute legacy fields the same way the pre-existing code did
+              // (reference: origin/staging MessageBubble.jsx:941-950)
+              let linkDomain = 'unknown';
+              let category = 'unknown';
               try {
-                const url = new URL(anchor.href);
-                emitAnalyticsEvent(LINK_CLICKED, {
-                  url: anchor.href,
-                  link_text: anchor.textContent || anchor.innerText || '',
-                  link_domain: url.hostname,
-                  category: url.protocol === 'mailto:' ? 'email' :
-                           url.protocol === 'tel:' ? 'phone' : 'web'
-                });
-              } catch {
-                // Invalid URL, still track basic info
-                emitAnalyticsEvent(LINK_CLICKED, {
-                  url: anchor.href,
-                  link_text: anchor.textContent || '',
-                  link_domain: 'unknown',
-                  category: 'unknown'
-                });
-              }
+                const u = new URL(anchor.href);
+                linkDomain = u.hostname;
+                category = u.protocol === 'mailto:' ? 'email'
+                         : u.protocol === 'tel:'    ? 'phone'
+                         : 'web';
+              } catch { /* invalid URL — leave defaults */ }
+              emitAnalyticsEvent(LINK_CLICKED, {
+                // C1.2 new fields
+                url: anchor.href,
+                label: rawLabel.slice(0, 120),
+                source: 'message',
+                // Legacy-compat fields (drop after Wave-2 dashboard update)
+                link_text: rawLabel,
+                link_domain: linkDomain,
+                category
+              });
             }
           }}
           style={{
@@ -1030,7 +1037,7 @@ export default function MessageBubble({
         {/* Scheduling slot chips (WS-C12) — generic, label-only; coordinator
             identity is revealed only by the backend's confirm prose (§10.4). */}
         {(role === "assistant" || role === "bot") && metadata?.schedulingSlots?.length > 0 && (
-          <SchedulingSlots slots={metadata.schedulingSlots} />
+          <SchedulingSlots slots={metadata.schedulingSlots} schedulingContext={metadata.schedulingContext} />
         )}
 
         {/* Server-driven confirm card (§B16b/§B16d amendments) — slot staged +

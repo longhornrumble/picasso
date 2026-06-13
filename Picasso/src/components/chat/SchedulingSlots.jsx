@@ -7,6 +7,20 @@
  *   • the recovery loop (reschedule slot offers — `schedulingFlow.js`), and
  *   • new-booking (`proposing` step — §B16a).
  *
+ * §B18b — context line: when `metadata.schedulingContext` is present on the
+ * enclosing message, a single line is rendered ABOVE the chips showing the
+ * non-null parts of [duration_minutes, conference_label, tz_label] joined with
+ * ' · ' (e.g. "30 min · Google Meet · Central Time"). Absent → no line.
+ * Old-shape fixture tests REQUIRED (CLAUDE.md schema discipline).
+ *
+ * §B18c — microcopy close: under EVERY rendered slot-chip set, renders EXACTLY:
+ *   "If none of these work, just tell me what does — like 'Thursday afternoon.'"
+ * NO "More times" chip (operator decision 2026-06-12).
+ *
+ * §B18d — analytics: chip click → SCHEDULING_CHIP_CLICKED { slot_id, position,
+ * slot_count } via the existing emitAnalyticsEvent / notifyParentEvent path.
+ * PII gate: payload builder accepts SCALAR args; NEVER a slot object.
+ *
  * §10.4 PII boundary (load-bearing): a chip shows the slot's `label` ONLY. The
  * coordinator identity is NEVER rendered here — it is revealed only at the
  * `confirming` step, by the backend's streamed LLM prose (ordinary chat text the
@@ -35,10 +49,49 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useChat } from '../../hooks/useChat';
+import {
+  SCHEDULING_CHIP_CLICKED
+} from '../../analytics/eventConstants';
 
-// Centralized user-facing copy. Swap to `t()` once A8b lands (see header note).
+// ─── Analytics helpers ────────────────────────────────────────────────────────
+
+/**
+ * Emit analytics event via global notifyParentEvent (same pattern as
+ * MessageBubble.jsx / StreamingChatProvider.jsx).
+ * @param {string} eventType
+ * @param {Object} payload
+ */
+function emitAnalyticsEvent(eventType, payload) {
+  if (typeof window !== 'undefined' && window.notifyParentEvent) {
+    window.notifyParentEvent(eventType, payload);
+  } else {
+    console.warn('[SchedulingSlots] notifyParentEvent not available for:', eventType);
+  }
+}
+
+/**
+ * §B18d payload builder — SCHEDULING_CHIP_CLICKED.
+ * Accepts SCALAR args only. NEVER the slot object (PII gate).
+ *
+ * @param {string} slotId     - slot.slotId (string, not the slot object)
+ * @param {number} position   - 0-based index in the rendered chip list
+ * @param {number} slotCount  - total chips rendered (= slots.length)
+ * @returns {{ slot_id: string, position: number, slot_count: number }}
+ */
+export function buildChipClickedPayload(slotId, position, slotCount) {
+  return {
+    slot_id: slotId,
+    position,
+    slot_count: slotCount
+  };
+}
+
+// ─── Centralized user-facing copy ────────────────────────────────────────────
+// Swap to `t()` once A8b lands (see header note).
 export const SCHEDULING_STRINGS = {
   confirmAffirmative: 'Yes, book it',
+  // §B18c — EXACT microcopy close (LOCKED 2026-06-12; do not alter).
+  microcopyClose: "If none of these work, just tell me what does — like 'Thursday afternoon.'",
   // Friendly inline copy for each known `scheduling_notice` code. Unknown codes
   // fall back to a generic reassurance (forward-compatible per schema discipline).
   notices: {
@@ -48,12 +101,35 @@ export const SCHEDULING_STRINGS = {
   noticeFallback: "Thanks — we've got your request and will follow up shortly.",
 };
 
+// ─── Context line helper ──────────────────────────────────────────────────────
+
 /**
- * Slot-chip renderer with an inline confirm affirmative.
+ * §B18b: build the display string for the context line above chips.
+ * Joins the non-null parts of [duration_minutes, conference_label, tz_label]
+ * with ' · '. Returns null if no parts present (no context or all null).
+ *
+ * @param {{ duration_minutes?: number|null, conference_label?: string|null, tz_label?: string|null }|null|undefined} ctx
+ * @returns {string|null}
+ */
+export function buildContextLine(ctx) {
+  if (!ctx || typeof ctx !== 'object') return null;
+  const parts = [
+    ctx.duration_minutes != null && ctx.duration_minutes > 0 ? `${ctx.duration_minutes} min` : null,
+    ctx.conference_label || null,
+    ctx.tz_label || null
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(' · ') : null;
+}
+
+/**
+ * Slot-chip renderer with context line (§B18b), microcopy close (§B18c),
+ * and analytics emission (§B18d).
  *
  * @param {object}   props
  * @param {Array<{slotId:string,start:string,end:string,label:string}>} props.slots
  *        generic slots from the `scheduling_slots` event (label-only display).
+ * @param {object}   [props.schedulingContext]
+ *        optional context from metadata.schedulingContext (§B18b; absent → no line).
  */
 // Scroll the scheduling affordance into view when it mounts — the chips/card arrive
 // AFTER the streamed text and previously rendered below the fold (QA 2026-06-12 P1-6).
@@ -67,16 +143,29 @@ function useRevealOnMount() {
   return ref;
 }
 
-export default function SchedulingSlots({ slots = [] }) {
+export default function SchedulingSlots({ slots = [], schedulingContext }) {
   const { sendMessage, isTyping } = useChat();
   const [selectedSlotId, setSelectedSlotId] = useState(null);
   const ref = useRevealOnMount();
 
   if (!Array.isArray(slots) || slots.length === 0) return null;
 
-  const handleSelect = (slot) => {
+  const handleSelect = (slot, position) => {
     if (isTyping || selectedSlotId || !slot || !sendMessage) return;
     setSelectedSlotId(slot.slotId);
+
+    // §B18d analytics: emit SCHEDULING_CHIP_CLICKED with scalar args only (PII gate).
+    // Emitted ALONGSIDE the existing sendMessage dispatch — does not replace or alter it.
+    // try/catch: analytics MUST NEVER prevent the deterministic sendMessage call below.
+    try {
+      emitAnalyticsEvent(
+        SCHEDULING_CHIP_CLICKED,
+        buildChipClickedPayload(slot.slotId, position, slots.length)
+      );
+    } catch (e) {
+      console.warn('[SchedulingSlots] emitAnalyticsEvent threw (swallowed):', e);
+    }
+
     // §B16b (amended): elicit `select_slot`. The visible user turn is the slot label
     // (a natural transcript line); the slotId is the DETERMINISTIC backend signal.
     sendMessage(slot.label, {
@@ -87,17 +176,30 @@ export default function SchedulingSlots({ slots = [] }) {
 
   const selectedSlot = slots.find((s) => s.slotId === selectedSlotId);
 
+  // §B18b: build context line (null when context absent or all fields null).
+  const contextLine = buildContextLine(schedulingContext);
+
   return (
     <div className="scheduling-slots" data-testid="scheduling-slots" ref={ref}>
+      {/* §B18b context line — rendered only when non-null */}
+      {contextLine && (
+        <div
+          className="scheduling-context-line"
+          data-testid="scheduling-context-line"
+          aria-label={contextLine}
+        >
+          {contextLine}
+        </div>
+      )}
       <div className="suggested-chips">
         {!selectedSlotId ? (
-          slots.map((slot) => (
+          slots.map((slot, index) => (
             <button
               key={slot.slotId}
               type="button"
               className="suggested-chip scheduling-slot-chip"
               disabled={isTyping}
-              onClick={() => handleSelect(slot)}
+              onClick={() => handleSelect(slot, index)}
             >
               {slot.label}
             </button>
@@ -108,6 +210,16 @@ export default function SchedulingSlots({ slots = [] }) {
           )
         )}
       </div>
+      {/* §B18c microcopy close — rendered under EVERY slot-chip set, EXACT string.
+          NO "More times" chip (operator decision 2026-06-12). */}
+      {!selectedSlotId && (
+        <p
+          className="scheduling-microcopy-close"
+          data-testid="scheduling-microcopy-close"
+        >
+          {SCHEDULING_STRINGS.microcopyClose}
+        </p>
+      )}
     </div>
   );
 }

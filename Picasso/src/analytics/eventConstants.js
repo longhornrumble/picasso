@@ -32,6 +32,15 @@ export const WIDGET_CLOSED = 'WIDGET_CLOSED';
  */
 export const CONVERSATION_STARTED = 'CONVERSATION_STARTED';
 
+/**
+ * Page view ping emitted by the loader (widget-host.js) — independent of the iframe.
+ * Payload (C1.3, EXHAUSTIVE — any other field is forbidden per C8.1-2):
+ *   { path: string (pathname ≤512), referrer_host: string|null, device_class: "mobile"|"tablet"|"desktop" }
+ * Transport: single-event batch POST identical to other analytics events.
+ * Kill switch: feature_flags.REACH_PING !== false (default ON).
+ */
+export const PAGE_VIEW = 'PAGE_VIEW';
+
 // ============================================================================
 // ITEM CLICK EVENTS
 // ============================================================================
@@ -49,8 +58,8 @@ export const ACTION_CHIP_CLICKED = 'ACTION_CHIP_CLICKED';
 export const CTA_CLICKED = 'CTA_CLICKED';
 
 /**
- * Link clicked within message content
- * Payload: { url: string, link_text: string, link_domain: string, category: string }
+ * Link clicked within message content or outbound resource links.
+ * Payload (C1.2): { url: string, label: string (≤120), source: "message"|"cta"|"resource" }
  */
 export const LINK_CLICKED = 'LINK_CLICKED';
 
@@ -111,6 +120,46 @@ export const FORM_COMPLETED = 'FORM_COMPLETED';
 export const FORM_ABANDONED = 'FORM_ABANDONED';
 
 // ============================================================================
+// SCHEDULING ANALYTICS EVENTS (§B18d — FE-only; LOCKED 2026-06-12)
+// ============================================================================
+
+/**
+ * Scheduling slot chip clicked.
+ * Payload (EXHAUSTIVE — §B18d PII gate): { slot_id: string, position: number, slot_count: number }
+ *   slot_id must match ^slot# pattern (slotId from backend, never the slot object).
+ *   position and slot_count are numbers.
+ *   FORBIDDEN: coordinator name/email, message text, '@' chars.
+ */
+export const SCHEDULING_CHIP_CLICKED = 'SCHEDULING_CHIP_CLICKED';
+
+/**
+ * Scheduling day-strip chip clicked (§B16e day-picker).
+ * Payload (EXHAUSTIVE — §B18d PII gate): { day: string /* YYYY-MM-DD *\/, position: number }
+ *   day must match ^\d{4}-\d{2}-\d{2}$.
+ *   FORBIDDEN: coordinator name/email, message text, '@' chars.
+ */
+export const SCHEDULING_DAY_STRIP_ENGAGED = 'SCHEDULING_DAY_STRIP_ENGAGED';
+
+/**
+ * User sent FREE TEXT while the latest assistant message carries scheduling slots.
+ * Fires ONLY when the send carries no scheduling_action / scheduling_day_selected metadata.
+ * Payload (EXHAUSTIVE — §B18d PII gate; builder signature accepts ONLY slots_visible_count):
+ *   { slots_visible_count: number }
+ *   The typed text is structurally NEVER captured — builder does not accept it.
+ *   FORBIDDEN: any text, email, name, '@' chars.
+ */
+export const SCHEDULING_TYPED_REFINEMENT = 'SCHEDULING_TYPED_REFINEMENT';
+
+/**
+ * Fired on the `scheduling_booked` SSE (analytics-only; UI unchanged).
+ * Payload (EXHAUSTIVE — §B18d PII gate):
+ *   { ms: number, offers_seen: number }
+ *   ms = now − session's FIRST scheduling_slots receipt (in-memory; skipped if absent).
+ *   FORBIDDEN: booking details, attendee info, coordinator identity, '@' chars.
+ */
+export const SCHEDULING_TIME_TO_BOOKED = 'SCHEDULING_TIME_TO_BOOKED';
+
+// ============================================================================
 // MESSAGE EVENTS (for conversation tracking)
 // ============================================================================
 
@@ -131,10 +180,17 @@ export const MESSAGE_RECEIVED = 'MESSAGE_RECEIVED';
 // ============================================================================
 
 export const EVENT_CATEGORIES = {
-  LIFECYCLE: [WIDGET_OPENED, WIDGET_CLOSED, CONVERSATION_STARTED],
+  LIFECYCLE: [WIDGET_OPENED, WIDGET_CLOSED, CONVERSATION_STARTED, PAGE_VIEW],
   CLICKS: [ACTION_CHIP_CLICKED, CTA_CLICKED, LINK_CLICKED, HELP_MENU_CLICKED, SHOWCASE_CTA_CLICKED],
   FORMS: [FORM_VIEWED, FORM_STARTED, FORM_FIELD_SUBMITTED, FORM_COMPLETED, FORM_ABANDONED],
-  MESSAGES: [MESSAGE_SENT, MESSAGE_RECEIVED]
+  MESSAGES: [MESSAGE_SENT, MESSAGE_RECEIVED],
+  // §B18d scheduling analytics (FE-only; locked 2026-06-12)
+  SCHEDULING: [
+    SCHEDULING_CHIP_CLICKED,
+    SCHEDULING_DAY_STRIP_ENGAGED,
+    SCHEDULING_TYPED_REFINEMENT,
+    SCHEDULING_TIME_TO_BOOKED
+  ]
 };
 
 // All analytics event types
@@ -142,7 +198,8 @@ export const ALL_EVENT_TYPES = [
   ...EVENT_CATEGORIES.LIFECYCLE,
   ...EVENT_CATEGORIES.CLICKS,
   ...EVENT_CATEGORIES.FORMS,
-  ...EVENT_CATEGORIES.MESSAGES
+  ...EVENT_CATEGORIES.MESSAGES,
+  ...EVENT_CATEGORIES.SCHEDULING
 ];
 
 // ============================================================================
@@ -286,6 +343,7 @@ export default {
   WIDGET_OPENED,
   WIDGET_CLOSED,
   CONVERSATION_STARTED,
+  PAGE_VIEW,
 
   // Click events
   ACTION_CHIP_CLICKED,
@@ -304,6 +362,12 @@ export default {
   // Message events
   MESSAGE_SENT,
   MESSAGE_RECEIVED,
+
+  // Scheduling analytics events (§B18d)
+  SCHEDULING_CHIP_CLICKED,
+  SCHEDULING_DAY_STRIP_ENGAGED,
+  SCHEDULING_TYPED_REFINEMENT,
+  SCHEDULING_TIME_TO_BOOKED,
 
   // Categories and helpers
   EVENT_CATEGORIES,

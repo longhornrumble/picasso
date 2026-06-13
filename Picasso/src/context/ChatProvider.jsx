@@ -55,6 +55,19 @@ function linkifyPlaintext(input) {
 let __sanitizeHookInstalled = false;
 import { streamingRegistry } from '../utils/streamingRegistry';
 import { isStreamingEnabled as checkStreamingEnabled } from '../config/streaming-config';
+import { CONVERSATION_STARTED } from '../analytics/eventConstants';
+
+/**
+ * Emit an analytics event via the global notifyParentEvent bridge.
+ * Mirrors the same helper in StreamingChatProvider.jsx.
+ * @param {string} eventType
+ * @param {Object} payload
+ */
+function emitAnalyticsEvent(eventType, payload) {
+  if (typeof window !== 'undefined' && window.notifyParentEvent) {
+    window.notifyParentEvent(eventType, payload);
+  }
+}
 
 /**
  * Streaming function that handles both SSE and NDJSON formats
@@ -842,6 +855,9 @@ const ChatProvider = ({ children }) => {
   const retryTimeoutsRef = useRef(new Map());
   // Throttle per-message partial updates to ~1 frame
   const partialUpdateRafRef = useRef(new Map()); // id -> { handle: number|null, latest: string }
+  // C1.1: emit CONVERSATION_STARTED exactly once per session (first user message).
+  // Mirrors the same guard in StreamingChatProvider.jsx.
+  const conversationStartedRef = useRef(false);
 
   // PERFORMANCE: Simple debounce utility
   function debounce(func, wait) {
@@ -1773,6 +1789,16 @@ const ChatProvider = ({ children }) => {
       }, '*');
     }
     
+    // C1.1: CONVERSATION_STARTED — once per session, on first user message (HTTP path).
+    // Mirrors the identical guard in StreamingChatProvider.jsx (~80% path).
+    if (message.role === 'user' && !conversationStartedRef.current) {
+      conversationStartedRef.current = true;
+      emitAnalyticsEvent(CONVERSATION_STARTED, {
+        entry_point_id: window.analyticsState?.attribution?.entry_point_id ?? null,
+        attribution: window.analyticsState?.attribution ?? null
+      });
+    }
+
     if (message.role === "user" && !message.skipBotResponse && !message.uploadState) {
       // INSIDE addMessage, where you currently define makeHTTPAPICall()
       // Replace that whole function with a small dispatcher:
@@ -2320,6 +2346,8 @@ const ChatProvider = ({ children }) => {
     errorLogger.logInfo('🗑️ Manually clearing messages and conversation state');
     setMessages([]);
     setHasInitializedMessages(false);
+    // Reset CONVERSATION_STARTED guard so next session emits again (C1.1)
+    conversationStartedRef.current = false;
     
     // Clear conversation manager state and tokens
     try {

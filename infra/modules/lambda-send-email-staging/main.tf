@@ -35,7 +35,12 @@ locals {
 variable "default_sender" {
   description = "SES Source address for send_email. Must be an SES-verified identity in this account. Maps to the Lambda's DEFAULT_SENDER env."
   type        = string
-  default     = "notify@myrecruiter.ai"
+  # Subdomain sender, NOT notify@myrecruiter.ai: in the staging account the
+  # myrecruiter.ai domain identity has DKIM NOT_STARTED (domain DKIM only
+  # verified in prod), so root-domain sends fail DMARC (p=quarantine) and
+  # Gmail spam-folders them. staging.myrecruiter.ai is verified with DKIM
+  # SUCCESS here, satisfying relaxed DMARC alignment.
+  default = "notify@staging.myrecruiter.ai"
 }
 
 variable "log_retention_days" {

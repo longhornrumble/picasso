@@ -33,6 +33,33 @@
 
 import React, { useState } from 'react';
 import { useChat } from '../../hooks/useChat';
+import { SCHEDULING_DAY_STRIP_ENGAGED } from '../../analytics/eventConstants';
+
+// ─── Analytics helpers ────────────────────────────────────────────────────────
+
+/**
+ * Emit analytics event via global notifyParentEvent (same pattern as
+ * MessageBubble.jsx / StreamingChatProvider.jsx / SchedulingSlots.jsx).
+ */
+function emitAnalyticsEvent(eventType, payload) {
+  if (typeof window !== 'undefined' && window.notifyParentEvent) {
+    window.notifyParentEvent(eventType, payload);
+  } else {
+    console.warn('[SchedulingDayPicker] notifyParentEvent not available for:', eventType);
+  }
+}
+
+/**
+ * §B18d payload builder — SCHEDULING_DAY_STRIP_ENGAGED.
+ * Accepts SCALAR args only. NEVER a day object (PII gate).
+ *
+ * @param {string} day        - YYYY-MM-DD date string
+ * @param {number} position   - 0-based index in the rendered chip list
+ * @returns {{ day: string, position: number }}
+ */
+export function buildDayStripPayload(day, position) {
+  return { day, position };
+}
 
 // ─── User-facing copy ────────────────────────────────────────────────────────
 // Swap to t() once A8b lands (see header note / SchedulingSlots pattern).
@@ -83,9 +110,22 @@ export default function SchedulingDayPicker({ days = [], user_time_zone: _tz }) 
 
   if (validDays.length === 0) return null;
 
-  const handleSelect = (day) => {
+  const handleSelect = (day, index) => {
     if (isTyping || selectedDate || !day || !sendMessage) return;
     setSelectedDate(day.date);
+
+    // §B18d analytics: emit SCHEDULING_DAY_STRIP_ENGAGED with scalar args only (PII gate).
+    // Emitted ALONGSIDE the existing sendMessage dispatch.
+    // try/catch: analytics MUST NEVER prevent the deterministic sendMessage call below.
+    try {
+      emitAnalyticsEvent(
+        SCHEDULING_DAY_STRIP_ENGAGED,
+        buildDayStripPayload(day.date, index)
+      );
+    } catch (e) {
+      console.warn('[SchedulingDayPicker] emitAnalyticsEvent threw (swallowed):', e);
+    }
+
     // §B16e: deterministic signal — mirrors how C12 sends scheduling_slot_id.
     // The visible user turn is the day label (natural transcript line);
     // scheduling_day_selected rides in routing_metadata as the deterministic hint.
@@ -107,7 +147,7 @@ export default function SchedulingDayPicker({ days = [], user_time_zone: _tz }) 
           // CSS logical: inline direction scroll
           style={{ overflowX: 'auto', display: 'flex', gap: '0.5rem', paddingInline: '0.25rem' }}
         >
-          {validDays.map((day) => {
+          {validDays.map((day, index) => {
             // Clamp label to 28 chars for safety (backend should already comply).
             const displayLabel = day.label.length > MAX_LABEL_LENGTH
               ? day.label.slice(0, MAX_LABEL_LENGTH)
@@ -128,7 +168,7 @@ export default function SchedulingDayPicker({ days = [], user_time_zone: _tz }) 
                 // the 16px radius pins the same pill shape SchedulingSlots
                 // chips get from .suggested-chip.
                 style={{ flex: '0 0 auto', borderRadius: '16px' }}
-                onClick={() => handleSelect(day)}
+                onClick={() => handleSelect(day, index)}
               >
                 {displayLabel}
               </button>
