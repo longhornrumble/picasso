@@ -239,17 +239,38 @@ jobs:
           SMOKE_EXPECT: ${{ inputs.smoke_expect_status }}
           CUR_SHA: ${{ github.sha }}
           SYNC_EXCLUDE: ${{ inputs.sync_exclude }}
+          CACHE_CONTROL: ${{ inputs.cache_control }}
           SHORT_CACHE_PATHS: ${{ inputs.short_cache_paths }}
           SHORT_CACHE_CONTROL: ${{ inputs.short_cache_control }}
           PREV_SHA: ${{ steps.prev.outputs.prev_sha }}
         run: |
           set -euo pipefail
           echo "::warning::Smoke failed — rolling live back to release $PREV_SHA"
+          # Download-then-upload. NEVER `aws s3 sync` S3→S3 here: with an S3
+          # source under releases/, the `--exclude releases/*` needed to
+          # protect the dest archive ALSO poisons the --delete comparison
+          # manifest (source keys evaluate with their full releases/<sha>/…
+          # path), so every live object looks source-absent and is DELETED
+          # while nothing copies — a total live-bucket wipe. Dryrun-confirmed
+          # against the real prod bucket during the 2026-06-12 rollback
+          # rehearsal incident (Phase-2 audit finding D10; ~6-min partial
+          # widget outage, recovered from versioning + build artifact).
+          # A LOCAL source's keys are prefix-relative, so the exclude only
+          # protects the dest archive — the proven shape of the deploy sync.
+          rm -rf /tmp/rollback && mkdir /tmp/rollback
+          aws s3 cp "s3://$BUCKET/releases/$PREV_SHA/" /tmp/rollback/ --recursive --no-progress | tail -1
           EXCLUDES=(--exclude "releases/*")
           for pat in $SYNC_EXCLUDE; do EXCLUDES+=(--exclude "$pat"); done
-          aws s3 sync "s3://$BUCKET/releases/$PREV_SHA/" "s3://$BUCKET/" --delete "${EXCLUDES[@]}"
+          # Entry points re-cp'd below with the short Cache-Control — keep
+          # them out of the bulk sync (mirrors the deploy step).
+          for key in $SHORT_CACHE_PATHS; do EXCLUDES+=(--exclude "$key"); done
+          EXTRA=()
+          if [ -n "$CACHE_CONTROL" ]; then
+            EXTRA+=(--cache-control "$CACHE_CONTROL")
+          fi
+          aws s3 sync /tmp/rollback/ "s3://$BUCKET/" --delete "${EXCLUDES[@]}" ${EXTRA[@]+"${EXTRA[@]}"}
           for key in $SHORT_CACHE_PATHS; do
-            aws s3 cp "s3://$BUCKET/releases/$PREV_SHA/$key" "s3://$BUCKET/$key" \
+            aws s3 cp "/tmp/rollback/$key" "s3://$BUCKET/$key" \
               --cache-control "$SHORT_CACHE_CONTROL"
           done
           if [ -n "$CF_DIST" ]; then

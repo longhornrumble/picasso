@@ -77,6 +77,8 @@ Three AWS accounts under one Organization: **prod** (hand-managed legacy; receiv
 - **Never share resources across environments.** No "single `picasso-X` table used by prod and staging." Use the `{name}-{env}` naming convention.
 - **Do not rotate the legacy operator IAM credentials used by legacy CI workflows.** Specific credential name + rotation policy in the operator-local `reference_aws_accounts.md` memory file.
 - **Always `unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN` before running terraform.** Stale exported credentials override AWS_PROFILE and trigger SSO 401 errors.
+- **Dry-run before destroy — always.** Any command that can delete or bulk-overwrite production data (`aws s3 sync --delete`, `aws s3 rm`, `delete-*`, bulk copies over live prefixes) MUST first run with `--dryrun`/equivalent and have its output reviewed in the same session, immediately before the real invocation. Destructive REHEARSALS/drills never target production resources directly — use a scratch prefix or stay dryrun-only. (D10 incident, 2026-06-12: a rollback drill run without a dryrun deleted the live widget bucket's objects for ~6 minutes; the dryrun that would have prevented it also exposed that the CI rollback step itself was broken. Full forensics: `project_ci_modernization_phase2_audit_2026-06-11.md`.)
+- **Every production bucket keeps S3 versioning Enabled.** It is the recovery path of last resort (it saved the D10 incident). Never suspend it; new prod buckets enable it at creation. Detection side: `prod-synthetic-monitor.yml` probes the prod entry points every ~10 min and pings Slack on failure.
 
 ### Local Terraform usage
 
