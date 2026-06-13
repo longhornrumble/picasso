@@ -124,3 +124,76 @@ This before/after-across-every-custodian shape is the proof the launch's hardest
 - The conversation-side DSAR surfaces (already covered).
 - `sms-consent` deletion (legal carve-out, never deleted).
 - Reminder *functionality* (already live — see `scheduling/docs/REMINDER_ACTIVATION_DEFERRED.md` ACTIVATION-STATE section; mentioned only because scheduled-messages rows are now actively written and are a deletion surface).
+
+---
+
+## 10. Remediation Plan (PII session — 2026-06-13)
+
+The PII session's response to §1–§9. Decisions §5 are resolved (operator, 2026-06-13). Scope held to **F0 Path B,
+domestic-US baseline**: per-subject hard-delete of the scheduling identity graph **plus the real Google Calendar
+event**, auditor-confirmed zero residue. NOT Path A, NOT `sms-consent`, NOT coordinator/staff email.
+
+### 10.1 — Decisions resolved (§5)
+1. **Subject discovery = (B)** — the deletion walks `picasso-booking` (and the other two scheduling tables)
+   **directly by `attendee_email`/`recipient_email == normalized_email`**, independent of `pii_subject_id`. So a
+   scheduling-only subject (no form, no subject-id — the F-DSAR4 class) IS reachable. No writer change for the pilot;
+   revisit **(A)** stamp-at-commit at tenant #2 / Path A.
+2. **`sms-usage` = SKIP for F0** — phone-keyed rate-limit counters; DSAR `SUPPORTED_IDENTIFIER_TYPES` = email/psid.
+   Routed to Path-A (phone-identifier support).
+3. **Coordinator email = CARVE OUT** — staff PII, not the consumer subject; `_walk_booking` must never match or
+   delete on `coordinator_email`.
+4. **Rigor bar = domestic-US-only** — the hard-delete + calendar deletion are still built (the §N2 zero-residue
+   test requires it), but GDPR Art-17 is not a hard regulatory gate. The now-items (§10.4) still apply.
+
+### 10.2 — The build (mirror `_walk_form_submissions` @ `lambda_function.py:753`)
+Three new walkers in `Lambdas/lambda/picasso_pii_dsar_staging/lambda_function.py` + a calendar-deletion action.
+Each walker: query → match normalized email (`.strip().lower()` both sides) → `DeleteItem` per row → emit
+`surface_walked:<surface>` audit event → **honor the existing dry-run flag** → add to the surface dispatch set.
+
+| New walker / action | Surface | Match | Notes |
+|---|---|---|---|
+| `_walk_booking` | `picasso-booking-staging` | `attendee_email` | **capture `external_event_id` (+ `tenantId`/`coordinatorId`) BEFORE delete** (for the calendar call); **carve out `coordinator_email`** |
+| `_walk_conversation_scheduling_session` | `picasso-conversation-scheduling-session-staging` | `attendee_email` (at rest since 2026-06-12) | binding table |
+| `_walk_scheduled_messages` | `picasso-scheduled-messages` | `recipient_email` | carries reminder body + attendee contact |
+| **Calendar event deletion** | Google Calendar | `external_event_id` from booking | the genuinely new piece — see below |
+
+**Google Calendar event deletion** (only external-API + auth surface): from the captured `external_event_id`, read
+the per-coordinator OAuth token (Secrets Manager `picasso/scheduling/oauth/{tenantId}/{coordinatorId}` — reuse the
+calendar-watch Lambdas' read pattern), call Google `events.delete`; **idempotent** (404/410 → success); emit a
+`calendar_event_deleted` audit event; respect dry-run.
+
+**IAM** (`infra/modules/lambda-pii-dsar-staging/main.tf`): add `dynamodb:Query` + `dynamodb:DeleteItem` on the 3
+scheduling tables (+ any GSI used for the email match) + `secretsmanager:GetSecretValue` on
+`picasso/scheduling/oauth/*`. ASCII Sids. Grant applies before the code deploys.
+
+### 10.3 — Query strategy (build-time verify, per §3 caution)
+Booking PK = `tenantId`; a `coordinator_email` GSI exists (stranded-booking) but an `attendee_email` index is
+**unconfirmed** → each walker must either use a tenant-scoped Query + email FilterExpression or an `attendee_email`
+GSI. Confirm per-table at build (key schema / GSIs), plus the booking calendar-event-id field name
+(`external_event_id` / `html_link` / `conference_id`) and the OAuth secret shape.
+
+### 10.4 — Now-items (§2) — reconciled
+1. **FTC §5 widget claim** — the false "No personal information stored permanently" was **already removed** (M4 #1).
+   The surviving "30 minutes session storage" bullet is **F-DSAR23 / M4.G3**, **deferred by operator 2026-06-07**
+   (retention-policy-first; see `f-dsar23-m4g3-deferral-note.md`). → **No new widget work under F0.**
+2. **Manual DSAR path** — `dsar-operator-playbook.md` exists; **extend** it with the 3 scheduling surfaces + the
+   calendar-deletion step.
+3. **CloudWatch retention** — verify the scheduling Lambdas' log groups have bounded retention; set if absent.
+
+### 10.5 — Verification: the F0 attestation (the gate's proof)
+Seeded before/after run → sign-off doc `docs/roadmap/PII-Project/f0_pii_gate_<date>.md`. Seed a known test identity
+(email + phone) with a **real booking on MYR384719** (real Google Calendar event), in **staging acct 525**, synthetic
+only. **Before:** rows exist in EACH store (booking, scheduling-session, scheduled-messages, form-submissions,
+notification-sends/-events) **AND** the calendar event exists. **Run:** deletion executed (not dry-run), audit log
+attached. **After:** **zero** across every store **AND** the calendar event gone. **Custody line:** who/when/commit
+SHA/`pii-data-lifecycle` advisory sign-off.
+
+### 10.6 — Gates / sequencing
+HIGH-risk → `pii-data-lifecycle-advisor` + `privacy-data-governance-advisor` review **before code**. **No auto-merge**
+→ `phase-completion-audit` + explicit operator go-ahead before the walkers + calendar deletion merge;
+`verify-before-commit` per PR. **Living-Inventory rule:** the deleter PR updates `pii-inventory.md` in the same PR
+(single writer; coordinate). **Build in staging (525)** on synthetic MYR384719 data only. **HARD STOP at prod** — the
+scheduling v1 **F1** prod flag-flip stays operator-gated on the passing F0 attestation.
+1) advisory review → 2) walkers + calendar deletion + IAM (verify-before-commit; tests) → 3) inventory + playbook +
+classification/retention notes → 4) deploy to staging + run the seeded attestation → 5) phase-completion-audit +
+operator go-ahead → F0 closed → F1 unblocked (operator-run).
