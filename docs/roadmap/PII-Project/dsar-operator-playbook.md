@@ -283,6 +283,9 @@ AWS_PROFILE=myrecruiter-prod aws dynamodb query \
    - F12 Meta-PSID lookup (if Meta-only subject; manual until M2)
    - F14 ARCHIVE_BUCKET walk (currently no-op; bucket empty)
    - Any `unindexed_row` markers from the subject-index → operator confirms whether they're orphans or pre-Phase-1 (Apply-2 backfill candidates per F-DSAR1)
+   - **F0 `calendar_delete_unconfirmed` (booking surface):** if `walker_results.booking.error == "calendar_delete_unconfirmed"`, a Google Calendar event could NOT be confirmed deleted (the coordinator OAuth secret didn't resolve, or Google's API errored). The booking ROW was deliberately KEPT so the `external_event_id` stays recoverable, and the DSAR status is `partial_error`. **Resolve before closing:** delete the calendar event manually for the affected coordinator (Google Calendar UI or `events.delete` under the coordinator's own auth), then **re-invoke** the delete (idempotent — the kept row's calendar delete will return already-gone and the row will then delete). Do NOT send the response template while `partial_error`.
+
+   **§4.2 — F0 scheduling identity graph (booking / scheduled-messages / scheduling-session / Google Calendar).** The DSAR Lambda now walks these automatically and **email-keyed** (no `pii_subject_id` needed — a scheduling-only subject is reachable). The delete order is enforced in code: **calendar event deleted FIRST, then the booking row** (so the event id stays recoverable on failure). What the operator sees in `rows_touched`: `booking`, `scheduled-messages`, `scheduling-session`, `calendar`. **No new manual CLI** is needed for the common case — but note two residuals to disclose, not silently treat as clean: (a) the table `point_in_time_recovery` 35-day window (already covered by the response template), and (b) a scheduling session **abandoned before any booking** has a state row with no email/booking linkage and the table has **TTL DISABLED** — it is NOT email-reachable by this walker (tracked as the §12 retention-TTL decision); if a subject reports engaging the scheduler without completing a booking, that residual needs the retention-policy fix, not a manual walk.
 
 6. **Send** [`templates/dsar-response-delete.md`](./templates/dsar-response-delete.md). Update `dsar-log.md` to `closed`.
 
@@ -369,6 +372,9 @@ AWS_PROFILE=myrecruiter-staging aws dynamodb put-item \
 [ ] _____ Account guard re-executed at start of delete session
 [ ] _____ Per-row delete-item executed; ALL_OLD output saved to dsar-log.md
 [ ] _____ Notification-sends NOT deleted (audit carve-out per advisor review; documented in response)
+[ ] _____ F0 scheduling: booking / scheduled-messages / scheduling-session rows_deleted reconciled vs rows_found
+[ ] _____ F0 calendar: walker_results.calendar has NO calendar_delete_unconfirmed (status != partial_error); if it does, manual calendar delete + re-invoke BEFORE sending
+[ ] _____ F0 scheduling disclosures present in response (appointment/calendar paragraph; attendee-own-calendar caveat; SMS-consent retention)
 [ ] _____ F9 tenant-coordination: tenant-sink-deletion-request sent in parallel (if applicable)
 [ ] _____ DSAR audit row written to picasso-pii-dsar-audit-staging with rows_deleted count
 [ ] _____ Response template sent; dsar-log.md updated to closed

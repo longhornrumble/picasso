@@ -33,6 +33,32 @@ is made now.
 - (Original calendar backstop 2026-06-22 is **superseded** by this deliberate deferral; the item now rides the
   trigger list above rather than a fixed date.)
 
+## F0 amendment (2026-06-13) — scheduling enablement re-triggers this
+
+**Scheduling v1 changes the honesty basis of the 2026-06-07 deferral.** That deferral rested on "the *substantive*
+retention posture is defensible; what remains is wording" (§"What stands today"). That is **no longer true for a
+scheduling-enabled tenant**: bookings persist 365 days (`Bedrock_Streaming_Handler_Staging/form_handler.js` TTL is
+form-only; the booking table has **no** TTL), so the surviving bullet `✅ Data retention: 30 minutes session storage`
+(`StateManagementPanel.jsx`) is **affirmatively FALSE**, not merely misleading-by-omission. The F-DSAR23 deferral
+did **not** cover an affirmatively-false claim.
+
+**Operator decision (2026-06-13): apply the conservative scoped fix NOW.** Drop the false specific number; point to
+the privacy notice / per-data-class retention. Implemented this PR in `StateManagementPanel.jsx` →
+`✅ Data retention varies by data type; see our privacy notice for details`.
+
+**Engineering note — applied UNCONDITIONALLY (not gated on scheduling-enabled):** the settings panel receives only
+`isOpen`/`onClose` and has **no per-tenant scheduling signal in scope**; threading one would be disproportionate to a
+one-line copy fix. More importantly, the "30 minutes" number was **already** misleading for non-scheduling retained
+data (365d form-submission rows, notification rows), so removing the false specific number is strictly more honest for
+**all** tenants — there is no tenant for whom "30 minutes session storage" was true. This is a deliberate broadening
+of the operator's "for scheduling-enabled tenants" framing on the engineering judgment that the gated alternative
+would perpetuate a false claim for non-scheduling tenants.
+
+**What REMAINS deferred (unchanged):** the deeper M4.G3 work — the retention **policy** + per-`form_type` TTL matrix —
+still rides the named triggers above. This fix removes the affirmatively-false *number*; it does **not** set the
+retention policy. The booking/scheduling-session retention windows (and a scheduling-session TTL — the table has TTL
+**DISABLED**, verified 2026-06-13) are a policy + counsel decision tracked in the F0 plan §12 item 2.
+
 ## Related (do not conflate)
 The **recent-messages TTL-disabled** finding (master-plan rev 0.39; surfaced again in
 [[f-dsar4-subject-linkage-design]] §2) is a *separate* clean fix (the writer already populates `expires_at`; the

@@ -295,6 +295,28 @@ locals {
   # ListObjectVersions + DeleteObject(VersionId) per version.
   s3_archive_bucket   = "arn:aws:s3:::picasso-archive-staging"
   s3_archive_sessions = "arn:aws:s3:::picasso-archive-staging/sessions/*"
+
+  # F0 (scheduling identity-graph deletion). The DSAR walkers now reach the
+  # scheduling v1 surfaces. Names are literals mirroring the Lambda's hardcoded
+  # constants (per F-DSAR29 the DSAR table names are code-managed; the
+  # scheduling tables are created by the scheduling infra, not the PII ddb
+  # modules, so there is no module output to var-wire — same posture as
+  # t_session_summaries). VERIFIED LIVE 2026-06-13 (acct 525).
+  t_booking            = "${local.ddb}/picasso-booking-staging"
+  t_scheduling_session = "${local.ddb}/picasso-conversation-scheduling-session-staging"
+  t_scheduled_messages = "${local.ddb}/picasso-scheduled-messages"
+  # scheduled-messages is walked via the by-appointment GSI (appointment_id ==
+  # booking_id). IAM does not inherit GSI ARNs from the base table.
+  gsi_sched_msgs_by_appt = "${local.t_scheduled_messages}/index/by-appointment"
+
+  # Per-coordinator Google OAuth secrets the calendar-delete reads. The `*`
+  # wildcard covers both the {tenantId}/{coordinatorId} path tail AND the
+  # AWS-appended `-XXXXXX` Secrets Manager suffix.
+  scheduling_oauth_secrets = "arn:aws:secretsmanager:${local.region}:${local.acct}:secret:picasso/scheduling/oauth/*"
+  # EventBridge Scheduler reminder/attendance schedules the DSAR sweeps by
+  # deterministic name (advisory B4). Group = picasso-scheduling-reminders-staging
+  # (verified live 2026-06-13; the SCHEDULER_GROUP_NAME the Lambda defaults to).
+  scheduler_reminder_group = "arn:aws:scheduler:${local.region}:${local.acct}:schedule/picasso-scheduling-reminders-staging/*"
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -405,6 +427,55 @@ data "aws_iam_policy_document" "dsar" {
     sid       = "SessionSummariesReadDelete"
     actions   = ["dynamodb:Query", "dynamodb:GetItem", "dynamodb:DeleteItem"]
     resources = [local.t_session_summaries]
+  }
+
+  # F0 — booking surface. _walk_booking does a tenant-partition Query
+  # (PK=tenantId; there is NO attendee_email GSI — the email match is
+  # client-side) + DeleteItem per matched booking. No GetItem (the walker never
+  # point-reads a booking) — least privilege.
+  statement {
+    sid       = "BookingReadDelete"
+    actions   = ["dynamodb:Query", "dynamodb:DeleteItem"]
+    resources = [local.t_booking]
+  }
+
+  # F0 — scheduled-messages surface. _walk_scheduled_messages Queries the
+  # by-appointment GSI (appointment_id == booking_id) and DeleteItems each row
+  # by its base (pk, sk). Both the base table ARN and the GSI ARN are required
+  # (IAM does not inherit the GSI ARN). No GetItem.
+  statement {
+    sid       = "ScheduledMessagesReadDelete"
+    actions   = ["dynamodb:Query", "dynamodb:DeleteItem"]
+    resources = [local.t_scheduled_messages, local.gsi_sched_msgs_by_appt]
+  }
+
+  # F0 — scheduling-session surface. _walk_conversation_scheduling_session
+  # point-reads (GetItem) the state row (SK=session_id) and binding row
+  # (SK=binding#<session_id>) and DeleteItems each. No Query (no GSI; point
+  # operations only) — least privilege.
+  statement {
+    sid       = "SchedulingSessionReadDelete"
+    actions   = ["dynamodb:GetItem", "dynamodb:DeleteItem"]
+    resources = [local.t_scheduling_session]
+  }
+
+  # F0 — per-coordinator Google OAuth secret read. The calendar-delete reads
+  # picasso/scheduling/oauth/{tenantId}/{coordinatorId} to refresh an access
+  # token before calling Google events.delete. Read only; no write/rotate.
+  statement {
+    sid       = "SchedulingOauthSecretRead"
+    actions   = ["secretsmanager:GetSecretValue"]
+    resources = [local.scheduling_oauth_secrets]
+  }
+
+  # F0 — EventBridge Scheduler reminder/attendance schedule cleanup (advisory
+  # B4: a named schedule carrying the booking_id is residue even after the DDB
+  # row is gone). _delete_booking_schedules sweeps the deterministic names
+  # (sched-reminder-{tier}-... / sched-attendance-...) idempotently. DeleteOnly.
+  statement {
+    sid       = "SchedulingReminderScheduleDelete"
+    actions   = ["scheduler:DeleteSchedule"]
+    resources = [local.scheduler_reminder_group]
   }
 
   # M2 Sprint C — ARCHIVE_BUCKET (picasso-archive-staging). Version-aware

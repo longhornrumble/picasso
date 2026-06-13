@@ -533,7 +533,14 @@ const StateManagementPanel = ({ isOpen, onClose }) => {
                 <div className="privacy-info">
                   <p>✅ All data is encrypted in transit</p>
                   <p>✅ Audit logging for compliance</p>
-                  <p>✅ Data retention: 30 minutes session storage</p>
+                  {/* F0 (FTC §5 / governance S1): the prior "30 minutes session
+                      storage" claim was affirmatively FALSE — server-side data
+                      (form submissions, notifications, and, for scheduling-enabled
+                      tenants, 365-day bookings) is retained well beyond a session.
+                      Point to the privacy notice / per-data-class retention rather
+                      than assert a single false number. See
+                      docs/roadmap/PII-Project/f-dsar23-m4g3-deferral-note.md. */}
+                  <p>✅ Data retention varies by data type; see our privacy notice for details</p>
                 </div>
               </div>
             </div>
