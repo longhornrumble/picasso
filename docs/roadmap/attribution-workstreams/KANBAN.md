@@ -41,7 +41,13 @@
 | 5 | First recap send: CAN-SPAM conditions BUILT (WS-I); remaining = operator supplies **postal address** (Terraform var `recap_postal_address`) + flips `RECAP_SEND_ENABLED` | WAITING on address |
 | 6 | Phase sign-off after staging E2E (mint → scan → `?ep=` → provenance → aggregates → API → UI) — needs #1 | PENDING |
 
-## Staging E2E — PASSED 2026-06-12 (automatable links)
+## Staging E2E — ✅ FULLY PASSED 2026-06-13 (scan → chat → attributed → money metric)
+
+Live proof, real phone scan + chat (session `sess_mqbqozc7`): repoint moved the SAME QR to `test-staging.html` (dynamic-QR, no reprint) → CONVERSATION_STARTED stamped `ep_01KTYZYQ…` → session-events → aggregator → **standalone** channel + **"E2E smoke flyer"** entry-point row (1 conv, 1 engaged) → summary after-hours=1, conversation-minutes=25. Money-metric bug found+fixed in the act (lambda#325): after-hours/staff-hours were structurally 0 (keyed off never-emitted MESSAGE_SENT). Repoint action shipped to enable it (lambda#324 + infra#565).
+
+**Operator ratification (2 items, non-blocking):** (1) C7 staff-hours = interaction-event-span proxy [FROZEN_CONTRACTS change-log 2026-06-13]; (2) engaged event set — expand beyond {CTA,LINK,FORM_VIEWED} to count chip/scheduling interactions? Dub scans/clicks (reach) lag a few min behind a fresh scan — non-blocking, "context above the funnel."
+
+### superseded: PASSED 2026-06-12 (automatable links)
 
 ✅ mint live: `https://myrctr.link/e2e-smoke-myr` → `ep_01KTYZYQ978ZF76YKN9FTW1TS8` + registry row · ✅ 302 redirect preserves `?ep=` · ✅ QR endpoint serves print-spec PNG · ✅ aggregator run: 1 tenant, rows written (`METRIC#attribution_summary#2026-06` + `#website` channel from real staging events) incl. clean Dub reach poll.
 **Remaining (human/visual):** scan the QR with a phone → chat opens → next hourly run shows the session under `standalone` → Numbers UI (flag a staging tenant) renders it. Then operator phase sign-off.
