@@ -1,0 +1,64 @@
+name: Prod Synthetic Monitor
+
+# Fail-safe added after the 2026-06-12 D10 incident: the live widget was
+# partially down ~6 minutes with ZERO alerting — the operator would only
+# have noticed via customer reports. Probes the load-bearing prod entry
+# points on a schedule; any failure pings Slack with the failing URLs.
+#
+# Cadence: every 10 minutes, best-effort (GitHub scheduled workflows are
+# not exact; expect 10-20 min detection latency — vastly better than none).
+# Each probe retries 3× ~10s apart so a single CDN transient doesn't page.
+# While an outage persists, every scheduled run re-pings (no dedup —
+# acceptable for a solopreneur paging channel).
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch: {}
+
+permissions: {}
+
+jobs:
+  probe:
+    name: Probe prod endpoints
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Probe
+        id: probe
+        run: |
+          set -uo pipefail
+          FAILED=""
+          check() {
+            local url="$1" expect="$2" status=000
+            for attempt in 1 2 3; do
+              status=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 -H 'Cache-Control: no-cache' "$url") || status=000
+              if [ "$status" = "$expect" ]; then
+                echo "OK   $url -> $status"
+                return 0
+              fi
+              sleep 10
+            done
+            echo "FAIL $url -> $status (expected $expect)"
+            FAILED="$FAILED $url->$status"
+          }
+          # Widget entry points (S3+CF static — the D10 blast surface)
+          check "https://chat.myrecruiter.ai/widget.js" 200
+          check "https://chat.myrecruiter.ai/iframe.html" 200
+          # Chat backends through CloudFront (MFS health + BSH stream)
+          check "https://chat.myrecruiter.ai/Master_Function?action=health_check" 200
+          check "https://chat.myrecruiter.ai/stream" 200
+          echo "failed=${FAILED}" >> "$GITHUB_OUTPUT"
+          [ -z "$FAILED" ] || exit 1
+
+      - name: Slack alert
+        if: failure()
+        uses: slackapi/slack-github-action@fcfb566f8b0aab22203f066d80ca1d7e4b5d05b3  # v1
+        with:
+          payload: |
+            {
+              "text": ${{ toJSON(format('🔴 PROD SYNTHETIC MONITOR FAILING:{0} — run: https://github.com/{1}/actions/runs/{2}', steps.probe.outputs.failed, github.repository, github.run_id)) }}
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
