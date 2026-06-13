@@ -259,6 +259,16 @@ jobs:
           # protects the dest archive — the proven shape of the deploy sync.
           rm -rf /tmp/rollback && mkdir /tmp/rollback
           aws s3 cp "s3://$BUCKET/releases/$PREV_SHA/" /tmp/rollback/ --recursive --no-progress | tail -1
+          # Fail-safe (D10): NEVER run a --delete sync from an empty source.
+          # If the release prefix downloaded empty (wrong sha, listing
+          # failure, partial archive), syncing it with --delete would wipe
+          # the live bucket — abort and leave live as-is instead.
+          FILE_COUNT=$(find /tmp/rollback -type f | wc -l)
+          if [ "$FILE_COUNT" -eq 0 ]; then
+            echo "::error::Rollback ABORTED — release prefix releases/$PREV_SHA/ downloaded EMPTY; refusing to --delete-sync an empty source against the live bucket"
+            exit 1
+          fi
+          echo "Rollback source: $FILE_COUNT files"
           EXCLUDES=(--exclude "releases/*")
           for pat in $SYNC_EXCLUDE; do EXCLUDES+=(--exclude "$pat"); done
           # Entry points re-cp'd below with the short Cache-Control — keep
