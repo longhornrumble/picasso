@@ -1544,6 +1544,10 @@ resource "aws_secretsmanager_secret_policy" "jwt_signing_key_staging" {
           module.lambda_booking_commit_staging[0].commit_role_arn,
           # Calendar_Lifecycle_Consumer mints the §14.2 cancel_notice reschedule link (gap C Y).
           module.lambda_calendar_lifecycle_consumer_staging[0].consumer_role_arn,
+          # Scheduling_Redemption_Handler VALIDATES the cancel/reschedule tokens at the
+          # staging.schedule endpoint — it must read the same key to verify(). Omitting it
+          # caused signing_key_unavailable on the first link click (the Deny below blocked it).
+          module.lambda_scheduling_redemption_handler_staging[0].redemption_role_arn,
         ] }
         Action   = "secretsmanager:GetSecretValue"
         Resource = "*"
@@ -1567,6 +1571,8 @@ resource "aws_secretsmanager_secret_policy" "jwt_signing_key_staging" {
               module.lambda_calendar_event_consumer_staging[0].consumer_role_arn,
               module.lambda_booking_commit_staging[0].commit_role_arn,
               module.lambda_calendar_lifecycle_consumer_staging[0].consumer_role_arn,
+              # Redemption handler — same exemption as the Allow above (token validator).
+              module.lambda_scheduling_redemption_handler_staging[0].redemption_role_arn,
             ]
           }
         }
