@@ -124,3 +124,157 @@ This before/after-across-every-custodian shape is the proof the launch's hardest
 - The conversation-side DSAR surfaces (already covered).
 - `sms-consent` deletion (legal carve-out, never deleted).
 - Reminder *functionality* (already live — see `scheduling/docs/REMINDER_ACTIVATION_DEFERRED.md` ACTIVATION-STATE section; mentioned only because scheduled-messages rows are now actively written and are a deletion surface).
+
+---
+
+## 10. Remediation Plan (PII session — 2026-06-13)
+
+> **✅ STATUS — F0 deletion code SHIPPED + attested 2026-06-13.** Built and merged: lambda#326 (→ `main`) + picasso#570 (→ `staging`); seeded zero-residue attestation PASSED (6→0) → `f0_pii_gate_2026-06-13.md`; phase audit in `project_f0_phase_audit_2026-06-13.md`. **§10–§11 below are the as-built design record (work complete).** **§12 items remain OPEN governance/counsel follow-ups** — NOT closed by the code ship: widget "30 minutes" claim re-trigger (§12.1), US-only confirmation recorded (§12.5), Google LLC sub-processor row (§12.3), booking/scheduling-session retention TTLs (§12.2). The only remaining operator-gated step is the prod scheduling-v1 **F1** flag-flip, which F0 no longer blocks.
+
+The PII session's response to §1–§9. Decisions §5 are resolved (operator, 2026-06-13). Scope held to **F0 Path B,
+domestic-US baseline**: per-subject hard-delete of the scheduling identity graph **plus the real Google Calendar
+event**, auditor-confirmed zero residue. NOT Path A, NOT `sms-consent`, NOT coordinator/staff email.
+
+### 10.1 — Decisions resolved (§5)
+1. **Subject discovery = (B)** — the deletion walks `picasso-booking` (and the other two scheduling tables)
+   **directly by `attendee_email`/`recipient_email == normalized_email`**, independent of `pii_subject_id`. So a
+   scheduling-only subject (no form, no subject-id — the F-DSAR4 class) IS reachable. No writer change for the pilot;
+   revisit **(A)** stamp-at-commit at tenant #2 / Path A.
+2. **`sms-usage` = SKIP for F0** — phone-keyed rate-limit counters; DSAR `SUPPORTED_IDENTIFIER_TYPES` = email/psid.
+   Routed to Path-A (phone-identifier support).
+3. **Coordinator email = CARVE OUT** — staff PII, not the consumer subject; `_walk_booking` must never match or
+   delete on `coordinator_email`.
+4. **Rigor bar = domestic-US-only** — the hard-delete + calendar deletion are still built (the §N2 zero-residue
+   test requires it), but GDPR Art-17 is not a hard regulatory gate. The now-items (§10.4) still apply.
+
+### 10.2 — The build (mirror `_walk_form_submissions` @ `lambda_function.py:753`)
+Three new walkers in `Lambdas/lambda/picasso_pii_dsar_staging/lambda_function.py` + a calendar-deletion action.
+Each walker: query → match normalized email (`.strip().lower()` both sides) → `DeleteItem` per row → emit
+`surface_walked:<surface>` audit event → **honor the existing dry-run flag** → add to the surface dispatch set.
+
+| New walker / action | Surface | Match | Notes |
+|---|---|---|---|
+| `_walk_booking` | `picasso-booking-staging` | `attendee_email` | **capture `external_event_id` (+ `tenantId`/`coordinatorId`) BEFORE delete** (for the calendar call); **carve out `coordinator_email`** |
+| `_walk_conversation_scheduling_session` | `picasso-conversation-scheduling-session-staging` | `attendee_email` (at rest since 2026-06-12) | binding table |
+| `_walk_scheduled_messages` | `picasso-scheduled-messages` | `recipient_email` | carries reminder body + attendee contact |
+| **Calendar event deletion** | Google Calendar | `external_event_id` from booking | the genuinely new piece — see below |
+
+**Google Calendar event deletion** (only external-API + auth surface): from the captured `external_event_id`, read
+the per-coordinator OAuth token (Secrets Manager `picasso/scheduling/oauth/{tenantId}/{coordinatorId}` — reuse the
+calendar-watch Lambdas' read pattern), call Google `events.delete`; **idempotent** (404/410 → success); emit a
+`calendar_event_deleted` audit event; respect dry-run.
+
+**IAM** (`infra/modules/lambda-pii-dsar-staging/main.tf`): add `dynamodb:Query` + `dynamodb:DeleteItem` on the 3
+scheduling tables (+ any GSI used for the email match) + `secretsmanager:GetSecretValue` on
+`picasso/scheduling/oauth/*`. ASCII Sids. Grant applies before the code deploys.
+
+### 10.3 — Query strategy (build-time verify, per §3 caution)
+Booking PK = `tenantId`; a `coordinator_email` GSI exists (stranded-booking) but an `attendee_email` index is
+**unconfirmed** → each walker must either use a tenant-scoped Query + email FilterExpression or an `attendee_email`
+GSI. Confirm per-table at build (key schema / GSIs), plus the booking calendar-event-id field name
+(`external_event_id` / `html_link` / `conference_id`) and the OAuth secret shape.
+
+### 10.4 — Now-items (§2) — reconciled
+1. **FTC §5 widget claim** — the false "No personal information stored permanently" was **already removed** (M4 #1).
+   The surviving "30 minutes session storage" bullet is **F-DSAR23 / M4.G3**, **deferred by operator 2026-06-07**
+   (retention-policy-first; see `f-dsar23-m4g3-deferral-note.md`). → **No new widget work under F0.**
+2. **Manual DSAR path** — `dsar-operator-playbook.md` exists; **extend** it with the 3 scheduling surfaces + the
+   calendar-deletion step.
+3. **CloudWatch retention** — verify the scheduling Lambdas' log groups have bounded retention; set if absent.
+
+### 10.5 — Verification: the F0 attestation (the gate's proof)
+Seeded before/after run → sign-off doc `docs/roadmap/PII-Project/f0_pii_gate_<date>.md`. Seed a known test identity
+(email + phone) with a **real booking on MYR384719** (real Google Calendar event), in **staging acct 525**, synthetic
+only. **Before:** rows exist in EACH store (booking, scheduling-session, scheduled-messages, form-submissions,
+notification-sends/-events) **AND** the calendar event exists. **Run:** deletion executed (not dry-run), audit log
+attached. **After:** **zero** across every store **AND** the calendar event gone. **Custody line:** who/when/commit
+SHA/`pii-data-lifecycle` advisory sign-off.
+
+### 10.6 — Gates / sequencing
+HIGH-risk → `pii-data-lifecycle-advisor` + `privacy-data-governance-advisor` review **before code**. **No auto-merge**
+→ `phase-completion-audit` + explicit operator go-ahead before the walkers + calendar deletion merge;
+`verify-before-commit` per PR. **Living-Inventory rule:** the deleter PR updates `pii-inventory.md` in the same PR
+(single writer; coordinate). **Build in staging (525)** on synthetic MYR384719 data only. **HARD STOP at prod** — the
+scheduling v1 **F1** prod flag-flip stays operator-gated on the passing F0 attestation.
+1) advisory review → 2) walkers + calendar deletion + IAM (verify-before-commit; tests) → 3) inventory + playbook +
+classification/retention notes → 4) deploy to staging + run the seeded attestation → 5) phase-completion-audit +
+operator go-ahead → F0 closed → F1 unblocked (operator-run).
+
+---
+
+## 11. Advisory-corrected design (supersedes §10.2 match-keys — 2026-06-13)
+
+The mandated pre-code advisory review (`pii-data-lifecycle-advisor` + `privacy-data-governance-advisor`,
+2026-06-13) found that **§10's "match each scheduling table by email" is incomplete for 2 of 3 surfaces** and that
+several residue paths sit outside a DeleteItem walk. **The corrected design chains by `booking_id` + `session_id`
+(mirroring the existing `_walk_recent_messages` / `_walk_session_events` chained walkers @
+`lambda_function.py:1300,1489`), not per-table email match.**
+
+### 11.1 — Corrected deletion order (single subject, email-keyed)
+1. **`_walk_booking`** — tenant-partition **Query** (PK=`tenantId`, **no `attendee_email` GSI**) + `FilterExpression
+   attendee_email = :e AND item_type = 'booking'` (excludes `slot_lock`/`coordinator_degraded` items); **paginate on
+   `LastEvaluatedKey`** (F-DSAR30 truncation lesson). For each matched booking **capture before deleting**:
+   `booking_id`, `session_id`, `external_event_id`, **`rescheduled_old_event_id`** (a second live calendar event when
+   `pending_calendar_sync`), `resource_id`, `coordinator_email`. **Never match/delete on `coordinator_email`** (staff
+   carve-out).
+2. **Calendar delete FIRST, then the row** (ordering fix — once the row is gone the ids to retry are gone):
+   resolve `coordinatorId` = `coordinator_emails[resource_id] || resource_id` from tenant config (the secret-path key
+   is `coordinatorId`, **which the booking row does NOT store** — it stores `resource_id`; assert the v1 identity
+   convention `coordinatorId==resource_id` and fail-loud if a `coordinator_emails` map is present, or load it). Read
+   OAuth at `picasso/scheduling/oauth/{tenantId}/{coordinatorId}`, call Google `events.delete` for **both**
+   `external_event_id` AND `rescheduled_old_event_id`; idempotent (404/410 → success); audit
+   `calendar_event_deleted{outcome: deleted|already_gone|failed}`. **Only on success → DeleteItem the booking row.**
+   On non-idempotent failure → leave the row, taint `partial_error`, emit a `manual_followup` with the captured ids
+   (mirror `_walk_form_submissions` taint @ `:2344-2357`).
+3. **`_walk_scheduled_messages` by `appointment_id == booking_id`** (NOT `recipient_email` — that misses the
+   coordinator-recipient **attendance** row and SMS-only rows). The SK embeds `booking_id`; a `by-appointment` GSI
+   may exist (verify). **Paginated Scan/Query.** For each row also **`scheduler:DeleteSchedule`** the paired
+   EventBridge entry (`sched-reminder-{tier}-{safe(booking_id)}` / `sched-attendance-{safe(booking_id)}`) — the DDB
+   delete alone leaves a **named schedule carrying the booking_id** = residue; reuse the existing idempotent
+   `deleteSchedule`.
+4. **`_walk_conversation_scheduling_session` by `session_id`** (captured from booking + form-submissions; NOT
+   `attendee_email` — the **binding row** `SK=binding#<session_id>` has no `attendee_email`, and form/reschedule
+   state rows may lack it). Delete **both** the state row (`SK=session_id`) and the binding row
+   (`SK=binding#<session_id>`).
+
+### 11.2 — Residue paths the attestation MUST address (not silently "zero")
+- **DynamoDB PITR** (booking + scheduling-session have `point_in_time_recovery=true`) → DeleteItem leaves a **≤35-day
+  restorable copy**. Attestation states "**zero in live primary stores at T+0; PITR/backup residue ages out within
+  the 35-day window**" (matches `data-retention-strategy.md §4`). NOT a redesign — a disclosure.
+- **Google Calendar** — `events.delete` removes the **organizer** copy + sends cancellations, but **cannot** reach
+  the **attendee's own** calendar. Response/attestation must caveat "a copy may remain on your own calendar."
+- **Carve-out ledger** — the attestation enumerates the deliberate non-deletions: `sms-consent` (TCPA proof, legal
+  floor), `sms-usage` (phone-keyed, Path-A). "Zero residue **except these named, justified retentions**."
+
+### 11.3 — IAM (revised)
+`dynamodb:Query`+`DeleteItem` on the 3 tables (+ any GSI used) · `secretsmanager:GetSecretValue` on
+`picasso/scheduling/oauth/*` · **`scheduler:DeleteSchedule`** (EventBridge cleanup). ASCII Sids; run the
+`grep -rnP '[^\x09\x0A\x0D\x20-\x7E\xA1-\xFF]' infra/` charset check before apply.
+
+## 12. Decisions / counsel owed post-advisory (gate the *honest* F0 close)
+
+1. **⚠️ Widget claim re-triggered by scheduling (governance S1) — OPERATOR copy decision.** The surviving
+   consumer-reachable bullet `✅ Data retention: 30 minutes session storage` (`StateManagementPanel.jsx:535-538`,
+   reachable via `ChatWidget.jsx:615`) becomes **affirmatively FALSE** for a scheduling-enabled session (365-day
+   bookings, no TTL). The **F-DSAR23 deferral does NOT cover this** (its honesty basis assumed no long-retention
+   surface). **Minimum F0 fix:** for scheduling-enabled tenants, drop the false "30 minutes" number (point to the
+   privacy notice, or state per-data-class). Small scoped copy change; needs operator sign-off + a one-line amendment
+   to `f-dsar23-m4g3-deferral-note.md` ("scheduling enablement re-triggers this").
+2. **Retention TTLs (S2).** `scheduled-messages` TTL = easy/clearly-correct (transient reminder rows). `booking` /
+   `scheduling-session` retention windows = **policy decision** (same class as the form-row 365d call) + **counsel**
+   on the foster/vulnerable-population overlay (`data-retention-strategy.md §7`).
+3. **Google LLC absent from the sub-processor list (S3) — counsel-confirmable.** Platform orchestrates consumer-PII
+   calendar writes/deletes via platform-stored OAuth → add a Google row OR a reasoned "tenant-Workspace not
+   sub-processor" carve-out paragraph. Silence is not defensible.
+4. **Delete-response disclosure wording (B2) — counsel.** Consent-carve-out + attendee-calendar-copy language in
+   `templates/dsar-response-delete.md` (same question already in the conversation-side §7 counsel queue).
+5. **Confirm "Austin pilot = domestic-US-only" is RECORDED as answered** (not just asked) — sets whether GDPR Art-17
+   (incl. stricter backup/PITR rigor) re-enters as a hard gate.
+6. **Verify (build-time):** does the `external_event_id-index` GSI exist on the live booking table (referenced in
+   `Calendar_Watch_Listener` but not in the TF module)? Does `scheduled-messages` have a `by-appointment` GSI? And
+   **`scheduled-messages` env-isolation** — its create script has **no `-staging` suffix** (a shared table → a
+   staging attestation run could touch prod rows; confirm topology before the seeded deletion).
+
+**Net:** items #2–#4 have existing documented-accept precedent (PITR age-out, consent disclosure) and are
+counsel-confirmable; **#1 (widget) and #5 (US-only) gate the honest F0 close and need operator input**; the §11
+engineering corrections need no decision and can be built now.
