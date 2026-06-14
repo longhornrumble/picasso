@@ -247,6 +247,29 @@ if (fs.existsSync(goSourceDir)) {
   console.log('📋 Copied /go/ directory to dist (fullpage social media links)');
 }
 
+// Copy /schedule/ directory — the branded fullpage scheduling page (reschedule/cancel
+// landing for redemption links). Same host pattern as /go/: a static shell that mounts
+// iframe.html in mode=schedule. Tenant identified publicly by hash (?t=).
+const scheduleSourceDir = path.join('public', 'schedule');
+const scheduleDestDir = path.join(distDir, 'schedule');
+if (fs.existsSync(scheduleSourceDir)) {
+  const copyDir = (src, dest) => {
+    fs.mkdirSync(dest, { recursive: true });
+    const entries = fs.readdirSync(src, { withFileTypes: true });
+    for (const entry of entries) {
+      const srcPath = path.join(src, entry.name);
+      const destPath = path.join(dest, entry.name);
+      if (entry.isDirectory()) {
+        copyDir(srcPath, destPath);
+      } else {
+        fs.copyFileSync(srcPath, destPath);
+      }
+    }
+  };
+  copyDir(scheduleSourceDir, scheduleDestDir);
+  console.log('📋 Copied /schedule/ directory to dist (fullpage scheduling page)');
+}
+
 // Copy root-level test HTML files to dist for dev server access
 const rootTestFiles = [
   'test-local-dev.html',

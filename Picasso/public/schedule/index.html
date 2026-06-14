@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="robots" content="noindex">
+  <title>Schedule</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; width: 100%; overflow: hidden; background: #f5f7f6; }
+    body { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+    #fullpage-iframe { width: 100%; height: 100%; border: none; display: block; }
+    .error-container, .loading-container {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      height: 100%; padding: 2rem; text-align: center;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+    .error-container h1 { color: #1f2937; font-size: 1.5rem; margin-bottom: 1rem; }
+    .error-container p, .loading-text { color: #6b7280; font-size: 1rem; }
+    .loading-spinner {
+      width: 40px; height: 40px; border: 3px solid #e5e7eb; border-top-color: #1f9d6b;
+      border-radius: 50%; animation: spin 1s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-text { margin-top: 1rem; font-size: 0.875rem; }
+  </style>
+</head>
+<body>
+  <div id="loading-container" class="loading-container">
+    <div class="loading-spinner"></div>
+    <p class="loading-text">Loading…</p>
+  </div>
+
+  <div id="error-container" class="error-container" style="display: none;">
+    <h1>Link not available</h1>
+    <p>This scheduling link appears to be invalid or expired.</p>
+  </div>
+
+  <script>
+    // Fullpage scheduling launcher.
+    // Mirrors /go/ (the social-share fullpage host): loads the Picasso iframe app at
+    // 100% viewport, but in mode=schedule. The tenant is identified PUBLICLY by its
+    // hash (?t=) — never the raw tenant_id. ?session= carries the §B10 binding the
+    // redemption handler minted; ?purpose= (reschedule|cancel) selects the framing.
+    (function () {
+      const urlParams = new URLSearchParams(window.location.search);
+      const tenantHash = urlParams.get('t') || urlParams.get('tenant');
+      const session = urlParams.get('session');
+      const purpose = urlParams.get('purpose');
+
+      if (!tenantHash) {
+        document.getElementById('loading-container').style.display = 'none';
+        document.getElementById('error-container').style.display = 'flex';
+        return;
+      }
+
+      const iframe = document.createElement('iframe');
+      iframe.id = 'fullpage-iframe';
+      iframe.title = 'Scheduling';
+
+      // Build the iframe URL: tenant hash + scheduling mode + (binding) session + purpose.
+      let iframeSrc = window.location.origin
+        + '/iframe.html?t=' + encodeURIComponent(tenantHash) + '&mode=schedule';
+      if (session) iframeSrc += '&session=' + encodeURIComponent(session);
+      if (purpose) iframeSrc += '&purpose=' + encodeURIComponent(purpose);
+      iframe.src = iframeSrc;
+
+      iframe.onload = function () {
+        document.getElementById('loading-container').style.display = 'none';
+        // Hand the tenant hash to the iframe app (same handshake /go/ uses).
+        iframe.contentWindow.postMessage({
+          type: 'PICASSO_INIT',
+          tenantHash: tenantHash,
+          config: { mode: 'schedule' }
+        }, '*');
+      };
+
+      iframe.onerror = function () {
+        document.getElementById('loading-container').style.display = 'none';
+        document.getElementById('error-container').style.display = 'flex';
+      };
+
+      document.body.appendChild(iframe);
+
+      // Update the page title from the tenant's branding once the app loads.
+      window.addEventListener('message', function (event) {
+        if (event.data && event.data.type === 'PICASSO_LOADED' && event.data.config) {
+          const title = event.data.config.chat_title || event.data.config.branding?.chat_title;
+          if (title) document.title = title;
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

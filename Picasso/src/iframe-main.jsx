@@ -7,6 +7,7 @@ import { ConfigProvider } from './context/ConfigProvider.jsx';
 import { FormModeProvider } from './context/FormModeContext.jsx';
 import ChatProviderOrchestrator from './context/ChatProviderOrchestrator.jsx';
 import ChatWidget from './components/chat/ChatWidget.jsx';
+import SchedulingPage from './components/scheduling/SchedulingPage.jsx';
 import { CSSVariablesProvider } from './components/chat/useCSSVariables.js';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
 import { config as environmentConfig } from './config/environment.js';
@@ -18,6 +19,7 @@ import { SCHEMA_VERSION, ALL_EVENT_TYPES } from './analytics/eventConstants.js';
 import "./styles/widget-entry.css";
 import "./styles/theme.css";
 import "./styles/fonts.css";
+import "./styles/schedule-page.css";
 
 // ============================================================================
 // ANALYTICS STATE (for User Journey Analytics)
@@ -218,8 +220,11 @@ function notifyParentEvent(eventType, payload = {}) {
   // so postMessage events would be silently dropped. Detect ?mode=fullpage from the
   // URL and force the local queue + flush path so analytics events reach the backend.
   const urlParams = new URLSearchParams(window.location.search);
-  const isFullpageMode = urlParams.get('mode') === 'fullpage';
-  const isEmbedded = window.parent && window.parent !== window && !isFullpageMode;
+  const mode = urlParams.get('mode');
+  // Both fullpage and schedule are STANDALONE hosts (their shell index.html has no
+  // widget-host.js listener), so postMessage events would be dropped — queue locally.
+  const isStandalone = mode === 'fullpage' || mode === 'schedule';
+  const isEmbedded = window.parent && window.parent !== window && !isStandalone;
 
   if (isEmbedded) {
     // EMBEDDED MODE: Send to parent via postMessage
@@ -481,8 +486,9 @@ function initializeWidget() {
     const urlParams = new URLSearchParams(window.location.search);
     const tenantHash = urlParams.get('t') || environmentConfig.getDefaultTenantHash();
     const isFullpageMode = urlParams.get('mode') === 'fullpage';
+    const isScheduleMode = urlParams.get('mode') === 'schedule';
     console.log('🔑 Using tenant hash:', tenantHash);
-    console.log('📐 Fullpage mode:', isFullpageMode);
+    console.log('📐 Fullpage mode:', isFullpageMode, '| Schedule mode:', isScheduleMode);
 
     // Set analytics state tenant hash immediately (needed for MESSAGE_SENT/RECEIVED events)
     analyticsState.tenantHash = tenantHash;
@@ -490,7 +496,7 @@ function initializeWidget() {
     // Set up config for iframe mode to use live API
     if (!window.PicassoConfig) {
       window.PicassoConfig = {
-        mode: isFullpageMode ? 'fullpage' : 'widget',
+        mode: isScheduleMode ? 'schedule' : (isFullpageMode ? 'fullpage' : 'widget'),
         fullpage: isFullpageMode,
         tenant: tenantHash,
         tenant_id: tenantHash,
@@ -504,6 +510,14 @@ function initializeWidget() {
       document.body.classList.add('fullpage-mode', 'chat-open');
       document.documentElement.classList.add('fullpage-mode');
       console.log('📐 Fullpage mode enabled - chat auto-opened');
+    }
+
+    // In schedule mode, use the full viewport for the branded scheduling page (no widget
+    // chrome / no auto-opened chat bubble — SchedulingPage renders the surface itself).
+    if (isScheduleMode) {
+      document.body.classList.add('fullpage-mode', 'schedule-mode');
+      document.documentElement.classList.add('fullpage-mode');
+      console.log('📐 Schedule mode enabled - branded scheduling page');
     }
     
     // Create a proper fetchTenantConfig function for the iframe context
@@ -661,7 +675,7 @@ function initializeWidget() {
           <CSSVariablesProvider>
             <FormModeProvider>
               <ChatProviderOrchestrator>
-                <ChatWidget />
+                {isScheduleMode ? <SchedulingPage /> : <ChatWidget />}
               </ChatProviderOrchestrator>
             </FormModeProvider>
           </CSSVariablesProvider>
