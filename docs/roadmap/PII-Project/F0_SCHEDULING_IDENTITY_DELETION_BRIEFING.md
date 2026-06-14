@@ -129,6 +129,8 @@ This before/after-across-every-custodian shape is the proof the launch's hardest
 
 ## 10. Remediation Plan (PII session — 2026-06-13)
 
+> **✅ STATUS — F0 deletion code SHIPPED + attested 2026-06-13.** Built and merged: lambda#326 (→ `main`) + picasso#570 (→ `staging`); seeded zero-residue attestation PASSED (6→0) → `f0_pii_gate_2026-06-13.md`; phase audit in `project_f0_phase_audit_2026-06-13.md`. **§10–§11 below are the as-built design record (work complete).** **§12 items remain OPEN governance/counsel follow-ups** — NOT closed by the code ship: widget "30 minutes" claim re-trigger (§12.1), US-only confirmation recorded (§12.5), Google LLC sub-processor row (§12.3), booking/scheduling-session retention TTLs (§12.2). The only remaining operator-gated step is the prod scheduling-v1 **F1** flag-flip, which F0 no longer blocks.
+
 The PII session's response to §1–§9. Decisions §5 are resolved (operator, 2026-06-13). Scope held to **F0 Path B,
 domestic-US baseline**: per-subject hard-delete of the scheduling identity graph **plus the real Google Calendar
 event**, auditor-confirmed zero residue. NOT Path A, NOT `sms-consent`, NOT coordinator/staff email.
