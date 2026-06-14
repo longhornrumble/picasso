@@ -1,5 +1,7 @@
 # Scheduling v1 — Gap-Closure Build Plan (backend; UI deferred)
 
+> **✅ SHIPPED 2026-06-13** — G1–G5 all built, merged to lambda `main`, and auto-deployed to staging: **lambda#327** (ENGINE: G4 per-staff availability-intersect + G5 max-bookings/day; `778be24`) and **lambda#328** (MESSAGING: G1 reminder enrichment + G2 appt `agenda` + G3 org-name flow; `1981b37`). Adversarial-audited (4 reviewers); contracts in [FROZEN_CONTRACTS §G](FROZEN_CONTRACTS.md#g-gap-closure-g1g5-additive-fields--locked-2026-06-13); evidence in `project_scheduling_gap_build_phase_audit_2026-06-13.md`. **Operator follow-ups:** G3 deliverability re-test (`aws sso login` + live booking) · staging booking smoke-test (G1/G2 live) · set staff `availability_windows`/`max_bookings_per_day` + appt `agenda` via Sandbox/config (no UI yet). **Deferred:** G3 UID-unify · G5 commit-time hard fence · SMS-segment-length watch-item.
+
 **Status:** planning doc, 2026-06-13. No code yet. Authored from the canonical-self-scheduling gap map (Calendly + Google Workspace appointment schedules) vs the shipped Picasso scheduling engine, ground-truthed against lambda `origin/main`.
 **Operator directive (2026-06-13):** build the obvious functional gaps now; **defer all UI** (operator is walking the UI surface-by-surface separately). This plan is backend + data-model only.
 **Re-verify before building:** every code claim cites a snapshot as of 2026-06-13 — confirm against live `origin/main` first.
