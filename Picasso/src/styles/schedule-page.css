@@ -302,7 +302,9 @@
   max-height: 260px;
   overflow-y: auto;
 }
-.sched-msg { max-width: 84%; padding: 10px 13px; border-radius: 13px; font-size: 13.5px; line-height: 1.45; white-space: pre-wrap; }
+/* width: fit-content shrink-wraps the bubble to its text (max-width caps long messages,
+   which then wrap); the .sched-msg-wrap flex column + align-self handle left/right alignment. */
+.sched-msg { width: fit-content; max-width: 84%; padding: 10px 13px; border-radius: 13px; font-size: 13.5px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: break-word; }
 .sched-msg.bot { background: #fff; border: 1px solid var(--sp-line); border-bottom-left-radius: 5px; align-self: flex-start; }
 .sched-msg.user { background: var(--sp-brand); color: #fff; border-bottom-right-radius: 5px; align-self: flex-end; }
 .sched-cfoot { display: flex; gap: 8px; padding: 12px 14px; border-top: 1px solid var(--sp-line); }
