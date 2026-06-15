@@ -198,6 +198,60 @@ resource "aws_wafv2_web_acl" "streaming" {
     }
   }
 
+  # Scheduling PAGE M1 (RATE-1) — path-scoped rate limit on the public /schedule-api
+  # gateway (Scheduling_Page_Api Function URL, behind cloudfront-widget-staging's
+  # /schedule-api* behavior). DELIBERATE divergence from the prod-twin discipline
+  # above: this is a staging-first feature control that promotes to the prod ACL
+  # when the scheduling page does. The global RateLimitPerIP (priority 1, 300/IP/5min)
+  # already covers this path; this tightens the propose-endpoint specifically to
+  # 30/IP/5min because propose is a (binding-gated) free/busy + Google-quota surface.
+  # Note propose/mutate already return 401 before any BCH/Google call without a valid
+  # §B10 binding, so this is defense-in-depth on the authenticated surface, not the
+  # sole control. scope_down restricts the rate count to /schedule-api* requests.
+  rule {
+    name     = "ScheduleApiRateLimit"
+    priority = 6
+
+    action {
+      block {}
+    }
+
+    statement {
+      rate_based_statement {
+        # 100 = the WAFv2 rate-based MINIMUM for CLOUDFRONT scope (a lower value
+        # like 30 passes `validate`/`plan` but FAILS at apply: "Limit must be >= 100").
+        # Still materially tighter than the global RateLimitPerIP (300/IP/5min) for
+        # this path, and the §B10 binding-gate (propose/mutate 401 before any BCH call
+        # without a valid binding) is the primary control — this is defense-in-depth.
+        limit                 = 100
+        evaluation_window_sec = 300
+        aggregate_key_type    = "IP"
+
+        scope_down_statement {
+          byte_match_statement {
+            search_string         = "/schedule-api"
+            positional_constraint = "STARTS_WITH"
+            field_to_match {
+              uri_path {}
+            }
+            # LOWERCASE so /Schedule-Api etc. can't dodge the scope_down (CloudFront
+            # forwards the original-case path; WAF sees it pre-normalization).
+            text_transformation {
+              priority = 0
+              type     = "LOWERCASE"
+            }
+          }
+        }
+      }
+    }
+
+    visibility_config {
+      sampled_requests_enabled   = true
+      cloudwatch_metrics_enabled = true
+      metric_name                = "PicassoScheduleApiRateLimit"
+    }
+  }
+
   visibility_config {
     sampled_requests_enabled   = true
     cloudwatch_metrics_enabled = true

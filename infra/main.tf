@@ -1241,6 +1241,44 @@ module "lambda_scheduling_redemption_handler_staging" {
   config_bucket_name       = module.tenant_config_staging[0].bucket_name
 }
 
+# ──────────────────────────────────────────────────────────────────────
+# Scheduling PAGE M1 — Scheduling_Page_Api (lambda#330, MERGED). The deterministic
+# Calendly-style scheduling-page gateway: the SAME-ORIGIN /schedule-api endpoint
+# behind the widget CloudFront dist. hash->tenantId (registry GSI) -> resolveBinding
+# (§B10 binding = the auth) -> load booking -> invoke the SHIPPED Booking_Commit_Handler
+# scheduling_propose/scheduling_mutate seam. NO new executor. Dedicated exec role;
+# 3 DDB read-ops + 1 BCH invoke only (no secrets/S3/calendar). Function URL is the
+# /schedule-api* custom origin (wired into cloudfront_widget_staging below).
+# ──────────────────────────────────────────────────────────────────────
+module "lambda_scheduling_page_api_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/lambda-scheduling-page-api-staging"
+
+  # Booking table (Terraform-managed via ddb-booking): GetItem only (load booking).
+  booking_table_arn  = module.ddb_booking_staging[0].table_arn
+  booking_table_name = module.ddb_booking_staging[0].table_name
+
+  # SchedulingSession table (Terraform-managed): GetItem only — resolveBinding reads
+  # the §B10 binding row. NOTE: the gateway env var is SCHEDULING_SESSION_TABLE.
+  scheduling_session_table_arn  = module.ddb_conversation_scheduling_session_staging[0].table_arn
+  scheduling_session_table_name = module.ddb_conversation_scheduling_session_staging[0].table_name
+
+  # Tenant registry (Terraform-managed): Query on the TenantHashIndex GSI only —
+  # public tenantHash -> tenant_id (the page is keyed by the hash, never raw id).
+  tenant_registry_table_arn  = module.ddb_tenant_registry_staging[0].table_arn
+  tenant_registry_table_name = module.ddb_tenant_registry_staging[0].table_name
+
+  # Booking_Commit_Handler — the propose/mutate seam the gateway invokes (the SAME
+  # deterministic seam the agent path uses). InvokeFunction only; SCHEDULING_EXECUTOR
+  # env = its name.
+  bch_function_arn  = module.lambda_booking_commit_staging[0].commit_function_arn
+  bch_function_name = module.lambda_booking_commit_staging[0].commit_function_name
+
+  # Ops alerts SNS topic (Errors + Throttles alarm targets only — the gateway does
+  # not publish).
+  ops_alerts_topic_arn = module.ops_alarms_master_function_staging[0].topic_arn
+}
+
 # Scheduling sub-phase E Task E11 — Calendar_OAuth_Connect (lambda#248, MERGED).
 # The per-staff Google Calendar 3LO consent flow + its public Function URL — the
 # 2nd custom origin behind the WS-D3 staging.schedule.myrecruiter.ai dist (the D3
@@ -1432,6 +1470,10 @@ module "cloudfront_widget_staging" {
 
   # Remedy A (#435): the edge signer's versioned ARN, associated on /stream.
   streaming_edge_signer_qualified_arn = module.lambda_edge_bsh_signer_staging[0].qualified_arn
+
+  # Scheduling PAGE M1: the Scheduling_Page_Api Function URL host — the /schedule-api*
+  # custom origin (deterministic reschedule/cancel gateway, same-origin with the page).
+  scheduling_page_api_origin_domain = module.lambda_scheduling_page_api_staging[0].function_url_domain
 }
 
 # Q5 Phase 2 [locked decision #9]: minimal CI widget-deploy role. No module
