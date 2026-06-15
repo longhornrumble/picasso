@@ -105,6 +105,28 @@ CI deploys via OIDC into per-account `GitHubActionsDeployRole`. See `.github/wor
 
 The `Commands` section below documents direct AWS CLI deploys to prod-account resources via a legacy operator IAM profile. **Those are legacy operations against the hand-managed prod resources.** They continue to work for backward compatibility but new resources should be Terraform-managed via the SOP above. Existing prod resources stay manually managed until each is intentionally cut over.
 
+### CI/CD pipeline state (current — CI-modernization program, plan: `ci_modernization/docs/MODERNIZATION_PLAN.md`)
+
+The legacy direct-`aws s3 sync`/`update-function-code` commands in the `Commands` section still work, but the **CI/CD-modernization program** is the supported path. State as of 2026-06-12:
+
+**Front-ends (widget, analytics-dashboard, config-builder) — one reusable shape.**
+- All three deploy through the reusable `picasso/.github/workflows/deploy-frontend.yml` (Phase 2.1). It does: download artifact → (prod) archive immutable `s3://<bucket>/releases/<sha>/` → sync live (cache-split: 1-yr immutable hashed assets vs short-cache entry points) → CloudFront invalidate → retried smoke → (prod) **auto-rollback on failed smoke**.
+- **Prod deploys are dispatch-only and gated**: `gh workflow run` → approval gate(s) → reusable deploys. Push to `main` runs quality gates + build only. PRs deploy a staging preview.
+- **Caller-pin convention**: the widget calls the reusable via **local path** (`uses: ./…` — same commit, no skew). dash + pcb pin a **specific SHA** (`@<sha>`, not `@main`) — a `@main` ref lets a reusable change `startup_failure` the caller with no warning (the picasso#494 class). **Bump the pin deliberately in both `deploy-production.yml` and `pr-checks.yml`** to adopt reusable changes.
+- **Rollback** = re-sync a prior `releases/<sha>/` prefix. Auto-rollback restores it **download-then-upload** (NEVER an S3→S3 `sync --delete` from under `releases/` — the `--exclude releases/*` poisons the delete manifest and wipes the live bucket; the D10 incident, 2026-06-12). Empty-source abort guard added.
+- **Detection**: `prod-synthetic-monitor.yml` probes the prod entry points (widget.js, iframe.html, MFS health, /stream) every ~10 min and Slack-pings on failure.
+
+**Lambdas (`Lambdas/lambda/`) — per-function matrix workflows.**
+- `deploy-staging.yml`: on merge to `main`, auto-deploys each **touched** Lambda's code to its staging-account (525) function via OIDC `GitHubActionsDeployRole`. Staging is `$LATEST`-only (rollback = redeploy a prior commit). Matrix maps `source_dir` (some keep historical `_Staging` suffix) → bare staging function name.
+- `deploy-production.yml`: **dispatch-only**, one function per run. MFS uses the **alias model** (`live` alias flip = the deploy; auto-rolls the alias back on failed smoke); BSH/ADA are `$LATEST` + an immutable version snapshot. Smoke retries 15×12s (the AWS_IAM Function-URL auth plane lags `update-function-code` >30s). Env/resource shape is **not** managed here — Terraform owns it (one writer per resource).
+
+**IaC (`infra/`).**
+- **Staging belt**: `infra/` applies to the staging account (525) via CI OIDC. New resources go here first (per the Deployment SOP above).
+- **Prod**: hand-managed today; brought under Terraform only via deliberate, gated cutover (Phase 3 / prod-IaC program — Tier-3 import, MFS-prod module, scheduled drift detection). **Never `terraform apply` un-targeted against prod.**
+- The staging chat twins were **de-suffixed** (task 2.5, complete 2026-06-11): staging `Master_Function` + `Bedrock_Streaming_Handler` are now bare-named (account = environment), matching the newer staging functions.
+
+**Program status**: Phases 0+1 closed; Phase 2 = 2.1/2.3/2.5 done, 2.2 rollback-rehearsal + 2.4 queue-recheck (~2026-06-24) open; Phase 4 core (gate pings, release notes, auto-rollback) shipped; Phase 3 is prod-IaC-owned. The fail-safe **Hard rules** above (dry-run before destroy; prod buckets keep versioning) are load-bearing — they came out of the D10 incident.
+
 ---
 
 ## 🧬 Schema Discipline (forward-compatible reads)
