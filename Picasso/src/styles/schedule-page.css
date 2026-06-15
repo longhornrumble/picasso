@@ -140,6 +140,16 @@
 .sched-time.sel { border-color: var(--sp-brand); background: color-mix(in srgb, var(--sp-brand) 10%, #fff); box-shadow: inset 0 0 0 1px var(--sp-brand); }
 
 .sched-confirmbar { margin-top: 26px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.sched-error {
+  margin-top: 14px;
+  background: #fdecef;
+  border: 1px solid #f0b4c0;
+  color: #a3243b;
+  border-radius: 12px;
+  padding: 11px 14px;
+  font-size: 14px;
+  font-weight: 600;
+}
 
 /* success state */
 .sched-done { text-align: center; padding: 30px 6px; }

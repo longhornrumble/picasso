@@ -22,7 +22,7 @@
  * name/phone/email step is M2.
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useConfig } from '../../context/ConfigProvider.jsx';
 import { useChat } from '../../hooks/useChat';
 import { proposeTimes, mutateBooking } from '../../utils/schedulingGateway';
@@ -124,9 +124,11 @@ export default function SchedulingPage() {
   const [selectedSlot, setSelectedSlot] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [confirmError, setConfirmError] = useState(null); // UX-1: errors from the commit step
   const [done, setDone] = useState(null);
   const [companionOpen, setCompanionOpen] = useState(true);
   const [chatInput, setChatInput] = useState('');
+  const reqIdRef = useRef(0); // RACE-1: ignore stale day-load responses
 
   const apptLabel = summary && summary.appointment_label;
   const heroTitle = apptLabel ? `${copy.verb} Your ${apptLabel}` : `${copy.verb} your appointment`;
@@ -137,22 +139,27 @@ export default function SchedulingPage() {
       setError('missing_link');
       return;
     }
+    const id = ++reqIdRef.current; // RACE-1: only the newest day-load wins
     setLoading(true);
     setError(null);
     setSelectedSlot(null);
     try {
       const r = await proposeTimes({ tenantHash, session, date: isCancel ? undefined : dateIso });
+      if (id !== reqIdRef.current) return; // a later day-click superseded this response
       setSummary({
         appointment_label: r.appointment_label,
         current_start_at: r.current_start_at,
         timezone: r.timezone,
       });
       setTimes(Array.isArray(r.slots) ? r.slots : []);
+      // ERR-1: a backend failure must read as an error, not "no open times that day".
+      if (r.outcome === 'failed') setError('load_failed');
     } catch (e) {
+      if (id !== reqIdRef.current) return;
       setError((e && (e.code || e.message)) || 'load_failed');
       setTimes([]);
     } finally {
-      setLoading(false);
+      if (id === reqIdRef.current) setLoading(false);
     }
   }
 
@@ -169,39 +176,48 @@ export default function SchedulingPage() {
   };
   const pickCalendarDay = (iso) => {
     setSelectedDay(iso);
+    setShowCalendar(false); // CAL-1: collapse the calendar once a day is chosen
     loadDay(iso);
   };
 
   const confirmReschedule = async () => {
     if (!selectedSlot) return;
     setLoading(true);
-    setError(null);
+    setConfirmError(null);
     try {
       const r = await mutateBooking({
         tenantHash, session, mutation: 'reschedule',
         newSlot: { start: selectedSlot.start, end: selectedSlot.end },
       });
       if (r.outcome === 'success' || r.outcome === 'pending_calendar_sync') setDone('rescheduled');
-      else setError('reschedule_failed');
+      else setConfirmError('failed');
     } catch (e) {
-      setError((e && e.code) || 'reschedule_failed');
+      // UX-1: a failed commit MUST surface (the user must not think it worked). A 401 means
+      // the 30-min link expired; clear the slot so they don't re-fire the same mutation.
+      setConfirmError((e && e.code) === 'unauthorized' ? 'expired' : 'failed');
+      setSelectedSlot(null);
     } finally {
       setLoading(false);
     }
   };
   const confirmCancel = async () => {
     setLoading(true);
-    setError(null);
+    setConfirmError(null);
     try {
       const r = await mutateBooking({ tenantHash, session, mutation: 'cancel' });
       if (r.outcome === 'deleted' || r.outcome === 'pending_calendar_sync') setDone('canceled');
-      else setError('cancel_failed');
+      else setConfirmError('failed');
     } catch (e) {
-      setError((e && e.code) || 'cancel_failed');
+      setConfirmError((e && e.code) === 'unauthorized' ? 'expired' : 'failed');
     } finally {
       setLoading(false);
     }
   };
+
+  const confirmErrorMsg =
+    confirmError === 'expired'
+      ? 'This link has expired — please reopen the link from your email.'
+      : 'Something went wrong — please try again.';
 
   const chatSend = (e) => {
     if (e && e.preventDefault) e.preventDefault();
@@ -258,6 +274,7 @@ export default function SchedulingPage() {
                     {loading ? 'Cancelling…' : 'Cancel Appointment'}
                   </button>
                   <span className="sched-hint">Changed your mind? Just close this page — nothing happens until you confirm.</span>
+                  {confirmError && <p className="sched-error" role="alert">{confirmErrorMsg}</p>}
                 </div>
               ) : (
                 <>
@@ -318,10 +335,8 @@ export default function SchedulingPage() {
                     </button>
                     {selectedSlot && <span className="sched-hint">Selected: <b>{selectedSlot.label}</b></span>}
                   </div>
+                  {confirmError && <p className="sched-error" role="alert">{confirmErrorMsg}</p>}
                 </>
-              )}
-              {error && error !== 'load_failed' && !times.length && isCancel && (
-                <p className="sched-empty">Something went wrong — please try again.</p>
               )}
             </>
           )}

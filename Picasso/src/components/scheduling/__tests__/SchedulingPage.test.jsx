@@ -83,6 +83,30 @@ describe('reschedule', () => {
     expect(await screen.findByText(/You're rescheduled/)).toBeInTheDocument();
   });
 
+  test('UX-1: a failed reschedule shows an error and does NOT show success', async () => {
+    mutateBooking.mockResolvedValue({ outcome: 'failed' });
+    renderPage('reschedule');
+    fireEvent.click(await screen.findByRole('button', { name: '10:30 AM' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm New Time' }));
+    expect(await screen.findByText(/Something went wrong/)).toBeInTheDocument();
+    expect(screen.queryByText(/You're rescheduled/)).not.toBeInTheDocument();
+  });
+
+  test('UX-1: an expired (401) commit shows the reopen-the-link message', async () => {
+    mutateBooking.mockRejectedValue(Object.assign(new Error('x'), { code: 'unauthorized', status: 401 }));
+    renderPage('reschedule');
+    fireEvent.click(await screen.findByRole('button', { name: '10:30 AM' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm New Time' }));
+    expect(await screen.findByText(/expired/i)).toBeInTheDocument();
+  });
+
+  test('ERR-1: a backend-failed propose reads as an error, not "no open times"', async () => {
+    proposeTimes.mockResolvedValue({ outcome: 'failed', slots: [], ...SUMMARY });
+    renderPage('reschedule');
+    expect(await screen.findByText(/couldn’t load times|try another day/i)).toBeInTheDocument();
+    expect(screen.queryByText(/No open times/)).not.toBeInTheDocument();
+  });
+
   test('"Pick a date" reveals the month calendar', async () => {
     renderPage('reschedule');
     await screen.findByRole('button', { name: '10:30 AM' });
