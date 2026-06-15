@@ -307,6 +307,17 @@
 .sched-msg { width: fit-content; max-width: 84%; padding: 10px 13px; border-radius: 13px; font-size: 13.5px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: break-word; }
 .sched-msg.bot { background: #fff; border: 1px solid var(--sp-line); border-bottom-left-radius: 5px; align-self: flex-start; }
 .sched-msg.user { background: var(--sp-brand); color: #fff; border-bottom-right-radius: 5px; align-self: flex-end; }
+/* Vertical fit. The agent output is wrapped in .streaming-formatted; two things inflated the
+   bubble height: (1) the shared `div.streaming-formatted p:not(…):not(…):not(…)` rule forces
+   16px top/bottom margins with !important at specificity (0,4,2); (2) .sched-msg's white-space:
+   pre-wrap renders the trailing "\n" text node after </p> as an empty ~20px line.
+   Fix (1): trim the leading/trailing block margin. The ancestor chain (.sched-page .sched-cbody
+   .sched-msg) raises specificity to (0,5,0) so this !important actually beats the shared rule;
+   inter-paragraph spacing (p+p) is preserved. Fix (2): normal white-space on the HTML content
+   (the <p> handles its own wrapping). Both scoped to the schedule page only. */
+.sched-page .sched-cbody .sched-msg .streaming-formatted > :first-child { margin-top: 0 !important; }
+.sched-page .sched-cbody .sched-msg .streaming-formatted > :last-child { margin-bottom: 0 !important; }
+.sched-msg .streaming-formatted { white-space: normal; }
 .sched-cfoot { display: flex; gap: 8px; padding: 12px 14px; border-top: 1px solid var(--sp-line); }
 .sched-cfoot input {
   flex: 1;
