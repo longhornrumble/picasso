@@ -1224,6 +1224,11 @@ module "lambda_scheduling_redemption_handler_staging" {
   conversation_scheduling_session_table_arn  = module.ddb_conversation_scheduling_session_staging[0].table_arn
   conversation_scheduling_session_table_name = module.ddb_conversation_scheduling_session_staging[0].table_name
 
+  # Tenant registry (Terraform-managed): GetItem only — tenant_id -> public tenantHash
+  # reverse-lookup for the branded /schedule/ page redirect (M1a).
+  tenant_registry_table_arn  = module.ddb_tenant_registry_staging[0].table_arn
+  tenant_registry_table_name = module.ddb_tenant_registry_staging[0].table_name
+
   # jti-blacklist table (Terraform-managed): conditional PutItem only (§13.7 one-time-redeem burn).
   jti_blacklist_table_arn  = module.ddb_token_jti_blacklist_staging[0].table_arn
   jti_blacklist_table_name = module.ddb_token_jti_blacklist_staging[0].table_name

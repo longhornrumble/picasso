@@ -50,6 +50,15 @@ variable "conversation_scheduling_session_table_name" {
   type = string
 }
 
+variable "tenant_registry_table_arn" {
+  description = "ARN of picasso-tenant-registry-staging. GetItem only — reverse-map tenant_id -> public tenantHash for the /schedule/ page redirect (index.js getTenantHashForId)."
+  type        = string
+}
+
+variable "tenant_registry_table_name" {
+  type = string
+}
+
 variable "jti_blacklist_table_arn" {
   description = "ARN of picasso-token-jti-blacklist. PutItem only, conditional attribute_not_exists(jti) — the §13.7 one-time-redeem burn via tokens.js:378."
   type        = string
@@ -182,6 +191,15 @@ data "aws_iam_policy_document" "redemption_exec" {
     resources = [var.booking_table_arn]
   }
 
+  # Tenant registry table: GetItem only — reverse-map tenant_id -> public tenantHash
+  # for the /schedule/ page redirect (the page is identified publicly by the hash,
+  # never the raw tenant_id). PK GetItem by tenantId; no GSI/Query/write.
+  statement {
+    sid       = "DDBTenantRegistryGetItem"
+    actions   = ["dynamodb:GetItem"]
+    resources = [var.tenant_registry_table_arn]
+  }
+
   # ConversationSchedulingSession table: PutItem only — the §B10 binding row
   # write (index.js:308). The chat side reads this row (resolveBinding); the
   # redemption handler never reads it.
@@ -269,6 +287,7 @@ resource "aws_lambda_function" "redemption" {
       ENVIRONMENT                           = "staging"
       BOOKING_TABLE                         = var.booking_table_name
       CONVERSATION_SCHEDULING_SESSION_TABLE = var.conversation_scheduling_session_table_name
+      TENANT_REGISTRY_TABLE                 = var.tenant_registry_table_name
       JTI_BLACKLIST_TABLE                   = var.jti_blacklist_table_name
       CHAT_REDIRECT_BASE_URL                = "https://staging.chat.myrecruiter.ai"
       SESSION_BINDING_TTL_SECONDS           = "1800"
