@@ -1,148 +1,230 @@
 /**
- * SchedulingPage — the branded full-page scheduling surface (M1a).
+ * SchedulingPage — the branded full-page scheduling surface (M1, Calendly-style).
  *
- * Where it runs: iframe-main mounts this (instead of <ChatWidget/>) when the iframe URL
- * carries ?mode=schedule. It lives INSIDE the existing provider tree (ConfigProvider →
- * CSSVariablesProvider → ChatProviderOrchestrator), so per-tenant branding (CSS vars from
- * useCSSVariables) and the streaming chat (useChat) are already wired.
+ * Mounted by iframe-main when ?mode=schedule. Lives inside the existing provider tree
+ * (ConfigProvider → CSSVariablesProvider → ChatProviderOrchestrator), so per-tenant
+ * branding (CSS vars from useCSSVariables) and the streaming chat (useChat) are wired.
  *
- * What it does: fixes the email reschedule/cancel dead-end. The redemption handler binds
- * the §B10 session and redirects here as /schedule/?t=<hash>&session=<id>&purpose=<p>.
- * The page reuses the EXISTING streaming flow + binding — there is no new executor: the
- * §B18 components send the same deterministic signals, the agent runs the bound
- * reschedule/cancel turn, and executeReschedule/executeCancel commit at the §B14 boundary.
+ * TWO SEPARATE PATHS (operator design 2026-06-14):
+ *   • The SCHEDULER (deterministic): "Choose a Day" quick buttons + a "Pick a date"
+ *     calendar → that day's available TIMES (from the Scheduling_Page_Api gateway, which
+ *     resolves the §B10 binding + calls BCH propose) → pick a time → Confirm → the gateway
+ *     commits (reschedule/cancel). No chat round-trip. Slots live in LOCAL state.
+ *   • The COMPANION CHAT (conversational): the full agent chat — questions ("what should I
+ *     bring?") AND conversational scheduling ("any times on the 24th?") still work exactly
+ *     as today (SSE → message.metadata → rendered here). Kept SEPARATE from the picker
+ *     (picker = gateway/local-state, chat = SSE/metadata) so the two never double-render.
  *
- * Layout (operator-locked design): a guided picker HERO (daypart quick-pick chips →
- * concrete time rows, or "Pick a specific date" → a month calendar) + a COMPANION CHAT
- * row below (questions only — the picker owns slot/confirm rendering, the companion
- * renders message text only, so nothing double-renders).
+ * The hero shows the CURRENT appointment ("Current appointment: Sunday, June 15 · 10:30 AM
+ * CDT") from the gateway's propose response (booking summary), on load.
  *
- * Hero context is forward-compatible: it consumes a `schedulingBookingSummary` (current
- * appointment + appt-type label) IF present (populated later by M1a.2's
- * scheduling_booking_summary SSE), and the `schedulingContext` line (duration · channel ·
- * tz) that the existing scheduling_slots event already carries. Absent → a clean generic
- * hero (schema discipline — never crash on a missing field).
+ * Identity: reschedule/cancel reuse the bound attendee (no form). New-booking + the
+ * name/phone/email step is M2.
  */
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useConfig } from '../../context/ConfigProvider.jsx';
 import { useChat } from '../../hooks/useChat';
+import { proposeTimes, mutateBooking } from '../../utils/schedulingGateway';
+import SchedulingMonthCalendar from './SchedulingMonthCalendar.jsx';
 import SchedulingSlots, {
   SchedulingConfirmCard,
   SchedulingNotice,
-  buildContextLine,
 } from '../chat/SchedulingSlots.jsx';
-import SchedulingMonthCalendar from './SchedulingMonthCalendar.jsx';
-// NOTE: schedule-page.css is imported at the entry (iframe-main.jsx), alongside the
-// other global stylesheets — matches the codebase convention and keeps this component
-// CSS-import-free (so component tests don't depend on the css moduleNameMapper).
+import { sanitizeHTML } from '../../utils/security';
 
-// purpose (from the redemption redirect) → page framing.
-const PURPOSE_COPY = {
-  reschedule: { pill: 'Reschedule', verb: 'Reschedule', prompt: 'What time would work better?' },
-  cancel: { pill: 'Cancel', verb: 'Cancel', prompt: 'Need to cancel this appointment?' },
-  new: { pill: 'Book', verb: 'Book', prompt: 'When works best for you?' },
+const PURPOSE = {
+  reschedule: { pill: 'Reschedule', verb: 'Reschedule' },
+  cancel: { pill: 'Cancel', verb: 'Cancel' },
+  new: { pill: 'Book', verb: 'Book' },
 };
 
-// Generic daypart refinements. These are sent as NATURAL LANGUAGE — the agent interprets
-// them and calls get_available_times with the right bounds (the §B18c microcopy already
-// invites "just tell me what does — like 'Thursday afternoon.'"). No bogus deterministic
-// signal is attached; only true §B18 actions (select_slot / day_selected) carry metadata.
-const DAYPARTS = [
-  { key: 'morning', label: 'Mornings', message: 'Do you have any morning times?' },
-  { key: 'afternoon', label: 'Afternoons', message: 'Do you have any afternoon times?' },
-  { key: 'nextweek', label: 'Next week', message: 'What about next week?' },
-  { key: 'calendar', label: 'Pick a specific date' },
-];
-
-function getQueryParam(name) {
+function qp(name) {
   try {
     return new URLSearchParams(window.location.search).get(name);
   } catch {
     return null;
   }
 }
-
-// Newest-wins read of a scheduling metadata field across the message list.
-function latestMeta(messages, key) {
-  if (!Array.isArray(messages)) return null;
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const v = messages[i] && messages[i].metadata && messages[i].metadata[key];
-    if (v != null) return v;
-  }
-  return null;
-}
-
 function initialsOf(name) {
-  return String(name || '')
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((w) => w[0])
-    .slice(0, 2)
-    .join('')
-    .toUpperCase() || '·';
+  return (
+    String(name || '')
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((w) => w[0])
+      .slice(0, 2)
+      .join('')
+      .toUpperCase() || '·'
+  );
+}
+function isoOf(d) {
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${m}-${day}`;
+}
+function dayLabel(d) {
+  return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+}
+function dayLabelFromIso(iso) {
+  const [y, m, d] = String(iso).split('-').map(Number);
+  return dayLabel(new Date(y, m - 1, d));
+}
+// next N weekdays (skip Sat/Sun), starting tomorrow.
+function nextWeekdays(n) {
+  const out = [];
+  const d = new Date();
+  let guard = 0;
+  while (out.length < n && guard++ < 30) {
+    d.setDate(d.getDate() + 1);
+    const dow = d.getDay();
+    if (dow !== 0 && dow !== 6) out.push(new Date(d));
+  }
+  return out;
+}
+function formatCurrent(startAt, tz) {
+  if (!startAt) return null;
+  try {
+    const d = new Date(startAt);
+    if (isNaN(d.getTime())) return null;
+    const date = d.toLocaleDateString(undefined, {
+      weekday: 'long', month: 'long', day: 'numeric', timeZone: tz || undefined,
+    });
+    const time = d.toLocaleTimeString(undefined, {
+      hour: 'numeric', minute: '2-digit', timeZoneName: 'short', timeZone: tz || undefined,
+    });
+    return `${date} · ${time}`;
+  } catch {
+    return null;
+  }
 }
 
 export default function SchedulingPage() {
   const { config } = useConfig();
   const { messages = [], sendMessage, isTyping } = useChat();
 
-  const purpose = (getQueryParam('purpose') || 'new').toLowerCase();
-  const copy = PURPOSE_COPY[purpose] || PURPOSE_COPY.new;
-
-  const [activeDaypart, setActiveDaypart] = useState(null);
-  const [chatOpen, setChatOpen] = useState(true);
-  const [input, setInput] = useState('');
+  const tenantHash = qp('t');
+  const session = qp('session');
+  const purpose = (qp('purpose') || 'new').toLowerCase();
+  const copy = PURPOSE[purpose] || PURPOSE.new;
+  const isCancel = purpose === 'cancel';
 
   const branding = config?.branding || {};
   const orgName = config?.chat_title || branding.chat_title || 'Scheduling';
   const logoUrl = branding.logo_url || branding.avatar_url || '';
-  const initials = useMemo(() => initialsOf(orgName), [orgName]);
+  const ini = useMemo(() => initialsOf(orgName), [orgName]);
 
-  // Forward-compatible hero context (M1a.2 SSE populates schedulingBookingSummary).
-  const summary = latestMeta(messages, 'schedulingBookingSummary') || {};
-  const apptLabel = summary.appointment_label || 'your appointment';
-  const schedulingContext = latestMeta(messages, 'schedulingContext');
-  const contextLine = buildContextLine(schedulingContext);
+  const quickDays = useMemo(
+    () => nextWeekdays(3).map((d) => ({ iso: isoOf(d), label: dayLabel(d) })),
+    []
+  );
+  const [selectedDay, setSelectedDay] = useState(quickDays[0]?.iso || null);
+  const [showCalendar, setShowCalendar] = useState(false);
+  const [summary, setSummary] = useState(null);
+  const [times, setTimes] = useState([]);
+  const [selectedSlot, setSelectedSlot] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [done, setDone] = useState(null);
+  const [companionOpen, setCompanionOpen] = useState(true);
+  const [chatInput, setChatInput] = useState('');
 
-  // SSE-driven scheduling affordances (newest message wins).
-  const slots = latestMeta(messages, 'schedulingSlots');
-  const confirm = latestMeta(messages, 'schedulingConfirm');
-  const notice = latestMeta(messages, 'schedulingNotice');
+  const apptLabel = summary && summary.appointment_label;
+  const heroTitle = apptLabel ? `${copy.verb} Your ${apptLabel}` : `${copy.verb} your appointment`;
+  const currentLine = summary && formatCurrent(summary.current_start_at, summary.timezone);
 
-  const title = `${copy.verb} ${apptLabel}`;
+  async function loadDay(dateIso) {
+    if (!tenantHash || !session) {
+      setError('missing_link');
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    setSelectedSlot(null);
+    try {
+      const r = await proposeTimes({ tenantHash, session, date: isCancel ? undefined : dateIso });
+      setSummary({
+        appointment_label: r.appointment_label,
+        current_start_at: r.current_start_at,
+        timezone: r.timezone,
+      });
+      setTimes(Array.isArray(r.slots) ? r.slots : []);
+    } catch (e) {
+      setError((e && (e.code || e.message)) || 'load_failed');
+      setTimes([]);
+    } finally {
+      setLoading(false);
+    }
+  }
 
-  const handleDaypart = (dp) => {
-    setActiveDaypart(dp.key);
-    if (dp.key === 'calendar') return; // calendar renders inline; no message yet
-    if (dp.message && !isTyping) sendMessage(dp.message);
+  // Mount-only: load the booking summary (+ first day's times in reschedule mode).
+  useEffect(() => {
+    if (isCancel) loadDay(null);
+    else if (selectedDay) loadDay(selectedDay);
+  }, []); // eslint-disable-line
+
+  const pickQuickDay = (iso) => {
+    setSelectedDay(iso);
+    setShowCalendar(false);
+    loadDay(iso);
+  };
+  const pickCalendarDay = (iso) => {
+    setSelectedDay(iso);
+    loadDay(iso);
   };
 
-  const handleDaySelected = (date, label) => {
-    if (!isTyping) sendMessage(label, { scheduling_day_selected: date });
+  const confirmReschedule = async () => {
+    if (!selectedSlot) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const r = await mutateBooking({
+        tenantHash, session, mutation: 'reschedule',
+        newSlot: { start: selectedSlot.start, end: selectedSlot.end },
+      });
+      if (r.outcome === 'success' || r.outcome === 'pending_calendar_sync') setDone('rescheduled');
+      else setError('reschedule_failed');
+    } catch (e) {
+      setError((e && e.code) || 'reschedule_failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+  const confirmCancel = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const r = await mutateBooking({ tenantHash, session, mutation: 'cancel' });
+      if (r.outcome === 'deleted' || r.outcome === 'pending_calendar_sync') setDone('canceled');
+      else setError('cancel_failed');
+    } catch (e) {
+      setError((e && e.code) || 'cancel_failed');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleCancelConfirm = () => {
-    if (!isTyping) sendMessage('Yes, please cancel my appointment.');
-  };
-
-  const handleChatSend = (e) => {
+  const chatSend = (e) => {
     if (e && e.preventDefault) e.preventDefault();
-    const v = input.trim();
+    const v = chatInput.trim();
     if (!v || isTyping) return;
-    setInput('');
+    setChatInput('');
     sendMessage(v);
   };
 
-  // Companion chat: message TEXT only — the picker owns slot/confirm rendering.
-  const chatBubbles = messages.filter((m) => (m.content || '').trim().length > 0);
+  // Companion = the full agent chat: text + any §B18 scheduling components the agent emits
+  // (conversational scheduling stays alive). Picker slots live in LOCAL state, so no collision.
+  const chatBubbles = messages.filter(
+    (m) =>
+      (m.content || '').trim().length > 0 ||
+      (m.metadata && (m.metadata.schedulingSlots?.length || m.metadata.schedulingConfirm?.slot || m.metadata.schedulingNotice))
+  );
+
+  const selectedDayLabel = selectedDay ? dayLabelFromIso(selectedDay) : '';
 
   return (
     <div className="sched-page" data-purpose={purpose}>
       <header className="sched-brand">
-        {logoUrl
-          ? <img className="sched-logo-img" src={logoUrl} alt="" />
-          : <div className="sched-logo">{initials}</div>}
+        {logoUrl ? <img className="sched-logo-img" src={logoUrl} alt="" /> : <div className="sched-logo">{ini}</div>}
         <div className="sched-brand-text">
           <div className="sched-org">{orgName}</div>
           <div className="sched-tag">Scheduling</div>
@@ -151,107 +233,143 @@ export default function SchedulingPage() {
       </header>
 
       <main className="sched-wrap">
-        {/* HERO — guided picker */}
         <section className="sched-panel sched-picker">
-          <span className="sched-pill">{copy.pill}</span>
-          <h1 className="sched-title">{title}</h1>
-          {summary.current_start_label && (
-            <p className="sched-current">
-              Current appointment: <b>{summary.current_start_label}</b>
-            </p>
-          )}
-          {contextLine && <div className="sched-metarow">{contextLine}</div>}
-
-          <div className="sched-prompt">{copy.prompt}</div>
-
-          {purpose === 'cancel' ? (
-            <div className="sched-cancel">
-              <button
-                type="button"
-                className="sched-cta sched-cta-danger"
-                disabled={isTyping}
-                onClick={handleCancelConfirm}
-              >
-                Cancel Appointment
-              </button>
-              <span className="sched-hint">You can also pick a new time instead — just ask below.</span>
-              {notice && <SchedulingNotice notice={notice} />}
+          {done ? (
+            <div className="sched-done">
+              <div className={`sched-done-check${done === 'canceled' ? ' cancel' : ''}`}>✓</div>
+              <h1 className="sched-done-title">{done === 'canceled' ? 'Appointment cancelled' : "You're rescheduled"}</h1>
+              <p className="sched-current">
+                {done === 'canceled'
+                  ? 'The team has been notified. You can book again anytime.'
+                  : 'A confirmation and calendar invite are on their way to your inbox.'}
+              </p>
             </div>
           ) : (
             <>
-              <div className="sched-chips">
-                {DAYPARTS.map((dp) => (
-                  <button
-                    key={dp.key}
-                    type="button"
-                    className={`sched-chip${activeDaypart === dp.key ? ' on' : ''}`}
-                    disabled={isTyping}
-                    onClick={() => handleDaypart(dp)}
-                  >
-                    {dp.label}
-                  </button>
-                ))}
-              </div>
+              <span className="sched-pill">{copy.pill}</span>
+              <h1 className="sched-title">{heroTitle}</h1>
+              {currentLine && (
+                <p className="sched-current">Current appointment: <b>{currentLine}</b></p>
+              )}
 
-              <div className="sched-results">
-                {activeDaypart === 'calendar' && (
-                  <SchedulingMonthCalendar
-                    onSelectDay={handleDaySelected}
-                    config={config}
-                    disabled={isTyping}
-                  />
-                )}
-                {/* concrete time rows — §B18 SchedulingSlots, restyled to rows via CSS.
-                    schedulingContext is shown in the hero metarow, so don't double-render it. */}
-                {Array.isArray(slots) && slots.length > 0 && (
-                  <SchedulingSlots slots={slots} />
-                )}
-                {confirm && confirm.slot && <SchedulingConfirmCard confirm={confirm} />}
-                {notice && <SchedulingNotice notice={notice} />}
-                {isTyping && <div className="sched-typing">Finding times…</div>}
-                {!isTyping && (!Array.isArray(slots) || slots.length === 0) && !activeDaypart && (
-                  <p className="sched-empty">Pick an option above to see available times.</p>
-                )}
-              </div>
+              {isCancel ? (
+                <div className="sched-cancel">
+                  <button type="button" className="sched-cta sched-cta-danger" disabled={loading} onClick={confirmCancel}>
+                    {loading ? 'Cancelling…' : 'Cancel Appointment'}
+                  </button>
+                  <span className="sched-hint">Changed your mind? Just close this page — nothing happens until you confirm.</span>
+                </div>
+              ) : (
+                <>
+                  <div className="sched-section-label">Choose a Day</div>
+                  <div className="sched-chips">
+                    {quickDays.map((d) => (
+                      <button
+                        key={d.iso}
+                        type="button"
+                        className={`sched-chip${selectedDay === d.iso && !showCalendar ? ' on' : ''}`}
+                        disabled={loading}
+                        onClick={() => pickQuickDay(d.iso)}
+                      >
+                        {d.label}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      className={`sched-chip${showCalendar ? ' on' : ''}`}
+                      disabled={loading}
+                      onClick={() => setShowCalendar((s) => !s)}
+                    >
+                      Pick a date
+                    </button>
+                  </div>
+
+                  {showCalendar && (
+                    <SchedulingMonthCalendar onSelectDay={pickCalendarDay} config={config} disabled={loading} />
+                  )}
+
+                  <div className="sched-section-label sched-times-label">
+                    Available Times{selectedDayLabel ? ` · ${selectedDayLabel}` : ''}
+                  </div>
+                  {loading ? (
+                    <p className="sched-typing">Finding times…</p>
+                  ) : times.length > 0 ? (
+                    <div className="sched-timelist">
+                      {times.map((s) => (
+                        <button
+                          key={s.slotId || s.start}
+                          type="button"
+                          className={`sched-time${selectedSlot && (selectedSlot.slotId || selectedSlot.start) === (s.slotId || s.start) ? ' sel' : ''}`}
+                          onClick={() => setSelectedSlot(s)}
+                        >
+                          {s.label}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="sched-empty">
+                      {error ? 'We couldn’t load times — try another day or ask below.' : 'No open times that day — try another day or “Pick a date.”'}
+                    </p>
+                  )}
+
+                  <div className="sched-confirmbar">
+                    <button type="button" className="sched-cta" disabled={!selectedSlot || loading} onClick={confirmReschedule}>
+                      Confirm New Time
+                    </button>
+                    {selectedSlot && <span className="sched-hint">Selected: <b>{selectedSlot.label}</b></span>}
+                  </div>
+                </>
+              )}
+              {error && error !== 'load_failed' && !times.length && isCancel && (
+                <p className="sched-empty">Something went wrong — please try again.</p>
+              )}
             </>
           )}
         </section>
 
-        {/* COMPANION CHAT — questions only */}
-        <section className={`sched-panel sched-companion${chatOpen ? '' : ' collapsed'}`}>
-          <button type="button" className="sched-chead" onClick={() => setChatOpen((o) => !o)}>
-            <div className="sched-ava">{initials}</div>
+        {/* COMPANION CHAT — full agent chat (questions + conversational scheduling). */}
+        <section className={`sched-panel sched-companion${companionOpen ? '' : ' collapsed'}`}>
+          <button type="button" className="sched-chead" onClick={() => setCompanionOpen((o) => !o)}>
+            <div className="sched-ava">{ini}</div>
             <div className="sched-brand-text">
               <div className="sched-ct">Have a question?</div>
-              <div className="sched-cs">
-                Chat with the {orgName} team — we won&rsquo;t change your time unless you ask.
-              </div>
+              <div className="sched-cs">Ask the {orgName} team anything about your appointment.</div>
             </div>
             <span className="sched-chev">▾</span>
           </button>
           <div className="sched-cbody">
             {chatBubbles.length === 0 ? (
               <div className="sched-msg bot">
-                Ask anything about your appointment — what to expect, the location, or who
-                you&rsquo;ll meet. Use the options above to actually change the time.
+                Ask anything about your appointment — what to expect, the location, or who you&rsquo;ll meet.
               </div>
             ) : (
               chatBubbles.map((m) => (
-                <div key={m.id} className={`sched-msg ${m.role === 'user' ? 'user' : 'bot'}`}>
-                  {m.content}
+                <div key={m.id} className={`sched-msg-wrap ${m.role === 'user' ? 'user' : 'bot'}`}>
+                  {(m.content || '').trim().length > 0 && (
+                    <div
+                      className={`sched-msg ${m.role === 'user' ? 'user' : 'bot'}`}
+                      dangerouslySetInnerHTML={{ __html: sanitizeHTML(m.content) }}
+                    />
+                  )}
+                  {/* conversational-scheduling affordances, same as today */}
+                  {m.metadata?.schedulingSlots?.length > 0 && (
+                    <SchedulingSlots slots={m.metadata.schedulingSlots} schedulingContext={m.metadata.schedulingContext} />
+                  )}
+                  {m.metadata?.schedulingConfirm?.slot && <SchedulingConfirmCard confirm={m.metadata.schedulingConfirm} />}
+                  {m.metadata?.schedulingNotice && <SchedulingNotice notice={m.metadata.schedulingNotice} />}
                 </div>
               ))
             )}
           </div>
-          <form className="sched-cfoot" onSubmit={handleChatSend}>
+          <form className="sched-cfoot" onSubmit={chatSend}>
             <input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
               placeholder="Ask a question…"
               disabled={isTyping}
               aria-label="Ask a question"
             />
-            <button type="submit" disabled={isTyping || !input.trim()} aria-label="Send">➤</button>
+            <button type="submit" disabled={isTyping || !chatInput.trim()} aria-label="Send">➤</button>
           </form>
         </section>
       </main>

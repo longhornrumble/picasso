@@ -114,6 +114,48 @@
 .sched-results { margin-top: 18px; }
 .sched-empty, .sched-typing { color: var(--sp-muted); font-size: 14px; margin-top: 8px; }
 
+/* section labels (Choose a Day / Available Times · <day>) */
+.sched-section-label { font-weight: 700; font-size: 14px; margin: 22px 0 10px; }
+.sched-times-label { margin-top: 24px; }
+
+/* deterministic time rows (the picker; NOT the chat §B18 slots) */
+.sched-timelist { display: flex; flex-direction: column; gap: 10px; }
+.sched-time {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  text-align: left;
+  border: 1.5px solid var(--sp-line);
+  background: #fff;
+  color: var(--sp-ink);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  border-radius: 12px;
+  padding: 15px 18px;
+  cursor: pointer;
+  transition: 0.12s;
+}
+.sched-time:hover:not(:disabled) { border-color: var(--sp-brand); background: color-mix(in srgb, var(--sp-brand) 5%, #fff); }
+.sched-time.sel { border-color: var(--sp-brand); background: color-mix(in srgb, var(--sp-brand) 10%, #fff); box-shadow: inset 0 0 0 1px var(--sp-brand); }
+
+.sched-confirmbar { margin-top: 26px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+
+/* success state */
+.sched-done { text-align: center; padding: 30px 6px; }
+.sched-done-check {
+  width: 60px; height: 60px; border-radius: 50%;
+  margin: 0 auto 16px; display: grid; place-items: center;
+  font-size: 30px; color: #fff; background: var(--sp-brand);
+}
+.sched-done-check.cancel { background: #d23b53; }
+.sched-done-title { font-size: 24px; margin: 0 0 6px; }
+
+/* companion message wrapper (message text + any conversational §B18 affordances) */
+.sched-msg-wrap { display: flex; flex-direction: column; gap: 8px; }
+.sched-msg-wrap.user { align-items: flex-end; }
+.sched-msg-wrap.bot { align-items: flex-start; }
+
 /* ── reused §B18 SchedulingSlots → full-width ROWS within this page only ── */
 .sched-page .scheduling-slots { margin-top: 4px; }
 .sched-page .scheduling-context-line { color: var(--sp-muted); font-size: 13px; margin-bottom: 10px; }
