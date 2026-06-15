@@ -107,11 +107,17 @@ variable "streaming_origin_domain" {
   default     = "av5b2veoxmmrmx3hmggjell4bu0igeru.lambda-url.us-east-1.on.aws"
 }
 
+variable "scheduling_page_api_origin_domain" {
+  description = "Function URL host (no scheme) of the staging-account Scheduling_Page_Api Lambda — the /schedule-api* deterministic reschedule/cancel gateway. Wired from module.lambda_scheduling_page_api_staging[0].function_url_domain."
+  type        = string
+}
+
 locals {
-  widget_origin_id    = "picasso-widget-staging-s3"
-  tenant_origin_id    = "myrecruiter-picasso-staging-s3"
-  mfs_origin_id       = "picasso-master-function-staging"
-  streaming_origin_id = "picasso-streaming-lambda"
+  widget_origin_id       = "picasso-widget-staging-s3"
+  tenant_origin_id       = "myrecruiter-picasso-staging-s3"
+  mfs_origin_id          = "picasso-master-function-staging"
+  streaming_origin_id    = "picasso-streaming-lambda"
+  schedule_api_origin_id = "picasso-scheduling-page-api"
 
   # AWS-MANAGED policies — global, same ID in every account, verified
   # 2026-05-16 via `aws cloudfront get-{cache,origin-request}-policy`:
@@ -220,6 +226,30 @@ resource "aws_cloudfront_distribution" "widget" {
     }
   }
 
+  # Scheduling PAGE M1: the Scheduling_Page_Api Function URL — the deterministic
+  # /schedule-api reschedule/cancel gateway. No x-picasso-cf-origin shared-secret
+  # header: unlike the MFS/streaming origins (otherwise-open endpoints), the gateway
+  # is auth'd by the §B10 session binding (no valid binding -> 401 before any BCH
+  # call), so the raw Function URL is safe-by-design; the gateway code does not read
+  # a CF-origin header. Reserved concurrency (5) + the WAF rate rules are the flood
+  # controls.
+  origin {
+    origin_id   = local.schedule_api_origin_id
+    domain_name = var.scheduling_page_api_origin_domain
+
+    custom_origin_config {
+      http_port              = 80
+      https_port             = 443
+      origin_protocol_policy = "https-only"
+      origin_ssl_protocols   = ["TLSv1.2"]
+      # 60s read timeout: the gateway invokes Booking_Commit_Handler synchronously
+      # and waits up to BCH_INVOKE_TIMEOUT_MS (25s) + the gateway's own 30s Lambda
+      # timeout; 60 covers the worst case without a premature 504.
+      origin_read_timeout      = 60
+      origin_keepalive_timeout = 5
+    }
+  }
+
   # --- Behaviors (order reproduced from live config) -------------------
 
   default_cache_behavior {
@@ -282,6 +312,24 @@ resource "aws_cloudfront_distribution" "widget" {
       lambda_arn   = var.streaming_edge_signer_qualified_arn
       include_body = true
     }
+  }
+
+  # Scheduling PAGE M1: the deterministic /schedule-api reschedule/cancel gateway.
+  # Same-origin with the page (staging.chat/schedule/*), so no CORS. AllViewerExceptHostHeader
+  # so CloudFront rewrites Host to the Function URL host (Lambda Function URLs reject a
+  # mismatched Host). Cache disabled; all methods (POST/OPTIONS). NO edge signer — the
+  # gateway Function URL stays AuthType NONE (the §B10 binding is the auth), unlike /stream
+  # whose URL flips to AWS_IAM. The page itself (/schedule/index.html) is served by the
+  # S3 widget origin via the default behavior; only /schedule-api* hits this gateway.
+  ordered_cache_behavior {
+    path_pattern             = "/schedule-api*"
+    target_origin_id         = local.schedule_api_origin_id
+    viewer_protocol_policy   = "https-only"
+    allowed_methods          = local.all_methods
+    cached_methods           = local.cached_methods
+    cache_policy_id          = local.cache_disabled_id
+    origin_request_policy_id = local.orp_all_viewer_xh_id
+    compress                 = false
   }
 
   # No-alias phase: default *.cloudfront.net cert (a custom ACM cert REQUIRES
