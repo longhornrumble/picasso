@@ -1,8 +1,45 @@
-# WS-E-REMIND activation — DEFERRED (scoped, HIGH-risk, operator-gated)
+# WS-E-REMIND activation — ✅ ACTIVATED + LIVE (2026-06-13)
+
+> **STATUS SUPERSEDED 2026-06-13 — reminders are ACTIVATED and LIVE on staging.** The "DEFERRED /
+> INERT" body below is **historical** (true as of 2026-06-10); the activation glue landed afterward
+> (Track-3 weave era) and is now ground-truthed live. Kept for provenance — read the ACTIVATION-STATE
+> section immediately below for current truth, not the historical body.
+>
+> ## ACTIVATION STATE (ground-truthed against live AWS, acct 525, 2026-06-13)
+>
+> - **Booking commit creates reminder schedules.** Live EventBridge Scheduler group
+>   `picasso-scheduling-reminders-staging` (ACTIVE) holds real one-time schedules from real bookings:
+>   `sched-reminder-t24h-{booking_id}`, `sched-reminder-t1h-{booking_id}`, `sched-attendance-{booking_id}`
+>   (e.g. `…-booking-263c0b03…` / `…-booking-0939cd18…`, both targeting `Scheduled_Message_Sender`;
+>   one t1h fires `at(2026-06-15T17:30:00)`), plus the nightly reconciler `picasso-reminder-scheduler-nightly-staging`.
+> - **IAM is real.** The BCH exec role `Booking_Commit_Handler-exec-staging` (inline policy
+>   `booking-commit-exec`) holds `scheduler:CreateSchedule`, `scheduler:DeleteSchedule`, and `iam:PassRole`
+>   on `picasso-reminder-scheduler-exec-staging` (trust `scheduler.amazonaws.com`). Env vars
+>   `SCHEDULER_ROLE_ARN` / `SCHEDULER_GROUP_NAME` / `SCHEDULER_TARGET_ARN` set live on BCH.
+> - **Dispatch runs clean.** `Scheduled_Message_Sender` invoked 7×/24h with **0 errors** (CloudWatch).
+> - **Delivery confirmed (operator, 2026-06-13):** reminder/notification **emails land in the inbox every
+>   test** (post the `notify@staging.myrecruiter.ai` DMARC fix), and **SMS reaches Telnyx with positive
+>   API response codes**. End-to-end send path is proven.
+> - **Call-site wiring is live (verify against `origin/main`):** `scheduleReminders` at BCH commit
+>   (`Booking_Commit_Handler/index.js` `scheduleBookingReminders` call site), `rebindReminders` on
+>   token-reschedule (`Booking_Commit_Handler/scheduling-mutate.js`), `deleteReminders` on cancel /
+>   `calendar_moved` (`Calendar_Lifecycle_Consumer/booking-reconcile.js`).
+>
+> **Residual (verification, not build — not launch-blocking):** no *natural* t24h/t1h schedule has fired
+> yet (the live bookings' reminders fire Jun 14/15), so the moment-specific fire-time path (§E14 override
+> body read for `reminder_24h`/`reminder_1h`, and SMS-channel-at-fire-time vs email-floor) is inferred
+> from the proven shared send path + the live schedules, not yet observed on a real reminder fire. First
+> natural fire (Jun 14/15) or a time-compressed `start_at≈now+70m` test will self-confirm those two.
+> The §E14 reminder-body override-feed decision (deferred-doc step 4) should be re-read against current
+> `Scheduled_Message_Sender` (it reads `picasso-scheduling-notif-template` for t24h/t1h at fire-time).
+
+---
+
+## (HISTORICAL — true as of 2026-06-10) WS-E-REMIND activation — DEFERRED
 
 **Status:** deferred 2026-06-10 (operator decision). This documents the *real* blocker behind
 WS-E-PORTAL "row 2" (confirmation / reminder_24h / reminder_1h template editing) so the next
-session resumes from ground truth instead of re-discovering it.
+session resumes from ground truth instead of re-discovering it. **(Superseded — see ACTIVATION STATE above.)**
 
 ## The finding: lambda#242 is MERGED but INERT
 

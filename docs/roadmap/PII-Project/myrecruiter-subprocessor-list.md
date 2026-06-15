@@ -1,6 +1,6 @@
 # MyRecruiter Sub-Processor List
 
-**Last updated:** 2026-05-20.
+**Last updated:** 2026-06-13 (F0: added Google LLC for appointment-scheduling calendar orchestration).
 **Authoritative as of this date.** Material additions or removals are notified to tenants per the tenant DPA notice clause (drafted post-counsel response on Q1 of the input package).
 **Scope:** the vendors MyRecruiter (as the SaaS processor) engages to deliver the Picasso platform service. **This list does NOT include tenant-configured downstream destinations** (n8n / Sheets / CRMs / custom webhooks / per-tenant fulfillment S3 buckets) — those are the tenant's (controller's) choices, outside MyRecruiter's sub-processor scope.
 
@@ -24,6 +24,7 @@ The list also feeds the counsel input package (Q1 — controller/processor deter
 | **Meta Platforms, Inc.** (Facebook / Messenger Graph API) | Channel integration — inbound chat from tenant Facebook Pages + outbound replies | Page-Scoped User IDs (PSIDs); inbound message text; outbound message text; tenant Facebook Page metadata | US (Meta Platforms Inc.) | Meta Platform Terms govern; encrypted page tokens stored at item-level CMK (`kms-channel-tokens-staging`) per D2 §B. |
 | **Clerk Inc.** | Tenant-operator authentication (admin portal SSO) | Tenant operator email; Clerk user/org id | US | Operator-PII only (tenant-employee accounts); no consumer PII. CPRA-employee-rights treatment is a counsel-input question (Q2 in input package). |
 | **Firecrawl** | Knowledge Base content scraping for tenants (Bedrock KB ingestion) | Tenant-curated nonprofit website content (no consumer PII under normal use; living-inventory PR rule fires if tenant ingest patterns change) | US | KB content is curated tenant-public content per the strategy doc; PII presence is a tenant-misconfiguration risk (D2 §C row). |
+| **Google LLC** (Google Calendar API) | Appointment scheduling — the platform creates, updates, and deletes calendar events on the host organization's Google Calendar, via per-coordinator OAuth credentials the platform stores. | Consumer: attendee **email + name**, appointment date/time, meeting link. Operator: coordinator email. | US (Google LLC) | **Added 2026-06-13 (F0).** Dual character (counsel-confirmable, §12 item 3): the platform orchestrates the consumer-PII write/delete via **platform-held** OAuth (→ sub-processor posture), but the calendar resides in the **tenant's own Google Workspace**, which is also a tenant controller-side tool. Listed affirmatively because silence on a platform-orchestrated consumer-PII calendar write is not defensible. OAuth tokens stored in Secrets Manager (`picasso/scheduling/oauth/{tenant}/{coordinator}`); the event is written at booking and deleted on cancellation/offboarding/**DSAR** (F0 calendar `events.delete`). Material-addition tenant notice is owed at scheduling GA (see Notice mechanism). |
 
 ## Sub-processors explicitly NOT used (as of 2026-05-20)
 
