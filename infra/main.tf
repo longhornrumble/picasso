@@ -250,11 +250,32 @@ module "lambda_pii_delete_staging" {
 }
 
 # Consumer PII Remediation Path A — capability-bundle item 1a (IAM half).
+# ─────────────────────────────────────────────────────────────────────────────
+# Workload Blast-Radius Permission Boundary (Phase 1) — the IAM ceiling attached
+# to every staging workload role via permissions_boundary. Created once here;
+# its ARN is threaded into each lambda module as permissions_boundary_arn.
+# Excludes Lambda@Edge roles (region-lock incompatible) + deploy/break-glass roles.
+# ─────────────────────────────────────────────────────────────────────────────
+module "iam_workload_boundary" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/iam-workload-boundary"
+
+  account_id  = data.aws_caller_identity.current.account_id
+  home_region = "us-east-1"
+  # The one sanctioned cross-account sts:AssumeRole hop (prod KB retriever).
+  kb_retriever_role_arns = [
+    "arn:aws:iam::614056832592:role/picasso-kb-retriever-from-staging",
+  ]
+}
+
 # Plan: docs/roadmap/PII-Project/CONSUMER_PII_REMEDIATION.md §"Path A Re-baseline v3".
 # IAM-only at this PR; aws_lambda_function resource lands with Python code follow-up.
 module "lambda_pii_dsar_staging" {
-  count  = var.env == "staging" ? 1 : 0
-  source = "./modules/lambda-pii-dsar-staging"
+  count = var.env == "staging" ? 1 : 0
+
+  # Phase-1 blast-radius ceiling (canary role — the broadest cross-tenant reach).
+  permissions_boundary_arn = module.iam_workload_boundary[0].arn
+  source                   = "./modules/lambda-pii-dsar-staging"
 
   pii_cmk_key_arn      = module.kms_pii_staging[0].key_arn
   dsar_audit_table_arn = module.ddb_pii_dsar_audit_staging[0].table_arn
