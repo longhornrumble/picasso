@@ -555,9 +555,6 @@ module "lambda_bedrock_handler" {
   sms_sender_function_arn  = module.lambda_sms_twin_staging[0].sms_sender_function_arn
   sms_sender_function_name = module.lambda_sms_twin_staging[0].sms_sender_function_name
 
-  kb_arns = [
-    "arn:aws:bedrock:us-east-1:614056832592:knowledge-base/0BQBWFYDMT",
-  ]
 
   # Cross-account KB access. Wave-1 gate: the operator must add
   # Bedrock_Streaming_Handler-role to this 614 role's trust policy before
@@ -609,9 +606,6 @@ module "lambda_master_function" {
 
   cf_origin_secret_arn = "arn:aws:secretsmanager:us-east-1:525409062831:secret:picasso/mfs/cf-origin-secret-ZU7vTU"
 
-  kb_arns = [
-    "arn:aws:bedrock:us-east-1:614056832592:knowledge-base/0BQBWFYDMT",
-  ]
   # Same Wave-1 operator gate as the BSH instance above: add
   # Master_Function-role to the 614 trust policy before cutover.
   kb_retriever_role_arns = [
@@ -886,9 +880,6 @@ module "lambda_meta_staging" {
   config_bucket_name       = module.tenant_config_staging[0].bucket_name
 
   # Same KB + prod-side retriever role as the BSH/MFS modules above.
-  kb_arns = [
-    "arn:aws:bedrock:us-east-1:614056832592:knowledge-base/0BQBWFYDMT",
-  ]
   kb_retriever_role_arns = [
     "arn:aws:iam::614056832592:role/picasso-kb-retriever-from-staging",
   ]

@@ -19,10 +19,6 @@ variable "tenant_registry_table_arn" {
   type        = string
 }
 
-variable "kb_arns" {
-  description = "List of Bedrock Knowledge Base ARNs the Lambda is allowed to Retrieve from. For Issue #5 batch 2b, MYR's KB only."
-  type        = list(string)
-}
 
 variable "bedrock_model_id" {
   description = "Default Bedrock model ID. BSH index.js fail-loads at module init if this env var is missing — see Phase 4 EC-P4-2 (single point of update for model bumps)."
@@ -319,11 +315,6 @@ data "aws_iam_policy_document" "exec" {
     ]
   }
 
-  statement {
-    sid       = "BedrockKBRetrieve"
-    actions   = ["bedrock-agent-runtime:Retrieve"]
-    resources = var.kb_arns
-  }
 
   # Cross-account KB access: AWS RAM doesn't support bedrock:KnowledgeBase
   # (only bedrock:CustomModel). The staging Lambda must assume a role in

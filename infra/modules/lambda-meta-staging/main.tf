@@ -105,10 +105,6 @@ variable "config_bucket_name" {
   type        = string
 }
 
-variable "kb_arns" {
-  description = "Bedrock KB ARNs (prod-account; cross-account). Mirrors the bedrock-handler module wiring."
-  type        = list(string)
-}
 
 variable "kb_retriever_role_arns" {
   description = "Cross-account IAM role ARNs the Response Processor may sts:AssumeRole into for KB Retrieve (Bedrock KBs aren't RAM-shareable)."
@@ -434,11 +430,6 @@ data "aws_iam_policy_document" "response_exec" {
       "arn:aws:bedrock:*::foundation-model/anthropic.claude-haiku-*",
       "arn:aws:bedrock:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:inference-profile/*",
     ]
-  }
-  statement {
-    sid       = "BedrockKBRetrieve"
-    actions   = ["bedrock-agent-runtime:Retrieve"]
-    resources = var.kb_arns
   }
   # Cross-account KB: bedrock-core assumes this prod-side role (KBs aren't
   # RAM-shareable). Intentionally NOT covered by a prod Deny — this is the
