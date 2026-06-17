@@ -66,27 +66,37 @@ The job's `if: vars.PROD_PLAN_ROLE_ARN != ''` now evaluates true → the workflo
 
 ## Step 3 — drill (verifies the DoD: "hand-edit caught in ≤7 days")
 
-**No hand-edit needed** — there is already a real pending prod drift to serve as the test
-fixture: the BSH Function-URL `authorization_type` (live `NONE` vs IaC `AWS_IAM`, pending
-Remedy A Phase 2). So:
+> Note (updated 2026-06-17): the prod baseline is now **clean** — Remedy A Phase 2 landed
+> and a full-root prod plan reads `No changes`. So there is no longer a standing diff to
+> serve as a free drill fixture (the earlier draft used the BSH Function-URL flip). The
+> drill is now an explicit two-part check.
+
+**Part A — no-false-alarm (zero risk):** dispatch against the clean baseline; expect NO issue.
 
 ```bash
 gh workflow run infra-drift-detection.yml --repo longhornrumble/picasso
-# wait ~2-3 min, then:
-gh run list --workflow infra-drift-detection.yml --limit 1
-gh issue list --state open --search 'in:title "Prod infra drift detected"'
+# wait ~2-3 min:
+gh run list --workflow infra-drift-detection.yml --limit 1            # expect success
+gh issue list --state open --search 'in:title "Prod infra drift detected"'   # expect EMPTY
 ```
 
-**Expect:** the run completes, and a drift issue opens whose body shows the
-`aws_lambda_function_url … authorization_type "NONE" -> "AWS_IAM"` change. That proves the
-detector works end-to-end with zero risk.
+**Part B — issue-opening path (deliberate, reversible hand-edit):** make a benign,
+reversible out-of-band change so the next plan is non-empty, dispatch, confirm the issue,
+then revert.
 
-- After Remedy A **Phase 2** lands (`Sandbox/prod_bsh_remedy_a_phase2_cutover_2026-06-17.md`),
-  that diff disappears and the weekly run should read **No drift** — proving it's not a
-  false-alarm machine. Close the drill issue once you've eyeballed it.
-- If you'd rather drill a clean baseline first, do Phase 2 before Step 3; then the drill
-  needs a deliberate benign hand-edit (e.g. bump a log-group `retention_in_days`, dispatch,
-  confirm the issue, revert).
+```bash
+# example: bump a TF-managed prod log-group retention by hand (reversible)
+aws logs put-retention-policy --log-group-name /aws/lambda/Master_Function_v2 \
+  --retention-in-days 14 --profile chris-admin            # IaC says 7 -> creates drift
+gh workflow run infra-drift-detection.yml --repo longhornrumble/picasso
+# wait ~2-3 min, expect ONE open drift issue whose body shows the retention diff:
+gh issue list --state open --search 'in:title "Prod infra drift detected"'
+# REVERT the hand-edit, then close the drill issue:
+aws logs put-retention-policy --log-group-name /aws/lambda/Master_Function_v2 \
+  --retention-in-days 7 --profile chris-admin
+```
+
+Part A + Part B together prove the DoD: clean = silent, drift = caught in ≤7 days.
 
 ---
 

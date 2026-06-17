@@ -114,8 +114,6 @@ jobs:
             echo ""
             echo "**Resolve** until the plan reads \`No changes\`: reconcile live → IaC (apply via the gated belt) or IaC → live (PR). Close this issue once resolved; the check re-opens it next week only while drift remains."
             echo ""
-            echo "_Known expected diff until Remedy A Phase 2 lands: the BSH Function-URL \`authorization_type\` (NONE → AWS_IAM). See Sandbox/prod_bsh_remedy_a_phase2_cutover_2026-06-17.md._"
-            echo ""
             echo "_Automated by \`.github/workflows/infra-drift-detection.yml\`._"
           } > "$BODY"
           gh issue create --title "$TITLE" --body-file "$BODY"
