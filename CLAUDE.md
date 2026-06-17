@@ -578,6 +578,14 @@ When force-pushing to a PR branch after CI has already passed (e.g., rebase-to-u
 
 **Why:** force-push-with-lease on a feature branch rewrites the pre-rebase tip from remote reflog. For docs-only PRs this is low risk, but the attestation makes the operator's intent explicit and recoverable. Established by `project_scheduling_subphase_b_opening_phase_completion_audit_2026-05-25` audit row 24.
 
+### Worktree & branch hygiene (established 2026-06-17)
+
+Stale worktrees and merged local branches accumulated badly before this rule (14 worktrees + ~75 merged branches across picasso+lambda by 2026-06-17). Keep the workspace tidy:
+
+- **An agent that creates a git worktree for a task MUST `git worktree remove <path>` once the task's PR is pushed/merged.** Never leave `/tmp/*-wt` worktrees behind. (Prefer `isolation: worktree` agents, which auto-clean.)
+- **`git tidy`** (`~/bin/git-tidy`, aliased as `git tidy`) reclaims merged local branches + finished worktrees in the current repo — **safe by design**: never `--force`, and it skips the current branch, `staging`, `main`, and any dirty/locked worktree. Run it after a batch of merges; `git tidy main --dry` previews without changing anything.
+- **Remote branches auto-delete on merge** (`delete_branch_on_merge=true` on picasso / lambda / picasso-config-builder / picasso-analytics-dashboard) — no manual remote-branch cleanup needed.
+
 ## Card Extraction & Forms Workflow
 
 ### Tenant Onboarding Pipeline
