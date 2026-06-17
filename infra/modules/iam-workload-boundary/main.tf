@@ -115,6 +115,16 @@ data "aws_iam_policy_document" "boundary" {
       "route53:*",
       "organizations:*",
       "support:*",
+      # Bedrock is exempt from the region lock: cross-region INFERENCE PROFILES
+      # (the US Claude profile) route InvokeModel / InvokeModelWithResponseStream
+      # to us-east-1 / us-east-2 / us-west-2 by capacity, so aws:RequestedRegion is
+      # legitimately not the home region. Region-locking bedrock broke prod BSH
+      # (InvokeModelWithResponseStream on a us-east-2 foundation-model, 2026-06-17).
+      # Blast-radius cost is low: this only exempts model inference from the region
+      # restriction; bedrock CONTROL-PLANE creation/deletion is still denied by (6)
+      # in every region, and the cross-account Deny (2) still applies.
+      "bedrock:*",
+      "bedrock-agent-runtime:*",
     ]
     resources = ["*"]
     condition {
