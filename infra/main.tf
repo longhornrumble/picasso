@@ -107,6 +107,28 @@ module "bsh_function_prod" {
   streaming_function_url_auth_type = "AWS_IAM"
 }
 
+# Phase 2 (production-only): the Master_Function (MFS) chat Lambda + its 20 env
+# vars + the 14 inline IAM policies on its hand-made execution role. Adopts the
+# live `Master_Function` via `terraform import` (state-only). Mirrors the bsh
+# prod tiers: function/log-group module + IAM-grants module split. Self-gated via
+# var.env (resources count=0 outside production), so these blocks carry no
+# module-level count and outputs are null-safe; import addresses therefore use a
+# trailing [0] on the resources (e.g. module.lambda_master_function_prod.
+# aws_lambda_function.this[0]). Role + its 4 managed-policy attachments stay
+# hand-managed (referenced by name, not created). Faithful import verified offline
+# (20/20 env vars, 14/14 policy docs byte-exact vs live). Ground truth captured in
+# Sandbox/mfs-prod-modeling/. See docs runbook for the import sequence.
+module "mfs_iam_grants_prod" {
+  source    = "./modules/mfs-iam-grants-prod"
+  env       = var.env
+  role_name = "Master_Function-role-zyux77wq" # explicit: the load-bearing import target
+}
+
+module "lambda_master_function_prod" {
+  source = "./modules/lambda-master-function-prod"
+  env    = var.env
+}
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Phase 2 Tier 4 (production-only): the prod chat CloudFront distribution
 # E3G0LSWB1AQ9LP (alias chat.myrecruiter.ai). Adopts the live, hand-managed
