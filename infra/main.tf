@@ -234,8 +234,9 @@ module "kms_pii_staging" {
 }
 
 module "lambda_pii_delete_staging" {
-  count  = var.env == "staging" ? 1 : 0
-  source = "./modules/lambda-pii-delete-staging"
+  count                    = var.env == "staging" ? 1 : 0
+  source                   = "./modules/lambda-pii-delete-staging"
+  permissions_boundary_arn = module.iam_workload_boundary[0].arn
 
   pii_cmk_key_arn = module.kms_pii_staging[0].key_arn
 
@@ -318,8 +319,9 @@ module "ddb_pii_tenant_purge_audit_staging" {
 }
 
 module "lambda_pii_tenant_purge_staging" {
-  count  = var.env == "staging" ? 1 : 0
-  source = "./modules/lambda-pii-tenant-purge-staging"
+  count                    = var.env == "staging" ? 1 : 0
+  source                   = "./modules/lambda-pii-tenant-purge-staging"
+  permissions_boundary_arn = module.iam_workload_boundary[0].arn
 
   purge_audit_table_arn = module.ddb_pii_tenant_purge_audit_staging[0].table_arn
 }
@@ -332,8 +334,9 @@ module "lambda_pii_tenant_purge_staging" {
 # code (Lambdas/lambda/send_email/) deploys over the placeholder via
 # update-function-code. Dedicated role + the picasso-emails SES config set.
 module "lambda_send_email_staging" {
-  count  = var.env == "staging" ? 1 : 0
-  source = "./modules/lambda-send-email-staging"
+  count                    = var.env == "staging" ? 1 : 0
+  source                   = "./modules/lambda-send-email-staging"
+  permissions_boundary_arn = module.iam_workload_boundary[0].arn
 }
 
 # Consumer PII Remediation Path A, M3 done-bar #1 (master plan v0.3 §M3).
@@ -347,8 +350,9 @@ module "lambda_send_email_staging" {
 # single topic; no DDB writes, no PII CMK access (audit table remains default
 # DDB SSE pending M7 F-DSAR-C2-SSE-DEFER resolution).
 module "lambda_pii_dsar_sla_monitor_staging" {
-  count  = var.env == "staging" ? 1 : 0
-  source = "./modules/lambda-pii-dsar-sla-monitor-staging"
+  count                    = var.env == "staging" ? 1 : 0
+  source                   = "./modules/lambda-pii-dsar-sla-monitor-staging"
+  permissions_boundary_arn = module.iam_workload_boundary[0].arn
 
   dsar_audit_table_arn = module.ddb_pii_dsar_audit_staging[0].table_arn
   ops_sns_topic_arn    = module.ops_alarms_master_function_staging[0].topic_arn
@@ -362,8 +366,9 @@ module "lambda_pii_dsar_sla_monitor_staging" {
 # failure still surfaces to the operator via the weekly reminder + the
 # embedded CLI snippets the operator runs to verify.
 module "lambda_pii_dsar_weekly_reminder_staging" {
-  count  = var.env == "staging" ? 1 : 0
-  source = "./modules/lambda-pii-dsar-weekly-reminder-staging"
+  count                    = var.env == "staging" ? 1 : 0
+  source                   = "./modules/lambda-pii-dsar-weekly-reminder-staging"
+  permissions_boundary_arn = module.iam_workload_boundary[0].arn
 
   ops_sns_topic_arn = module.ops_alarms_master_function_staging[0].topic_arn
   # Wire the audit table name from the ddb module output so the weekly SNS
@@ -484,8 +489,9 @@ module "secrets_clerk_staging" {
 # dead weight (operator call, 2026-06-10).
 # ──────────────────────────────────────────────────────────────────────
 module "lambda_bedrock_handler" {
-  count  = var.env == "staging" ? 1 : 0
-  source = "./modules/lambda-bedrock-handler-staging"
+  count                    = var.env == "staging" ? 1 : 0
+  source                   = "./modules/lambda-bedrock-handler-staging"
+  permissions_boundary_arn = module.iam_workload_boundary[0].arn
 
   function_name = "Bedrock_Streaming_Handler"
 
@@ -546,8 +552,9 @@ module "lambda_bedrock_handler" {
 }
 
 module "lambda_master_function" {
-  count  = var.env == "staging" ? 1 : 0
-  source = "./modules/lambda-master-function-staging"
+  count                    = var.env == "staging" ? 1 : 0
+  source                   = "./modules/lambda-master-function-staging"
+  permissions_boundary_arn = module.iam_workload_boundary[0].arn
 
   function_name = "Master_Function"
 
@@ -599,8 +606,9 @@ module "lambda_master_function" {
 # CI matrix entry. CLERK_SECRET_KEY is in Secrets Manager only — never
 # in env vars or tfstate (Plan Security F2).
 module "lambda_analytics_dashboard_api_staging" {
-  count  = var.env == "staging" ? 1 : 0
-  source = "./modules/lambda-analytics-dashboard-api-staging"
+  count                    = var.env == "staging" ? 1 : 0
+  source                   = "./modules/lambda-analytics-dashboard-api-staging"
+  permissions_boundary_arn = module.iam_workload_boundary[0].arn
 
   tenant_config_bucket_arn = module.tenant_config_staging[0].bucket_arn
   config_bucket_name       = module.tenant_config_staging[0].bucket_name
@@ -713,8 +721,9 @@ module "analytics_events_pipeline_staging" {
 # `aws secretsmanager update-secret`). Real Lambda code deploys via
 # lambda-repo CI matrix (parallel PR).
 module "lambda_sms_twin_staging" {
-  count  = var.env == "staging" ? 1 : 0
-  source = "./modules/lambda-sms-twin-staging"
+  count                    = var.env == "staging" ? 1 : 0
+  source                   = "./modules/lambda-sms-twin-staging"
+  permissions_boundary_arn = module.iam_workload_boundary[0].arn
 
   notification_sends_table_arn   = module.ddb_notification_sends_staging[0].table_arn
   notification_sends_table_name  = module.ddb_notification_sends_staging[0].table_name
@@ -823,8 +832,9 @@ module "secrets_meta_app_staging" {
 }
 
 module "lambda_meta_staging" {
-  count  = var.env == "staging" ? 1 : 0
-  source = "./modules/lambda-meta-staging"
+  count                    = var.env == "staging" ? 1 : 0
+  source                   = "./modules/lambda-meta-staging"
+  permissions_boundary_arn = module.iam_workload_boundary[0].arn
 
   channel_mappings_table_arn        = module.ddb_channel_mappings_staging[0].table_arn
   channel_mappings_table_name       = module.ddb_channel_mappings_staging[0].table_name
@@ -962,8 +972,9 @@ resource "aws_secretsmanager_secret_policy" "meta_ig_app_secret_staging" {
 # event_id (= booking_id).
 # ──────────────────────────────────────────────────────────────────────
 module "lambda_calendar_watch_listener_staging" {
-  count  = var.env == "staging" ? 1 : 0
-  source = "./modules/lambda-calendar-watch-listener-staging"
+  count                    = var.env == "staging" ? 1 : 0
+  source                   = "./modules/lambda-calendar-watch-listener-staging"
+  permissions_boundary_arn = module.iam_workload_boundary[0].arn
 
   # Calendar-watch-channels (runbook-provisioned PR #231; data source for now)
   calendar_watch_channels_table_arn               = data.aws_dynamodb_table.calendar_watch_channels_staging[0].arn
@@ -994,8 +1005,9 @@ module "lambda_calendar_watch_listener_staging" {
 # onboarding populates `scheduling_tags`.
 # ──────────────────────────────────────────────────────────────────────
 module "lambda_calendar_watch_onboarder_staging" {
-  count  = var.env == "staging" ? 1 : 0
-  source = "./modules/lambda-calendar-watch-onboarder-staging"
+  count                    = var.env == "staging" ? 1 : 0
+  source                   = "./modules/lambda-calendar-watch-onboarder-staging"
+  permissions_boundary_arn = module.iam_workload_boundary[0].arn
 
   # Calendar-watch-channels (runbook-provisioned PR #231; data source for now)
   calendar_watch_channels_table_arn  = data.aws_dynamodb_table.calendar_watch_channels_staging[0].arn
@@ -1019,8 +1031,9 @@ module "lambda_calendar_watch_onboarder_staging" {
 # they expire (~7d). Reuses the same channels table + Listener URL + per-tenant
 # OAuth scope as the Onboarder.
 module "lambda_calendar_watch_renewer_staging" {
-  count  = var.env == "staging" ? 1 : 0
-  source = "./modules/lambda-calendar-watch-renewer-staging"
+  count                    = var.env == "staging" ? 1 : 0
+  source                   = "./modules/lambda-calendar-watch-renewer-staging"
+  permissions_boundary_arn = module.iam_workload_boundary[0].arn
 
   # Calendar-watch-channels (runbook-provisioned PR #231; data source for now).
   # Renewer Queries the tenant-expiration-index GSI + Put/Update/Deletes rows.
@@ -1042,8 +1055,9 @@ module "lambda_calendar_watch_renewer_staging" {
 # table + per-tenant OAuth scope as the Onboarder/Renewer. Needs NO Listener URL
 # (it never registers a watch).
 module "lambda_calendar_watch_offboarder_staging" {
-  count  = var.env == "staging" ? 1 : 0
-  source = "./modules/lambda-calendar-watch-offboarder-staging"
+  count                    = var.env == "staging" ? 1 : 0
+  source                   = "./modules/lambda-calendar-watch-offboarder-staging"
+  permissions_boundary_arn = module.iam_workload_boundary[0].arn
 
   # Calendar-watch-channels (runbook-provisioned PR #231; data source for now).
   # Offboarder GetItem/Query (tenant-expiration-index GSI) + DeleteItem.
@@ -1073,8 +1087,9 @@ module "lambda_calendar_watch_offboarder_staging" {
 # #190; deployed via deploy-staging.yml.
 # ──────────────────────────────────────────────────────────────────────
 module "lambda_booking_commit_staging" {
-  count  = var.env == "staging" ? 1 : 0
-  source = "./modules/lambda-booking-commit-staging"
+  count                    = var.env == "staging" ? 1 : 0
+  source                   = "./modules/lambda-booking-commit-staging"
+  permissions_boundary_arn = module.iam_workload_boundary[0].arn
 
   # Booking table (Terraform-managed via ddb-booking): Get/Put/Update/DeleteItem.
   booking_table_arn  = module.ddb_booking_staging[0].table_arn
@@ -1161,8 +1176,9 @@ module "sns_calendar_watch_fanout_staging" {
 # Calendar_Event_Consumer (lambda#195, MERGED) — owns booking.ooo_overlap_detected
 # (B9) + booking.attendee_declined (B10). Polls the fan-out event-consumer queue.
 module "lambda_calendar_event_consumer_staging" {
-  count  = var.env == "staging" ? 1 : 0
-  source = "./modules/lambda-calendar-event-consumer-staging"
+  count                    = var.env == "staging" ? 1 : 0
+  source                   = "./modules/lambda-calendar-event-consumer-staging"
+  permissions_boundary_arn = module.iam_workload_boundary[0].arn
 
   # Booking table (Terraform-managed via ddb-booking): conditional UpdateItem only.
   booking_table_arn  = module.ddb_booking_staging[0].table_arn
@@ -1196,8 +1212,9 @@ module "lambda_calendar_event_consumer_staging" {
 # Narrower than the event-consumer (NO candidate re-resolution): booking GetItem/UpdateItem +
 # channels UpdateItem + send_email invoke + jwt signing key + ops-alerts publish + SQS consume.
 module "lambda_calendar_lifecycle_consumer_staging" {
-  count  = var.env == "staging" ? 1 : 0
-  source = "./modules/lambda-calendar-lifecycle-consumer-staging"
+  count                    = var.env == "staging" ? 1 : 0
+  source                   = "./modules/lambda-calendar-lifecycle-consumer-staging"
+  permissions_boundary_arn = module.iam_workload_boundary[0].arn
 
   # Booking table (Terraform-managed via ddb-booking): GetItem + conditional UpdateItem.
   booking_table_arn  = module.ddb_booking_staging[0].table_arn
@@ -1234,8 +1251,9 @@ module "lambda_calendar_lifecycle_consumer_staging" {
 # this is the integrator IaC (A1). Wiring the Function URL into the D3 origin +
 # enable_custom_domain = true is the SEPARATE Apply-2 step (A2).
 module "lambda_scheduling_redemption_handler_staging" {
-  count  = var.env == "staging" ? 1 : 0
-  source = "./modules/lambda-scheduling-redemption-handler-staging"
+  count                    = var.env == "staging" ? 1 : 0
+  source                   = "./modules/lambda-scheduling-redemption-handler-staging"
+  permissions_boundary_arn = module.iam_workload_boundary[0].arn
 
   # Booking table (Terraform-managed via ddb-booking): GetItem only.
   booking_table_arn  = module.ddb_booking_staging[0].table_arn
@@ -1272,8 +1290,9 @@ module "lambda_scheduling_redemption_handler_staging" {
 # /schedule-api* custom origin (wired into cloudfront_widget_staging below).
 # ──────────────────────────────────────────────────────────────────────
 module "lambda_scheduling_page_api_staging" {
-  count  = var.env == "staging" ? 1 : 0
-  source = "./modules/lambda-scheduling-page-api-staging"
+  count                    = var.env == "staging" ? 1 : 0
+  source                   = "./modules/lambda-scheduling-page-api-staging"
+  permissions_boundary_arn = module.iam_workload_boundary[0].arn
 
   # Booking table (Terraform-managed via ddb-booking): GetItem only (load booking).
   booking_table_arn  = module.ddb_booking_staging[0].table_arn
@@ -1315,8 +1334,9 @@ module "lambda_scheduling_page_api_staging" {
 # _state-signing-key secret. After first apply: add the manual Function URL 2nd
 # resource-policy statement via the Console (see the module banner).
 module "lambda_calendar_oauth_connect_staging" {
-  count  = var.env == "staging" ? 1 : 0
-  source = "./modules/lambda-calendar-oauth-connect-staging"
+  count                    = var.env == "staging" ? 1 : 0
+  source                   = "./modules/lambda-calendar-oauth-connect-staging"
+  permissions_boundary_arn = module.iam_workload_boundary[0].arn
 
   # Tenant config bucket — featureGate.js Flag-A gate reads tenants/{id}/config.json.
   tenant_config_bucket_arn = module.tenant_config_staging[0].bucket_arn
@@ -1373,8 +1393,9 @@ module "scheduling_redemption_domain_staging" {
 # stranded-booking remediation. Invoked directly (offboarding-trigger wiring is the
 # integrator's coupled change — see the banner above); NOT a queue consumer.
 module "lambda_stranded_booking_remediator_staging" {
-  count  = var.env == "staging" ? 1 : 0
-  source = "./modules/lambda-stranded-booking-remediator-staging"
+  count                    = var.env == "staging" ? 1 : 0
+  source                   = "./modules/lambda-stranded-booking-remediator-staging"
+  permissions_boundary_arn = module.iam_workload_boundary[0].arn
 
   # Booking table (Terraform-managed via ddb-booking): UpdateItem + coordinator GSI Query.
   booking_table_arn                   = module.ddb_booking_staging[0].table_arn
@@ -1847,8 +1868,9 @@ module "ddb_scheduled_messages_staging" {
 # Track 1 S6 step 2: Scheduled_Message_Sender Lambda (the EventBridge schedule target).
 # No dependency on the scheduler module -- keeps the dependency graph acyclic.
 module "lambda_scheduled_message_sender_staging" {
-  count  = var.env == "staging" ? 1 : 0
-  source = "./modules/lambda-scheduled-message-sender-staging"
+  count                    = var.env == "staging" ? 1 : 0
+  source                   = "./modules/lambda-scheduled-message-sender-staging"
+  permissions_boundary_arn = module.iam_workload_boundary[0].arn
 
   scheduled_messages_table_arn  = module.ddb_scheduled_messages_staging[0].table_arn
   scheduled_messages_table_name = module.ddb_scheduled_messages_staging[0].table_name
@@ -1873,8 +1895,9 @@ module "lambda_scheduled_message_sender_staging" {
 # + dedicated schedule group. Depends on lambda_scheduled_message_sender_staging for
 # the sender ARN (the target of every per-booking reminder schedule).
 module "lambda_reminder_scheduler_staging" {
-  count  = var.env == "staging" ? 1 : 0
-  source = "./modules/lambda-reminder-scheduler-staging"
+  count                    = var.env == "staging" ? 1 : 0
+  source                   = "./modules/lambda-reminder-scheduler-staging"
+  permissions_boundary_arn = module.iam_workload_boundary[0].arn
 
   # Scheduled_Message_Sender is the EventBridge schedule target; its ARN is wired into
   # the scheduler_exec role's invoke policy + the reconciler's SCHEDULER_TARGET_ARN env.
@@ -1971,8 +1994,9 @@ resource "aws_iam_role_policy" "picasso_session_archiver_inline" {
 # Lambdas/lambda/Picasso_Config_Manager, then rebuild the staging UI with
 # VITE_API_URL = this module's function_url output.
 module "lambda_config_manager_staging" {
-  count  = var.env == "staging" ? 1 : 0
-  source = "./modules/lambda-config-manager-staging"
+  count                    = var.env == "staging" ? 1 : 0
+  source                   = "./modules/lambda-config-manager-staging"
+  permissions_boundary_arn = module.iam_workload_boundary[0].arn
 
   config_bucket_name = module.tenant_config_staging[0].bucket_name
   # clerk_jwks_url defaults to the prod Clerk instance (shared operator identity).
@@ -2000,8 +2024,9 @@ module "cloudfront_config_builder_staging" {
 # (the cadence-compression gate, double-gated by is_synthetic). Spec:
 # Lambdas/lambda/Scheduling_Synthetic_Monitor/INFRA_NOTES.md.
 module "lambda_scheduling_synthetic_monitor_staging" {
-  count  = var.env == "staging" ? 1 : 0
-  source = "./modules/lambda-scheduling-synthetic-monitor-staging"
+  count                    = var.env == "staging" ? 1 : 0
+  source                   = "./modules/lambda-scheduling-synthetic-monitor-staging"
+  permissions_boundary_arn = module.iam_workload_boundary[0].arn
 
   booking_commit_function_arn  = module.lambda_booking_commit_staging[0].commit_function_arn
   booking_commit_function_name = module.lambda_booking_commit_staging[0].commit_function_name
@@ -2024,8 +2049,9 @@ module "lambda_scheduling_synthetic_monitor_staging" {
 # lambda-repo CI matrix. Invoked by the monitor's disposition cycle today; the REMIND
 # attendance-schedule wiring (E5-TRIGGER SEAM) is a tracked follow-up.
 module "lambda_attendance_disposition_staging" {
-  count  = var.env == "staging" ? 1 : 0
-  source = "./modules/lambda-attendance-disposition-staging"
+  count                    = var.env == "staging" ? 1 : 0
+  source                   = "./modules/lambda-attendance-disposition-staging"
+  permissions_boundary_arn = module.iam_workload_boundary[0].arn
 
   booking_table_arn  = module.ddb_booking_staging[0].table_arn
   booking_table_name = module.ddb_booking_staging[0].table_name
@@ -2067,9 +2093,10 @@ module "secrets_dub_staging" {
 }
 
 module "lambda_attribution_mint_staging" {
-  dub_workspace_id = "ws_1JQ7P29YHBZBY3YX9961NCST7"
-  count            = var.env == "staging" ? 1 : 0
-  source           = "./modules/lambda-attribution-mint-staging"
+  dub_workspace_id         = "ws_1JQ7P29YHBZBY3YX9961NCST7"
+  count                    = var.env == "staging" ? 1 : 0
+  source                   = "./modules/lambda-attribution-mint-staging"
+  permissions_boundary_arn = module.iam_workload_boundary[0].arn
 
   entry_points_table_arn  = module.ddb_entry_points_staging[0].table_arn
   entry_points_table_name = module.ddb_entry_points_staging[0].table_name
@@ -2079,9 +2106,10 @@ module "lambda_attribution_mint_staging" {
 }
 
 module "lambda_attribution_aggregator_staging" {
-  dub_workspace_id = "ws_1JQ7P29YHBZBY3YX9961NCST7"
-  count            = var.env == "staging" ? 1 : 0
-  source           = "./modules/lambda-attribution-aggregator-staging"
+  dub_workspace_id         = "ws_1JQ7P29YHBZBY3YX9961NCST7"
+  count                    = var.env == "staging" ? 1 : 0
+  source                   = "./modules/lambda-attribution-aggregator-staging"
+  permissions_boundary_arn = module.iam_workload_boundary[0].arn
 
   session_events_table_arn  = module.ddb_session_events_staging[0].table_arn
   session_events_table_name = module.ddb_session_events_staging[0].table_name
@@ -2110,8 +2138,9 @@ module "secrets_attribution_unsub_staging" {
 }
 
 module "lambda_attribution_unsubscribe_staging" {
-  count  = var.env == "staging" ? 1 : 0
-  source = "./modules/lambda-attribution-unsubscribe-staging"
+  count                    = var.env == "staging" ? 1 : 0
+  source                   = "./modules/lambda-attribution-unsubscribe-staging"
+  permissions_boundary_arn = module.iam_workload_boundary[0].arn
 
   attribution_aggregates_table_arn  = module.ddb_attribution_aggregates_staging[0].table_arn
   attribution_aggregates_table_name = module.ddb_attribution_aggregates_staging[0].table_name
@@ -2126,8 +2155,9 @@ module "lambda_attribution_unsubscribe_staging" {
 # RECAP_SEND_ENABLED defaults to "false" (safety gate; flip after consent advisory).
 # RECAP_POSTAL_ADDRESS defaults to "" (fail-closed; operator sets via envs/staging.tfvars).
 module "lambda_attribution_recap_generator_staging" {
-  count  = var.env == "staging" ? 1 : 0
-  source = "./modules/lambda-attribution-recap-generator-staging"
+  count                    = var.env == "staging" ? 1 : 0
+  source                   = "./modules/lambda-attribution-recap-generator-staging"
+  permissions_boundary_arn = module.iam_workload_boundary[0].arn
 
   attribution_aggregates_table_arn  = module.ddb_attribution_aggregates_staging[0].table_arn
   attribution_aggregates_table_name = module.ddb_attribution_aggregates_staging[0].table_name

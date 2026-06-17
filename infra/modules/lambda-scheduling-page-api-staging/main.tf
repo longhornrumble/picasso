@@ -147,7 +147,8 @@ resource "aws_cloudwatch_log_group" "page_api" {
 # ==============================================================================
 
 resource "aws_iam_role" "page_api" {
-  name = "Scheduling_Page_Api-exec-staging"
+  name                 = "Scheduling_Page_Api-exec-staging"
+  permissions_boundary = var.permissions_boundary_arn
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -433,4 +434,14 @@ output "function_url" {
 output "function_url_domain" {
   description = "Bare host of the Function URL (no scheme, no trailing slash) — the value wired into cloudfront-widget-staging's scheduling_page_api_origin_domain (the /schedule-api* custom origin)."
   value       = replace(replace(aws_lambda_function_url.page_api.function_url, "https://", ""), "/", "")
+}
+
+variable "permissions_boundary_arn" {
+  description = "ARN of the picasso-workload-boundary permission boundary (module.iam_workload_boundary). Caps this role's effective permissions to the intersection with the boundary. Null = no boundary (keeps the module usable standalone)."
+  type        = string
+  default     = null
+  validation {
+    condition     = var.permissions_boundary_arn == null || can(regex("^arn:aws:iam::[0-9]{12}:policy/", var.permissions_boundary_arn))
+    error_message = "permissions_boundary_arn must be null or a valid IAM policy ARN."
+  }
 }

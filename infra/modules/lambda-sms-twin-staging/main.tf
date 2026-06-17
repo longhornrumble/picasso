@@ -243,9 +243,10 @@ resource "aws_kms_alias" "sms_sender_logs" {
 # ------------------------------------------------------------------
 
 resource "aws_iam_role" "sms_sender" {
-  name               = "SMS_Sender-role"
-  assume_role_policy = data.aws_iam_policy_document.trust.json
-  description        = "Execution role for staging-account SMS_Sender. Phase B twin."
+  name                 = "SMS_Sender-role"
+  permissions_boundary = var.permissions_boundary_arn
+  assume_role_policy   = data.aws_iam_policy_document.trust.json
+  description          = "Execution role for staging-account SMS_Sender. Phase B twin."
 }
 
 data "aws_iam_policy_document" "sms_sender_exec" {
@@ -437,9 +438,10 @@ resource "aws_kms_alias" "sms_webhook_logs" {
 # ------------------------------------------------------------------
 
 resource "aws_iam_role" "sms_webhook_handler" {
-  name               = "SMS_Webhook_Handler-role"
-  assume_role_policy = data.aws_iam_policy_document.trust.json
-  description        = "Execution role for staging-account SMS_Webhook_Handler. Phase B twin."
+  name                 = "SMS_Webhook_Handler-role"
+  permissions_boundary = var.permissions_boundary_arn
+  assume_role_policy   = data.aws_iam_policy_document.trust.json
+  description          = "Execution role for staging-account SMS_Webhook_Handler. Phase B twin."
 }
 
 data "aws_iam_policy_document" "sms_webhook_exec" {
@@ -606,4 +608,14 @@ output "telnyx_secret_arn" {
 
 output "telnyx_secret_name" {
   value = aws_secretsmanager_secret.telnyx_staging.name
+}
+
+variable "permissions_boundary_arn" {
+  description = "ARN of the picasso-workload-boundary permission boundary (module.iam_workload_boundary). Caps this role's effective permissions to the intersection with the boundary. Null = no boundary (keeps the module usable standalone)."
+  type        = string
+  default     = null
+  validation {
+    condition     = var.permissions_boundary_arn == null || can(regex("^arn:aws:iam::[0-9]{12}:policy/", var.permissions_boundary_arn))
+    error_message = "permissions_boundary_arn must be null or a valid IAM policy ARN."
+  }
 }
