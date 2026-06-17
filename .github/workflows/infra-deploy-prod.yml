@@ -5,9 +5,14 @@ name: Terraform Infrastructure (production)
 # PLAN runs on any PR touching infra/ (read-only; posts the prod plan as a comment).
 # APPLY runs ONLY via manual workflow_dispatch, gated by the `production` GitHub
 # Environment (required reviewer = the approval hold). There is deliberately NO
-# push-to-main auto-apply yet: until the {env}-suffix↔bare-name naming
-# reconciliation lands, a blanket prod apply would create orphan `picasso-sms-*-prod`
-# tables (prod uses bare names). Use the `target` input to scope applies until then.
+# push-to-main auto-apply. The `target` input is now OPTIONAL: blank = full-root
+# apply, a value scopes the apply.
+#
+# Un-targeted (full-root) applies were UNBLOCKED 2026-06-17: the {env}-suffix↔bare-name
+# naming reconciliation landed (Tier-3 tables + MFS-prod imported) and the full-root
+# prod plan reads "No changes", so a blanket apply no longer risks orphan
+# `picasso-sms-*-prod` tables. The `-target` fail-closed guard was removed accordingly;
+# the `production` approval gate remains the only hold (keep applies plan-reviewed).
 #
 # Auth: OIDC. The plan job's token carries the `pull_request` sub; the apply job's
 # carries `environment:production` — both are allowed by GitHubActionsDeployRole's
@@ -22,8 +27,8 @@ on:
   workflow_dispatch:
     inputs:
       target:
-        description: "REQUIRED until naming reconciliation: -target to scope the apply (e.g. module.ops_alarms_bsh_prod). A blank value is rejected (the apply fails closed) so a full-root apply can't create orphan '-production' tables."
-        required: true
+        description: "OPTIONAL -target to scope the apply (e.g. module.bsh_function_prod). Blank = full-root apply (allowed since 2026-06-17 — the full-root prod plan is clean). The `production` approval gate is the hold; review the posted plan before approving."
+        required: false
         type: string
 
 permissions:
@@ -162,13 +167,15 @@ jobs:
       - name: Terraform apply
         run: |
           TARGET="${{ inputs.target }}"
-          # FAIL-CLOSED: a full-root prod apply would create orphan '-production'-suffixed
-          # tables via the un-gated stateful modules (form_tables, session_summaries, ...),
-          # because prod uses BARE names. Refuse until the naming reconciliation lands and
-          # this guard is intentionally removed. Until then every prod apply MUST be -target-scoped.
-          if [ -z "$TARGET" ]; then
-            echo "::error::Refusing a full-root production apply: un-gated modules would create orphan '-production'-suffixed tables (prod uses bare names). Pass a -target (e.g. module.ops_alarms_bsh_prod). See this workflow's header + infra/README.md."
-            exit 1
+          # The -target fail-closed guard was removed 2026-06-17: the {env}-suffix↔bare-name
+          # naming reconciliation landed (Tier-3 + MFS-prod imported) and the full-root prod
+          # plan reads "No changes", so an un-targeted apply no longer risks orphan
+          # '-production'-suffixed tables. `target` is now optional — blank = full root.
+          # The `production` environment approval gate remains the hold.
+          if [ -n "$TARGET" ]; then
+            echo "Applying scoped to -target=$TARGET"
+            terraform apply -var-file=envs/production.tfvars -auto-approve -target="$TARGET"
+          else
+            echo "Applying full root (un-targeted)"
+            terraform apply -var-file=envs/production.tfvars -auto-approve
           fi
-          echo "Applying scoped to -target=$TARGET"
-          terraform apply -var-file=envs/production.tfvars -auto-approve -target="$TARGET"
