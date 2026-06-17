@@ -1,0 +1,121 @@
+name: Infra Drift Detection (production)
+
+# B3 (plan ~/.claude/plans/spicy-knitting-kernighan.md): weekly read-only
+# `terraform plan` against the prod account (614) to catch out-of-band / hand
+# drift on Terraform-managed prod resources. A non-empty plan opens a deduped
+# GitHub issue.
+#
+# READ-ONLY BY CONSTRUCTION: assumes a dedicated `GitHubActionsPlanRole`
+# (AWS-managed `ReadOnlyAccess`) — NOT the deploy role — and runs `plan -lock=false`,
+# so it can never apply, never write state, and never block an operator apply.
+#
+# INERT UNTIL WIRED: the job is gated on the repo variable `PROD_PLAN_ROLE_ARN`.
+# This workflow is safe to merge before the role exists — it simply skips. To
+# activate: create the role + set the variable per
+# docs/runbooks/infra-drift-detection-setup.md.
+#
+# STAGING (525) is a documented follow-on, NOT covered here: in staging the
+# cloudfront-widget + meta modules instantiate (count=1) and consume the 3
+# TF_VAR secrets, so the inert placeholders below would false-alarm every run.
+# Staging drift needs the real-secret wiring the staging belt already has; add it
+# as a second job then. Prod is the higher drift risk (hand-managed / cutover).
+
+on:
+  schedule:
+    - cron: '0 13 * * 1'   # Mondays 13:00 UTC (before the 14:00 staleness check)
+  workflow_dispatch: {}
+
+permissions:
+  id-token: write     # OIDC AssumeRoleWithWebIdentity
+  contents: read      # checkout
+  issues: write       # open the drift issue
+
+concurrency:
+  group: infra-drift-production
+  cancel-in-progress: false
+
+# Same inert placeholders as infra-deploy-prod.yml: the 3 cf-origin / verify-token
+# vars feed only modules that are `count = 0` in production, so their VALUES are
+# never read in the prod plan. (Verified 2026-06-17.) Length-valid so validation passes.
+env:
+  TF_VAR_q5_mfs_cf_origin_secret: "0000000000000000000000000000000000000000000000000000000000000000"
+  TF_VAR_q5_streaming_cf_origin_secret: "0000000000000000000000000000000000000000000000000000000000000000"
+  TF_VAR_messenger_verify_token: "unused-in-prod"
+
+jobs:
+  drift-production:
+    name: Drift plan (production 614)
+    if: vars.PROD_PLAN_ROLE_ARN != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: infra
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        with:
+          ref: main
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd  # v3
+        with:
+          terraform_version: 1.15.1
+          terraform_wrapper: false   # we capture the -detailed-exitcode ourselves
+
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a  # v4
+        with:
+          # Dedicated READ-ONLY plan role (ReadOnlyAccess), trusted for the cron's
+          # `…:ref:refs/heads/main` sub — which the deploy role does NOT allow.
+          role-to-assume: ${{ vars.PROD_PLAN_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Terraform init
+        run: terraform init -reconfigure -input=false -backend-config=backend/production.tfbackend
+
+      - name: Terraform plan (read-only, no lock)
+        id: plan
+        run: |
+          set +e
+          terraform plan -lock=false -input=false -detailed-exitcode -no-color \
+            -var-file=envs/production.tfvars > /tmp/drift.txt 2>&1
+          code=$?
+          set -e
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          # -detailed-exitcode: 0 = no changes, 1 = error, 2 = drift.
+          if [ "$code" = "1" ]; then
+            echo "::error::terraform plan errored — see log below"; cat /tmp/drift.txt; exit 1
+          fi
+          if [ "$code" = "2" ]; then
+            echo "🔴 Drift detected (plan is non-empty)." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "✅ No drift — prod matches Terraform." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          # trim for the issue body (keep the tail — the plan summary lives at the end)
+          tail -c 60000 /tmp/drift.txt > /tmp/drift.trim.txt
+
+      - name: Open drift issue (dedupe on open issue with same title)
+        if: steps.plan.outputs.code == '2'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TITLE: 'Prod infra drift detected — terraform plan is non-empty'
+        run: |
+          set -euo pipefail
+          EXISTING=$(gh issue list --state open --search "in:title \"$TITLE\"" --json number --jq 'length')
+          if [ "$EXISTING" -gt 0 ]; then
+            echo "Open drift issue already exists — not duplicating." >> "$GITHUB_STEP_SUMMARY"; exit 0
+          fi
+          BODY=/tmp/drift-issue.md
+          {
+            echo "Weekly prod drift check found a **non-empty** \`terraform plan\` against account 614 — live prod has diverged from \`main\`'s Terraform (a hand-edit), or a pending IaC change has not been applied."
+            echo ""
+            echo "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo ""
+            echo '```'
+            cat /tmp/drift.trim.txt
+            echo '```'
+            echo ""
+            echo "**Resolve** until the plan reads \`No changes\`: reconcile live → IaC (apply via the gated belt) or IaC → live (PR). Close this issue once resolved; the check re-opens it next week only while drift remains."
+            echo ""
+            echo "_Known expected diff until Remedy A Phase 2 lands: the BSH Function-URL \`authorization_type\` (NONE → AWS_IAM). See Sandbox/prod_bsh_remedy_a_phase2_cutover_2026-06-17.md._"
+            echo ""
+            echo "_Automated by \`.github/workflows/infra-drift-detection.yml\`._"
+          } > "$BODY"
+          gh issue create --title "$TITLE" --body-file "$BODY"
