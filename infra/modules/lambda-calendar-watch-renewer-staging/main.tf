@@ -142,7 +142,8 @@ resource "aws_cloudwatch_log_group" "renewer" {
 # ==============================================================================
 
 resource "aws_iam_role" "renewer" {
-  name = "Calendar_Watch_Renewer-exec-staging"
+  name                 = "Calendar_Watch_Renewer-exec-staging"
+  permissions_boundary = var.permissions_boundary_arn
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -300,7 +301,8 @@ resource "aws_lambda_function" "renewer" {
 # ==============================================================================
 
 resource "aws_iam_role" "renewer_scheduler" {
-  name = "Calendar_Watch_Renewer-scheduler-staging"
+  name                 = "Calendar_Watch_Renewer-scheduler-staging"
+  permissions_boundary = var.permissions_boundary_arn
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -470,4 +472,14 @@ output "renewer_role_arn" {
 
 output "renewer_schedule_arn" {
   value = aws_scheduler_schedule.renewer.arn
+}
+
+variable "permissions_boundary_arn" {
+  description = "ARN of the picasso-workload-boundary permission boundary (module.iam_workload_boundary). Caps this role's effective permissions to the intersection with the boundary. Null = no boundary (keeps the module usable standalone)."
+  type        = string
+  default     = null
+  validation {
+    condition     = var.permissions_boundary_arn == null || can(regex("^arn:aws:iam::[0-9]{12}:policy/", var.permissions_boundary_arn))
+    error_message = "permissions_boundary_arn must be null or a valid IAM policy ARN."
+  }
 }

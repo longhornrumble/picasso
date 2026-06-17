@@ -96,9 +96,10 @@ data "aws_iam_policy_document" "purge_trust" {
 }
 
 resource "aws_iam_role" "purge" {
-  name               = "picasso-pii-tenant-purge-staging-role"
-  assume_role_policy = data.aws_iam_policy_document.purge_trust.json
-  description        = "Dedicated exec role for the per-tenant offboarding purge Lambda (P1 Class A). Query+DeleteItem on 5 tenant-partitioned surfaces + PutItem on the purge audit table. See module header for least-privilege absences."
+  name                 = "picasso-pii-tenant-purge-staging-role"
+  permissions_boundary = var.permissions_boundary_arn
+  assume_role_policy   = data.aws_iam_policy_document.purge_trust.json
+  description          = "Dedicated exec role for the per-tenant offboarding purge Lambda (P1 Class A). Query+DeleteItem on 5 tenant-partitioned surfaces + PutItem on the purge audit table. See module header for least-privilege absences."
 }
 
 data "aws_iam_policy_document" "purge" {
@@ -276,4 +277,14 @@ output "function_arn" {
 
 output "log_group_name" {
   value = aws_cloudwatch_log_group.lambda.name
+}
+
+variable "permissions_boundary_arn" {
+  description = "ARN of the picasso-workload-boundary permission boundary (module.iam_workload_boundary). Caps this role's effective permissions to the intersection with the boundary. Null = no boundary (keeps the module usable standalone)."
+  type        = string
+  default     = null
+  validation {
+    condition     = var.permissions_boundary_arn == null || can(regex("^arn:aws:iam::[0-9]{12}:policy/", var.permissions_boundary_arn))
+    error_message = "permissions_boundary_arn must be null or a valid IAM policy ARN."
+  }
 }

@@ -72,9 +72,10 @@ data "aws_iam_policy_document" "trust" {
 # ------------------------------------------------------------------
 
 resource "aws_iam_role" "exec" {
-  name               = "Attribution_Unsubscribe-role"
-  assume_role_policy = data.aws_iam_policy_document.trust.json
-  description        = "Execution role for Attribution_Unsubscribe. Wave-2 attribution unsub endpoint."
+  name                 = "Attribution_Unsubscribe-role"
+  permissions_boundary = var.permissions_boundary_arn
+  assume_role_policy   = data.aws_iam_policy_document.trust.json
+  description          = "Execution role for Attribution_Unsubscribe. Wave-2 attribution unsub endpoint."
 }
 
 data "aws_iam_policy_document" "exec" {
@@ -203,4 +204,14 @@ output "function_arn" {
 
 output "role_arn" {
   value = aws_iam_role.exec.arn
+}
+
+variable "permissions_boundary_arn" {
+  description = "ARN of the picasso-workload-boundary permission boundary (module.iam_workload_boundary). Caps this role's effective permissions to the intersection with the boundary. Null = no boundary (keeps the module usable standalone)."
+  type        = string
+  default     = null
+  validation {
+    condition     = var.permissions_boundary_arn == null || can(regex("^arn:aws:iam::[0-9]{12}:policy/", var.permissions_boundary_arn))
+    error_message = "permissions_boundary_arn must be null or a valid IAM policy ARN."
+  }
 }

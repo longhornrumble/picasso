@@ -71,9 +71,10 @@ data "aws_iam_policy_document" "trust" {
 }
 
 resource "aws_iam_role" "this" {
-  name               = "send_email-role-staging"
-  description        = "Dedicated exec role for the staging send_email Lambda (scheduling notice-path test dependency, operator-authorized 2026-06-02)."
-  assume_role_policy = data.aws_iam_policy_document.trust.json
+  name                 = "send_email-role-staging"
+  permissions_boundary = var.permissions_boundary_arn
+  description          = "Dedicated exec role for the staging send_email Lambda (scheduling notice-path test dependency, operator-authorized 2026-06-02)."
+  assume_role_policy   = data.aws_iam_policy_document.trust.json
 }
 
 data "aws_iam_policy_document" "policy" {
@@ -172,4 +173,14 @@ output "log_group_name" {
 
 output "configuration_set_name" {
   value = aws_ses_configuration_set.this.name
+}
+
+variable "permissions_boundary_arn" {
+  description = "ARN of the picasso-workload-boundary permission boundary (module.iam_workload_boundary). Caps this role's effective permissions to the intersection with the boundary. Null = no boundary (keeps the module usable standalone)."
+  type        = string
+  default     = null
+  validation {
+    condition     = var.permissions_boundary_arn == null || can(regex("^arn:aws:iam::[0-9]{12}:policy/", var.permissions_boundary_arn))
+    error_message = "permissions_boundary_arn must be null or a valid IAM policy ARN."
+  }
 }

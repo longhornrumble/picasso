@@ -162,7 +162,8 @@ resource "aws_cloudwatch_log_group" "consumer" {
 # ==============================================================================
 
 resource "aws_iam_role" "consumer" {
-  name = "Calendar_Event_Consumer-exec-staging"
+  name                 = "Calendar_Event_Consumer-exec-staging"
+  permissions_boundary = var.permissions_boundary_arn
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -397,4 +398,14 @@ output "consumer_function_arn" {
 
 output "consumer_role_arn" {
   value = aws_iam_role.consumer.arn
+}
+
+variable "permissions_boundary_arn" {
+  description = "ARN of the picasso-workload-boundary permission boundary (module.iam_workload_boundary). Caps this role's effective permissions to the intersection with the boundary. Null = no boundary (keeps the module usable standalone)."
+  type        = string
+  default     = null
+  validation {
+    condition     = var.permissions_boundary_arn == null || can(regex("^arn:aws:iam::[0-9]{12}:policy/", var.permissions_boundary_arn))
+    error_message = "permissions_boundary_arn must be null or a valid IAM policy ARN."
+  }
 }
