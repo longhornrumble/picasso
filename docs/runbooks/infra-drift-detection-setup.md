@@ -15,43 +15,22 @@ never apply, never write state, and never block an operator apply.
 
 ---
 
-## Step 1 — create the read-only plan role in prod 614 (operator, `--profile chris-admin`)
+## Step 1 — apply the Terraform-managed plan role to prod 614 (gated belt)
 
-```bash
-cat > /tmp/plan-role-trust.json <<'JSON'
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Principal": { "Federated": "arn:aws:iam::614056832592:oidc-provider/token.actions.githubusercontent.com" },
-      "Action": "sts:AssumeRoleWithWebIdentity",
-      "Condition": {
-        "StringEquals": { "token.actions.githubusercontent.com:aud": "sts.amazonaws.com" },
-        "StringLike": { "token.actions.githubusercontent.com:sub": "repo:longhornrumble/picasso:ref:refs/heads/main" }
-      }
-    }
-  ]
-}
-JSON
+The role is **Terraform-managed** (`infra/modules/ci-drift-plan-role-prod`, prod-only,
+`ReadOnlyAccess` only) — NOT hand-created. Once the module is on `main`, apply it via the
+gated prod belt:
 
-aws iam create-role --role-name GitHubActionsPlanRole \
-  --assume-role-policy-document file:///tmp/plan-role-trust.json \
-  --description "Read-only OIDC role for scheduled terraform-plan drift detection (B3). No apply." \
-  --profile chris-admin
+1. Operator dispatches **Terraform Infrastructure (production)** (`infra-deploy-prod.yml`)
+   with `target = module.ci_drift_plan_role_prod` (or a full-root apply — the plan adds only
+   this role + its `ReadOnlyAccess` attachment: **`Plan: 2 to add, 0 to change, 0 to destroy`**,
+   verified 2026-06-17).
+2. Approve the `production` environment gate. The apply creates `GitHubActionsPlanRole`.
 
-aws iam attach-role-policy --role-name GitHubActionsPlanRole \
-  --policy-arn arn:aws:iam::aws:policy/ReadOnlyAccess \
-  --profile chris-admin
-```
-
-Notes:
-- `ReadOnlyAccess` covers everything `terraform plan` needs: Describe/Get/List on the
-  managed resources + `s3:GetObject` on the state backend. It grants **no** write, so the
-  role is apply-incapable by construction.
-- The role `description` is ASCII-only (IAM rejects em-dash / smart-quotes — see CLAUDE.md).
-- Optional tightening: add a `job_workflow_ref` condition to restrict the sub to *this*
-  workflow file. Not required — the role is read-only, so a broader `ref:main` sub is low-risk.
+Why TF-managed (not hand-CLI): the role then has no hand-managed prod drift, and it's covered
+by the very drift detector it enables. `ReadOnlyAccess` grants everything `terraform plan`
+needs (Describe/Get/List + `s3:GetObject` on state) and **no** write, so it's apply-incapable.
+The trust permits only the cron sub `repo:longhornrumble/picasso:ref:refs/heads/main`.
 
 ## Step 2 — wire the repo variable
 

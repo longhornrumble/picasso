@@ -129,6 +129,16 @@ module "lambda_master_function_prod" {
   env    = var.env
 }
 
+# B3 drift-detection: read-only OIDC role assumed by the scheduled
+# infra-drift-detection.yml cron (the prod deploy role's trust forbids the cron's
+# ref:refs/heads/main sub). ReadOnlyAccess only — apply-incapable. Production-only.
+# After the gated apply, set its ARN as the repo variable PROD_PLAN_ROLE_ARN to
+# activate the workflow (docs/runbooks/infra-drift-detection-setup.md).
+module "ci_drift_plan_role_prod" {
+  count  = var.env == "production" ? 1 : 0
+  source = "./modules/ci-drift-plan-role-prod"
+}
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Phase 2 Tier 4 (production-only): the prod chat CloudFront distribution
 # E3G0LSWB1AQ9LP (alias chat.myrecruiter.ai). Adopts the live, hand-managed
