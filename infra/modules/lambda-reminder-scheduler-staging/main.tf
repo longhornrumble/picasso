@@ -117,7 +117,8 @@ resource "aws_scheduler_schedule_group" "reminders" {
 # ==============================================================================
 
 resource "aws_iam_role" "scheduler_exec" {
-  name = "picasso-reminder-scheduler-exec-staging"
+  name                 = "picasso-reminder-scheduler-exec-staging"
+  permissions_boundary = var.permissions_boundary_arn
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -228,7 +229,8 @@ resource "aws_cloudwatch_log_group" "reconciler" {
 # ==============================================================================
 
 resource "aws_iam_role" "reconciler" {
-  name = "Reminder_Scheduler-exec-staging"
+  name                 = "Reminder_Scheduler-exec-staging"
+  permissions_boundary = var.permissions_boundary_arn
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -381,7 +383,8 @@ resource "aws_lambda_function" "reconciler" {
 
 # Dedicated invoke role for the reconciler's own nightly schedule.
 resource "aws_iam_role" "reconciler_scheduler" {
-  name = "Reminder_Scheduler-scheduler-staging"
+  name                 = "Reminder_Scheduler-scheduler-staging"
+  permissions_boundary = var.permissions_boundary_arn
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -506,4 +509,14 @@ output "scheduler_group_name" {
 output "scheduler_target_arn" {
   description = "ARN of the Scheduled_Message_Sender (the schedule target). Passed through from the sender module so callers have a single reference."
   value       = var.sender_function_arn
+}
+
+variable "permissions_boundary_arn" {
+  description = "ARN of the picasso-workload-boundary permission boundary (module.iam_workload_boundary). Caps this role's effective permissions to the intersection with the boundary. Null = no boundary (keeps the module usable standalone)."
+  type        = string
+  default     = null
+  validation {
+    condition     = var.permissions_boundary_arn == null || can(regex("^arn:aws:iam::[0-9]{12}:policy/", var.permissions_boundary_arn))
+    error_message = "permissions_boundary_arn must be null or a valid IAM policy ARN."
+  }
 }

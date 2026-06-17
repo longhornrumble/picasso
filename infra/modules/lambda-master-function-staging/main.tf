@@ -129,10 +129,6 @@ variable "bedrock_model_id" {
   default     = "global.anthropic.claude-haiku-4-5-20251001-v1:0"
 }
 
-variable "kb_arns" {
-  description = "List of Bedrock Knowledge Base ARNs the Lambda is allowed to Retrieve from. For Issue #5, MYR's KB only."
-  type        = list(string)
-}
 
 variable "kb_retriever_role_arns" {
   description = "List of cross-account IAM role ARNs the Lambda is allowed to AssumeRole into for KB Retrieve. Bedrock KBs aren't RAM-shareable, so cross-account access requires the staging Lambda to assume a prod-side role that has Retrieve permission. Python bedrock_handler.py wraps the Bedrock call with assume-role + cached creds."
@@ -161,9 +157,10 @@ data "aws_iam_policy_document" "trust" {
 }
 
 resource "aws_iam_role" "exec" {
-  name               = "${var.function_name}-role"
-  assume_role_policy = data.aws_iam_policy_document.trust.json
-  description        = "Execution role for staging-account Master_Function."
+  name                 = "${var.function_name}-role"
+  permissions_boundary = var.permissions_boundary_arn
+  assume_role_policy   = data.aws_iam_policy_document.trust.json
+  description          = "Execution role for staging-account Master_Function."
 }
 
 data "aws_caller_identity" "current" {}
@@ -330,11 +327,6 @@ data "aws_iam_policy_document" "exec" {
     ]
   }
 
-  statement {
-    sid       = "BedrockKBRetrieve"
-    actions   = ["bedrock-agent-runtime:Retrieve"]
-    resources = var.kb_arns
-  }
 
   # Cross-account KB access: AWS RAM doesn't support bedrock:KnowledgeBase
   # (only bedrock:CustomModel). The staging Lambda must assume a role in
@@ -502,4 +494,14 @@ output "function_url" {
 
 output "log_group_name" {
   value = aws_cloudwatch_log_group.lambda.name
+}
+
+variable "permissions_boundary_arn" {
+  description = "ARN of the picasso-workload-boundary permission boundary (module.iam_workload_boundary). Caps this role's effective permissions to the intersection with the boundary. Null = no boundary (keeps the module usable standalone)."
+  type        = string
+  default     = null
+  validation {
+    condition     = var.permissions_boundary_arn == null || can(regex("^arn:aws:iam::[0-9]{12}:policy/", var.permissions_boundary_arn))
+    error_message = "permissions_boundary_arn must be null or a valid IAM policy ARN."
+  }
 }

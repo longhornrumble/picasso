@@ -133,6 +133,26 @@ variable "pii_cmk_key_arn" {
   type        = string
 }
 
+variable "permissions_boundary_arn" {
+  description = "ARN of the picasso-workload-boundary permission boundary (module.iam_workload_boundary). Caps this role's effective permissions to the intersection with the boundary. Null = no boundary (default keeps the module usable outside the staging root)."
+  type        = string
+  default     = null
+  validation {
+    condition     = var.permissions_boundary_arn == null || can(regex("^arn:aws:iam::[0-9]{12}:policy/", var.permissions_boundary_arn))
+    error_message = "permissions_boundary_arn must be null or a valid IAM policy ARN (arn:aws:iam::<acct>:policy/...)."
+  }
+}
+
+variable "scheduling_oauth_tenant_ids" {
+  description = "Tenant IDs whose per-coordinator Google OAuth secrets the DSAR calendar-delete may read. secretsmanager:GetSecretValue is scoped to picasso/scheduling/oauth/{tenant}/* for each — NOT a cross-tenant wildcard. Mirrors lambda-booking-commit-staging. Add a tenant = append here in a reviewed PR."
+  type        = list(string)
+  default     = ["MYR384719"]
+  validation {
+    condition     = length(var.scheduling_oauth_tenant_ids) > 0 && alltrue([for t in var.scheduling_oauth_tenant_ids : can(regex("^[A-Za-z0-9][A-Za-z0-9-]*$", t))])
+    error_message = "Each scheduling_oauth_tenant_ids entry must be a non-empty alphanumeric+hyphen tenant ID (no wildcard) — a typo'd '*' or '' would re-introduce the cross-tenant grant this scoping closes."
+  }
+}
+
 variable "dsar_audit_table_arn" {
   description = "ARN of picasso-pii-dsar-audit (module.ddb_pii_dsar_audit_staging[0].table_arn, PR #157). DSAR role gets PutItem only — append-only audit, never read or delete its own audit trail."
   type        = string
@@ -309,10 +329,17 @@ locals {
   # booking_id). IAM does not inherit GSI ARNs from the base table.
   gsi_sched_msgs_by_appt = "${local.t_scheduled_messages}/index/by-appointment"
 
-  # Per-coordinator Google OAuth secrets the calendar-delete reads. The `*`
-  # wildcard covers both the {tenantId}/{coordinatorId} path tail AND the
-  # AWS-appended `-XXXXXX` Secrets Manager suffix.
-  scheduling_oauth_secrets = "arn:aws:secretsmanager:${local.region}:${local.acct}:secret:picasso/scheduling/oauth/*"
+  # Per-coordinator Google OAuth secrets the calendar-delete reads, scoped
+  # PER-TENANT (NOT a cross-tenant `oauth/*` wildcard — closes F0 security-review
+  # B2 / blast-radius C-1: this DSAR grant was the one cross-tenant token over-grant
+  # while every other scheduling reader was already per-tenant). The trailing `*`
+  # covers the {coordinatorId} path tail AND the AWS-appended `-XXXXXX` Secrets
+  # Manager suffix. Add tenant #2 = append to var.scheduling_oauth_tenant_ids in a
+  # reviewed PR, never a silent wildcard.
+  scheduling_oauth_secrets = [
+    for t in var.scheduling_oauth_tenant_ids :
+    "arn:aws:secretsmanager:${local.region}:${local.acct}:secret:picasso/scheduling/oauth/${t}/*"
+  ]
   # EventBridge Scheduler reminder/attendance schedules the DSAR sweeps by
   # deterministic name (advisory B4). Group = picasso-scheduling-reminders-staging
   # (verified live 2026-06-13; the SCHEDULER_GROUP_NAME the Lambda defaults to).
@@ -334,9 +361,10 @@ data "aws_iam_policy_document" "dsar_trust" {
 }
 
 resource "aws_iam_role" "dsar" {
-  name               = "picasso-pii-dsar-staging-role"
-  assume_role_policy = data.aws_iam_policy_document.dsar_trust.json
-  description        = "Dedicated exec role for the capability-bundle DSAR Lambda (CONSUMER_PII_REMEDIATION.md v3 item 1a). IAM-only at this PR; Lambda function resource lands with Python code follow-up."
+  name                 = "picasso-pii-dsar-staging-role"
+  assume_role_policy   = data.aws_iam_policy_document.dsar_trust.json
+  permissions_boundary = var.permissions_boundary_arn
+  description          = "Dedicated exec role for the capability-bundle DSAR Lambda (CONSUMER_PII_REMEDIATION.md v3 item 1a). IAM-only at this PR; Lambda function resource lands with Python code follow-up."
 }
 
 data "aws_iam_policy_document" "dsar" {
@@ -465,7 +493,7 @@ data "aws_iam_policy_document" "dsar" {
   statement {
     sid       = "SchedulingOauthSecretRead"
     actions   = ["secretsmanager:GetSecretValue"]
-    resources = [local.scheduling_oauth_secrets]
+    resources = local.scheduling_oauth_secrets
   }
 
   # F0 — EventBridge Scheduler reminder/attendance schedule cleanup (advisory
@@ -626,6 +654,16 @@ resource "aws_lambda_function" "this" {
   memory_size   = 256
   timeout       = 60
   architectures = ["x86_64"]
+
+  # Single-flight cap (PII review SR-2; mirrors lambda-pii-tenant-purge-staging):
+  # the DSAR holds DeleteItem across ~8 PII surfaces + real Google-Calendar deletes
+  # and was UNCAPPED. =1 serializes execution -- at most one DSAR runs at a time.
+  # NOTE (review 2026-06-16 CONCERN-4): this is a CONCURRENCY bound, not a volume
+  # bound -- a single run can still loop-delete sequentially; it prevents two
+  # invocations (double-fire / two operators) from racing + interleaving deletes
+  # on the same/overlapping subjects. PITR (22/22 tables) is the actual recovery
+  # backstop for any rows reached.
+  reserved_concurrent_executions = 1
 
   filename         = data.archive_file.placeholder.output_path
   source_code_hash = data.archive_file.placeholder.output_base64sha256

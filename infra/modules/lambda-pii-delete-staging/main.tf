@@ -108,9 +108,10 @@ data "aws_iam_policy_document" "delete_trust" {
 }
 
 resource "aws_iam_role" "delete" {
-  name               = "picasso-pii-delete-staging-role"
-  assume_role_policy = data.aws_iam_policy_document.delete_trust.json
-  description        = "Dedicated exec role for the Phase-2 PII delete pipeline (design §7). Role-only at Apply 1; the Lambda lands Phase-2 step 7."
+  name                 = "picasso-pii-delete-staging-role"
+  permissions_boundary = var.permissions_boundary_arn
+  assume_role_policy   = data.aws_iam_policy_document.delete_trust.json
+  description          = "Dedicated exec role for the Phase-2 PII delete pipeline (design §7). Role-only at Apply 1; the Lambda lands Phase-2 step 7."
 }
 
 data "aws_iam_policy_document" "delete" {
@@ -212,9 +213,10 @@ data "aws_iam_policy_document" "backfill_trust" {
 }
 
 resource "aws_iam_role" "backfill" {
-  name               = "picasso-pii-backfill-staging-role"
-  assume_role_policy = data.aws_iam_policy_document.backfill_trust.json
-  description        = "Short-lived one-time role for the §5 raw_email back-fill. Remove after the back-fill run completes (design NB-F)."
+  name                 = "picasso-pii-backfill-staging-role"
+  permissions_boundary = var.permissions_boundary_arn
+  assume_role_policy   = data.aws_iam_policy_document.backfill_trust.json
+  description          = "Short-lived one-time role for the §5 raw_email back-fill. Remove after the back-fill run completes (design NB-F)."
 }
 
 data "aws_iam_policy_document" "backfill" {
@@ -292,4 +294,14 @@ output "backfill_role_arn" {
 
 output "breakglass_role_arn" {
   value = aws_iam_role.breakglass.arn
+}
+
+variable "permissions_boundary_arn" {
+  description = "ARN of the picasso-workload-boundary permission boundary (module.iam_workload_boundary). Caps this role's effective permissions to the intersection with the boundary. Null = no boundary (keeps the module usable standalone)."
+  type        = string
+  default     = null
+  validation {
+    condition     = var.permissions_boundary_arn == null || can(regex("^arn:aws:iam::[0-9]{12}:policy/", var.permissions_boundary_arn))
+    error_message = "permissions_boundary_arn must be null or a valid IAM policy ARN."
+  }
 }

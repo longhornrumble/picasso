@@ -125,7 +125,8 @@ resource "aws_cloudwatch_log_group" "attend" {
 # ==============================================================================
 
 resource "aws_iam_role" "attend" {
-  name = "Attendance_Disposition_Handler-exec-staging"
+  name                 = "Attendance_Disposition_Handler-exec-staging"
+  permissions_boundary = var.permissions_boundary_arn
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -261,4 +262,14 @@ output "function_arn" {
 
 output "function_name" {
   value = aws_lambda_function.attend.function_name
+}
+
+variable "permissions_boundary_arn" {
+  description = "ARN of the picasso-workload-boundary permission boundary (module.iam_workload_boundary). Caps this role's effective permissions to the intersection with the boundary. Null = no boundary (keeps the module usable standalone)."
+  type        = string
+  default     = null
+  validation {
+    condition     = var.permissions_boundary_arn == null || can(regex("^arn:aws:iam::[0-9]{12}:policy/", var.permissions_boundary_arn))
+    error_message = "permissions_boundary_arn must be null or a valid IAM policy ARN."
+  }
 }

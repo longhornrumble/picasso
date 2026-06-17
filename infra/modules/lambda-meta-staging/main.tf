@@ -105,10 +105,6 @@ variable "config_bucket_name" {
   type        = string
 }
 
-variable "kb_arns" {
-  description = "Bedrock KB ARNs (prod-account; cross-account). Mirrors the bedrock-handler module wiring."
-  type        = list(string)
-}
 
 variable "kb_retriever_role_arns" {
   description = "Cross-account IAM role ARNs the Response Processor may sts:AssumeRole into for KB Retrieve (Bedrock KBs aren't RAM-shareable)."
@@ -206,9 +202,10 @@ resource "aws_kms_alias" "webhook_logs" {
 }
 
 resource "aws_iam_role" "webhook" {
-  name               = "Meta_Webhook_Handler-role"
-  assume_role_policy = data.aws_iam_policy_document.trust.json
-  description        = "Execution role for staging-account Meta_Webhook_Handler."
+  name                 = "Meta_Webhook_Handler-role"
+  permissions_boundary = var.permissions_boundary_arn
+  assume_role_policy   = data.aws_iam_policy_document.trust.json
+  description          = "Execution role for staging-account Meta_Webhook_Handler."
 }
 
 data "aws_iam_policy_document" "webhook_exec" {
@@ -386,9 +383,10 @@ resource "aws_kms_alias" "response_logs" {
 }
 
 resource "aws_iam_role" "response_processor" {
-  name               = "Meta_Response_Processor-role"
-  assume_role_policy = data.aws_iam_policy_document.trust.json
-  description        = "Execution role for staging-account Meta_Response_Processor (RAG via shared bedrock-core, cross-account KB)."
+  name                 = "Meta_Response_Processor-role"
+  permissions_boundary = var.permissions_boundary_arn
+  assume_role_policy   = data.aws_iam_policy_document.trust.json
+  description          = "Execution role for staging-account Meta_Response_Processor (RAG via shared bedrock-core, cross-account KB)."
 }
 
 data "aws_iam_policy_document" "response_exec" {
@@ -432,11 +430,6 @@ data "aws_iam_policy_document" "response_exec" {
       "arn:aws:bedrock:*::foundation-model/anthropic.claude-haiku-*",
       "arn:aws:bedrock:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:inference-profile/*",
     ]
-  }
-  statement {
-    sid       = "BedrockKBRetrieve"
-    actions   = ["bedrock-agent-runtime:Retrieve"]
-    resources = var.kb_arns
   }
   # Cross-account KB: bedrock-core assumes this prod-side role (KBs aren't
   # RAM-shareable). Intentionally NOT covered by a prod Deny — this is the
@@ -574,9 +567,10 @@ resource "aws_kms_alias" "oauth_logs" {
 }
 
 resource "aws_iam_role" "oauth" {
-  name               = "Meta_OAuth_Handler-role"
-  assume_role_policy = data.aws_iam_policy_document.trust.json
-  description        = "Execution role for staging-account Meta_OAuth_Handler (Page OAuth connect/disconnect/toggle/list)."
+  name                 = "Meta_OAuth_Handler-role"
+  permissions_boundary = var.permissions_boundary_arn
+  assume_role_policy   = data.aws_iam_policy_document.trust.json
+  description          = "Execution role for staging-account Meta_OAuth_Handler (Page OAuth connect/disconnect/toggle/list)."
 }
 
 data "aws_iam_policy_document" "oauth_exec" {
@@ -743,4 +737,14 @@ output "response_dlq_arn" {
 
 output "response_dlq_name" {
   value = aws_sqs_queue.response_dlq.name
+}
+
+variable "permissions_boundary_arn" {
+  description = "ARN of the picasso-workload-boundary permission boundary (module.iam_workload_boundary). Caps this role's effective permissions to the intersection with the boundary. Null = no boundary (keeps the module usable standalone)."
+  type        = string
+  default     = null
+  validation {
+    condition     = var.permissions_boundary_arn == null || can(regex("^arn:aws:iam::[0-9]{12}:policy/", var.permissions_boundary_arn))
+    error_message = "permissions_boundary_arn must be null or a valid IAM policy ARN."
+  }
 }
