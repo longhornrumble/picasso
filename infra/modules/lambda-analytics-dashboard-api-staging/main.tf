@@ -643,6 +643,12 @@ resource "aws_lambda_function" "this" {
       # (verified in prod SES); this override keeps prod identity out of
       # staging traffic.
       SES_SENDER_ADDRESS = "notify@staging.myrecruiter.ai"
+      # Clerk-invitation post-accept redirect base. Code default (unset) is the
+      # PROD dashboard, so a staging invite (created on the dev Clerk instance)
+      # bounced the accepter to PROD -- logging them into prod and leaving an
+      # untracked prod Clerk user. Pin it to the staging dashboard so staging
+      # invites redirect to staging.
+      DASHBOARD_APP_URL = "https://staging.app.myrecruiter.ai"
     }
   }
 
