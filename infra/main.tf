@@ -633,10 +633,12 @@ module "lambda_analytics_dashboard_api_staging" {
   # dashboard role lambda:InvokeFunction on the purge Lambda. Staging-only.
   tenant_purge_function_arn = module.lambda_pii_tenant_purge_staging[0].function_arn
 
-  jwt_secret_arn    = module.secrets_jwt_staging[0].secret_arn
-  jwt_secret_name   = module.secrets_jwt_staging[0].secret_name
-  clerk_secret_arn  = module.secrets_clerk_staging[0].secret_arn
-  clerk_secret_name = module.secrets_clerk_staging[0].secret_name
+  jwt_secret_arn            = module.secrets_jwt_staging[0].secret_arn
+  jwt_secret_name           = module.secrets_jwt_staging[0].secret_name
+  clerk_secret_arn          = module.secrets_clerk_staging[0].secret_arn
+  clerk_secret_name         = module.secrets_clerk_staging[0].secret_name
+  clerk_webhook_secret_arn  = module.secrets_clerk_staging[0].webhook_secret_arn
+  clerk_webhook_secret_name = module.secrets_clerk_staging[0].webhook_secret_name
 
   tenant_registry_table_arn      = module.ddb_tenant_registry_staging[0].table_arn
   tenant_registry_table_name     = module.ddb_tenant_registry_staging[0].table_name
@@ -779,6 +781,38 @@ resource "aws_secretsmanager_secret_policy" "clerk_secret_key_staging" {
         # See note in jwt_signing_key_staging policy above — NotPrincipal
         # with role ARN doesn't reliably exclude assumed-role sessions.
         # aws:PrincipalArn normalizes the session ARN back to the role ARN.
+        Sid       = "DenyAllOtherStagingPrincipals"
+        Effect    = "Deny"
+        Principal = "*"
+        Action    = "secretsmanager:GetSecretValue"
+        Resource  = "*"
+        Condition = {
+          StringNotEquals = {
+            "aws:PrincipalArn" = module.lambda_analytics_dashboard_api_staging[0].role_arn
+          }
+        }
+      },
+    ]
+  })
+}
+
+# Same lock-to-the-exec-role pattern as clerk_secret_key_staging above, for the
+# Clerk webhook (Svix) signing secret.
+resource "aws_secretsmanager_secret_policy" "clerk_webhook_secret_staging" {
+  count      = var.env == "staging" ? 1 : 0
+  secret_arn = module.secrets_clerk_staging[0].webhook_secret_arn
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "AllowAnalyticsDashboardAPIRoleOnly"
+        Effect    = "Allow"
+        Principal = { AWS = module.lambda_analytics_dashboard_api_staging[0].role_arn }
+        Action    = "secretsmanager:GetSecretValue"
+        Resource  = "*"
+      },
+      {
         Sid       = "DenyAllOtherStagingPrincipals"
         Effect    = "Deny"
         Principal = "*"
