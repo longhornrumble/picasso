@@ -20,3 +20,27 @@ output "secret_name" {
 output "secret_arn" {
   value = aws_secretsmanager_secret.clerk_secret_key.arn
 }
+
+# Clerk webhook (Svix) signing secret for the dev instance. The staging Lambda's
+# /webhooks/clerk verifier reads it to authenticate inbound Clerk events
+# (organizationMembership.created, etc.). Value injected post-apply via
+# aws secretsmanager put-secret-value (out of Terraform state). Resource-based
+# read policy lives in root infra/main.tf (same pattern as clerk_secret_key).
+resource "aws_secretsmanager_secret" "clerk_webhook_secret" {
+  name        = "picasso/staging/clerk-webhook-secret"
+  description = "Clerk dev-instance webhook (Svix) signing secret for staging-account Analytics_Dashboard_API /webhooks/clerk. Value injected post-apply via aws secretsmanager put-secret-value (out of Terraform state)."
+
+  recovery_window_in_days = 14
+
+  tags = {
+    Name = "picasso/staging/clerk-webhook-secret"
+  }
+}
+
+output "webhook_secret_name" {
+  value = aws_secretsmanager_secret.clerk_webhook_secret.name
+}
+
+output "webhook_secret_arn" {
+  value = aws_secretsmanager_secret.clerk_webhook_secret.arn
+}
