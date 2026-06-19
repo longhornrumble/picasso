@@ -10,6 +10,12 @@ variable "replication_source_account_id" {
   default     = "614056832592"
 }
 
+variable "config_writer_role_arns" {
+  description = "Staging-account role ARNs sanctioned to AUTHOR tenant configs (exempt from the DenyMutationsFromStagingAccount guard). The Analytics_Dashboard_API role writes form notification-settings config edits from the dashboard; every other staging principal stays denied."
+  type        = list(string)
+  default     = ["arn:aws:iam::525409062831:role/Analytics_Dashboard_API-role"]
+}
+
 # Q5 Phase 1 Apply 2 [B2]: additive, optional. When the staging widget
 # CloudFront distribution exists, its OAC needs s3:GetObject on this bucket to
 # serve /tenants/* and /collateral/* (severing the prod-account cross-account
@@ -107,6 +113,16 @@ data "aws_iam_policy_document" "tenant_config" {
       test     = "StringEquals"
       variable = "aws:PrincipalAccount"
       values   = [var.staging_account_id]
+    }
+    # Carve-out: the sanctioned config-author role(s) — Analytics_Dashboard_API,
+    # which writes form notification-settings config edits from the dashboard —
+    # are exempt. Conditions AND together, so the Deny applies only to staging
+    # principals that are NOT a config-writer role; every other staging consumer
+    # (the read-only config readers + any future accidental grant) stays denied.
+    condition {
+      test     = "StringNotEquals"
+      variable = "aws:PrincipalArn"
+      values   = var.config_writer_role_arns
     }
   }
 
