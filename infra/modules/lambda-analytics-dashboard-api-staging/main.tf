@@ -286,6 +286,17 @@ data "aws_iam_policy_document" "exec" {
     }
   }
 
+  # Sanctioned config author (paired with the s3-tenant-config-staging bucket-policy
+  # carve-out for this role): the form notification-settings PATCH writes the tenant
+  # config object back to S3. Scoped to tenants/* — cannot touch mappings/* or other
+  # prefixes; the DenyProdConfigBucketWrites guard below still blocks the prod bucket.
+  # (Scheduling / notif-template edits persist to DynamoDB, granted separately.)
+  statement {
+    sid       = "TenantConfigWrite"
+    actions   = ["s3:PutObject", "s3:DeleteObject"]
+    resources = ["${var.tenant_config_bucket_arn}/tenants/*"]
+  }
+
   statement {
     sid     = "SecretsRead"
     actions = ["secretsmanager:GetSecretValue"]
