@@ -336,12 +336,37 @@ data "aws_iam_policy_document" "renewer_scheduler_invoke" {
     actions   = ["lambda:InvokeFunction"]
     resources = [aws_lambda_function.renewer.arn]
   }
+  # The schedule delivers failed invocations to its DLQ using THIS (the target's)
+  # execution role, so it needs sqs:SendMessage on the DLQ. Within the workload
+  # boundary's AllowDataPlaneServices (sqs:*).
+  statement {
+    sid       = "SendToSchedulerDlq"
+    actions   = ["sqs:SendMessage"]
+    resources = [aws_sqs_queue.renewer_scheduler_dlq.arn]
+  }
 }
 
 resource "aws_iam_role_policy" "renewer_scheduler_invoke" {
   name   = "renewer-scheduler-invoke"
   role   = aws_iam_role.renewer_scheduler.id
   policy = data.aws_iam_policy_document.renewer_scheduler_invoke.json
+}
+
+# G17 REVISED 2026-06-21: scheduler-side DLQ. The original "no DLQ" decision (see the
+# alarm header below) assumed a terminal failure surfaces as a Lambda Error. It missed
+# the EventBridge Scheduler invoke failure: when the scheduler cannot invoke the target
+# (TargetErrorCount), the FUNCTION NEVER RUNS, no Lambda Error is emitted, and only the
+# 9h dead-man eventually trips - which caused a 22-day silent watch-renewal outage
+# (channels expired, cancellations stopped syncing). This DLQ captures the failed
+# invocation + its error metadata so the cause is diagnosable; B7.4 below alarms on it.
+resource "aws_sqs_queue" "renewer_scheduler_dlq" {
+  name                      = "picasso-calendar-watch-renewer-scheduler-dlq-staging"
+  message_retention_seconds = 1209600 # 14 days - long enough to inspect a missed cycle
+  sqs_managed_sse_enabled   = true
+
+  tags = {
+    Subphase = "B4"
+  }
 }
 
 resource "aws_scheduler_schedule" "renewer" {
@@ -370,17 +395,25 @@ resource "aws_scheduler_schedule" "renewer" {
     retry_policy {
       maximum_retry_attempts = 0
     }
+
+    # Capture scheduler-side invoke failures (TargetError) for diagnosis. See the
+    # renewer_scheduler_dlq rationale above - without this a failed invoke leaves no
+    # trace (the function never runs, so there is no Lambda Error or log to inspect).
+    dead_letter_config {
+      arn = aws_sqs_queue.renewer_scheduler_dlq.arn
+    }
   }
 }
 
 # ==============================================================================
-# CloudWatch alarms (Task B7 - the three Renewer alarms, all to ops topic)
+# CloudWatch alarms (Task B7 - the Renewer alarms, all to ops topic)
 #
-# NO DLQ on the Renewer (deliberate, audit G17): unlike the event-driven Listener
-# (which has an SQS DLQ), the Renewer is a 6h cron with idempotent re-query
-# behaviour - a terminal invocation failure is caught by the Errors alarm below
-# and the next scheduled run retries from the same DDB state. No per-event payload
-# is worth preserving in a queue.
+# G17 REVISED 2026-06-21: the Renewer now HAS a scheduler DLQ (aws_sqs_queue
+# .renewer_scheduler_dlq above) + a TargetError alarm (B7.4 below). The original
+# "no DLQ" decision assumed a terminal failure surfaces as a Lambda Error (caught by
+# B7.1); it missed the scheduler-side invoke failure (TargetErrorCount - the function
+# never runs, so no Lambda Error), which silently lapsed watch renewal for 22 days
+# until the 9h dead-man (B7.3) tripped - and even then the alert went unactioned.
 # ==============================================================================
 
 # B7.1 - Lambda errors on the Renewer.
@@ -449,6 +482,34 @@ resource "aws_cloudwatch_metric_alarm" "renewer_dead_mans_switch" {
   namespace   = var.metric_namespace
   period      = 32400 # 9 hours
   statistic   = "Sum"
+
+  alarm_actions = [var.ops_alerts_topic_arn]
+  ok_actions    = [var.ops_alerts_topic_arn]
+}
+
+# B7.4 (added 2026-06-21) - EventBridge Scheduler-side invocation failure.
+# AWS/Scheduler TargetErrorCount > 0 means the scheduler could not invoke the renewer
+# (assume-role / invoke / throttle) - the Lambda never runs, so B7.1 (AWS/Lambda Errors)
+# stays silent and only the 9h dead-man (B7.3) eventually trips. This fires within ~1h
+# and names the real failure mode; the DLQ carries the per-invocation error detail.
+# Dimensioned by ScheduleGroup=default (the renewer is the only schedule in that group;
+# if others are added there this alarm widens to "any default-group schedule failing").
+resource "aws_cloudwatch_metric_alarm" "renewer_scheduler_target_error" {
+  alarm_name          = "Calendar_Watch_Renewer-scheduler-target-error"
+  alarm_description   = "EventBridge Scheduler could not invoke Calendar_Watch_Renewer (TargetErrorCount > 0 on schedule group 'default'). The renewer is not running; Google Calendar watch channels will lapse and cancellations stop syncing. Inspect the DLQ picasso-calendar-watch-renewer-scheduler-dlq-staging for the error reason and the schedule picasso-calendar-watch-renewer-staging."
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  threshold           = 0
+  treat_missing_data  = "notBreaching"
+
+  metric_name = "TargetErrorCount"
+  namespace   = "AWS/Scheduler"
+  period      = 3600
+  statistic   = "Sum"
+
+  dimensions = {
+    ScheduleGroup = "default"
+  }
 
   alarm_actions = [var.ops_alerts_topic_arn]
   ok_actions    = [var.ops_alerts_topic_arn]
