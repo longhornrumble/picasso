@@ -1684,6 +1684,11 @@ resource "aws_secretsmanager_secret_policy" "jwt_signing_key_staging" {
           # staging.schedule endpoint — it must read the same key to verify(). Omitting it
           # caused signing_key_unavailable on the first link click (the Deny below blocked it).
           module.lambda_scheduling_redemption_handler_staging[0].redemption_role_arn,
+          # Attendance_Disposition_Handler MINTS the 3 "did you connect?" tokens (WS-E-ATTEND
+          # attendance_check/escalate). Hand-deployed (no TF module yet) → literal ARN. Omitting
+          # it made the disposition path AccessDenied on this key → signing_key_unavailable
+          # (100% disposition-cycle failure). Added 2026-06-21.
+          "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/Attendance_Disposition_Handler-exec-staging",
         ] }
         Action   = "secretsmanager:GetSecretValue"
         Resource = "*"
@@ -1709,6 +1714,9 @@ resource "aws_secretsmanager_secret_policy" "jwt_signing_key_staging" {
               module.lambda_calendar_lifecycle_consumer_staging[0].consumer_role_arn,
               # Redemption handler — same exemption as the Allow above (token validator).
               module.lambda_scheduling_redemption_handler_staging[0].redemption_role_arn,
+              # Attendance_Disposition_Handler — token minter (WS-E-ATTEND); literal ARN
+              # (hand-deployed, no TF module). Mirrors the Allow above. Added 2026-06-21.
+              "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/Attendance_Disposition_Handler-exec-staging",
             ]
           }
         }
