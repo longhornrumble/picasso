@@ -1607,6 +1607,16 @@ module "s3_analytics_dashboard_staging" {
   cloudfront_distribution_arn = module.cloudfront_analytics_dashboard_staging[0].distribution_arn
 }
 
+# Phase 2b: least-privilege CI deploy role for the dashboard staging deploy.
+# Its ARN is set as the picasso-analytics-dashboard repo secret
+# AWS_DEPLOY_ROLE_ARN_STAGING (operator), and pr-checks.yml's deploy-staging
+# job is repointed off the prod-account 614 role onto it. No module deps
+# (bucket/dist/repo are locked literals) — pure logical grouping.
+module "iam_analytics_dashboard_deploy_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/iam-analytics-dashboard-deploy-staging"
+}
+
 # Q5 Phase 2 [locked decision #9]: minimal CI widget-deploy role. No module
 # deps (bucket/dist/repo are locked Q5 literals) — pure logical grouping.
 # Phase 2.2 sets its ARN as GitHub secret AWS_DEPLOY_ROLE_ARN_STAGING and
