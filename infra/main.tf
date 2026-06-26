@@ -643,10 +643,12 @@ module "lambda_analytics_dashboard_api_staging" {
   # dashboard role lambda:InvokeFunction on the purge Lambda. Staging-only.
   tenant_purge_function_arn = module.lambda_pii_tenant_purge_staging[0].function_arn
 
-  jwt_secret_arn    = module.secrets_jwt_staging[0].secret_arn
-  jwt_secret_name   = module.secrets_jwt_staging[0].secret_name
-  clerk_secret_arn  = module.secrets_clerk_staging[0].secret_arn
-  clerk_secret_name = module.secrets_clerk_staging[0].secret_name
+  jwt_secret_arn            = module.secrets_jwt_staging[0].secret_arn
+  jwt_secret_name           = module.secrets_jwt_staging[0].secret_name
+  clerk_secret_arn          = module.secrets_clerk_staging[0].secret_arn
+  clerk_secret_name         = module.secrets_clerk_staging[0].secret_name
+  clerk_webhook_secret_arn  = module.secrets_clerk_staging[0].webhook_secret_arn
+  clerk_webhook_secret_name = module.secrets_clerk_staging[0].webhook_secret_name
 
   tenant_registry_table_arn      = module.ddb_tenant_registry_staging[0].table_arn
   tenant_registry_table_name     = module.ddb_tenant_registry_staging[0].table_name
@@ -789,6 +791,38 @@ resource "aws_secretsmanager_secret_policy" "clerk_secret_key_staging" {
         # See note in jwt_signing_key_staging policy above — NotPrincipal
         # with role ARN doesn't reliably exclude assumed-role sessions.
         # aws:PrincipalArn normalizes the session ARN back to the role ARN.
+        Sid       = "DenyAllOtherStagingPrincipals"
+        Effect    = "Deny"
+        Principal = "*"
+        Action    = "secretsmanager:GetSecretValue"
+        Resource  = "*"
+        Condition = {
+          StringNotEquals = {
+            "aws:PrincipalArn" = module.lambda_analytics_dashboard_api_staging[0].role_arn
+          }
+        }
+      },
+    ]
+  })
+}
+
+# Same lock-to-the-exec-role pattern as clerk_secret_key_staging above, for the
+# Clerk webhook (Svix) signing secret.
+resource "aws_secretsmanager_secret_policy" "clerk_webhook_secret_staging" {
+  count      = var.env == "staging" ? 1 : 0
+  secret_arn = module.secrets_clerk_staging[0].webhook_secret_arn
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "AllowAnalyticsDashboardAPIRoleOnly"
+        Effect    = "Allow"
+        Principal = { AWS = module.lambda_analytics_dashboard_api_staging[0].role_arn }
+        Action    = "secretsmanager:GetSecretValue"
+        Resource  = "*"
+      },
+      {
         Sid       = "DenyAllOtherStagingPrincipals"
         Effect    = "Deny"
         Principal = "*"
@@ -1541,6 +1575,59 @@ module "cloudfront_widget_staging" {
   scheduling_page_api_origin_domain = module.lambda_scheduling_page_api_staging[0].function_url_domain
 }
 
+# ──────────────────────────────────────────────────────────────────────
+# ANALYTICS-DASHBOARD STAGING RE-HOME (prod acct 614 -> staging 525)
+# Mirrors the Q5 widget edge migration above. Re-homes the analytics
+# dashboard staging hosting out of the prod account (legacy CF
+# E2R9VHBON5PHMK + public-read bucket picasso-analytics-portal-staging)
+# into the staging account as an OAC-hardened faithful twin of the prod
+# dashboard dist EJ0Y6ZUIUBSAT. Simpler than the widget twin: 2 origins
+# (private S3 + the 525 Analytics_Dashboard_API Function URL), 2 behaviors
+# (SPA default + /api/*), 2 CloudFront functions (spa + api rewrite), no WAF.
+#
+# DNS is deliberately LAST: the cert is created PENDING_VALIDATION (operator
+# adds the GoDaddy CNAME at cutover) and enable_custom_domain stays false
+# until the operator releases the alias from E2R9VHBON5PHMK + repoints the
+# GoDaddy CNAME. Until then the twin is validated via its raw
+# d###.cloudfront.net domain. No prod-account change here.
+# ──────────────────────────────────────────────────────────────────────
+module "acm_app_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/acm-app-staging"
+}
+
+module "cloudfront_analytics_dashboard_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/cloudfront-analytics-dashboard-staging"
+
+  acm_certificate_arn = module.acm_app_staging[0].certificate_arn
+  # CUTOVER 2026-06-26: prerequisites done — the legacy 614 dist E2R9VHBON5PHMK
+  # released the staging.app alias (switched to its default cert), the GoDaddy
+  # staging.app CNAME was repointed to this twin's domain, and the ACM cert
+  # reached ISSUED. true attaches the staging.app.myrecruiter.ai alias + cert.
+  enable_custom_domain = true
+}
+
+module "s3_analytics_dashboard_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/s3-analytics-dashboard-staging"
+
+  # OAC GetObject grant scoped to the new distribution. One-directional dep
+  # (this bucket policy ← cloudfront ARN); the CF module references this
+  # bucket by fixed regional domain, so no cycle.
+  cloudfront_distribution_arn = module.cloudfront_analytics_dashboard_staging[0].distribution_arn
+}
+
+# Phase 2b: least-privilege CI deploy role for the dashboard staging deploy.
+# Its ARN is set as the picasso-analytics-dashboard repo secret
+# AWS_DEPLOY_ROLE_ARN_STAGING (operator), and pr-checks.yml's deploy-staging
+# job is repointed off the prod-account 614 role onto it. No module deps
+# (bucket/dist/repo are locked literals) — pure logical grouping.
+module "iam_analytics_dashboard_deploy_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/iam-analytics-dashboard-deploy-staging"
+}
+
 # Q5 Phase 2 [locked decision #9]: minimal CI widget-deploy role. No module
 # deps (bucket/dist/repo are locked Q5 literals) — pure logical grouping.
 # Phase 2.2 sets its ARN as GitHub secret AWS_DEPLOY_ROLE_ARN_STAGING and
@@ -1660,6 +1747,11 @@ resource "aws_secretsmanager_secret_policy" "jwt_signing_key_staging" {
           # staging.schedule endpoint — it must read the same key to verify(). Omitting it
           # caused signing_key_unavailable on the first link click (the Deny below blocked it).
           module.lambda_scheduling_redemption_handler_staging[0].redemption_role_arn,
+          # Attendance_Disposition_Handler MINTS the 3 "did you connect?" tokens (WS-E-ATTEND
+          # attendance_check/escalate). Hand-deployed (no TF module yet) → literal ARN. Omitting
+          # it made the disposition path AccessDenied on this key → signing_key_unavailable
+          # (100% disposition-cycle failure). Added 2026-06-21.
+          "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/Attendance_Disposition_Handler-exec-staging",
         ] }
         Action   = "secretsmanager:GetSecretValue"
         Resource = "*"
@@ -1685,6 +1777,9 @@ resource "aws_secretsmanager_secret_policy" "jwt_signing_key_staging" {
               module.lambda_calendar_lifecycle_consumer_staging[0].consumer_role_arn,
               # Redemption handler — same exemption as the Allow above (token validator).
               module.lambda_scheduling_redemption_handler_staging[0].redemption_role_arn,
+              # Attendance_Disposition_Handler — token minter (WS-E-ATTEND); literal ARN
+              # (hand-deployed, no TF module). Mirrors the Allow above. Added 2026-06-21.
+              "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/Attendance_Disposition_Handler-exec-staging",
             ]
           }
         }

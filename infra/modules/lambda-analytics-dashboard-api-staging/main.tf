@@ -34,6 +34,16 @@ variable "clerk_secret_name" {
   type        = string
 }
 
+variable "clerk_webhook_secret_arn" {
+  description = "ARN of the Clerk dev-instance webhook (Svix) signing secret. Code reads via CLERK_WEBHOOK_SECRET_SECRET_ID env var (Plan Security F2 - secret never enters env vars or tfstate)."
+  type        = string
+}
+
+variable "clerk_webhook_secret_name" {
+  description = "Name of the Clerk webhook secret (for CLERK_WEBHOOK_SECRET_SECRET_ID env var)."
+  type        = string
+}
+
 variable "tenant_registry_table_arn" {
   type = string
 }
@@ -276,12 +286,24 @@ data "aws_iam_policy_document" "exec" {
     }
   }
 
+  # Sanctioned config author (paired with the s3-tenant-config-staging bucket-policy
+  # carve-out for this role): the form notification-settings PATCH writes the tenant
+  # config object back to S3. Scoped to tenants/* — cannot touch mappings/* or other
+  # prefixes; the DenyProdConfigBucketWrites guard below still blocks the prod bucket.
+  # (Scheduling / notif-template edits persist to DynamoDB, granted separately.)
+  statement {
+    sid       = "TenantConfigWrite"
+    actions   = ["s3:PutObject", "s3:DeleteObject"]
+    resources = ["${var.tenant_config_bucket_arn}/tenants/*"]
+  }
+
   statement {
     sid     = "SecretsRead"
     actions = ["secretsmanager:GetSecretValue"]
     resources = [
       var.jwt_secret_arn,
       var.clerk_secret_arn,
+      var.clerk_webhook_secret_arn,
     ]
   }
 
@@ -597,19 +619,20 @@ resource "aws_lambda_function" "this" {
       # s3:ListBucket AccessDenied -> /forms/summary 500 "Could not resolve
       # tenant configuration". Pin it to the staging config bucket (same bucket
       # as S3_CONFIG_BUCKET; the role already grants ListBucket mappings/* there).
-      MAPPINGS_BUCKET            = var.config_bucket_name
-      JWT_SECRET_KEY_NAME        = var.jwt_secret_name
-      CLERK_SECRET_KEY_SECRET_ID = var.clerk_secret_name
-      CLERK_JWKS_URL             = var.clerk_jwks_url
-      TENANT_REGISTRY_TABLE      = var.tenant_registry_table_name
-      SESSION_SUMMARIES_TABLE    = var.session_summaries_table_name
-      SESSION_EVENTS_TABLE       = var.session_events_table_name
-      FORM_SUBMISSIONS_TABLE     = var.form_submissions_table_name
-      NOTIFICATION_EVENTS_TABLE  = var.notification_events_table_name
-      NOTIFICATION_SENDS_TABLE   = var.notification_sends_table_name
-      BILLING_EVENTS_TABLE       = var.billing_events_table_name
-      EMPLOYEE_REGISTRY_TABLE    = var.employee_registry_table_name
-      AUDIT_TABLE_NAME           = var.audit_table_name
+      MAPPINGS_BUCKET                = var.config_bucket_name
+      JWT_SECRET_KEY_NAME            = var.jwt_secret_name
+      CLERK_SECRET_KEY_SECRET_ID     = var.clerk_secret_name
+      CLERK_WEBHOOK_SECRET_SECRET_ID = var.clerk_webhook_secret_name
+      CLERK_JWKS_URL                 = var.clerk_jwks_url
+      TENANT_REGISTRY_TABLE          = var.tenant_registry_table_name
+      SESSION_SUMMARIES_TABLE        = var.session_summaries_table_name
+      SESSION_EVENTS_TABLE           = var.session_events_table_name
+      FORM_SUBMISSIONS_TABLE         = var.form_submissions_table_name
+      NOTIFICATION_EVENTS_TABLE      = var.notification_events_table_name
+      NOTIFICATION_SENDS_TABLE       = var.notification_sends_table_name
+      BILLING_EVENTS_TABLE           = var.billing_events_table_name
+      EMPLOYEE_REGISTRY_TABLE        = var.employee_registry_table_name
+      AUDIT_TABLE_NAME               = var.audit_table_name
       # §E7 GET /scheduling/bookings reader. Code default is the BARE name
       # `picasso-booking`; staging's table is still env-suffixed, so pin it.
       BOOKING_TABLE = var.booking_table_name
@@ -643,6 +666,12 @@ resource "aws_lambda_function" "this" {
       # (verified in prod SES); this override keeps prod identity out of
       # staging traffic.
       SES_SENDER_ADDRESS = "notify@staging.myrecruiter.ai"
+      # Clerk-invitation post-accept redirect base. Code default (unset) is the
+      # PROD dashboard, so a staging invite (created on the dev Clerk instance)
+      # bounced the accepter to PROD -- logging them into prod and leaving an
+      # untracked prod Clerk user. Pin it to the staging dashboard so staging
+      # invites redirect to staging.
+      DASHBOARD_APP_URL = "https://staging.app.myrecruiter.ai"
     }
   }
 
