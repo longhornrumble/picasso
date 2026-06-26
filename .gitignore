@@ -169,4 +169,11 @@ $RECYCLE.BIN/
 *.mp3
 *.mov
 *.avi
-!src/assets/**.firecrawl/
+!src/assets/**
+
+# Disposable / scratch workspaces (per CLAUDE.md — not source, never commit)
+Sandbox/
+.agents/
+.codex/
+.cursor/
+.firecrawl/
