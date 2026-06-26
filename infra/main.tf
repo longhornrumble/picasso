@@ -1565,6 +1565,48 @@ module "cloudfront_widget_staging" {
   scheduling_page_api_origin_domain = module.lambda_scheduling_page_api_staging[0].function_url_domain
 }
 
+# ──────────────────────────────────────────────────────────────────────
+# ANALYTICS-DASHBOARD STAGING RE-HOME (prod acct 614 -> staging 525)
+# Mirrors the Q5 widget edge migration above. Re-homes the analytics
+# dashboard staging hosting out of the prod account (legacy CF
+# E2R9VHBON5PHMK + public-read bucket picasso-analytics-portal-staging)
+# into the staging account as an OAC-hardened faithful twin of the prod
+# dashboard dist EJ0Y6ZUIUBSAT. Simpler than the widget twin: 2 origins
+# (private S3 + the 525 Analytics_Dashboard_API Function URL), 2 behaviors
+# (SPA default + /api/*), 2 CloudFront functions (spa + api rewrite), no WAF.
+#
+# DNS is deliberately LAST: the cert is created PENDING_VALIDATION (operator
+# adds the GoDaddy CNAME at cutover) and enable_custom_domain stays false
+# until the operator releases the alias from E2R9VHBON5PHMK + repoints the
+# GoDaddy CNAME. Until then the twin is validated via its raw
+# d###.cloudfront.net domain. No prod-account change here.
+# ──────────────────────────────────────────────────────────────────────
+module "acm_app_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/acm-app-staging"
+}
+
+module "cloudfront_analytics_dashboard_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/cloudfront-analytics-dashboard-staging"
+
+  acm_certificate_arn = module.acm_app_staging[0].certificate_arn
+  # DNS LAST: stays false until the operator releases the alias from the
+  # legacy 614 dist E2R9VHBON5PHMK AND repoints the GoDaddy CNAME to this
+  # twin's domain. Flipping true before that fails with CNAMEAlreadyExists.
+  enable_custom_domain = false
+}
+
+module "s3_analytics_dashboard_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/s3-analytics-dashboard-staging"
+
+  # OAC GetObject grant scoped to the new distribution. One-directional dep
+  # (this bucket policy ← cloudfront ARN); the CF module references this
+  # bucket by fixed regional domain, so no cycle.
+  cloudfront_distribution_arn = module.cloudfront_analytics_dashboard_staging[0].distribution_arn
+}
+
 # Q5 Phase 2 [locked decision #9]: minimal CI widget-deploy role. No module
 # deps (bucket/dist/repo are locked Q5 literals) — pure logical grouping.
 # Phase 2.2 sets its ARN as GitHub secret AWS_DEPLOY_ROLE_ARN_STAGING and
