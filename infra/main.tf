@@ -1591,10 +1591,11 @@ module "cloudfront_analytics_dashboard_staging" {
   source = "./modules/cloudfront-analytics-dashboard-staging"
 
   acm_certificate_arn = module.acm_app_staging[0].certificate_arn
-  # DNS LAST: stays false until the operator releases the alias from the
-  # legacy 614 dist E2R9VHBON5PHMK AND repoints the GoDaddy CNAME to this
-  # twin's domain. Flipping true before that fails with CNAMEAlreadyExists.
-  enable_custom_domain = false
+  # CUTOVER 2026-06-26: prerequisites done — the legacy 614 dist E2R9VHBON5PHMK
+  # released the staging.app alias (switched to its default cert), the GoDaddy
+  # staging.app CNAME was repointed to this twin's domain, and the ACM cert
+  # reached ISSUED. true attaches the staging.app.myrecruiter.ai alias + cert.
+  enable_custom_domain = true
 }
 
 module "s3_analytics_dashboard_staging" {
