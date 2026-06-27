@@ -1328,6 +1328,61 @@ Explicitly decided AGAINST: a "More times" chip. Explicitly PARKED: the expanded
 //   picker decision and the offer-shape tuning. Dashboard visualization is OUT OF SCOPE.
 ```
 
+### B19 — post-booking prep note (produced by WS-PREPNOTE; consumed by Analytics_Dashboard_API + dashboard) — lambda#351, **LOCKED 2026-06-27**
+
+The form → schedule → **ask** tail. When the originating form configured a question
+(`post_submission.post_booking_question`, operator-authored tenant config), after a booking
+COMMITS the assistant asks it and stores the visitor's free-text answer first-class on the
+Booking row. NO new `scheduling_action`, NO new SSE event type — reuses the `type:'text'`
+stream + the deterministic-bypass band (§B16b/§B16d semantics untouched).
+
+```
+// SESSION-ROW FIELDS (additive to the schedulingStateStore.saveState whitelist, §9.2 table):
+//   post_booking_question : string  — carried proposing → confirming → booked (the §B16d
+//                                      carry-forward discipline; set by postFormOffer / the
+//                                      form-completion seam from the form's config).
+//   booking_id            : string  — persisted on the booked saveState (the commit returns it;
+//                                      saveState is a PUT-overwrite that drops selected_slot, so
+//                                      booking_id cannot be recomputed afterward — it MUST ride here).
+//   awaiting_prep_note    : bool     — set true on the booked turn IFF a question was configured;
+//                                      the ONE-SHOT flag the capture intercept consumes.
+//
+// POST-COMMIT (newBookingFlow, after _emitBookingConfirmed):
+//   if post_booking_question present AND res.executed:
+//     write({ type:'text', content: post_booking_question })   // streamed as ordinary chat text — NOT a card
+//     saveState({ state:'booked', booking_id, awaiting_prep_note:true, post_booking_question })
+//   absent → byte-identical to the pre-B19 booked turn (no flag, no stream).
+//
+// CAPTURE INTERCEPT (BSH index.js, in the deterministic-bypass band — AFTER the click router +
+//   bare-email capture, BEFORE the agent/chat path; gated by tenantHasPostBookingQuestion(config)
+//   so non-feature tenants do ZERO extra state read = byte-identical):
+//     the NEXT plain free-text turn (not a scheduling click) when the session row has
+//     awaiting_prep_note===true + booking_id → captured DETERMINISTICALLY (no model call; the
+//     LLM would give a state-blind answer) → BCH attach_prep_note → clear the flag (re-PUT
+//     'booked' without the prep fields) → stream a brief ack. ONE-SHOT: the flag is cleared
+//     regardless of attach outcome (never re-ask). Fail-soft: any miss/error → fall through to chat.
+//
+// BCH ROUTE (Booking_Commit_Handler):
+//   { action:'attach_prep_note', tenantId, bookingId, prepNote }
+//     → fail-closed scheduling gate; validate non-blank → booking-store.updateBookingPrepNote
+//       (conditional UpdateItem `attribute_exists(booking_id)`, SET prep_note + prep_note_added_at,
+//        trimmed, capped 2000 chars). Outcomes: ok | scheduling_disabled | invalid_prep_note |
+//        not_found | attach_failed. PII: the answer text is NEVER logged (booking_id + err.name only).
+//
+// READ: Analytics_Dashboard_API _booking_projection adds `prep_note` (old-shape tolerant → null);
+//   the dashboard prefers prep_note ?? lead.note (the heuristic include_lead note becomes the fallback).
+```
+
+**PII (Living-Inventory PR rule FIRED — see pii-inventory.md / data-classification.md, same change):**
+`prep_note` is **Tier 3** (free-text rule-2 + max-tier of an already-Tier-3 booking row). Inherits
+the booking row's lifecycle (no own TTL; sub-phase F). DSAR delete (`_walk_booking` whole-row
+DeleteItem) + access export (denylist projector — correctly subject-facing, auto-included) already
+cover it with **zero walker changes**. **Required before prod (advisory, pii-data-lifecycle-advisor
+2026-06-27):** (a) in-the-moment **notice microcopy** — optional+skippable is good minimization but
+not notice; append a platform disclosure that the answer is stored on the booking + shown to the
+coordinator; (b) operator-onboarding guardrail — the configured question MUST NOT solicit
+special-category data; (c) confirm `prep_note` stays internal-read-only (no fulfillment/webhook egress).
+
 ---
 
 ## C. Contract-change protocol
