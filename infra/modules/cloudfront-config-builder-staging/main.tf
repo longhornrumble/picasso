@@ -134,3 +134,8 @@ output "cloudfront_domain" {
   description = "The distribution domain. Operator adds the GoDaddy CNAME staging.config.myrecruiter.ai -> this value after Apply 2."
   value       = var.create_distribution ? aws_cloudfront_distribution.config_builder[0].domain_name : "(distribution not created yet -- Apply 2)"
 }
+
+output "distribution_id" {
+  description = "The CloudFront distribution ID, for scoping the config-builder deploy role's cloudfront:CreateInvalidation. Empty until Apply 2."
+  value       = var.create_distribution ? aws_cloudfront_distribution.config_builder[0].id : ""
+}

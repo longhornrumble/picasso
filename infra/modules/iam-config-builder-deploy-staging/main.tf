@@ -12,13 +12,21 @@
 # (never conflate deploy-code roles with provision-infra roles) and from
 # picasso-widget-deploy-staging (one role per product).
 #
-# No CloudFront permission: the staging bucket serves via its S3 website
-# endpoint (see s3-config-builder-staging posture note).
+# CloudFront: staging.config.myrecruiter.ai is fronted by distribution
+# E27102WWDBF606 (origin = the staging bucket's S3-website endpoint). This role
+# may create invalidations on THAT one distribution so the config-builder
+# deploy-staging job auto-refreshes the CDN after each deploy (it passes
+# cloudfront_distribution_id). Scoped to the single distribution, not cloudfront:*.
 #
 # Provider: root default (us-east-1) — no alias.
 
 variable "bucket_arn" {
   description = "ARN of the picasso-config-builder-staging bucket this role deploys to."
+  type        = string
+}
+
+variable "cloudfront_distribution_id" {
+  description = "CloudFront distribution fronting staging.config.myrecruiter.ai; this role may create invalidations on it."
   type        = string
 }
 
@@ -68,6 +76,15 @@ data "aws_iam_policy_document" "permissions" {
     effect    = "Allow"
     actions   = ["s3:ListBucket"]
     resources = [var.bucket_arn]
+  }
+
+  # Refresh the CDN after a deploy. Scoped to the one distribution fronting
+  # staging.config.myrecruiter.ai - CreateInvalidation only (no config changes).
+  statement {
+    sid       = "ConfigBuilderCloudFrontInvalidation"
+    effect    = "Allow"
+    actions   = ["cloudfront:CreateInvalidation"]
+    resources = ["arn:aws:cloudfront::${data.aws_caller_identity.current.account_id}:distribution/${var.cloudfront_distribution_id}"]
   }
 }
 

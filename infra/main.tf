@@ -1651,7 +1651,8 @@ module "iam_config_builder_deploy_staging" {
   count  = var.env == "staging" ? 1 : 0
   source = "./modules/iam-config-builder-deploy-staging"
 
-  bucket_arn = module.s3_config_builder_staging[0].bucket_arn
+  bucket_arn                 = module.s3_config_builder_staging[0].bucket_arn
+  cloudfront_distribution_id = module.cloudfront_config_builder_staging[0].distribution_id
 }
 
 # JWT secret resource policy — restricts read to the Lambda exec roles
