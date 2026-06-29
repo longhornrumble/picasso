@@ -396,9 +396,11 @@ data "aws_iam_policy_document" "exec" {
 
   # §E13b AppointmentType/RoutingPolicy write API (admin-only). Query (list by
   # tenantId PK), GetItem (FK check / RR-state-preserving PATCH reads ALL_NEW),
-  # PutItem (create), UpdateItem (patch). NO DeleteItem (delete is v2). Base
-  # tables ONLY — these tables have no GSI (canonical §18). The write API never
-  # mutates bookings and never sets the commit-owned round-robin state.
+  # PutItem (create), UpdateItem (patch), DeleteItem (Teams unification shipped
+  # team-delete: DELETE /scheduling/routing-policies/{id}; lambda#354+dashboard#49,
+  # 2026-06-29 — was "delete is v2"). Base tables ONLY — these tables have no GSI
+  # (canonical §18). The write API never mutates bookings and never sets the
+  # commit-owned round-robin state.
   statement {
     sid = "SchedulingConfigWrite"
     actions = [
@@ -406,6 +408,7 @@ data "aws_iam_policy_document" "exec" {
       "dynamodb:GetItem",
       "dynamodb:PutItem",
       "dynamodb:UpdateItem",
+      "dynamodb:DeleteItem",
     ]
     resources = [
       var.appointment_type_table_arn,
