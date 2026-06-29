@@ -74,7 +74,7 @@ Three AWS accounts under one Organization: **prod** (hand-managed legacy; receiv
 
 - **Never `terraform apply` against the prod account during normal feature work.** Prod is hand-managed today. Phase 2 cutover decisions are explicit, gated, and rare.
 - **Never share IAM roles across Lambdas.** Each Lambda gets a dedicated execution role. (lambda#44 was the result of historical sharing — don't recreate that pattern.)
-- **Never share resources across environments.** No "single `picasso-X` table used by prod and staging." Use the `{name}-{env}` naming convention.
+- **Never share one physical resource across environments, and never put an environment token in a resource name.** The AWS account boundary IS the environment (525 staging / 614 prod / dev), so isolation is structural: a `picasso-audit` in staging and a `picasso-audit` in prod are *different physical resources in different accounts*, never a shared one. **Target naming convention: bare `picasso-<name>`, identical across accounts** — NOT `{name}-{env}`. An env token in the name separates nothing (the account already does) and blocks clean staging↔prod promotion. New resources are created bare from day one; the CI guard `scripts/check-ddb-naming.sh` enforces this for DynamoDB tables. Legacy `-{env}`-suffixed resources are being migrated to bare — see [`docs/roadmap/ENVIRONMENT_NAMING_PARITY_PLAN.md`](docs/roadmap/ENVIRONMENT_NAMING_PARITY_PLAN.md). (This overturns the prior "use the `{name}-{env}` convention" rule, which was the policy-level root cause of the staging/prod naming drift.)
 - **Do not rotate the legacy operator IAM credentials used by legacy CI workflows.** Specific credential name + rotation policy in the operator-local `reference_aws_accounts.md` memory file.
 - **Always `unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN` before running terraform.** Stale exported credentials override AWS_PROFILE and trigger SSO 401 errors.
 - **Dry-run before destroy — always.** Any command that can delete or bulk-overwrite production data (`aws s3 sync --delete`, `aws s3 rm`, `delete-*`, bulk copies over live prefixes) MUST first run with `--dryrun`/equivalent and have its output reviewed in the same session, immediately before the real invocation. Destructive REHEARSALS/drills never target production resources directly — use a scratch prefix or stay dryrun-only. (D10 incident, 2026-06-12: a rollback drill run without a dryrun deleted the live widget bucket's objects for ~6 minutes; the dryrun that would have prevented it also exposed that the CI rollback step itself was broken. Full forensics: `project_ci_modernization_phase2_audit_2026-06-11.md`.)
@@ -95,11 +95,15 @@ CI deploys via OIDC into per-account `GitHubActionsDeployRole`. See `.github/wor
 
 ### Adding a new resource
 
-1. Create or extend module under `infra/modules/<name>/`
+1. Create or extend module under `infra/modules/<name>/` — name resources **bare** (`picasso-<name>`, no env token; see Hard rules)
 2. Reference from `infra/main.tf`
 3. Plan + apply in dev account first
 4. Plan + apply in staging account
 5. (Phase 2 only, with explicit gate) plan + apply in prod account
+
+### Stale-branch `terraform plan` literacy (do not panic)
+
+A `terraform plan` showing a large `N to destroy`/`must be replaced` on a feature branch is **almost always staleness, not real drift** — a branch behind `main` lacks modules `main` already applied, so its plan wants to destroy them. **Before believing a scary plan: rebase on `origin/main` (or run it from a fresh `origin/main` checkout) and re-plan.** The authoritative drift signal is the **CI plan on a PR up-to-date with `main`**, not a local plan from an old branch. (A 466-behind branch once produced a `184 to destroy` plan that read as a data-loss emergency; `origin/main` showed `0 to destroy`. See `docs/roadmap/ENVIRONMENT_NAMING_PARITY_PLAN.md` §0.)
 
 ### Where the legacy commands below fit
 
