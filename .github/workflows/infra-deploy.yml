@@ -1,14 +1,20 @@
 name: Terraform Infrastructure (staging)
 
-# Triggered by changes to infra/ on the staging branch (apply) or any PR
-# touching infra/ (plan only). Production deploys are deferred to Phase 2 of
-# the P0 environment-foundation project — this workflow does NOT touch prod.
+# Triggered by: a push to the `staging` branch touching infra/ (apply); a manual
+# workflow_dispatch (apply — against the chosen ref, default `main`); or any PR
+# touching infra/ (plan only). workflow_dispatch lets an operator apply staging
+# infra from the Actions UI / `gh workflow run` without branch gymnastics — note
+# a FRESH `staging` branch *creation* does NOT fire this paths-filtered workflow,
+# which is the trap that motivated this trigger. Production deploys are deferred
+# to Phase 2 of the P0 environment-foundation project — this workflow does NOT
+# touch prod.
 on:
   push:
     branches: [staging]
     paths:
       - 'infra/**'
       - '.github/workflows/infra-deploy.yml'
+  workflow_dispatch: {}
   pull_request:
     branches: [main, staging]
     paths:
@@ -102,7 +108,7 @@ jobs:
             });
 
       - name: Terraform apply
-        if: github.event_name == 'push' && github.ref == 'refs/heads/staging'
+        if: (github.event_name == 'push' && github.ref == 'refs/heads/staging') || github.event_name == 'workflow_dispatch'
         env:
           TF_VAR_q5_mfs_cf_origin_secret: ${{ secrets.Q5_MFS_CF_ORIGIN_SECRET }}
           TF_VAR_q5_streaming_cf_origin_secret: ${{ secrets.Q5_STREAMING_CF_ORIGIN_SECRET }}
@@ -118,7 +124,7 @@ jobs:
       # wrong-zip manual deploy leaving inert code running. Red status alerts
       # the operator to re-deploy the known-good zip.
       - name: DSAR Lambda regression check
-        if: github.event_name == 'push' && github.ref == 'refs/heads/staging'
+        if: (github.event_name == 'push' && github.ref == 'refs/heads/staging') || github.event_name == 'workflow_dispatch'
         run: ../tools/verify-dsar-codesha.sh
         continue-on-error: true  # Detection only — staging apply success is
                                   # still meaningful. The Lambda re-deploy is
