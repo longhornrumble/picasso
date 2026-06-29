@@ -72,12 +72,13 @@ resource "aws_dynamodb_table" "appointment_type_bare" {
   }
 }
 
-# Outputs still reference the LEGACY table in PR-A (consumers unchanged, zero gap).
-# PR-B switches these to aws_dynamodb_table.appointment_type_bare after data copy.
+# PR-B cutover: outputs now reference the bare table (data copied + parity-verified).
+# Consumers (module-wired) repoint to picasso-appointment-type on apply. The legacy
+# resource is retained (kept until verified) and removed in the batched drop PR.
 output "table_name" {
-  value = aws_dynamodb_table.appointment_type.name
+  value = aws_dynamodb_table.appointment_type_bare.name
 }
 
 output "table_arn" {
-  value = aws_dynamodb_table.appointment_type.arn
+  value = aws_dynamodb_table.appointment_type_bare.arn
 }
