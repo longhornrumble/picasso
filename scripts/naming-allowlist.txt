@@ -14,5 +14,4 @@ picasso-conversation-scheduling-session-${var.env}
 picasso-employee-registry-v2-staging
 picasso-form-submissions-staging
 picasso-routing-policy-${var.env}
-picasso-scheduling-notif-template-${var.env}
 picasso-tenant-registry-staging

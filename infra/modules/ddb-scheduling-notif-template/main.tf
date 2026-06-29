@@ -18,7 +18,7 @@ variable "env" {
 # local default); the STOP/unsubscribe footer is appended OUTSIDE the editable
 # body and can never be removed by an override. No GSI (point-read only).
 resource "aws_dynamodb_table" "scheduling_notif_template" {
-  name         = "picasso-scheduling-notif-template-${var.env}"
+  name         = "picasso-scheduling-notif-template"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "tenantId"
   range_key    = "moment"
@@ -40,7 +40,7 @@ resource "aws_dynamodb_table" "scheduling_notif_template" {
   }
 
   tags = {
-    Name = "picasso-scheduling-notif-template-${var.env}"
+    Name = "picasso-scheduling-notif-template"
   }
 }
 
