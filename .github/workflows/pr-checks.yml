@@ -121,6 +121,18 @@ jobs:
         working-directory: ./Lambdas/lambda/Picasso_Config_Manager
         run: npm install --omit=dev --ignore-scripts && npm audit --omit=dev --audit-level=high
 
+  naming-convention:
+    name: Naming Convention (DDB)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        with:
+          fetch-depth: 0  # need base history to diff PR-added lines
+
+      - name: Check for new env-suffixed DynamoDB table names
+        run: bash scripts/check-ddb-naming.sh "${{ github.event.pull_request.base.sha }}"
+
   build:
     name: Build Validation
     runs-on: ubuntu-latest

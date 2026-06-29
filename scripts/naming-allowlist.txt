@@ -1,0 +1,18 @@
+# Grandfathered DynamoDB table physical names that still carry an environment
+# token, pending migration by the naming-parity program
+# (docs/roadmap/ENVIRONMENT_NAMING_PARITY_PLAN.md, Phase 2).
+#
+# The CI guard (scripts/check-ddb-naming.sh) FAILS a PR that ADDS a DDB table
+# name with an env token UNLESS it is listed here. This list must SHRINK, never
+# grow: remove a name in the same PR that renames its table to bare. New tables
+# must be created bare (picasso-<name>) and never added to this file.
+#
+# One name per line; exact match against the `name = "..."` value.
+picasso-appointment-type-${var.env}
+picasso-booking-${var.env}
+picasso-conversation-scheduling-session-${var.env}
+picasso-employee-registry-v2-staging
+picasso-form-submissions-staging
+picasso-routing-policy-${var.env}
+picasso-scheduling-notif-template-${var.env}
+picasso-tenant-registry-staging
