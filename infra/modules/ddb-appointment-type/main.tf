@@ -43,6 +43,37 @@ resource "aws_dynamodb_table" "appointment_type" {
   }
 }
 
+# Naming-parity migration (ENVIRONMENT_NAMING_PARITY_PLAN.md Phase 2): bare-named
+# twin created alongside the legacy -staging table. Data is copied old->new out of
+# band, then the outputs below are switched to this resource (consumers repoint),
+# then the legacy resource is removed in the batched drop PR. Identical schema.
+resource "aws_dynamodb_table" "appointment_type_bare" {
+  name         = "picasso-appointment-type"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "tenantId"
+  range_key    = "appointment_type_id"
+
+  attribute {
+    name = "tenantId"
+    type = "S"
+  }
+
+  attribute {
+    name = "appointment_type_id"
+    type = "S"
+  }
+
+  point_in_time_recovery {
+    enabled = true
+  }
+
+  tags = {
+    Name = "picasso-appointment-type"
+  }
+}
+
+# Outputs still reference the LEGACY table in PR-A (consumers unchanged, zero gap).
+# PR-B switches these to aws_dynamodb_table.appointment_type_bare after data copy.
 output "table_name" {
   value = aws_dynamodb_table.appointment_type.name
 }
