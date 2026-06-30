@@ -105,10 +105,12 @@ resource "aws_dynamodb_table" "tenant_registry_bare" {
   }
 }
 
+# PR-B cutover: outputs reference the bare table (data copied + parity-verified).
+# Legacy resource retained until verified; removed in the batched drop PR.
 output "table_name" {
-  value = aws_dynamodb_table.tenant_registry.name
+  value = aws_dynamodb_table.tenant_registry_bare.name
 }
 
 output "table_arn" {
-  value = aws_dynamodb_table.tenant_registry.arn
+  value = aws_dynamodb_table.tenant_registry_bare.arn
 }
