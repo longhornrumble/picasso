@@ -42,6 +42,34 @@ resource "aws_dynamodb_table" "routing_policy" {
   }
 }
 
+# Naming-parity migration (ENVIRONMENT_NAMING_PARITY_PLAN.md Phase 2): bare twin.
+# PR-A creates it (outputs stay on legacy = zero gap); data copied out of band;
+# PR-B switches the outputs below; legacy resource removed in the batched drop PR.
+resource "aws_dynamodb_table" "routing_policy_bare" {
+  name         = "picasso-routing-policy"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "tenantId"
+  range_key    = "routing_policy_id"
+
+  attribute {
+    name = "tenantId"
+    type = "S"
+  }
+
+  attribute {
+    name = "routing_policy_id"
+    type = "S"
+  }
+
+  point_in_time_recovery {
+    enabled = true
+  }
+
+  tags = {
+    Name = "picasso-routing-policy"
+  }
+}
+
 output "table_name" {
   value = aws_dynamodb_table.routing_policy.name
 }
