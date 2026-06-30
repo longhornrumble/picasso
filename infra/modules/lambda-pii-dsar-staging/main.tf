@@ -324,7 +324,16 @@ locals {
   # t_session_summaries). VERIFIED LIVE 2026-06-13 (acct 525).
   t_booking            = "${local.ddb}/picasso-booking-staging"
   t_scheduling_session = "${local.ddb}/picasso-conversation-scheduling-session-staging"
-  t_scheduled_messages = "${local.ddb}/picasso-scheduled-messages"
+  # Naming-parity migration (Phase 2 6/9): the scheduling-session table was
+  # renamed to the bare canonical name. The DSAR Lambda's code constant
+  # (lambda_function.py:194 TABLE_SCHEDULING_SESSION) flips to the bare name in a
+  # paired lambda-repo deploy. The grant below covers BOTH ARNs during the
+  # transition so there is NO window where DSAR (a PII-deletion Lambda) lacks
+  # read/delete on the table it is configured to use — regardless of redeploy
+  # ordering. The legacy ARN + table drop together in the batched cleanup PR,
+  # after which this grant reverts to bare-only.
+  t_scheduling_session_bare = "${local.ddb}/picasso-conversation-scheduling-session"
+  t_scheduled_messages      = "${local.ddb}/picasso-scheduled-messages"
   # scheduled-messages is walked via the by-appointment GSI (appointment_id ==
   # booking_id). IAM does not inherit GSI ARNs from the base table.
   gsi_sched_msgs_by_appt = "${local.t_scheduled_messages}/index/by-appointment"
@@ -484,7 +493,7 @@ data "aws_iam_policy_document" "dsar" {
   statement {
     sid       = "SchedulingSessionReadDelete"
     actions   = ["dynamodb:GetItem", "dynamodb:DeleteItem"]
-    resources = [local.t_scheduling_session]
+    resources = [local.t_scheduling_session, local.t_scheduling_session_bare]
   }
 
   # F0 — per-coordinator Google OAuth secret read. The calendar-delete reads
