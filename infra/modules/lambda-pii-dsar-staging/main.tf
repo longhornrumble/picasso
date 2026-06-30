@@ -322,7 +322,13 @@ locals {
   # scheduling tables are created by the scheduling infra, not the PII ddb
   # modules, so there is no module output to var-wire — same posture as
   # t_session_summaries). VERIFIED LIVE 2026-06-13 (acct 525).
-  t_booking            = "${local.ddb}/picasso-booking-staging"
+  t_booking = "${local.ddb}/picasso-booking-staging"
+  # Naming-parity migration (Phase 2 9/9): booking renamed to the bare canonical
+  # name. The DSAR code constant (lambda_function.py:193 TABLE_BOOKING) flips to
+  # bare in a paired deploy; this grant covers BOTH ARNs during the transition so
+  # the PII-deletion Lambda never lacks read/delete on the table it uses,
+  # regardless of redeploy ordering. Legacy ARN + table drop together in cleanup.
+  t_booking_bare       = "${local.ddb}/picasso-booking"
   t_scheduling_session = "${local.ddb}/picasso-conversation-scheduling-session-staging"
   # Naming-parity migration (Phase 2 6/9): the scheduling-session table was
   # renamed to the bare canonical name. The DSAR Lambda's code constant
@@ -473,7 +479,7 @@ data "aws_iam_policy_document" "dsar" {
   statement {
     sid       = "BookingReadDelete"
     actions   = ["dynamodb:Query", "dynamodb:DeleteItem"]
-    resources = [local.t_booking]
+    resources = [local.t_booking, local.t_booking_bare]
   }
 
   # F0 — scheduled-messages surface. _walk_scheduled_messages Queries the

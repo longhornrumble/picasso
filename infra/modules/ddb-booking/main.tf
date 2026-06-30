@@ -166,25 +166,34 @@ resource "aws_dynamodb_table" "booking_bare" {
   }
 }
 
+# PR-B cutover: all outputs (table + 3 index ARNs) now point at the bare twin.
+# Every booking consumer is module-wired (bedrock-handler, booking-commit,
+# calendar-event/lifecycle consumers, calendar-watch-listener,
+# scheduling-redemption-handler, stranded-booking-remediator, ADA,
+# reminder-scheduler, attendance-disposition, scheduling-page-api,
+# synthetic-monitor) so they all repoint env + IAM automatically. The suffixed
+# resource above is retained (idle) until the batched cleanup PR. The DSAR
+# Lambda (hardcoded constant, not module-wired) is handled separately: a
+# both-ARNs grant here + a paired code redeploy.
 output "table_name" {
-  value = aws_dynamodb_table.booking.name
+  value = aws_dynamodb_table.booking_bare.name
 }
 
 output "table_arn" {
-  value = aws_dynamodb_table.booking.arn
+  value = aws_dynamodb_table.booking_bare.arn
 }
 
 output "tenant_id_start_at_index_arn" {
   description = "ARN of the (tenantId, start_at) GSI. Used by B5 onboarding hook, B11 stranded-booking, E9 reconciliation, OOO-overlap detection."
-  value       = "${aws_dynamodb_table.booking.arn}/index/tenantId-start_at-index"
+  value       = "${aws_dynamodb_table.booking_bare.arn}/index/tenantId-start_at-index"
 }
 
 output "tenant_id_coordinator_email_index_arn" {
   description = "ARN of the (tenantId, coordinator_email) GSI. Used by B2 Calendar_Watch_Listener to find bookings owned by a coordinator when a calendar push arrives, and by B11 stranded-booking queries."
-  value       = "${aws_dynamodb_table.booking.arn}/index/tenantId-coordinator_email-index"
+  value       = "${aws_dynamodb_table.booking_bare.arn}/index/tenantId-coordinator_email-index"
 }
 
 output "external_event_id_index_arn" {
   description = "ARN of the (external_event_id) GSI. Used by B2 Calendar_Watch_Listener to resolve a booking from its Google event id on the deletion path (Google strips extendedProperties from cancelled-event deltas)."
-  value       = "${aws_dynamodb_table.booking.arn}/index/external_event_id-index"
+  value       = "${aws_dynamodb_table.booking_bare.arn}/index/external_event_id-index"
 }
