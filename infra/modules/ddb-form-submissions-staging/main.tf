@@ -113,6 +113,117 @@ resource "aws_dynamodb_table" "form_submissions" {
   }
 }
 
+# Environment naming-parity migration (Variant A) — bare-name twin.
+# Drops the env suffix so staging (525) and prod (614) converge on one canonical
+# `picasso-form-submissions` (account boundary = environment). Schema is an exact
+# replica of the resource above (9 attrs, 5 GSIs incl the StatusIndex INCLUDE
+# projection, TTL on `ttl`, PITR). PR-A creates the EMPTY bare table; outputs
+# still point at the suffixed resource so no consumer moves. PR-B copies the
+# data, switches the outputs, and var-wires the tenant-purge consumer (the only
+# non-module-wired seam). The suffixed table drops in the batched cleanup PR.
+# NOTE: prod `picasso_form_submissions` (underscore, single-key) divergence is a
+# separate Phase-4 carve-out; the staging rename here does not touch prod.
+resource "aws_dynamodb_table" "form_submissions_bare" {
+  name         = "picasso-form-submissions"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "tenant_id"
+  range_key    = "submission_id"
+
+  attribute {
+    name = "tenant_id"
+    type = "S"
+  }
+
+  attribute {
+    name = "submission_id"
+    type = "S"
+  }
+
+  attribute {
+    name = "form_type"
+    type = "S"
+  }
+
+  attribute {
+    name = "status"
+    type = "S"
+  }
+
+  attribute {
+    name = "created_at"
+    type = "S"
+  }
+
+  attribute {
+    name = "timestamp"
+    type = "S"
+  }
+
+  attribute {
+    name = "tenant_pipeline_key"
+    type = "S"
+  }
+
+  attribute {
+    name = "submitted_at"
+    type = "S"
+  }
+
+  attribute {
+    name = "session_id"
+    type = "S"
+  }
+
+  global_secondary_index {
+    name            = "FormTypeIndex"
+    hash_key        = "form_type"
+    range_key       = "created_at"
+    projection_type = "ALL"
+  }
+
+  global_secondary_index {
+    name               = "StatusIndex"
+    hash_key           = "status"
+    range_key          = "created_at"
+    projection_type    = "INCLUDE"
+    non_key_attributes = ["tenant_id", "submission_id", "form_type"]
+  }
+
+  global_secondary_index {
+    name            = "tenant-timestamp-index"
+    hash_key        = "tenant_id"
+    range_key       = "timestamp"
+    projection_type = "ALL"
+  }
+
+  global_secondary_index {
+    name            = "tenant-pipeline-index"
+    hash_key        = "tenant_pipeline_key"
+    range_key       = "submitted_at"
+    projection_type = "ALL"
+  }
+
+  global_secondary_index {
+    name            = "tenant-session-index"
+    hash_key        = "tenant_id"
+    range_key       = "session_id"
+    projection_type = "ALL"
+  }
+
+  ttl {
+    attribute_name = "ttl"
+    enabled        = true
+  }
+
+  point_in_time_recovery {
+    enabled = true
+  }
+
+  tags = {
+    Name = "picasso-form-submissions"
+  }
+}
+
 output "table_name" {
   value = aws_dynamodb_table.form_submissions.name
 }
