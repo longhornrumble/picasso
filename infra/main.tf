@@ -494,6 +494,17 @@ data "aws_dynamodb_table" "calendar_watch_channels_staging" {
   name  = "picasso-calendar-watch-channels-staging"
 }
 
+# Environment naming-parity migration (Phase 2 8/9). Brings the calendar-watch
+# channel ledger under Terraform management with the bare canonical name. PR-A
+# only CREATES the empty bare table; the data source above still serves all
+# consumers. PR-B (after data is copied) deletes the data source and repoints
+# the consumers to this module; the suffixed table is then dropped out of band
+# (it was never in Terraform state).
+module "ddb_calendar_watch_channels_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/ddb-calendar-watch-channels"
+}
+
 module "secrets_jwt_staging" {
   count  = var.env == "staging" ? 1 : 0
   source = "./modules/secrets-jwt-staging"
