@@ -355,7 +355,8 @@ module "lambda_pii_tenant_purge_staging" {
   source                   = "./modules/lambda-pii-tenant-purge-staging"
   permissions_boundary_arn = module.iam_workload_boundary[0].arn
 
-  purge_audit_table_arn = module.ddb_pii_tenant_purge_audit_staging[0].table_arn
+  purge_audit_table_arn       = module.ddb_pii_tenant_purge_audit_staging[0].table_arn
+  form_submissions_table_name = module.ddb_form_submissions_staging[0].table_name
 }
 
 # send_email — staging test-support deployment (operator-authorized 2026-06-02).

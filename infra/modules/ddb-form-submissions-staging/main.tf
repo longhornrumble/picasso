@@ -224,10 +224,15 @@ resource "aws_dynamodb_table" "form_submissions_bare" {
   }
 }
 
+# PR-B cutover: outputs now point at the bare-name twin. Module-wired consumers
+# (ADA, MFS, BSH, DSAR, pii-delete) repoint their FORM_SUBMISSIONS_TABLE env var
+# + IAM grant to picasso-form-submissions automatically. The tenant-purge
+# consumer is var-wired in this same PR (it was the only hardcoded seam). The
+# suffixed resource above is retained (idle) until the batched cleanup PR.
 output "table_name" {
-  value = aws_dynamodb_table.form_submissions.name
+  value = aws_dynamodb_table.form_submissions_bare.name
 }
 
 output "table_arn" {
-  value = aws_dynamodb_table.form_submissions.arn
+  value = aws_dynamodb_table.form_submissions_bare.arn
 }
