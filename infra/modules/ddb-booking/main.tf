@@ -97,6 +97,75 @@ resource "aws_dynamodb_table" "booking" {
   }
 }
 
+# Environment naming-parity migration (Variant A) — bare-name twin.
+# Drops the env suffix so staging (525) and prod (614) converge on one canonical
+# `picasso-booking` (account boundary = environment). Exact schema replica of the
+# resource above: 5 attrs, all 3 GSIs (tenantId-start_at-index,
+# tenantId-coordinator_email-index, external_event_id-index), PITR. PR-A creates
+# the EMPTY bare table; outputs still point at the suffixed resource so no
+# consumer moves. PR-B copies the data, switches the outputs (incl the 3 index
+# ARNs), and adds a both-ARNs DSAR grant; the DSAR code constant is flipped in a
+# paired lambda deploy. The suffixed table drops in the batched cleanup PR.
+resource "aws_dynamodb_table" "booking_bare" {
+  name         = "picasso-booking"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "tenantId"
+  range_key    = "booking_id"
+
+  attribute {
+    name = "tenantId"
+    type = "S"
+  }
+
+  attribute {
+    name = "booking_id"
+    type = "S"
+  }
+
+  attribute {
+    name = "start_at"
+    type = "S"
+  }
+
+  attribute {
+    name = "coordinator_email"
+    type = "S"
+  }
+
+  attribute {
+    name = "external_event_id"
+    type = "S"
+  }
+
+  global_secondary_index {
+    name            = "tenantId-start_at-index"
+    hash_key        = "tenantId"
+    range_key       = "start_at"
+    projection_type = "ALL"
+  }
+
+  global_secondary_index {
+    name            = "tenantId-coordinator_email-index"
+    hash_key        = "tenantId"
+    range_key       = "coordinator_email"
+    projection_type = "ALL"
+  }
+
+  global_secondary_index {
+    name            = "external_event_id-index"
+    hash_key        = "external_event_id"
+    projection_type = "ALL"
+  }
+
+  point_in_time_recovery {
+    enabled = true
+  }
+
+  tags = {
+    Name = "picasso-booking"
+  }
+}
+
 output "table_name" {
   value = aws_dynamodb_table.booking.name
 }
