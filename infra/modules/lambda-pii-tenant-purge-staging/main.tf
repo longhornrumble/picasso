@@ -44,6 +44,17 @@ variable "purge_audit_table_arn" {
   type        = string
 }
 
+# Naming-parity migration (Phase 2 7/9): form-submissions was the last hardcoded
+# seam in this module (the ARN grant + FORM_SUBMISSIONS_TABLE env were literals).
+# Now var-wired from the ddb module output so a rename cascades automatically -
+# matching how the DSAR module already consumes it. The Lambda reads
+# FORM_SUBMISSIONS_TABLE env-first (code default is a dormant fallback), so the
+# env+grant flip in this apply is sufficient - no code redeploy required.
+variable "form_submissions_table_name" {
+  description = "Name of the form-submissions table (module.ddb_form_submissions_staging[0].table_name). Feeds the FORM_SUBMISSIONS_TABLE env var + the purge/walk IAM grant. D2: name diverges in prod (picasso_form_submissions) - resolved via this IaC-set value, mirroring the DSAR module."
+  type        = string
+}
+
 variable "log_retention_days" {
   description = "CloudWatch log retention for the purge Lambda. 7d aligns with the post-retention-strategy staging standard (data-retention-strategy.md §5 #5)."
   type        = number
@@ -66,7 +77,7 @@ locals {
 
   # Live-verified table names (same source-of-truth as the DSAR module + the
   # Lambda's constants).
-  t_form_submissions   = "${local.ddb}/picasso-form-submissions-staging"
+  t_form_submissions   = "${local.ddb}/${var.form_submissions_table_name}"
   t_notification_sends = "${local.ddb}/picasso-notification-sends"
   t_notification_evts  = "${local.ddb}/picasso-notification-events"
   t_subject_index      = "${local.ddb}/picasso-pii-subject-index"
@@ -231,9 +242,10 @@ resource "aws_lambda_function" "this" {
   environment {
     variables = {
       EXPECTED_ACCOUNT = "525409062831"
-      # D2: account-divergent name (carve-out). Default in code = the staging
-      # name; the prod runbook sets this to picasso_form_submissions.
-      FORM_SUBMISSIONS_TABLE = "picasso-form-submissions-staging"
+      # D2: account-divergent name (carve-out). Var-wired from the ddb module
+      # output (naming-parity 7/9); the prod runbook sets this to
+      # picasso_form_submissions at Phase 4.
+      FORM_SUBMISSIONS_TABLE = var.form_submissions_table_name
     }
   }
 
