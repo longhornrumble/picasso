@@ -45,6 +45,39 @@ resource "aws_dynamodb_table" "conversation_scheduling_session" {
   }
 }
 
+# Environment naming-parity migration (Variant A) — bare-name twin.
+# Drops the env suffix so staging (525) and prod (614) share one canonical
+# `picasso-conversation-scheduling-session` (account boundary = environment).
+# Identical schema to the resource above. This PR (PR-A) only CREATES the empty
+# bare table; outputs still point at the suffixed resource so no consumer moves.
+# A follow-up PR (PR-B) copies the data, switches the outputs below to this
+# resource, and repoints the DSAR IAM grant; the suffixed table is dropped in
+# the batched cleanup PR once all bare tables are verified serving.
+resource "aws_dynamodb_table" "conversation_scheduling_session_bare" {
+  name         = "picasso-conversation-scheduling-session"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "tenantId"
+  range_key    = "session_id"
+
+  attribute {
+    name = "tenantId"
+    type = "S"
+  }
+
+  attribute {
+    name = "session_id"
+    type = "S"
+  }
+
+  point_in_time_recovery {
+    enabled = true
+  }
+
+  tags = {
+    Name = "picasso-conversation-scheduling-session"
+  }
+}
+
 output "table_name" {
   value = aws_dynamodb_table.conversation_scheduling_session.name
 }
