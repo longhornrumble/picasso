@@ -78,10 +78,15 @@ resource "aws_dynamodb_table" "conversation_scheduling_session_bare" {
   }
 }
 
+# PR-B cutover: outputs now point at the bare-name twin. Module-wired consumers
+# (Bedrock_Streaming_Handler, Scheduling_Page_Api, Scheduling_Redemption_Handler)
+# repoint their SCHEDULING_SESSION_TABLE / CONVERSATION_SCHEDULING_SESSION_TABLE
+# env var + IAM grant to picasso-conversation-scheduling-session automatically.
+# The suffixed resource above is retained (idle) until the batched cleanup PR.
 output "table_name" {
-  value = aws_dynamodb_table.conversation_scheduling_session.name
+  value = aws_dynamodb_table.conversation_scheduling_session_bare.name
 }
 
 output "table_arn" {
-  value = aws_dynamodb_table.conversation_scheduling_session.arn
+  value = aws_dynamodb_table.conversation_scheduling_session_bare.arn
 }
