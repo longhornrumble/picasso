@@ -484,22 +484,13 @@ module "ddb_conversation_scheduling_session_staging" {
   env    = var.env
 }
 
-# B1 runbook-provisioned table (PR #231, 2026-05-25). Not yet under Terraform
-# state — bringing it in via `terraform import` is tracked as a follow-up to
-# close R1 fully for sub-phase B. This data source lets B2 reference the ARN
-# + construct GSI ARNs (used by lambda_calendar_watch_listener_staging below)
-# without blocking on the import work.
-data "aws_dynamodb_table" "calendar_watch_channels_staging" {
-  count = var.env == "staging" ? 1 : 0
-  name  = "picasso-calendar-watch-channels-staging"
-}
-
-# Environment naming-parity migration (Phase 2 8/9). Brings the calendar-watch
-# channel ledger under Terraform management with the bare canonical name. PR-A
-# only CREATES the empty bare table; the data source above still serves all
-# consumers. PR-B (after data is copied) deletes the data source and repoints
-# the consumers to this module; the suffixed table is then dropped out of band
-# (it was never in Terraform state).
+# Calendar-watch channel ledger — now under Terraform management with the bare
+# canonical name (environment naming-parity Phase 2 8/9). The prior B1
+# runbook-provisioned `picasso-calendar-watch-channels-staging` table (PR #231),
+# previously read via a `data` source, was migrated: data copied into this
+# managed bare table, the consumers below repointed, and the suffixed table
+# dropped out of band (it was never in Terraform state, so there is no resource
+# to destroy here).
 module "ddb_calendar_watch_channels_staging" {
   count  = var.env == "staging" ? 1 : 0
   source = "./modules/ddb-calendar-watch-channels"
@@ -1046,9 +1037,9 @@ module "lambda_calendar_watch_listener_staging" {
   permissions_boundary_arn = module.iam_workload_boundary[0].arn
 
   # Calendar-watch-channels (runbook-provisioned PR #231; data source for now)
-  calendar_watch_channels_table_arn               = data.aws_dynamodb_table.calendar_watch_channels_staging[0].arn
-  calendar_watch_channels_table_name              = data.aws_dynamodb_table.calendar_watch_channels_staging[0].name
-  calendar_watch_channels_tenant_status_index_arn = "${data.aws_dynamodb_table.calendar_watch_channels_staging[0].arn}/index/tenant-status-index"
+  calendar_watch_channels_table_arn               = module.ddb_calendar_watch_channels_staging[0].table_arn
+  calendar_watch_channels_table_name              = module.ddb_calendar_watch_channels_staging[0].table_name
+  calendar_watch_channels_tenant_status_index_arn = "${module.ddb_calendar_watch_channels_staging[0].table_arn}/index/tenant-status-index"
 
   # Booking table (Terraform-managed via ddb-booking module)
   booking_table_arn                   = module.ddb_booking_staging[0].table_arn
@@ -1079,8 +1070,8 @@ module "lambda_calendar_watch_onboarder_staging" {
   permissions_boundary_arn = module.iam_workload_boundary[0].arn
 
   # Calendar-watch-channels (runbook-provisioned PR #231; data source for now)
-  calendar_watch_channels_table_arn  = data.aws_dynamodb_table.calendar_watch_channels_staging[0].arn
-  calendar_watch_channels_table_name = data.aws_dynamodb_table.calendar_watch_channels_staging[0].name
+  calendar_watch_channels_table_arn  = module.ddb_calendar_watch_channels_staging[0].table_arn
+  calendar_watch_channels_table_name = module.ddb_calendar_watch_channels_staging[0].table_name
 
   # Listener Function URL — Google posts push notifications here once a
   # channel is registered. Sourced from the Listener module output so the
@@ -1106,8 +1097,8 @@ module "lambda_calendar_watch_renewer_staging" {
 
   # Calendar-watch-channels (runbook-provisioned PR #231; data source for now).
   # Renewer Queries the tenant-expiration-index GSI + Put/Update/Deletes rows.
-  calendar_watch_channels_table_arn  = data.aws_dynamodb_table.calendar_watch_channels_staging[0].arn
-  calendar_watch_channels_table_name = data.aws_dynamodb_table.calendar_watch_channels_staging[0].name
+  calendar_watch_channels_table_arn  = module.ddb_calendar_watch_channels_staging[0].table_arn
+  calendar_watch_channels_table_name = module.ddb_calendar_watch_channels_staging[0].table_name
 
   # Listener Function URL — the renewed channel posts here, same as the
   # initial channel the Onboarder registers. Sourced from the Listener module
@@ -1130,8 +1121,8 @@ module "lambda_calendar_watch_offboarder_staging" {
 
   # Calendar-watch-channels (runbook-provisioned PR #231; data source for now).
   # Offboarder GetItem/Query (tenant-expiration-index GSI) + DeleteItem.
-  calendar_watch_channels_table_arn  = data.aws_dynamodb_table.calendar_watch_channels_staging[0].arn
-  calendar_watch_channels_table_name = data.aws_dynamodb_table.calendar_watch_channels_staging[0].name
+  calendar_watch_channels_table_arn  = module.ddb_calendar_watch_channels_staging[0].table_arn
+  calendar_watch_channels_table_name = module.ddb_calendar_watch_channels_staging[0].table_name
 
   # Ops alerts SNS topic (shared with MFS + Meta — created by ops_alarms_master_function_staging)
   ops_alerts_topic_arn = module.ops_alarms_master_function_staging[0].topic_arn
@@ -1290,8 +1281,8 @@ module "lambda_calendar_lifecycle_consumer_staging" {
   booking_table_name = module.ddb_booking_staging[0].table_name
 
   # Watch-channels table (pre-existing, read via data source): channel-degrade UpdateItem.
-  channels_table_arn  = data.aws_dynamodb_table.calendar_watch_channels_staging[0].arn
-  channels_table_name = data.aws_dynamodb_table.calendar_watch_channels_staging[0].name
+  channels_table_arn  = module.ddb_calendar_watch_channels_staging[0].table_arn
+  channels_table_name = module.ddb_calendar_watch_channels_staging[0].table_name
 
   # Fan-out lifecycle-consumer FIFO queue (event-source-mapping + IAM consume).
   source_queue_arn = module.sns_calendar_watch_fanout_staging[0].lifecycle_consumer_queue_arn
