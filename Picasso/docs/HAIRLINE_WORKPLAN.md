@@ -61,7 +61,7 @@
 - **Guardrail:** fixed + reference-default tenant tokens only; no selectors beyond `:root`.
 
 ### W1.3 Token injection provider
-- **Status:** TODO — after W1.1
+- **Status:** PR #639
 - **Objective:** apply `tenantTheme()` output to `documentElement` from the fetched config (name/primary/secondary/font), alongside (not replacing) the old CSSVariablesProvider.
 - **Owns:** new `src/theme/HairlineThemeProvider.jsx` + mount point in `iframe-main.jsx` (one-line insertion).
 - **Done when:** dev harness shows all `--tenant-*` values on `:root` for a real tenant hash; tolerates configs missing any/all brand fields (falls back to reference defaults; no crash — add an old-shape-config fixture test).
