@@ -90,7 +90,7 @@
 - **Done when:** `test-dynamic.html` conversation with lists/links/bold renders cleanly in both streaming and finalized paths; no headers styling needed (backend bans them) but h-tags degrade gracefully if present.
 
 ### W2.4 Composer — idle + expanded
-- **Status:** TODO — after W1.2/W1.3 (parallel with W2.2)
+- **Status:** PR #641
 - **Objective:** DESIGN_SPEC composer states 1–2: pill (+ / placeholder / mic / send), unfilled-until-content send (text OR attachment), pill→radius-18 rect expansion at wrap, controls drop row, auto-grow 4 lines then scroll.
 - **Owns:** `src/components/chat/InputBar.jsx`, new `src/styles/hairline-composer.css`.
 - **Done when:** all idle/typing/expanded states match spec (200ms expansion, 150ms send fill, spec easings); Enter/Shift+Enter preserved; send not clickable when empty; `aria-label`s intact; mic renders per `features.voice_input` but stays inert `[D4 default: hidden at flip — render behind the flag, no recording]`; InputBar tests updated.
