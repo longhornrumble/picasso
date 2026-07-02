@@ -1,10 +1,33 @@
-// src/components/chat/InputBar.jsx - FIXED inline send button alignment
+// src/components/chat/InputBar.jsx
+//
+// Hairline redesign (W2.4): composer idle + expanded states.
+//
+// Presentation-only rewrite: renders the DESIGN_SPEC.md "Composer states"
+// idle pill (+ / placeholder / mic / send) and expanded rect (textarea full
+// width, controls drop to a bottom row). The former single-row/double-row
+// branching is retired — there is now exactly one pill layout, which
+// morphs via a CSS class toggle (`is-expanded`) so the underlying
+// <textarea> element never remounts (would drop focus/cursor mid-type).
+//
+// FROZEN (do not change): the send handler, Enter/Shift+Enter semantics,
+// the attach-menu trigger wiring, and the form-mode-interrupts-composer
+// logic. See docs/HAIRLINE_WORKPLAN.md W2.4.
 import React, { useState, useRef, useEffect } from "react";
 import { useChat } from "../../hooks/useChat";
 import { useConfig } from "../../hooks/useConfig";
 import { useFormMode } from "../../context/FormModeContext";
-import { Plus, ArrowRight, Mic } from "lucide-react";
+import { Plus, ArrowUp, Mic } from "lucide-react";
 import AttachmentMenu from "./AttachmentMenu";
+import strings from "../../i18n/strings";
+
+// Auto-grow ceiling per DESIGN_SPEC.md "Composer states" > Expanded /
+// Interactions & Behavior: "auto-grow up to 4 lines then internal scroll".
+const MAX_COMPOSER_LINES = 4;
+// Multiplier applied to the measured single-line height to decide whether
+// content has wrapped past one line (spec: "when text wraps past one line,
+// the pill relaxes to a ... rect"). >1 with headroom absorbs cross-browser
+// scrollHeight/lineHeight rounding without falsely tripping on a single line.
+const EXPAND_THRESHOLD_MULTIPLIER = 1.4;
 
 export default function InputBar({ input, setInput }) {
   const { addMessage, isTyping } = useChat();
@@ -13,56 +36,57 @@ export default function InputBar({ input, setInput }) {
   const features = config?.features || {};
   const [showAttachments, setShowAttachments] = useState(false);
   const [_uploadingFiles, setUploadingFiles] = useState(new Set());
+  const [isExpanded, setIsExpanded] = useState(false);
   const textareaRef = useRef(null);
 
   const [localInput, setLocalInput] = useState("");
   const actualInput = input !== undefined ? input : localInput;
   const actualSetInput = setInput || setLocalInput;
 
-  const fontFamily = config?.branding?.font_family || "system-ui, sans-serif";
+  // Send fill-state: unfilled until there is something to send. W2.5 will
+  // extend this with staged-attachment presence once the attach popover
+  // produces pending chips (this item ships idle/expanded states only —
+  // there is no attachment-staging state yet, so text is the only input).
+  const hasContent = actualInput.trim().length > 0;
 
-  // Adjust textarea height based on its content
+  const showAttachButton = features.uploads || features.photo_uploads;
+  // D4 default: mic renders behind the feature flag but stays inert until
+  // W5.2 (voice recording) ships. No MediaRecorder wiring here.
+  const showMicButton = !!features.voice_input;
+
+  const placeholder = isFormMode
+    ? "Ask me a question (form will pause)..."
+    : strings.composer.placeholder;
+
+  const measureLineHeight = (textarea) => {
+    const computed = window.getComputedStyle(textarea);
+    const lineHeight = parseFloat(computed.lineHeight);
+    if (!Number.isNaN(lineHeight) && lineHeight > 0) return lineHeight;
+    const fontSize = parseFloat(computed.fontSize) || 13.5;
+    return fontSize * 1.5;
+  };
+
+  // Auto-grow the textarea to content, capping at MAX_COMPOSER_LINES (then
+  // internal scroll), and derive the idle-vs-expanded pill state from
+  // whether the content needs more than a single line.
   const adjustTextareaHeight = () => {
     const textarea = textareaRef.current;
     if (!textarea) return;
 
-    const span = document.createElement("span");
-    span.style.font = window.getComputedStyle(textarea).font;
-    span.style.fontSize = config?.branding?.font_size || "15px";
-    span.style.fontFamily = fontFamily;
-    span.style.visibility = "hidden";
-    span.style.position = "absolute";
-    span.style.whiteSpace = "nowrap";
-    span.textContent = textarea.value || textarea.placeholder;
+    textarea.style.height = "auto";
+    const lineHeight = measureLineHeight(textarea);
+    const maxHeight = lineHeight * MAX_COMPOSER_LINES;
+    const scrollHeight = textarea.scrollHeight;
 
-    document.body.appendChild(span);
-    const textWidth = span.offsetWidth;
-    document.body.removeChild(span);
+    textarea.style.height = `${Math.min(scrollHeight, maxHeight)}px`;
+    textarea.style.overflowY = scrollHeight > maxHeight ? "auto" : "hidden";
 
-    const textareaStyles = window.getComputedStyle(textarea);
-    const paddingLeft = parseInt(textareaStyles.paddingLeft) || 0;
-    const paddingRight = parseInt(textareaStyles.paddingRight) || 0;
-    const availableWidth = textarea.offsetWidth - paddingLeft - paddingRight;
-
-    if (textWidth > availableWidth) {
-      textarea.style.height = "auto";
-      const scrollHeight = textarea.scrollHeight;
-      const maxHeight = 120;
-      textarea.style.height = Math.min(scrollHeight, maxHeight) + "px";
-    } else {
-      textarea.style.height = "20px";
-    }
+    setIsExpanded(scrollHeight > lineHeight * EXPAND_THRESHOLD_MULTIPLIER);
   };
 
   useEffect(() => {
     adjustTextareaHeight();
   }, [actualInput]);
-
-  useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "20px";
-    }
-  }, []);
 
   const handleSubmit = () => {
     const trimmed = actualInput.trim();
@@ -84,12 +108,6 @@ export default function InputBar({ input, setInput }) {
       actualSetInput("");
       setShowAttachments(false);
     }
-
-    setTimeout(() => {
-      if (textareaRef.current) {
-        textareaRef.current.style.height = "20px";
-      }
-    }, 0);
   };
 
   const handleKeyDown = (e) => {
@@ -101,6 +119,12 @@ export default function InputBar({ input, setInput }) {
 
   const handleInputChange = (e) => {
     actualSetInput(e.target.value);
+  };
+
+  const handleMicClick = () => {
+    // W5.2 — voice recording capture is a net-new feature (D4). This
+    // control renders per features.voice_input but performs no action
+    // until that project ships. No MediaRecorder, no state change.
   };
 
   const cancelUpload = (fileId) => {
@@ -201,98 +225,62 @@ export default function InputBar({ input, setInput }) {
     setShowAttachments(false);
   };
 
-  const hasBottomRow = features.uploads || features.photo_uploads || features.voice_input;
-
   return (
-    <div className={`input-bar-container ${hasBottomRow ? "double-row" : "single-row"}`}>
+    <div className="hairline-composer">
       {showAttachments && (
         <AttachmentMenu onClose={() => setShowAttachments(false)} />
       )}
 
-      <div className="input-row-container">
-        <div className={`input-text-row ${!hasBottomRow ? "inline-mode" : ""}`}>
-          {!hasBottomRow ? (
-            // FIXED: Single row with inline send button
-            <div className="input-inline-container">
-              <textarea
-                ref={textareaRef}
-                id="chat-message-input"
-                name="message"
-                value={actualInput}
-                onChange={handleInputChange}
-                onKeyDown={handleKeyDown}
-                placeholder={isFormMode ? "Ask me a question (form will pause)..." : "How can I help you today?"}
-                autoComplete="off"
-                className="input-textarea inline-textarea auto-resize-textarea"
-              />
-              <button
-                onClick={handleSubmit}
-                disabled={!actualInput.trim() || isTyping}
-                className={`send-button inline-send ${
-                  actualInput.trim()
-                    ? "send-button-active"
-                    : "send-button-disabled"
-                }`}
-                aria-label="Send"
-              >
-                <ArrowRight
-                  size={16}
-                  color={actualInput.trim() ? "white" : "#94a3b8"}
-                />
-              </button>
-            </div>
-          ) : (
-            // Double row mode - textarea only
-            <textarea
-              ref={textareaRef}
-              id="chat-message-input"
-              name="message"
-              value={actualInput}
-              onChange={handleInputChange}
-              onKeyDown={handleKeyDown}
-              placeholder="How can I help you today?"
-              autoComplete="off"
-              className="input-textarea"
-            />
-          )}
-        </div>
+      <div
+        className={`hairline-composer-pill${isExpanded ? " is-expanded" : ""}`}
+      >
+        {showAttachButton && (
+          <button
+            type="button"
+            onClick={() => setShowAttachments((prev) => !prev)}
+            className="composer-icon-btn composer-attach-btn"
+            aria-label="Add Attachment"
+            aria-expanded={showAttachments}
+          >
+            <Plus size={16} strokeWidth={2} />
+          </button>
+        )}
 
-        {hasBottomRow ? (
-          <div className="input-controls-row">
-            <div className="input-tools">
-              {(features.uploads || features.photo_uploads) && (
-                <div
-                  className="input-tool-button"
-                  onClick={() => setShowAttachments((prev) => !prev)}
-                  aria-label="Add Attachment"
-                >
-                  <Plus size={16} />
-                </div>
-              )}
-              {features.voice_input && (
-                <div className="input-tool-button" data-voice>
-                  <Mic size={16} />
-                </div>
-              )}
-            </div>
+        <textarea
+          ref={textareaRef}
+          id="chat-message-input"
+          name="message"
+          value={actualInput}
+          onChange={handleInputChange}
+          onKeyDown={handleKeyDown}
+          placeholder={placeholder}
+          autoComplete="off"
+          rows={1}
+          className="composer-textarea"
+        />
 
-            <button
-              onClick={handleSubmit}
-              disabled={!actualInput.trim() || isTyping}
-              className={`send-button ${
-                actualInput.trim()
-                  ? "send-button-active"
-                  : "send-button-disabled"
-              }`}
-              aria-label="Send"
-            >
-              <ArrowRight
-                size={16}
-                color={actualInput.trim() ? "white" : "#94a3b8"}
-              />
-            </button>
-          </div>
-        ) : null}
+        {showMicButton && (
+          <button
+            type="button"
+            onClick={handleMicClick}
+            className="composer-icon-btn composer-mic-btn"
+            aria-label="Voice input"
+          >
+            <Mic size={15} strokeWidth={2} />
+          </button>
+        )}
+
+        <span className="composer-spacer" aria-hidden="true" />
+
+        <button
+          type="button"
+          onClick={handleSubmit}
+          disabled={!hasContent || isTyping}
+          className={`composer-send-btn ${hasContent ? "is-active" : "is-idle"}`}
+          aria-label="Send"
+        >
+          <ArrowUp size={16} strokeWidth={2} />
+        </button>
       </div>
     </div>
   );

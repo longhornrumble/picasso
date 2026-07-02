@@ -27,6 +27,12 @@ import "./styles/hairline-tokens.css";
 // consume the token sheet above (ChatWidget.jsx's shell container +
 // ChatHeader.jsx). Imported after it for cascade correctness.
 import "./styles/hairline-shell.css";
+// Hairline redesign (W2.4): composer idle/expanded restyle. InputBar.jsx
+// renders the new `.hairline-composer` markup exclusively (old
+// `.input-bar-container` classes are gone from that component), so this
+// sheet is live the moment it's imported — old theme.css rules for the
+// retired class names simply have no matching elements left to style.
+import "./styles/hairline-composer.css";
 
 // ============================================================================
 // ANALYTICS STATE (for User Journey Analytics)
