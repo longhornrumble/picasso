@@ -604,9 +604,12 @@ function ChatWidget() {
           )}
         </div>
 
-      {/* Chat container - Show when open */}
+      {/* Chat container - Show when open. Hairline redesign (W2.1): className
+          moved from "chat-container" to "hairline-shell" (styles in
+          src/styles/hairline-shell.css) — see that file's header comment for
+          why this is a clean class swap rather than a layered override. */}
       {isOpen && (
-        <div className="chat-container" data-input-mode={isDoubleInput ? "double" : "single"}>
+        <div className="hairline-shell" data-input-mode={isDoubleInput ? "double" : "single"}>
           <ChatHeader 
             onClose={() => {
               console.log('🔄 Header close clicked - calling handleToggle');

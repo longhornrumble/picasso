@@ -21,10 +21,12 @@ import "./styles/widget-entry.css";
 import "./styles/theme.css";
 import "./styles/fonts.css";
 import "./styles/schedule-page.css";
-// Hairline redesign (W1.2): fixed token sheet — definitions only, nothing
-// consumes these custom properties yet. Imported last for future cascade
-// correctness; zero visual effect today (old theme.css still drives everything).
+// Hairline redesign (W1.2): fixed token sheet — definitions only.
 import "./styles/hairline-tokens.css";
+// Hairline redesign (W2.1): shell + header — the first surface to actually
+// consume the token sheet above (ChatWidget.jsx's shell container +
+// ChatHeader.jsx). Imported after it for cascade correctness.
+import "./styles/hairline-shell.css";
 // Hairline redesign (W2.4): composer idle/expanded restyle. InputBar.jsx
 // renders the new `.hairline-composer` markup exclusively (old
 // `.input-bar-container` classes are gone from that component), so this
