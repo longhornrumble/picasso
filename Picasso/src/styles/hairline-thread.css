@@ -207,3 +207,91 @@
 }
 
 /* ==================== END W2.2 (thread + typing) — W2.3/W2.6/W2.7 append below ==================== */
+
+/* ============================================================
+   W2.6 RESPONSE ACTIONS — copy · thumbs-up · thumbs-down
+   Rendered by `ResponseActions.jsx`, mounted under every completed
+   (non-streaming) bot reply — see MessageBubble.jsx.
+   Source: DESIGN_SPEC.md "3. In-flight conversation" ("Response actions"
+   paragraph: 9px top margin, left-aligned row, 3px gap, 26x26 radius-8
+   buttons, idle icon --tenant-accent-muted no fill, hover --tenant-tint
+   fill + --tenant-accent-deep icon) + "4. Feedback given" (thumbed button
+   gets --tenant-tint-deep fill + --tenant-accent-deep icon, thumb-up icon
+   itself fills --tenant-accent; "Copied" confirm 10.5px/600
+   --tenant-accent-deep, 5px right of the buttons, ~2s then fades).
+   Copy is functional (Clipboard API on the reply's plain text); thumbs are
+   a local, mutually-exclusive visual toggle only — the feedback POST is
+   W5.1 (decision D3, post-flip fast-follow). No network call lives here.
+   ============================================================ */
+.hairline-response-actions {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-top: 9px;
+}
+
+.hairline-response-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--size-feedback-button);
+  height: var(--size-feedback-button);
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-feedback-button);
+  background: none;
+  color: var(--tenant-accent-muted);
+  cursor: pointer;
+  transition: background-color var(--duration-fill) var(--ease-ui),
+    color var(--duration-fill) var(--ease-ui);
+}
+
+.hairline-response-action-btn:hover {
+  background: var(--tenant-tint);
+  color: var(--tenant-accent-deep);
+}
+
+.hairline-response-action-btn:focus-visible {
+  outline: 2px solid var(--tenant-accent);
+  outline-offset: 2px;
+}
+
+/* Thumbed state (screen 4 "Feedback given") — mutually exclusive, applied to
+   whichever of thumbs-up/thumbs-down is currently selected. */
+.hairline-response-action-btn--active {
+  background: var(--tenant-tint-deep);
+  color: var(--tenant-accent-deep);
+}
+
+.hairline-response-copied {
+  margin-left: 5px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--tenant-accent-deep);
+  animation: hairline-response-copied-fade 2000ms ease-out;
+}
+
+@keyframes hairline-response-copied-fade {
+  0% {
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  85% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hairline-response-action-btn {
+    transition: none;
+  }
+
+  .hairline-response-copied {
+    animation: none;
+  }
+}

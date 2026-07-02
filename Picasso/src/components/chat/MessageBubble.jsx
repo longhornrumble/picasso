@@ -9,6 +9,7 @@ import { streamingRegistry } from "../../utils/streamingRegistry";
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import CTAButton, { CTAButtonGroup } from './CTAButton';
+import ResponseActions from './ResponseActions'; // W2.6: copy + inert thumbs row
 import FormCompletionCard from '../forms/FormCompletionCard';
 import ShowcaseCard from './ShowcaseCard';
 import SchedulingSlots, { SchedulingNotice, SchedulingConfirmCard } from './SchedulingSlots';
@@ -984,6 +985,10 @@ export default function MessageBubble({
         ) : (
           messageTextNode
         )}
+
+        {/* Response actions (W2.6) — DESIGN_SPEC.md screen 3: copy + inert
+            thumbs row under every completed (non-streaming) bot reply only. */}
+        {!isUser && isFinalized && <ResponseActions replyHtml={content} />}
 
         {/* Retry button for failed messages */}
         {metadata.can_retry && !metadata.retry_failed && (
