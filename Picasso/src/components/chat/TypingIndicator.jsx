@@ -1,72 +1,33 @@
-// TypingIndicator.jsx - Enhanced with S3 Logo Support
-import React, { useState } from "react";
+// TypingIndicator.jsx — Hairline redesign (W2.2)
+//
+// DESIGN_SPEC.md "Loading" interaction note: "bot typing = three-dot pulse
+// under the wordmark sender label (not mocked; keep to the same quiet
+// palette)." Reuses the exact same `.hairline-message`/`.hairline-message-group`/
+// `.hairline-sender-label` classes MessageBubble.jsx renders for a real bot
+// reply, so a typing indicator is visually just "a bot message group whose
+// body is three pulsing dots instead of text" — same 16px group spacing,
+// same wordmark-style label, no avatar.
+import React from "react";
 import { useConfig } from "../../hooks/useConfig";
-import { config as environmentConfig } from '../../config/environment';
-
-// Same avatar helper as MessageBubble
-const getAvatarUrl = (config) => {
-  const { tenant_id, branding, _cloudfront } = config || {};
-  
-  const avatarSources = [
-    branding?.avatar_url,
-    branding?.logo_url,
-    branding?.bot_avatar_url,           
-    branding?.icon,                     
-    branding?.custom_icons?.bot_avatar,
-    _cloudfront?.urls?.avatar,
-    tenant_id ? `${environmentConfig.API_BASE_URL}/tenants/${tenant_id}/avatar.png` : null,
-    tenant_id ? `${environmentConfig.API_BASE_URL}/tenants/${tenant_id}/logo.png` : null,
-    tenant_id ? environmentConfig.getLegacyS3Url(tenant_id, 'FVC_logo.png') : null,
-    tenant_id ? environmentConfig.getLegacyS3Url(tenant_id, 'avatar.png') : null,
-    tenant_id ? environmentConfig.getLegacyS3Url(tenant_id, 'logo.png') : null,
-    `${environmentConfig.API_BASE_URL}/collateral/default-avatar.png`
-  ];
-  
-  return avatarSources.find(url => url && url.trim()) || `${environmentConfig.API_BASE_URL}/collateral/default-avatar.png`;
-};
 
 export default function TypingIndicator() {
   const { config } = useConfig();
-  const [avatarError, setAvatarError] = useState(false);
-  
-  const avatarSrc = getAvatarUrl(config);
-
-  const handleAvatarError = () => {
-    console.log('❌ Typing avatar failed to load:', avatarSrc);
-    setAvatarError(true);
-  };
-
-  const handleAvatarLoad = () => {
-    console.log('✅ Typing avatar loaded successfully:', avatarSrc);
-    setAvatarError(false);
-  };
-
-  // Set the dynamic avatar URL as a CSS custom property
-  const avatarUrl = avatarError ? `url(${environmentConfig.API_BASE_URL}/collateral/default-avatar.png)` : `url(${avatarSrc})`;
+  // Same resolution as MessageBubble.jsx's bot sender label (chat_title,
+  // matching ChatHeader.jsx's wordmark) — kept in sync deliberately.
+  const chatTitle = config?.branding?.chat_title || "Chat";
 
   return (
-    <div className="typing-indicator-wrapper">
-      {/* Bot Avatar with Error Handling */}
-      <div 
-        className="bot-avatar"
-        style={{ '--dynamic-avatar-url': avatarUrl }}
-      >
-        {/* Hidden img for error detection */}
-        <img
-          src={avatarSrc}
-          onError={handleAvatarError}
-          onLoad={handleAvatarLoad}
-          className="hidden-img"
-          alt="Avatar"
-          crossOrigin="anonymous"
-        />
-      </div>
-      
-      {/* Typing Bubble */}
-      <div className="typing-indicator-content">
-        <div className="typing-dot"></div>
-        <div className="typing-dot"></div>
-        <div className="typing-dot"></div>
+    <div className="hairline-message hairline-message--bot hairline-typing">
+      <div className="hairline-message-group">
+        <div className="hairline-sender-label hairline-sender-label--bot">
+          {chatTitle}
+        </div>
+        <div className="hairline-typing-dots" role="status" aria-live="polite">
+          <span className="hairline-typing-dot" aria-hidden="true"></span>
+          <span className="hairline-typing-dot" aria-hidden="true"></span>
+          <span className="hairline-typing-dot" aria-hidden="true"></span>
+          <span className="visually-hidden">{`${chatTitle} is typing…`}</span>
+        </div>
       </div>
     </div>
   );
