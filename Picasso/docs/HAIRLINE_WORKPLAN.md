@@ -54,7 +54,7 @@
 - **Guardrail:** no DOM/React; no imports from old `useCSSVariables.js`.
 
 ### W1.2 Fixed token sheet
-- **Status:** PR #TBD
+- **Status:** PR #638
 - **Objective:** `hairline-tokens.css`: fixed tokens (surface/inks/online/danger/recording), type-scale custom properties, spacing/radius/shadow/motion constants — exactly the DESIGN_SPEC tables.
 - **Owns:** new `src/styles/hairline-tokens.css`.
 - **Done when:** every value in the file traces to a DESIGN_SPEC table (reviewer diffs file vs spec); imported by `iframe-main.jsx` after existing sheets; zero visual change to the live widget (old classes don't consume it yet).
