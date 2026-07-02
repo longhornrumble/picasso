@@ -1,0 +1,724 @@
+/**
+ * hairline-forms.css — Hairline redesign conversational forms suite (W4.1).
+ *
+ * Unmocked surface (HAIRLINE_REDESIGN_MAPPING.md §0 case 2 / §4 item 1):
+ * Turn 10 has no forms screen, so this file is a FRESH Hairline treatment,
+ * not a restyle of the old `.form-field-prompt`/`.composite-field-*`/
+ * `.form-completion-*` rules in theme.css — those old rules are left in
+ * place (coexistence, HAIRLINE_WORKPLAN.md ground rule #8) but are now
+ * dead: `FormFieldPrompt.jsx`, `CompositeFieldGroup.jsx`, and
+ * `FormCompletionCard.jsx` render exclusively under new `.hairline-form*`/
+ * `.hairline-composite*`/`.hairline-completion*` class names, so the old
+ * selectors simply have no matching elements left (same precedent as
+ * `hairline-thread.css`/`hairline-composer.css`).
+ *
+ * Vocabulary extrapolation (per DESIGN_SPEC.md + HAIRLINE_REDESIGN_MAPPING.md
+ * §4 item 1 "form card = hairline card; select-buttons = menu rows;
+ * progress = accent hairline"):
+ *   - Form container + completion card = the same hairline-card anatomy as
+ *     the welcome/suggestion/settings menu cards: `--surface-raised` fill,
+ *     `--hairline` border, `--radius-card` (10px), no shadow (menu/settings
+ *     cards carry no shadow in the spec — only overlay/popover do).
+ *   - Field prompt label = "Row label" type style (13px/600/--ink); hints/
+ *     helper text = fine-print-sm scale.
+ *   - Select-option buttons (the `select` field type + the phone_with_consent
+ *     Yes/No toggle) = menu rows: `--space-card-row-padding`, `--hairline-soft`
+ *     dividers, hover `--tenant-tint` fill, trailing arrow in
+ *     `--tenant-accent-faint` (DESIGN_SPEC.md "Menu/settings card" +
+ *     "arrow right in `--tenant-accent-faint`") — a "selected" row (the
+ *     consent toggle) reuses the spec's "primary suggestion row emphasized"
+ *     recipe (`--tenant-tint-deep` fill, 700 weight, `--tenant-accent-deep`
+ *     text), the closest spec precedent for a toggled/active row.
+ *   - Progress = "accent hairline": a literal 2px hairline-width track
+ *     (`--hairline`) with a `--tenant-accent` fill, not the old fat rounded
+ *     progress bar.
+ *   - Text/email/phone/number/date/textarea inputs borrow the composer's
+ *     input vocabulary (`--composer-border` idle border, `--tenant-accent`
+ *     focus ring via `--tenant-tint`) since the composer pill is the only
+ *     mocked "text entry" surface in the whole spec.
+ *   - CompositeFieldGroup = a nested "grouped hairline card" (settings-card
+ *     anatomy: hairline border, `--hairline-soft` row dividers) sitting on
+ *     `--surface` inside the outer `--surface-raised` form card, so the
+ *     grouping reads as an inset section rather than a second raised card.
+ *   - Submit button: no Turn 10 mock shows a full-width filled text button
+ *     (composer send is icon-only/circular). Extrapolated as a solid
+ *     `--tenant-accent` fill button (the same "decisive action" weight as
+ *     the composer's filled send state) — flagged in the PR for the
+ *     design-review gate as a judgment call, not a spec-literal value.
+ *
+ * No hard-coded tenant colors — every color is a token reference. The two
+ * scrim colors below ARE fixed design constants (not tenant-derived), so
+ * per the same pattern as hairline-thread.css's local `--ink-message-user`
+ * token, they're declared as named tokens rather than inlined literals.
+ *
+ * Consumes: hairline-tokens.css (W1.2) fixed/type/spacing tokens + the
+ * per-tenant `--tenant-*` custom properties (W1.1/W1.3).
+ */
+
+/* ============================================================
+   0. LOCAL FIXED TOKENS — overlay scrims
+   Replaces the old FormFieldPrompt.jsx inline hardcoded overlay colors
+   (`rgba(0, 0, 0, 0.7)` suspended scrim, `rgba(0, 0, 0, 0.17)` eligibility
+   scrim, white `#fff` card, `#333`/`#dc3545`/`#666` text) — flagged in
+   HAIRLINE_WORKPLAN.md W4.1 as a known hardcoded-color hotspot. Both scrims
+   below derive from the SAME fixed hues DESIGN_SPEC.md's own shadow/overlay
+   tokens already use: `--ink` (`#0f172a` = rgb(15,23,42), the same triple
+   `--shadow-overlay`/`--shell-shadow` are built from) for a darkening dim,
+   and `--surface` (`#fffefb` = rgb(255,254,251), the same triple
+   DESIGN_SPEC.md's screen-2 "dimmed by rgba(255,254,251,0.6)" underlay
+   uses) for a lightening/frosting veil. Opacities differ from those two
+   precedents because these scrims must fully obscure interaction with the
+   field(s) beneath rather than just dim a list behind an overlay card.
+   ============================================================ */
+:root {
+  /* Eligibility-failure scrim: brief, low-opacity ink dim (flash alert) */
+  --hairline-form-eligibility-scrim: rgba(15, 23, 42, 0.12);
+  /* Suspended-form scrim: warm surface tint at high opacity — fully mutes
+     the paused fields without the old widget's harsh black 70% overlay */
+  --hairline-form-suspended-scrim: rgba(255, 254, 251, 0.92);
+}
+
+/* ============================================================
+   1. FORM CARD — root wrapper
+   ============================================================ */
+.hairline-form {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-sizing: border-box;
+  background: var(--surface-raised);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-card);
+  padding: 16px;
+  font-family: var(--tenant-font-family, "Plus Jakarta Sans", system-ui, sans-serif);
+}
+
+/* Suspended state clips the scrim overlay to the card's rounded corners */
+.hairline-form--suspended {
+  overflow: hidden;
+}
+
+/* ============================================================
+   2. HEADER — form title/subtitle
+   ============================================================ */
+.hairline-form-header {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--hairline-soft);
+}
+
+.hairline-form-title {
+  font-size: var(--type-page-title-size);
+  font-weight: var(--type-page-title-weight);
+  color: var(--ink);
+  line-height: 1.3;
+}
+
+.hairline-form-subtitle {
+  font-size: var(--type-row-value-size);
+  color: var(--ink-soft);
+  line-height: 1.4;
+}
+
+/* ============================================================
+   3. INTRODUCTION — shown only on the form's first step
+   ============================================================ */
+.hairline-form-intro {
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-line-height);
+  color: var(--ink-body);
+}
+
+/* ============================================================
+   4. PROGRESS — "accent hairline" (HAIRLINE_REDESIGN_MAPPING.md §4 item 1)
+   ============================================================ */
+.hairline-form-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.hairline-form-progress-track {
+  width: 100%;
+  height: 2px;
+  background: var(--hairline);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.hairline-form-progress-fill {
+  height: 100%;
+  background: var(--tenant-accent);
+  border-radius: 999px;
+  transition: width var(--duration-max) var(--ease-ui);
+}
+
+.hairline-form-progress-text {
+  align-self: flex-end;
+  font-size: var(--type-row-value-size);
+  font-weight: var(--type-row-value-weight);
+  color: var(--ink-faint);
+}
+
+/* ============================================================
+   5. FIELD CONTENT — label, hint, required mark
+   ============================================================ */
+.hairline-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.hairline-form-label {
+  font-size: var(--type-row-label-size);
+  font-weight: var(--type-row-label-weight);
+  color: var(--ink);
+  line-height: 1.4;
+}
+
+.hairline-form-required-mark {
+  color: var(--tenant-accent-deep);
+  margin-left: 2px;
+}
+
+.hairline-form-hint {
+  font-size: var(--type-fine-print-sm-size);
+  line-height: 1.5;
+  color: var(--ink-faint);
+}
+
+.hairline-form-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ============================================================
+   6. INPUTS — text/email/phone/number/date/textarea
+   Border/focus vocabulary borrowed from the composer pill
+   (`--composer-border`, `--tenant-accent` focus ring via `--tenant-tint`) —
+   the closest mocked "text entry" surface in the spec.
+   ============================================================ */
+.hairline-form-input,
+.hairline-form-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--surface);
+  border: 1px solid var(--composer-border);
+  border-radius: var(--radius-card);
+  padding: 10px 13px;
+  font-family: inherit;
+  font-size: var(--type-menu-row-compact-size);
+  line-height: var(--type-menu-row-compact-line-height);
+  color: var(--ink);
+  transition:
+    border-color var(--duration-fill) var(--ease-ui),
+    box-shadow var(--duration-fill) var(--ease-ui);
+}
+
+.hairline-form-input::placeholder,
+.hairline-form-textarea::placeholder {
+  color: var(--ink-faint);
+}
+
+.hairline-form-input:focus-visible,
+.hairline-form-textarea:focus-visible {
+  outline: none;
+  border-color: var(--tenant-accent);
+  box-shadow: 0 0 0 3px var(--tenant-tint);
+}
+
+.hairline-form-textarea {
+  resize: vertical;
+  min-height: 80px;
+  line-height: 1.5;
+}
+
+/* ============================================================
+   7. MENU ROWS — select-buttons (DESIGN_SPEC.md menu-card anatomy)
+   ============================================================ */
+.hairline-form-menu {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+  background: var(--surface-raised);
+}
+
+.hairline-form-menu-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: var(--space-card-row-padding);
+  background: transparent;
+  border: none;
+  border-top: 1px solid var(--hairline-soft);
+  font-family: inherit;
+  font-size: var(--type-menu-row-size);
+  font-weight: var(--type-menu-row-weight);
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--duration-fill) var(--ease-ui);
+}
+
+.hairline-form-menu-row:first-child {
+  border-top: none;
+}
+
+.hairline-form-menu-row:hover {
+  background: var(--tenant-tint);
+}
+
+.hairline-form-menu-row:focus-visible {
+  outline: 2px solid var(--tenant-accent);
+  outline-offset: -2px;
+}
+
+.hairline-form-menu-row-arrow {
+  flex: 0 0 auto;
+  display: flex;
+  color: var(--tenant-accent-faint);
+}
+
+/* Selected/toggled row (e.g. the phone_with_consent Yes/No buttons) reuses
+   the spec's "primary suggestion row emphasized" recipe. */
+.hairline-form-menu-row--selected {
+  background: var(--tenant-tint-deep);
+  color: var(--tenant-accent-deep);
+  font-weight: 700;
+}
+
+.hairline-form-menu-row--selected .hairline-form-menu-row-arrow {
+  color: var(--tenant-accent-deep);
+}
+
+/* ============================================================
+   8. VALIDATION ERROR
+   ============================================================ */
+.hairline-form-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: var(--type-row-value-size);
+  font-weight: 600;
+  color: var(--danger);
+  line-height: 1.4;
+}
+
+/* ============================================================
+   9. ACTIONS — submit / cancel
+   ============================================================ */
+.hairline-form-actions {
+  display: flex;
+  justify-content: center;
+  padding-top: 2px;
+}
+
+.hairline-form-submit {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 11px 16px;
+  background: var(--tenant-accent);
+  color: var(--surface-raised);
+  border: none;
+  border-radius: var(--radius-card);
+  font-family: inherit;
+  font-size: var(--type-menu-row-size);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--duration-fill) var(--ease-ui);
+}
+
+.hairline-form-submit:hover:not(:disabled) {
+  background: var(--tenant-accent-deep);
+}
+
+.hairline-form-submit:focus-visible {
+  outline: 2px solid var(--tenant-accent);
+  outline-offset: 2px;
+}
+
+.hairline-form-submit:disabled {
+  background: var(--hairline);
+  color: var(--ink-faint);
+  cursor: not-allowed;
+}
+
+.hairline-form-cancel {
+  background: transparent;
+  color: var(--ink-soft);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-card);
+  padding: 8px 16px;
+  font-family: inherit;
+  font-size: var(--type-row-value-size);
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background var(--duration-fill) var(--ease-ui),
+    color var(--duration-fill) var(--ease-ui),
+    border-color var(--duration-fill) var(--ease-ui);
+}
+
+.hairline-form-cancel:hover {
+  background: var(--tenant-tint);
+  border-color: var(--hairline-strong);
+  color: var(--ink);
+}
+
+.hairline-form-cancel:focus-visible {
+  outline: 2px solid var(--tenant-accent);
+  outline-offset: 2px;
+}
+
+/* ============================================================
+   10. ELIGIBILITY OVERLAY — brief flash alert over the card
+   ============================================================ */
+.hairline-form-eligibility-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: var(--hairline-form-eligibility-scrim);
+  border-radius: var(--radius-card);
+  opacity: 1;
+  transition: opacity 0.5s var(--ease-ui);
+  z-index: 5;
+}
+
+.hairline-form-eligibility-overlay.is-fading-out {
+  opacity: 0;
+}
+
+.hairline-form-eligibility-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  max-width: 90%;
+  box-sizing: border-box;
+  padding: 20px 22px;
+  background: var(--surface-raised);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-overlay);
+  box-shadow: var(--shadow-overlay);
+  text-align: center;
+}
+
+.hairline-form-eligibility-icon {
+  color: var(--danger);
+}
+
+.hairline-form-eligibility-title {
+  font-size: var(--type-row-label-size);
+  font-weight: 700;
+  color: var(--danger);
+}
+
+.hairline-form-eligibility-message {
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-line-height);
+  color: var(--ink-body);
+}
+
+/* ============================================================
+   11. SUSPENDED OVERLAY — form paused while user asks a side question
+   ============================================================ */
+.hairline-form-suspended-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: var(--hairline-form-suspended-scrim);
+  border-radius: var(--radius-card);
+  z-index: 10;
+}
+
+.hairline-form-suspended-message {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  padding: 12px 18px;
+  background: var(--surface-raised);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-overlay);
+  font-size: var(--type-row-label-size);
+  font-weight: 600;
+  color: var(--ink);
+  text-align: center;
+}
+
+.hairline-form-suspended-message svg {
+  flex: 0 0 auto;
+  color: var(--tenant-accent-deep);
+}
+
+/* ============================================================
+   12. COMPOSITE FIELD GROUP — grouped hairline card (name/address/
+   phone_with_consent). Nested inset card (`--surface`, not
+   `--surface-raised`) so it reads as a section of the outer form card
+   rather than a second raised card.
+   ============================================================ */
+.hairline-composite {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.hairline-composite-group {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.hairline-composite-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  box-sizing: border-box;
+  padding: var(--space-card-row-padding);
+  border-top: 1px solid var(--hairline-soft);
+}
+
+.hairline-composite-item:first-child {
+  border-top: none;
+}
+
+.hairline-composite-label {
+  font-size: var(--type-row-label-size);
+  font-weight: var(--type-row-label-weight);
+  color: var(--ink);
+}
+
+.hairline-composite-required {
+  color: var(--tenant-accent-deep);
+  margin-left: 2px;
+}
+
+.hairline-composite-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--surface-raised);
+  border: 1px solid var(--composer-border);
+  border-radius: 8px;
+  padding: 9px 12px;
+  font-family: inherit;
+  font-size: var(--type-menu-row-compact-size);
+  color: var(--ink);
+  transition:
+    border-color var(--duration-fill) var(--ease-ui),
+    box-shadow var(--duration-fill) var(--ease-ui);
+}
+
+.hairline-composite-input::placeholder {
+  color: var(--ink-faint);
+}
+
+.hairline-composite-input:focus-visible {
+  outline: none;
+  border-color: var(--tenant-accent);
+  box-shadow: 0 0 0 3px var(--tenant-tint);
+}
+
+.hairline-composite-input--error {
+  border-color: var(--danger);
+}
+
+.hairline-composite-error {
+  font-size: var(--type-fine-print-sm-size);
+  font-weight: 600;
+  color: var(--danger);
+}
+
+.hairline-composite-consent {
+  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.hairline-composite-hint {
+  font-size: var(--type-fine-print-sm-size);
+  line-height: 1.5;
+  color: var(--ink-faint);
+}
+
+/* ============================================================
+   13. COMPLETION CARD — same hairline-card anatomy as section 1
+   ============================================================ */
+.hairline-completion {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-sizing: border-box;
+  background: var(--surface-raised);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-card);
+  padding: 16px;
+  font-family: var(--tenant-font-family, "Plus Jakarta Sans", system-ui, sans-serif);
+}
+
+.hairline-completion-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hairline-completion-icon {
+  flex: 0 0 auto;
+  color: var(--tenant-accent-deep);
+}
+
+.hairline-completion-title {
+  font-size: var(--type-page-title-size);
+  font-weight: var(--type-page-title-weight);
+  color: var(--ink);
+  margin: 0;
+}
+
+.hairline-completion-message {
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-line-height);
+  color: var(--ink-body);
+  white-space: pre-line;
+}
+
+.hairline-completion-summary {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.hairline-completion-summary-title {
+  box-sizing: border-box;
+  padding: var(--space-card-row-padding);
+  font-size: var(--type-group-label-size);
+  font-weight: var(--type-group-label-weight);
+  color: var(--tenant-accent-muted);
+}
+
+.hairline-completion-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  box-sizing: border-box;
+  padding: var(--space-card-row-padding);
+  border-top: 1px solid var(--hairline-soft);
+}
+
+.hairline-completion-field-label {
+  font-size: var(--type-row-value-size);
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.hairline-completion-field-value {
+  font-size: var(--type-menu-row-compact-size);
+  color: var(--ink);
+  white-space: pre-line;
+}
+
+.hairline-completion-next-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.hairline-completion-next-steps-title {
+  font-size: var(--type-group-label-size);
+  font-weight: var(--type-group-label-weight);
+  color: var(--tenant-accent-muted);
+}
+
+.hairline-completion-next-steps-list {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.hairline-completion-next-step {
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-line-height);
+  color: var(--ink-body);
+}
+
+.hairline-completion-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.hairline-completion-action {
+  flex: 1 1 auto;
+  box-sizing: border-box;
+  padding: 10px 16px;
+  background: var(--tenant-accent);
+  color: var(--surface-raised);
+  border: none;
+  border-radius: var(--radius-card);
+  font-family: inherit;
+  font-size: var(--type-menu-row-size);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--duration-fill) var(--ease-ui);
+}
+
+.hairline-completion-action:hover {
+  background: var(--tenant-accent-deep);
+}
+
+.hairline-completion-action:focus-visible {
+  outline: 2px solid var(--tenant-accent);
+  outline-offset: 2px;
+}
+
+.hairline-completion-action--secondary {
+  background: transparent;
+  color: var(--ink-soft);
+  border: 1px solid var(--hairline);
+}
+
+.hairline-completion-action--secondary:hover {
+  background: var(--tenant-tint);
+  color: var(--ink);
+  border-color: var(--hairline-strong);
+}
+
+/* ============================================================
+   14. REDUCED MOTION
+   ============================================================ */
+@media (prefers-reduced-motion: reduce) {
+  .hairline-form-eligibility-overlay,
+  .hairline-form-progress-fill,
+  .hairline-form-input,
+  .hairline-form-textarea,
+  .hairline-composite-input,
+  .hairline-form-menu-row,
+  .hairline-form-submit,
+  .hairline-form-cancel,
+  .hairline-completion-action {
+    transition: none;
+  }
+}

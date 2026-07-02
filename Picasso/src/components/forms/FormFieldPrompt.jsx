@@ -1,4 +1,19 @@
+// src/components/forms/FormFieldPrompt.jsx
+//
+// Hairline redesign (W4.1): conversational forms suite — an UNMOCKED
+// surface (no Turn 10 mock; HAIRLINE_REDESIGN_MAPPING.md §0 case 2 / §4
+// item 1). The appearance below is a fresh Hairline treatment extrapolated
+// from the mocked surfaces' vocabulary (form card = hairline card,
+// select-buttons = menu rows, progress = accent hairline) — NOT a restyle
+// of the old `.form-field-prompt`/`.form-select-option`/etc. look. Styles
+// live in src/styles/hairline-forms.css.
+//
+// FROZEN (do not change): field validation rules, the submission dispatch
+// (`submitField`/`handleSelectOption` result handling — eligibility
+// failure, form pivot, Bedrock query handoff), and the suspend/resume
+// state machine. See docs/HAIRLINE_WORKPLAN.md W4.1.
 import React, { useState, useRef, useEffect } from 'react';
+import { AlertCircle, Pause, ChevronRight } from 'lucide-react';
 import { useFormMode } from '../../context/FormModeContext';
 import { useChat } from '../../hooks/useChat';
 import { useConfig } from '../../hooks/useConfig';
@@ -195,56 +210,36 @@ export default function FormFieldPrompt({ onCancel }) {
   const error = validationErrors[currentField.id];
 
   return (
-    <div className={`form-field-prompt ${isSuspended ? 'form-suspended' : ''}`}>
+    <div className={`hairline-form${isSuspended ? ' hairline-form--suspended' : ''}`}>
       {/* Eligibility failure overlay */}
       {eligibilityMessage && (
-        <div className={`eligibility-overlay ${isFadingOut ? 'fade-out' : ''}`}>
-          <div className="eligibility-card">
-            <div className="eligibility-icon">🚫</div>
-            <div className="eligibility-title">Eligibility Requirement Not Met</div>
-            <div className="eligibility-message">{eligibilityMessage}</div>
+        <div className={`hairline-form-eligibility-overlay${isFadingOut ? ' is-fading-out' : ''}`}>
+          <div className="hairline-form-eligibility-card">
+            <AlertCircle className="hairline-form-eligibility-icon" size={22} strokeWidth={2} aria-hidden="true" />
+            <div className="hairline-form-eligibility-title">Eligibility Requirement Not Met</div>
+            <div className="hairline-form-eligibility-message">{eligibilityMessage}</div>
           </div>
         </div>
       )}
 
       {/* Suspended overlay */}
       {isSuspended && !eligibilityMessage && (
-        <div style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0, 0, 0, 0.7)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 10,
-          borderRadius: '12px'
-        }}>
-          <div style={{
-            background: '#fff',
-            padding: '16px 24px',
-            borderRadius: '8px',
-            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
-            textAlign: 'center',
-            fontSize: '15px',
-            fontWeight: 500,
-            color: '#333'
-          }}>
-            ⏸️ Form paused - answer your question above
+        <div className="hairline-form-suspended-overlay">
+          <div className="hairline-form-suspended-message">
+            <Pause size={15} strokeWidth={2} aria-hidden="true" />
+            <span>Form paused - answer your question above</span>
           </div>
         </div>
       )}
 
       {/* Form Header with Title and Subtitle */}
       {(formConfig?.form_title || formConfig?.title) && (
-        <div className="form-header">
-          <div className="form-header-title">
+        <div className="hairline-form-header">
+          <div className="hairline-form-title">
             {formConfig.form_title || formConfig.title}
           </div>
           {formConfig.form_subtitle && (
-            <div className="form-header-subtitle">
+            <div className="hairline-form-subtitle">
               {formConfig.form_subtitle}
             </div>
           )}
@@ -253,55 +248,58 @@ export default function FormFieldPrompt({ onCancel }) {
 
       {/* Form Introduction - show only on first field */}
       {formConfig?.introduction && progress?.currentStep === 1 && (
-        <div className="form-introduction">
+        <div className="hairline-form-intro">
           {formConfig.introduction}
         </div>
       )}
 
       {/* Progress indicator */}
-      <div className="form-progress">
-        <div className="form-progress-bar">
+      <div className="hairline-form-progress">
+        <div className="hairline-form-progress-track">
           <div
-            className="form-progress-fill"
+            className="hairline-form-progress-fill"
             style={{ width: `${progress.percentComplete}%` }}
           />
         </div>
-        <div className="form-progress-text">
+        <div className="hairline-form-progress-text">
           Step {progress.currentStep} of {progress.totalSteps}
         </div>
       </div>
 
       {/* Field prompt */}
-      <div className="form-field-content">
+      <div className="hairline-form-field">
         <label
           id={`label-${currentField.id}`}
           htmlFor={!['select', 'name', 'address', 'phone_with_consent'].includes(currentField.type) ? `field-${currentField.id}` : undefined}
-          className="form-field-label"
+          className="hairline-form-label"
         >
           {currentField.prompt || currentField.label}
+          {currentField.required && (
+            <span className="hairline-form-required-mark" aria-hidden="true">*</span>
+          )}
         </label>
 
         {/* Field-specific hints */}
         {currentField.type === 'email' && (
-          <div className="form-field-hint">
+          <div className="hairline-form-hint">
             Please enter a valid email address
           </div>
         )}
 
         {currentField.type === 'phone' && (
-          <div className="form-field-hint">
+          <div className="hairline-form-hint">
             Please enter your phone number (10 digits)
           </div>
         )}
 
         {currentField.type === 'date' && (
-          <div className="form-field-hint">
+          <div className="hairline-form-hint">
             Select a date using the calendar picker
           </div>
         )}
 
         {/* Input fields based on type */}
-        <div className="form-field-input-container">
+        <div className="hairline-form-input-group">
           {/* Text input */}
           {currentField.type === 'text' && (
             <form onSubmit={handleSubmit}>
@@ -310,7 +308,7 @@ export default function FormFieldPrompt({ onCancel }) {
                 id={`field-${currentField.id}`}
                 name={currentField.id}
                 type="text"
-                className="form-field-input"
+                className="hairline-form-input"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 placeholder={currentField.placeholder || 'Type your answer...'}
@@ -328,7 +326,7 @@ export default function FormFieldPrompt({ onCancel }) {
                 id={`field-${currentField.id}`}
                 name={currentField.id}
                 type="email"
-                className="form-field-input"
+                className="hairline-form-input"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 placeholder={currentField.placeholder || 'your.email@example.com'}
@@ -346,7 +344,7 @@ export default function FormFieldPrompt({ onCancel }) {
                 id={`field-${currentField.id}`}
                 name={currentField.id}
                 type="tel"
-                className="form-field-input"
+                className="hairline-form-input"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 placeholder={currentField.placeholder || '(555) 123-4567'}
@@ -364,7 +362,7 @@ export default function FormFieldPrompt({ onCancel }) {
                 id={`field-${currentField.id}`}
                 name={currentField.id}
                 type="number"
-                className="form-field-input"
+                className="hairline-form-input"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 placeholder={currentField.placeholder || 'Enter a number...'}
@@ -382,7 +380,7 @@ export default function FormFieldPrompt({ onCancel }) {
                 id={`field-${currentField.id}`}
                 name={currentField.id}
                 type="date"
-                className="form-field-input"
+                className="hairline-form-input"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 required={currentField.required}
@@ -398,7 +396,7 @@ export default function FormFieldPrompt({ onCancel }) {
                 ref={inputRef}
                 id={`field-${currentField.id}`}
                 name={currentField.id}
-                className="form-field-textarea"
+                className="hairline-form-textarea"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 placeholder={currentField.placeholder || 'Type your answer...'}
@@ -409,10 +407,10 @@ export default function FormFieldPrompt({ onCancel }) {
             </form>
           )}
 
-          {/* Select/radio options */}
+          {/* Select/radio options — rendered as Hairline menu rows */}
           {currentField.type === 'select' && currentField.options && (
             <div
-              className="form-select-options"
+              className="hairline-form-menu"
               role="group"
               aria-labelledby={`label-${currentField.id}`}
             >
@@ -420,10 +418,11 @@ export default function FormFieldPrompt({ onCancel }) {
                 <button
                   key={option.value}
                   type="button"
-                  className="form-select-option"
+                  className="hairline-form-menu-row"
                   onClick={() => handleSelectOption(option.value)}
                 >
-                  {option.label}
+                  <span>{option.label}</span>
+                  <ChevronRight className="hairline-form-menu-row-arrow" size={13} strokeWidth={2} aria-hidden="true" />
                 </button>
               ))}
             </div>
@@ -443,7 +442,7 @@ export default function FormFieldPrompt({ onCancel }) {
           {['text', 'email', 'phone', 'number', 'date', 'textarea'].includes(currentField.type) && (
             <button
               type="button"
-              className="form-submit-button"
+              className="hairline-form-submit"
               onClick={handleSubmit}
               disabled={!inputValue.trim()}
             >
@@ -456,26 +455,19 @@ export default function FormFieldPrompt({ onCancel }) {
         {error && (
           <div
             id={`error-${currentField.id}`}
-            className="form-field-error"
+            className="hairline-form-error"
             role="alert"
             aria-live="polite"
           >
             {error}
           </div>
         )}
-
-        {/* Required field indicator */}
-        {currentField.required && (
-          <div className="form-field-required">
-            * Required field
-          </div>
-        )}
       </div>
 
       {/* Cancel button */}
-      <div className="form-field-actions">
+      <div className="hairline-form-actions">
         <button
-          className="form-cancel-button"
+          className="hairline-form-cancel"
           onClick={handleCancel}
           type="button"
         >
