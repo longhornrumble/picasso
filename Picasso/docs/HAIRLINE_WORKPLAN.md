@@ -23,21 +23,21 @@
 ## Phase 0 — Prep (all parallel, no interdependencies)
 
 ### W0.1 Dead-code deletion
-- **Status:** PR #633
+- **Status:** DONE (1f35f5f)
 - **Objective:** remove confirmed-dead visual code so later items never map it.
 - **Owns:** delete `src/components/chat/ResponseCard.jsx`, `ResponseCard.css`, `ChatWindow.jsx`, `MessageList.jsx`, `MessageBubble.css`, `MessageBubble.jsx.bak`, `useCSSVariables.js.bak` + their tests/imports.
 - **Done when:** `npm run build:staging` + `npm test` green; `grep -r "ResponseCard\|ChatWindow\|MessageList"` in src returns only deletions' absence (no dangling imports).
 - **Guardrail:** delete ONLY the listed files. `MessageBubble.jsx` (no suffix) is live — do not touch.
 
 ### W0.2 Font self-hosting
-- **Status:** PR #635
+- **Status:** DONE (050979a)
 - **Objective:** ship the 4-font menu same-origin.
 - **Owns:** `public/fonts/` (add `plus-jakarta-sans/`, `lato/` woff2; keep `inter/`; remove `montserrat/`, `poppins/`), `src/styles/fonts.css`.
 - **Done when:** dev harness (`test-dynamic.html`) loads each family same-origin (network tab: no external font hosts); weight mapping documented in fonts.css comments (PJS/Inter 400/600/700; **Lato has no 600 → map 600→700**; Arial = system, no files).
 - **Guardrail:** do NOT change `--font-family` consumers or theme.css; this item is assets + @font-face only. Keep the esbuild `externalFontsPlugin` absolute-URL behavior intact.
 
 ### W0.3 Centralized chrome strings
-- **Status:** PR #634
+- **Status:** DONE (b78a4d0)
 - **Objective:** one module for all Hairline UI copy (also the future i18n seam).
 - **Owns:** new `src/i18n/strings.js` (all fixed copy from DESIGN_SPEC: "Ask a question…", "Common questions", "Settings", group labels, privacy checklist + fine print, "Copied", "Powered by", greeting default, etc.).
 - **Done when:** module exists with the spec's exact copy + unit test asserting no empty strings; NOT yet imported anywhere (consumers arrive with their screens).
