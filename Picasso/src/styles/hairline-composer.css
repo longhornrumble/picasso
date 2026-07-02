@@ -216,3 +216,207 @@
 }
 
 /* ==================== END W2.4 ==================== */
+
+/* ==================== W2.5: ATTACH POPOVER + ATTACHMENT CHIP ====================
+ *
+ * Source: design/hairline/DESIGN_SPEC.md "Composer states" > "Attach menu"
+ * + "Photo attached"; design/hairline/bundle/09-attach-menu.png,
+ * 10-photo-attached.png (bundle prevails on discrepancy, per
+ * HAIRLINE_REDESIGN_MAPPING.md §0).
+ *
+ * Renders for: AttachmentMenu.jsx (popover) and FIlePreview.jsx's "file
+ * card" branch (chip) — see FIlePreview.jsx's header comment for the
+ * chip / in-thread-preview scope boundary (W2.5 vs W4.4). Both components
+ * mount outside this file (the popover inside InputBar.jsx's composer, the
+ * chip inside MessageBubble.jsx's thread) — that's fine, CSS selectors
+ * don't care which component tree they match, only this stylesheet's
+ * *ownership* is scoped to W2.5.
+ */
+
+/* Positioning context for the popover (adds to the W2.4 rule above by
+   selector, not by editing it — the popover is new in W2.5). */
+.hairline-composer {
+  position: relative;
+}
+
+/* ==========================================================
+   8. ATTACH POPOVER
+   ========================================================== */
+
+.hairline-attach-popover {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  min-width: 176px;
+  background: var(--surface-raised);
+  border-radius: var(--radius-popover);
+  box-shadow: var(--shadow-popover);
+  padding: 6px;
+}
+
+.hairline-attach-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  padding: 9px 10px;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--duration-fill) var(--ease-ui);
+}
+
+.hairline-attach-row:hover,
+.hairline-attach-row:focus-visible {
+  background: var(--tenant-tint);
+}
+
+.hairline-attach-row:focus-visible {
+  outline: 2px solid var(--tenant-accent);
+  outline-offset: -2px;
+}
+
+.hairline-attach-row-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  color: var(--tenant-accent-deep);
+}
+
+/* ==========================================================
+   9. ATTACHMENT CHIP
+   DESIGN_SPEC.md "Photo attached": thumb slot / filename / size / remove.
+   ========================================================== */
+
+.hairline-attachment-chip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 280px;
+  padding: 8px 10px;
+  background: var(--surface-raised);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-card);
+}
+
+.hairline-attachment-chip--error {
+  border-color: var(--danger);
+}
+
+.hairline-attachment-chip-thumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--tenant-tint-deep);
+  color: var(--tenant-accent-deep);
+}
+
+.hairline-attachment-chip--error .hairline-attachment-chip-thumb {
+  background: var(--hairline-soft);
+  color: var(--danger);
+}
+
+.hairline-attachment-chip-info {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.hairline-attachment-chip-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hairline-attachment-chip--error .hairline-attachment-chip-name {
+  color: var(--danger);
+}
+
+.hairline-attachment-chip-status {
+  font-size: 10.5px;
+  color: var(--ink-faint);
+  margin-top: 2px;
+}
+
+.hairline-attachment-chip--error .hairline-attachment-chip-status {
+  color: var(--danger);
+}
+
+.hairline-attachment-chip-progress {
+  width: 100%;
+  height: 3px;
+  margin-top: 5px;
+  background: var(--hairline);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.hairline-attachment-chip-progress-fill {
+  height: 100%;
+  width: var(--progress-width, 10%);
+  background: var(--tenant-accent);
+  border-radius: 2px;
+  transition: width var(--duration-fill) var(--ease-ui);
+}
+
+.hairline-attachment-chip-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  color: var(--ink-faint);
+  cursor: pointer;
+  transition:
+    color var(--duration-fill) var(--ease-ui),
+    background-color var(--duration-fill) var(--ease-ui);
+}
+
+.hairline-attachment-chip-remove:hover {
+  color: var(--ink-soft);
+  background: var(--hairline-soft);
+}
+
+.hairline-attachment-chip-remove:focus-visible {
+  outline: 2px solid var(--tenant-accent);
+  outline-offset: 1px;
+}
+
+/* Multiple chips in the same message stack vertically (DESIGN_SPEC.md
+   "Attach": "multiple chips stack vertically"). */
+.file-attachments {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hairline-attach-row,
+  .hairline-attachment-chip-progress-fill,
+  .hairline-attachment-chip-remove {
+    transition: none;
+  }
+}
+
+/* ==================== END W2.5 ==================== */
