@@ -112,7 +112,7 @@ export default function MessageBubble({
 }) {
   const { config } = useConfig();
   const { isFormMode } = useFormMode();
-  const { addMessage, sendMessage, isTyping, retryMessage, recordFormCompletion } = useChat();
+  const { addMessage, sendMessage, isTyping, retryMessage, recordFormCompletion, messages } = useChat();
   const formMode = useContext(FormModeContext);
 
   // Track which CTA buttons have been clicked (by button ID) for this message
@@ -501,6 +501,29 @@ export default function MessageBubble({
   }, [streamingFlag, messageId, resolveLiveEl]);
 
   const isFinalized = (!streamingFlag && !!content);
+
+  // W2.7 (DESIGN_SPEC.md screen 3): suggestion-card CTAs render only under
+  // the LATEST bot message in the thread — not every past bot reply that
+  // still carries a ctaButtons array (older messages keep ctaButtons
+  // indefinitely; nothing clears them on newer turns — verified against
+  // StreamingChatProvider/HTTPChatProvider). CTAButtonGroup has no
+  // visibility into sibling messages, so this is computed here from the
+  // full messages list (already exposed by both chat providers via
+  // useChat()) purely to GATE the render below — it does not touch
+  // handleCtaClick, the _position contract, or the ctaButtons prop itself.
+  // Falls back to `true` (render as before) when `messages` is absent or
+  // has no resolvable bot message, so every pre-existing test's mocked
+  // ChatContext (which stub `messages: []`) keeps passing unchanged.
+  const isLatestBotMessage = useMemo(() => {
+    if (!Array.isArray(messages) || messages.length === 0) return true;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const r = messages[i]?.role;
+      if (r === 'assistant' || r === 'bot') {
+        return messages[i]?.id === messageId;
+      }
+    }
+    return true;
+  }, [messages, messageId]);
 
   const handleActionClick = (action) => {
     if (isTyping) return;
@@ -1024,8 +1047,10 @@ export default function MessageBubble({
           </div>
         )}
 
-        {/* CTA Buttons (assistant/bot only) */}
-        {(role === "assistant" || role === "bot") && ctaButtons && ctaButtons.length > 0 && (
+        {/* CTA Buttons (assistant/bot only) — W2.7: latest-bot-message-only gate.
+            "Disappears once used" is handled inside CTAButtonGroup itself
+            (clickedButtonIds), not here. */}
+        {(role === "assistant" || role === "bot") && ctaButtons && ctaButtons.length > 0 && isLatestBotMessage && (
           <CTAButtonGroup
             ctas={ctaButtons}
             onCtaClick={handleCtaClick}
