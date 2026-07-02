@@ -97,7 +97,7 @@
 - **Guardrail:** the send path, upload wiring, and form-mode placeholder logic are frozen; the current double-row mode is replaced by the spec's single pill — that IS the design, not a behavior change.
 
 ### W2.5 Attach popover + attachment chips
-- **Status:** TODO — after W2.4
+- **Status:** PR #644
 - **Objective:** DESIGN_SPEC composer states 3–4: two-row popover ("Photo or video" · "File", per feature flags), chip above composer (thumb slot, name, size, ✕), chips stack, send fills when chip present.
 - **Owns:** `src/components/chat/AttachmentMenu.jsx`, `src/components/chat/FIlePreview.jsx` (chip form + in-thread rendering can split: chip here, in-thread is W4.4), popover/chip rules in `hairline-composer.css`.
 - **Done when:** popover anchors above-left, ESC/outside-tap dismiss, spec shadow/radius; chip matches mock incl. upload progress/error states re-expressed in Hairline; feature-flag gating preserved (4 current options collapse to the 2 spec rows: photo+camera+video → "Photo or video").
