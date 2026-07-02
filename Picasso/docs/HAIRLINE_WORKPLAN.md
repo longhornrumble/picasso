@@ -103,7 +103,7 @@
 - **Done when:** popover anchors above-left, ESC/outside-tap dismiss, spec shadow/radius; chip matches mock incl. upload progress/error states re-expressed in Hairline; feature-flag gating preserved (4 current options collapse to the 2 spec rows: photo+camera+video → "Photo or video").
 
 ### W2.6 Response actions — copy (client-only slice)
-- **Status:** PR #TBD
+- **Status:** PR #646
 - **Objective:** copy · thumbs row under completed bot replies per DESIGN_SPEC screens 3–4 — **copy functional; thumbs rendered but inert** `[D3: thumbs POST is W5.1]`.
 - **Owns:** new `src/components/chat/ResponseActions.jsx` + its rules in `hairline-thread.css`; one mount line in `MessageBubble.jsx` (coordinate w/ W2.2 owner if concurrent).
 - **Done when:** copy uses clipboard API on the reply's plain text, "Copied" confirm ~2s per spec; thumbs toggle visually (mutually exclusive, `aria-pressed`) with a no-op handler clearly marked `// W5.1`; renders only on completed (non-streaming) bot messages; unit tests for copy + toggle state.
