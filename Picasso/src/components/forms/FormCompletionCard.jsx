@@ -1,4 +1,15 @@
+// src/components/forms/FormCompletionCard.jsx
+//
+// Hairline redesign (W4.1): restyled to the same hairline-card anatomy as
+// FormFieldPrompt.jsx's form card (`.hairline-completion*`). Unmocked
+// surface — see FormFieldPrompt.jsx's header comment. Styles live in
+// src/styles/hairline-forms.css.
+//
+// FROZEN (do not change): the config-merge/default fallback logic,
+// placeholder replacement, and the action-button dispatch table
+// (continue/end_session/start_form/external_link).
 import React from 'react';
+import { CheckCircle2 } from 'lucide-react';
 
 /**
  * FormCompletionCard Component
@@ -96,36 +107,24 @@ export default function FormCompletionCard({
   const displayMessage = replacePlaceholders(confirmation_message);
 
   return (
-    <div className="form-completion-card">
+    <div className="hairline-completion">
       {/* Success header */}
-      <div className="form-completion-header">
-        <svg
-          className="form-completion-icon"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-          />
-        </svg>
-        <h3 className="form-completion-title">Form Submitted</h3>
+      <div className="hairline-completion-header">
+        <CheckCircle2 className="hairline-completion-icon" size={20} strokeWidth={2} aria-hidden="true" />
+        <h3 className="hairline-completion-title">Form Submitted</h3>
       </div>
 
       {/* Confirmation message */}
       {displayMessage && (
-        <div className="form-completion-message">
+        <div className="hairline-completion-message">
           {displayMessage}
         </div>
       )}
 
       {/* Summary of submitted data */}
       {formData && Object.keys(formData).length > 0 && (
-        <div className="form-completion-summary">
-          <div className="form-completion-summary-title">Your Information:</div>
+        <div className="hairline-completion-summary">
+          <div className="hairline-completion-summary-title">Your Information:</div>
           {Object.entries(formData).map(([fieldId, value]) => {
             // Find the field definition to get the proper label
             const fieldDef = formFields?.find(f => f.id === fieldId);
@@ -175,11 +174,11 @@ export default function FormCompletionCard({
             }
 
             return (
-              <div key={fieldId} className="form-completion-field">
-                <span className="form-completion-field-label">
+              <div key={fieldId} className="hairline-completion-field">
+                <span className="hairline-completion-field-label">
                   {label}:
                 </span>
-                <span className="form-completion-field-value" style={{ whiteSpace: 'pre-line' }}>
+                <span className="hairline-completion-field-value">
                   {displayValue}
                 </span>
               </div>
@@ -190,11 +189,11 @@ export default function FormCompletionCard({
 
       {/* Next steps */}
       {next_steps && next_steps.length > 0 && (
-        <div className="form-completion-next-steps">
-          <div className="form-completion-next-steps-title">What happens next:</div>
-          <ul className="form-completion-next-steps-list">
+        <div className="hairline-completion-next-steps">
+          <div className="hairline-completion-next-steps-title">What happens next:</div>
+          <ul className="hairline-completion-next-steps-list">
             {next_steps.map((step, index) => (
-              <li key={index} className="form-completion-next-step">
+              <li key={index} className="hairline-completion-next-step">
                 {replacePlaceholders(step)}
               </li>
             ))}
@@ -204,11 +203,11 @@ export default function FormCompletionCard({
 
       {/* Action buttons */}
       {actions && actions.length > 0 && (
-        <div className="form-completion-actions">
+        <div className="hairline-completion-actions">
           {actions.map((action, index) => (
             <button
               key={index}
-              className={`form-completion-action-button ${action.action === 'end_conversation' || action.id === 'end_session' ? 'secondary' : 'primary'}`}
+              className={`hairline-completion-action${action.action === 'end_conversation' || action.id === 'end_session' ? ' hairline-completion-action--secondary' : ''}`}
               onClick={() => {
                 // Handle end conversation
                 if (action.action === 'end_session' || action.action === 'end_conversation' || action.id === 'end_session') {

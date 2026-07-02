@@ -38,6 +38,13 @@ import "./styles/hairline-composer.css";
 // markup exclusively — old `.message`/`.message.user`/`.message.bot`/
 // `.message-content` classes are gone from those components.
 import "./styles/hairline-thread.css";
+// Hairline redesign (W4.1): conversational forms suite — unmocked surface,
+// fresh Hairline treatment (no Turn 10 mock). FormFieldPrompt.jsx,
+// CompositeFieldGroup.jsx, and FormCompletionCard.jsx render exclusively
+// under new `.hairline-form*`/`.hairline-composite*`/`.hairline-completion*`
+// markup — old `.form-field-prompt`/`.composite-field-*`/
+// `.form-completion-*` classes are gone from those components.
+import "./styles/hairline-forms.css";
 
 // ============================================================================
 // ANALYTICS STATE (for User Journey Analytics)
