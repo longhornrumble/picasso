@@ -46,7 +46,7 @@
 ## Phase 1 — Token foundation (W1.1 → W1.2 → W1.3 sequential; the redesign's keystone)
 
 ### W1.1 Tenant ramp derivation engine
-- **Status:** PR #637
+- **Status:** DONE (3779464)
 - **Objective:** `{primaryColor, secondaryColor?, fontKey}` → the 10 `--tenant-*` tokens + font stack. THE hardest artifact — pure logic, no DOM.
 - **Owns:** new `src/theme/tenantTheme.js` + `src/theme/__tests__/tenantTheme.test.js`.
 - **Spec:** DESIGN_SPEC "Derivation guidance": accent = brand desaturated toward `#fffefb`; tints = accent 6–12% over surface; hairlines 15–25%; composer-border between hairline-strong and tint. **accent-deep MUST reach ≥4.5:1 on `#fffefb`** (darken until true); muted/faint are non-text. Reference input `#a08a4a` must reproduce the spec's Atlanta Angels table within a small tolerance (document the delta). Per D10 default: consume primary only; accept secondary in the signature, unused.
@@ -54,14 +54,14 @@
 - **Guardrail:** no DOM/React; no imports from old `useCSSVariables.js`.
 
 ### W1.2 Fixed token sheet
-- **Status:** PR #638
+- **Status:** DONE (c87a5cf)
 - **Objective:** `hairline-tokens.css`: fixed tokens (surface/inks/online/danger/recording), type-scale custom properties, spacing/radius/shadow/motion constants — exactly the DESIGN_SPEC tables.
 - **Owns:** new `src/styles/hairline-tokens.css`.
 - **Done when:** every value in the file traces to a DESIGN_SPEC table (reviewer diffs file vs spec); imported by `iframe-main.jsx` after existing sheets; zero visual change to the live widget (old classes don't consume it yet).
 - **Guardrail:** fixed + reference-default tenant tokens only; no selectors beyond `:root`.
 
 ### W1.3 Token injection provider
-- **Status:** PR #639
+- **Status:** DONE (49e5625)
 - **Objective:** apply `tenantTheme()` output to `documentElement` from the fetched config (name/primary/secondary/font), alongside (not replacing) the old CSSVariablesProvider.
 - **Owns:** new `src/theme/HairlineThemeProvider.jsx` + mount point in `iframe-main.jsx` (one-line insertion).
 - **Done when:** dev harness shows all `--tenant-*` values on `:root` for a real tenant hash; tolerates configs missing any/all brand fields (falls back to reference defaults; no crash — add an old-shape-config fixture test).
