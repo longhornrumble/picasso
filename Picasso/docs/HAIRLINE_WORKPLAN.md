@@ -46,7 +46,7 @@
 ## Phase 1 — Token foundation (W1.1 → W1.2 → W1.3 sequential; the redesign's keystone)
 
 ### W1.1 Tenant ramp derivation engine
-- **Status:** TODO
+- **Status:** PR #637
 - **Objective:** `{primaryColor, secondaryColor?, fontKey}` → the 10 `--tenant-*` tokens + font stack. THE hardest artifact — pure logic, no DOM.
 - **Owns:** new `src/theme/tenantTheme.js` + `src/theme/__tests__/tenantTheme.test.js`.
 - **Spec:** DESIGN_SPEC "Derivation guidance": accent = brand desaturated toward `#fffefb`; tints = accent 6–12% over surface; hairlines 15–25%; composer-border between hairline-strong and tint. **accent-deep MUST reach ≥4.5:1 on `#fffefb`** (darken until true); muted/faint are non-text. Reference input `#a08a4a` must reproduce the spec's Atlanta Angels table within a small tolerance (document the delta). Per D10 default: consume primary only; accept secondary in the signature, unused.
