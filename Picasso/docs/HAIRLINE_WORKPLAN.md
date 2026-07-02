@@ -77,7 +77,7 @@
 - **Guardrail:** launcher/toggle/callout untouched (out of scope this phase, per spec).
 
 ### W2.2 Thread — asymmetric messages
-- **Status:** TODO — after W2.1
+- **Status:** PR #645
 - **Objective:** DESIGN_SPEC screen 3: user = "YOU" caps label + tinted card (max 85%); bot = wordmark label + plain body; 16px group spacing; **no avatar anywhere**; delete avatar rendering path from the thread.
 - **Owns:** `src/components/chat/MessageBubble.jsx` (render/markup ONLY — the `handleCtaClick`/`handleActionClick` dispatchers are frozen logic), `TypingIndicator.jsx` (dots under wordmark label, quiet palette), new `src/styles/hairline-thread.css`.
 - **Done when:** streaming + finalized messages render per spec against a live staging tenant; typing indicator matches "Loading" spec note; MessageBubble/TypingIndicator jest updated (ARIA/class assertions restyled, behavior assertions intact — esp. `ctaActionContract.test.jsx` still green).
@@ -103,7 +103,7 @@
 - **Done when:** popover anchors above-left, ESC/outside-tap dismiss, spec shadow/radius; chip matches mock incl. upload progress/error states re-expressed in Hairline; feature-flag gating preserved (4 current options collapse to the 2 spec rows: photo+camera+video → "Photo or video").
 
 ### W2.6 Response actions — copy (client-only slice)
-- **Status:** TODO — after W2.2
+- **Status:** PR #646
 - **Objective:** copy · thumbs row under completed bot replies per DESIGN_SPEC screens 3–4 — **copy functional; thumbs rendered but inert** `[D3: thumbs POST is W5.1]`.
 - **Owns:** new `src/components/chat/ResponseActions.jsx` + its rules in `hairline-thread.css`; one mount line in `MessageBubble.jsx` (coordinate w/ W2.2 owner if concurrent).
 - **Done when:** copy uses clipboard API on the reply's plain text, "Copied" confirm ~2s per spec; thumbs toggle visually (mutually exclusive, `aria-pressed`) with a no-op handler clearly marked `// W5.1`; renders only on completed (non-streaming) bot messages; unit tests for copy + toggle state.

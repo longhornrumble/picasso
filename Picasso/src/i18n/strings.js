@@ -42,6 +42,14 @@ export const strings = {
     title: 'Common questions',
   },
 
+  // DESIGN_SPEC.md "3. In-flight conversation (`10a In-flight`)" — the "YOU"
+  // sender label above the user's tinted message card. Stored sentence-case
+  // per the module's casing rule; the caps rendering is a CSS
+  // `text-transform: uppercase` concern on `.hairline-sender-label--user`.
+  thread: {
+    youSenderLabel: 'You',
+  },
+
   // DESIGN_SPEC.md "Composer states (`10b`...)" — Idle
   composer: {
     placeholder: 'Ask a question…',

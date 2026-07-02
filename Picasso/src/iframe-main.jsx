@@ -33,6 +33,11 @@ import "./styles/hairline-shell.css";
 // sheet is live the moment it's imported — old theme.css rules for the
 // retired class names simply have no matching elements left to style.
 import "./styles/hairline-composer.css";
+// Hairline redesign (W2.2): thread (asymmetric messages) + typing indicator.
+// MessageBubble.jsx/TypingIndicator.jsx render the new `.hairline-message*`
+// markup exclusively — old `.message`/`.message.user`/`.message.bot`/
+// `.message-content` classes are gone from those components.
+import "./styles/hairline-thread.css";
 // Hairline redesign (W3.3+): full-takeover / overlay views (Settings now;
 // Welcome/Common-questions/Privacy append to the same sheet — see its
 // header comment).

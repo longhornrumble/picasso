@@ -73,6 +73,19 @@ export default function InputBar({ input, setInput }) {
     const textarea = textareaRef.current;
     if (!textarea) return;
 
+    // An empty composer is ALWAYS exactly one line — there is no content that
+    // can wrap. Never trust a measured scrollHeight here: on mount the widget
+    // iframe's layout/fonts may not be settled, and a mis-read scrollHeight
+    // would wrongly size the box tall AND flip the pill to its expanded layout
+    // (which only re-derives on input change, so it stays stuck). Reverting to
+    // the natural rows={1} height keeps the idle state a true single line.
+    if (actualInput.length === 0) {
+      textarea.style.height = "";
+      textarea.style.overflowY = "hidden";
+      setIsExpanded(false);
+      return;
+    }
+
     textarea.style.height = "auto";
     const lineHeight = measureLineHeight(textarea);
     const maxHeight = lineHeight * MAX_COMPOSER_LINES;

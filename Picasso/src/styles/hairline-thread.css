@@ -1,0 +1,297 @@
+/**
+ * hairline-thread.css — Hairline redesign thread + typing indicator (W2.2).
+ *
+ * Owns the asymmetric message thread rendered by `MessageBubble.jsx` (new
+ * `.hairline-message*`/`.hairline-sender-label*`/`.hairline-message-card`
+ * classes) and the typing indicator rendered by `TypingIndicator.jsx` (new
+ * `.hairline-typing*` classes, reusing the same message-group markup).
+ *
+ * Source: design/hairline/DESIGN_SPEC.md "3. In-flight conversation
+ * (`10a In-flight`)" + "Loading" interaction note; cross-checked against the
+ * canonical bundle (design/hairline/bundle/Chat Widget Redesigns.dc.html,
+ * Turn 10 `#t10`, `data-screen-label="10a In-flight"` — the literal inline
+ * styles there are the source for every px value below that DESIGN_SPEC.md's
+ * prose leaves implicit, e.g. the 5px/6px label-to-content gaps).
+ *
+ * Why fresh `.hairline-*` classnames instead of restyling `.message`/
+ * `.message.user`/`.message.bot`/`.message-content` in place: those old
+ * names carry extensive theme.css rules (bubble padding/radius/shadow/
+ * background on `.message-content`; forced `!important` margin resets on
+ * `.message.user .message-text p` — see theme.css ~L1037-1524) built for the
+ * old symmetric-bubble-with-avatar look. The DESIGN_SPEC.md screen-3 look —
+ * a card for the user but NO card/bubble/avatar for the bot — cannot be
+ * reached by overriding that cascade without `!important` fights. Same
+ * precedent as `hairline-shell.css` (W2.1): move the DOM node to an
+ * exclusive class name so old theme.css rules simply stop matching. The
+ * functional `data-message-id` attribute and the `.message-text`/
+ * `.streaming` classnames the streaming writer depends on are preserved
+ * unchanged on their exact original nodes (see MessageBubble.jsx).
+ *
+ * Coexistence: old theme.css still loads (ground rule #8) and still styles
+ * `.action-chip`/`.cta-button`/`.suggested-chip`/`.file-attachments`/
+ * `.retry-button` etc. — those are NOT restyled here (W2.6/W2.7/W4.4 own
+ * them respectively; `.retry-button` has no mock and is W4.4's "error/
+ * loading states" scope). This file only touches the thread's own
+ * `.hairline-*` surface.
+ *
+ * IMPORTANT for downstream items: W2.3 (markdown typography), W2.6 (response
+ * actions — copy/thumbs), and W2.7 (suggestion-card rendering) all append
+ * more rules to THIS file. Sections below are labeled; append after the
+ * closing marker comment at the bottom rather than editing these sections.
+ */
+
+/* ============================================================
+   0. LOCAL FIXED TOKEN
+   DESIGN_SPEC.md's Typography table names the user-message-card text color
+   as `--ink` (a fixed token), but the screen-3 prose gives a different
+   literal hex (#334155) for that exact text. hairline-tokens.css's header
+   comment flags this table-vs-prose divergence and explicitly punts the
+   resolution to "the component building that screen" — this is that
+   resolution. Declared as a token (not inlined) per the "no hard-coded
+   colors" rule: this is a FIXED design constant (not tenant-derived), same
+   pattern as hairline-tokens.css's own `--poweredby-mark-ink`.
+   ============================================================ */
+:root {
+  --ink-message-user: #334155;
+}
+
+/* ============================================================
+   1. THREAD LAYOUT — message group container + spacing
+   Source: bundle 10a In-flight, thread column `gap:16px` (message-group
+   spacing). Implemented as margin-bottom per message rather than a parent
+   `gap` because the scroll container (`.chat-window` in ChatWidget.jsx) is
+   owned by W2.1/shell, not this item — each message wraps itself in its own
+   plain `<div>` in ChatWidget.jsx's `.map()`, so adjacent-sibling selectors
+   on `.hairline-message` can't reach across those wrapper divs.
+   ============================================================ */
+.hairline-message {
+  display: flex;
+  margin-bottom: 16px;
+  min-width: 0;
+}
+
+.hairline-message--bot {
+  justify-content: flex-start;
+}
+
+.hairline-message--user {
+  justify-content: flex-end;
+}
+
+.hairline-message-group {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* Bot group stretches to fill the available thread width (plain body text
+   wraps across the full column). User group shrinks to its own content,
+   capped at 85% — DESIGN_SPEC.md screen 3 "max-width 85%". Flex-item default
+   sizing (flex-basis:auto, no grow) already shrinks the user group to fit;
+   no extra rule needed beyond the max-width cap + right alignment. */
+.hairline-message--bot .hairline-message-group {
+  flex: 1 1 auto;
+  align-items: stretch;
+}
+
+.hairline-message--user .hairline-message-group {
+  max-width: 85%;
+  align-items: flex-end;
+}
+
+/* ============================================================
+   2. SENDER LABEL — caps "YOU" (user, muted) / caps chat_title (bot, deep)
+   Source: DESIGN_SPEC.md Typography table "Sender label" row; bundle
+   label-to-content margins (5px user, 6px bot).
+   ============================================================ */
+.hairline-sender-label {
+  font-size: var(--type-sender-label-size);
+  font-weight: var(--type-sender-label-weight);
+  letter-spacing: var(--type-sender-label-tracking);
+  line-height: 1.3;
+  text-transform: uppercase;
+}
+
+.hairline-sender-label--user {
+  color: var(--tenant-accent-muted);
+  text-align: right;
+  margin-bottom: 5px;
+}
+
+.hairline-sender-label--bot {
+  color: var(--tenant-accent-deep);
+  margin-bottom: 6px;
+}
+
+/* ============================================================
+   3. USER MESSAGE — tinted card
+   Source: DESIGN_SPEC.md screen 3 "tinted card — `--tenant-tint` fill,
+   `--hairline-strong` border, radius 10, padding 10px 13px, text 13px
+   `#334155`" + Spacing & shape table "Message cards (user): radius 10px,
+   padding 10px 13px".
+   ============================================================ */
+.hairline-message-card {
+  box-sizing: border-box;
+  min-width: 0;
+  border: 1px solid var(--hairline-strong);
+  background: var(--tenant-tint);
+  border-radius: var(--radius-card);
+  padding: var(--space-message-card-padding);
+}
+
+.hairline-message-card .message-text {
+  font-size: var(--type-menu-row-compact-size);
+  line-height: var(--type-menu-row-compact-line-height);
+  color: var(--ink-message-user);
+}
+
+/* ============================================================
+   4. BOT MESSAGE — plain body text, no bubble/card, no avatar
+   Source: DESIGN_SPEC.md screen 3 "plain body text 13.5px/1.6 --ink-body".
+   Descendant selectors (`.message-text`, `.streaming-formatted`) are the
+   seam W2.3 appends markdown typography rules under — see the closing
+   marker below.
+   ============================================================ */
+.hairline-message--bot .message-text {
+  display: block;
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-line-height);
+  color: var(--ink-body);
+}
+
+/* ============================================================
+   5. TYPING INDICATOR — three-dot pulse under the wordmark label
+   Source: DESIGN_SPEC.md "Loading" interaction note (not mocked — "keep to
+   the same quiet palette"; no avatar). Reuses section 1/2's message-group +
+   sender-label rules; only the dots themselves are new here. Motion tokens
+   per DESIGN_SPEC.md "Motion": ease-ui, no bounce/overshoot — a pulse
+   (opacity), not the old widget's vertical bounce.
+   ============================================================ */
+.hairline-typing-dots {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.hairline-typing-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--tenant-accent-muted);
+  animation: hairline-typing-pulse 1.3s var(--ease-ui) infinite;
+}
+
+.hairline-typing-dot:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.hairline-typing-dot:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes hairline-typing-pulse {
+  0%, 80%, 100% {
+    opacity: 0.35;
+  }
+  40% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hairline-typing-dot {
+    animation: none;
+    opacity: 0.7;
+  }
+}
+
+/* ==================== END W2.2 (thread + typing) — W2.3/W2.6/W2.7 append below ==================== */
+
+/* ============================================================
+   W2.6 RESPONSE ACTIONS — copy · thumbs-up · thumbs-down
+   Rendered by `ResponseActions.jsx`, mounted under every completed
+   (non-streaming) bot reply — see MessageBubble.jsx.
+   Source: DESIGN_SPEC.md "3. In-flight conversation" ("Response actions"
+   paragraph: 9px top margin, left-aligned row, 3px gap, 26x26 radius-8
+   buttons, idle icon --tenant-accent-muted no fill, hover --tenant-tint
+   fill + --tenant-accent-deep icon) + "4. Feedback given" (thumbed button
+   gets --tenant-tint-deep fill + --tenant-accent-deep icon, thumb-up icon
+   itself fills --tenant-accent; "Copied" confirm 10.5px/600
+   --tenant-accent-deep, 5px right of the buttons, ~2s then fades).
+   Copy is functional (Clipboard API on the reply's plain text); thumbs are
+   a local, mutually-exclusive visual toggle only — the feedback POST is
+   W5.1 (decision D3, post-flip fast-follow). No network call lives here.
+   ============================================================ */
+.hairline-response-actions {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-top: 9px;
+}
+
+.hairline-response-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--size-feedback-button);
+  height: var(--size-feedback-button);
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-feedback-button);
+  background: none;
+  color: var(--tenant-accent-muted);
+  cursor: pointer;
+  transition: background-color var(--duration-fill) var(--ease-ui),
+    color var(--duration-fill) var(--ease-ui);
+}
+
+.hairline-response-action-btn:hover {
+  background: var(--tenant-tint);
+  color: var(--tenant-accent-deep);
+}
+
+.hairline-response-action-btn:focus-visible {
+  outline: 2px solid var(--tenant-accent);
+  outline-offset: 2px;
+}
+
+/* Thumbed state (screen 4 "Feedback given") — mutually exclusive, applied to
+   whichever of thumbs-up/thumbs-down is currently selected. */
+.hairline-response-action-btn--active {
+  background: var(--tenant-tint-deep);
+  color: var(--tenant-accent-deep);
+}
+
+.hairline-response-copied {
+  margin-left: 5px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--tenant-accent-deep);
+  animation: hairline-response-copied-fade 2000ms ease-out;
+}
+
+@keyframes hairline-response-copied-fade {
+  0% {
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  85% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hairline-response-action-btn {
+    transition: none;
+  }
+
+  .hairline-response-copied {
+    animation: none;
+  }
+}
