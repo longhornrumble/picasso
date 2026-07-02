@@ -30,7 +30,7 @@
 - **Guardrail:** delete ONLY the listed files. `MessageBubble.jsx` (no suffix) is live — do not touch.
 
 ### W0.2 Font self-hosting
-- **Status:** TODO
+- **Status:** PR #635
 - **Objective:** ship the 4-font menu same-origin.
 - **Owns:** `public/fonts/` (add `plus-jakarta-sans/`, `lato/` woff2; keep `inter/`; remove `montserrat/`, `poppins/`), `src/styles/fonts.css`.
 - **Done when:** dev harness (`test-dynamic.html`) loads each family same-origin (network tab: no external font hosts); weight mapping documented in fonts.css comments (PJS/Inter 400/600/700; **Lato has no 600 → map 600→700**; Arial = system, no files).
