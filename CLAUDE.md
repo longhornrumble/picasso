@@ -122,7 +122,7 @@ The legacy direct-`aws s3 sync`/`update-function-code` commands in the `Commands
 
 **Lambdas (`Lambdas/lambda/`) — per-function matrix workflows.**
 - `deploy-staging.yml`: on merge to `main`, auto-deploys each **touched** Lambda's code to its staging-account (525) function via OIDC `GitHubActionsDeployRole`. Staging is `$LATEST`-only (rollback = redeploy a prior commit). Matrix maps `source_dir` (some keep historical `_Staging` suffix) → bare staging function name.
-- `deploy-production.yml`: **dispatch-only**, one function per run. MFS uses the **alias model** (`live` alias flip = the deploy; auto-rolls the alias back on failed smoke); BSH/ADA are `$LATEST` + an immutable version snapshot. Smoke retries 15×12s (the AWS_IAM Function-URL auth plane lags `update-function-code` >30s). Env/resource shape is **not** managed here — Terraform owns it (one writer per resource).
+- `deploy-production.yml`: **dispatch-only**, one function per run. MFS uses the **alias model** (`live` alias flip = the deploy; auto-rolls the alias back on failed smoke); BSH/ADA/Picasso_Config_Manager are `$LATEST` + an immutable version snapshot (Picasso_Config_Manager joined the staging+prod matrices 2026-07-02, ending its differently-deployed exception). Smoke retries 15×12s (the AWS_IAM Function-URL auth plane lags `update-function-code` >30s). Env/resource shape is **not** managed here — Terraform owns it (one writer per resource).
 
 **IaC (`infra/`).**
 - **Staging belt**: `infra/` applies to the staging account (525) via CI OIDC. New resources go here first (per the Deployment SOP above).
@@ -393,7 +393,7 @@ npm run docs:validate    # Validate docs
 **Infrastructure:**
 - S3: `picasso-config-builder-prod`
 - URL: http://picasso-config-builder-prod.s3-website-us-east-1.amazonaws.com
-- Lambda API: `picasso-config-api` → https://56mwo4zatkiqzpancrkkzqr43e0nkrui.lambda-url.us-east-1.on.aws
+- Lambda API: `Picasso_Config_Manager` (prod 614, bare-named — no `picasso-config-api` exists) → https://56mwo4zatkiqzpancrkkzqr43e0nkrui.lambda-url.us-east-1.on.aws
 
 ### Deal Prep System
 ```bash
