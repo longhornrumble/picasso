@@ -1,80 +1,90 @@
 // src/components/chat/FilePreview.jsx
+//
+// Hairline redesign (W2.5): attachment chip.
+//
+// Scope boundary (docs/HAIRLINE_WORKPLAN.md W2.5 / W4.4): this file has two
+// render paths. The image/video/PDF inline-preview branches below
+// (`.image-preview` / `.video-preview` / `.pdf-preview`) are the "sent
+// attachment rendered in-thread" surface — that is W4.4's scope and is left
+// untouched (still old theme.css classes, old look). Only the fallback
+// "file card" branch — the icon + filename + size/status + remove chip used
+// for in-flight uploads, errored uploads, and any non-previewable file type
+// — is restyled here into DESIGN_SPEC.md "Photo attached" chip anatomy.
+//
+// Entanglement note: today, selecting a file in AttachmentMenu.jsx posts it
+// immediately via addMessage (no staged pre-send state), so an attached
+// *image* renders straight into the rich inline-preview branch below rather
+// than this chip — only non-previewable files (or an explicit `uploading`/
+// `error` uploadState) take the chip path. Reproducing the mock's "photo
+// attached, ready to send" chip pixel-for-pixel for images specifically
+// would require a genuine pre-send staging state in InputBar.jsx, which is
+// out of this item's file ownership (frozen, W2.4). Flagged in the PR
+// rather than worked around.
 import React from "react";
-import { FileText, Image, Video, Music, Archive, File, X } from "lucide-react";
+import { FileText, Image, Video, Music, Archive, File, AlertCircle, X } from "lucide-react";
+import strings from "../../i18n/strings";
 
 export default function FilePreview({ file, uploadState = "complete", onCancel }) {
   // Helper function to check if file is an image
   const isImage = file?.type && typeof file.type === 'string' && file.type.startsWith('image/');
 
-  // Helper function to get file type label for icon
-  const getFileTypeLabel = (mimeType) => {
-    if (!mimeType) return 'FILE';
-    
-    if (mimeType.startsWith('image/')) return 'IMG';
-    if (mimeType.startsWith('video/')) return 'VID';
-    if (mimeType.startsWith('audio/')) return 'AUD';
-    if (mimeType.includes('pdf')) return 'PDF';
-    if (mimeType.includes('word') || mimeType.includes('document')) return 'DOC';
-    if (mimeType.includes('sheet') || mimeType.includes('excel')) return 'XLS';
-    if (mimeType.includes('text')) return 'TXT';
-    if (mimeType.includes('zip') || mimeType.includes('rar')) return 'ZIP';
-    
-    return 'FILE';
+  // Chip thumb icon by file type (DESIGN_SPEC.md "Photo attached": "32px
+  // radius-8 ... thumb slot with image icon" — icon-based, not a text label).
+  const getFileTypeIcon = (mimeType) => {
+    const iconProps = { size: 16, strokeWidth: 2 };
+    if (!mimeType) return <File {...iconProps} />;
+
+    if (mimeType.startsWith('image/')) return <Image {...iconProps} />;
+    if (mimeType.startsWith('video/')) return <Video {...iconProps} />;
+    if (mimeType.startsWith('audio/')) return <Music {...iconProps} />;
+    if (mimeType.includes('zip') || mimeType.includes('rar')) return <Archive {...iconProps} />;
+    if (
+      mimeType.includes('pdf') ||
+      mimeType.includes('word') ||
+      mimeType.includes('document') ||
+      mimeType.includes('sheet') ||
+      mimeType.includes('excel') ||
+      mimeType.includes('text')
+    ) {
+      return <FileText {...iconProps} />;
+    }
+
+    return <File {...iconProps} />;
   };
 
   // Helper function to get status text based on upload state
   const getStatusText = () => {
     switch (uploadState) {
       case 'uploading':
-        return file?.progress ? `Uploading... ${file.progress}%` : 'Uploading...';
+        return file?.progress ? `Uploading… ${file.progress}%` : 'Uploading…';
       case 'error':
         return 'Upload failed';
       case 'complete':
-        return file?.size ? formatFileSize(file.size) : 'Ready';
       default:
-        return 'Ready';
+        return file?.size
+          ? `${formatFileSize(file.size)} · ${strings.attachmentChip.readyToSend}`
+          : strings.attachmentChip.readyToSend;
     }
   };
 
-  // Helper function to format file size
+  // Helper function to format file size (matches DESIGN_SPEC.md's
+  // "2.4 MB" one-decimal precision for the MB range).
   const formatFileSize = (bytes) => {
     if (!bytes) return '';
-    if (bytes < 1024) return bytes + ' B';
-    if (bytes < 1024 * 1024) return Math.round(bytes / 1024) + ' KB';
-    return Math.round(bytes / (1024 * 1024)) + ' MB';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
-  // Helper function to get styling based on upload state (currently unused)
-  const _getStateStyle = () => {
+  const getChipClass = () => {
     switch (uploadState) {
       case 'uploading':
-        return {
-          borderColor: '#3b82f6',
-          backgroundColor: '#eff6ff'
-        };
+        return 'hairline-attachment-chip hairline-attachment-chip--uploading';
       case 'error':
-        return {
-          borderColor: '#ef4444',
-          backgroundColor: '#fef2f2'
-        };
+        return 'hairline-attachment-chip hairline-attachment-chip--error';
       case 'complete':
       default:
-        return {
-          borderColor: '#e5e7eb',
-          backgroundColor: '#ffffff'
-        };
-    }
-  };
-
-  const getFileCardClass = () => {
-    switch (uploadState) {
-      case 'uploading':
-        return 'file-card file-card-uploading';
-      case 'error':
-        return 'file-card file-card-error';
-      case 'complete':
-      default:
-        return 'file-card file-card-complete';
+        return 'hairline-attachment-chip hairline-attachment-chip--complete';
     }
   };
 
@@ -113,42 +123,52 @@ export default function FilePreview({ file, uploadState = "complete", onCancel }
           />
         </div>
       ) : (
-        /* File Card */
-        <div className={getFileCardClass()}>
-          {/* Cancel button for uploading files */}
-          {uploadState === 'uploading' && onCancel && (
-            <button
-              onClick={onCancel}
-              className="file-cancel-button"
-            >
-              <X size={12} />
-            </button>
-          )}
-
-          {/* File Icon */}
-          <div className={`file-icon ${uploadState === 'error' ? 'file-icon-error' : ''}`}>
-            {uploadState === 'error' ? '✗' : getFileTypeLabel(file.type)}
+        /* Attachment chip — DESIGN_SPEC.md "Photo attached": thumb slot,
+           filename, size/status, remove. Covers uploading/error states and
+           any complete-but-non-previewable file type. */
+        <div className={getChipClass()}>
+          <div className="hairline-attachment-chip-thumb" aria-hidden="true">
+            {uploadState === 'error' ? (
+              <AlertCircle size={16} strokeWidth={2} />
+            ) : (
+              getFileTypeIcon(file.type)
+            )}
           </div>
 
-          {/* File Info */}
-          <div className="file-info">
-            <div className={`file-name ${uploadState === 'error' ? 'file-name-error' : ''}`}>
-              {file.name}
-            </div>
-            <div className={`file-status ${uploadState === 'error' ? 'file-status-error' : ''}`}>
+          <div className="hairline-attachment-chip-info">
+            <div className="hairline-attachment-chip-name">{file.name}</div>
+            <div
+              className="hairline-attachment-chip-status"
+              role="status"
+              aria-live="polite"
+            >
               {getStatusText()}
             </div>
 
-            {/* Progress Bar for Uploading */}
+            {/* Progress bar while uploading */}
             {uploadState === 'uploading' && (
-              <div className="file-progress-bar">
-                <div 
-                  className="file-progress-fill"
+              <div className="hairline-attachment-chip-progress">
+                <div
+                  className="hairline-attachment-chip-progress-fill"
                   style={{ '--progress-width': file.progress ? `${file.progress}%` : '10%' }}
                 />
               </div>
             )}
           </div>
+
+          {/* Remove — DESIGN_SPEC.md's chip always offers a way to remove;
+              gated on `onCancel` being supplied so callers that don't wire
+              it up see no behavior change. */}
+          {onCancel && (
+            <button
+              type="button"
+              onClick={onCancel}
+              className="hairline-attachment-chip-remove"
+              aria-label={`Remove ${file.name}`}
+            >
+              <X size={13} strokeWidth={2} />
+            </button>
+          )}
         </div>
       )}
     </div>
