@@ -23,9 +23,19 @@
         const tenantHash = urlParams.get('t') || 'my87674d777bf9';
         document.getElementById('tenantHash').textContent = tenantHash;
 
-        // Dynamically create widget script - use production CDN
+        // Dynamically create widget script.
+        // Default to the local dev build (npm run dev serves widget.js at :8000),
+        // matching every other test-*.html harness and the CLAUDE.md docs, so this
+        // page previews LOCAL changes. Override with ?src=prod|staging to point at a
+        // deployed CDN when smoke-testing a released build instead.
+        const srcParam = urlParams.get('src');
+        const WIDGET_SRC = {
+            prod: 'https://chat.myrecruiter.ai/widget.js',
+            staging: 'https://staging.chat.myrecruiter.ai/widget.js',
+        }[srcParam] || 'http://localhost:8000/widget.js';
+
         const script = document.createElement('script');
-        script.src = 'https://chat.myrecruiter.ai/widget.js';
+        script.src = WIDGET_SRC;
         script.setAttribute('data-tenant', tenantHash);
         document.body.appendChild(script);
     </script>
