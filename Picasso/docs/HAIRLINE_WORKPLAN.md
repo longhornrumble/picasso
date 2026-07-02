@@ -37,7 +37,7 @@
 - **Guardrail:** do NOT change `--font-family` consumers or theme.css; this item is assets + @font-face only. Keep the esbuild `externalFontsPlugin` absolute-URL behavior intact.
 
 ### W0.3 Centralized chrome strings
-- **Status:** TODO
+- **Status:** PR #634
 - **Objective:** one module for all Hairline UI copy (also the future i18n seam).
 - **Owns:** new `src/i18n/strings.js` (all fixed copy from DESIGN_SPEC: "Ask a question…", "Common questions", "Settings", group labels, privacy checklist + fine print, "Copied", "Powered by", greeting default, etc.).
 - **Done when:** module exists with the spec's exact copy + unit test asserting no empty strings; NOT yet imported anywhere (consumers arrive with their screens).
