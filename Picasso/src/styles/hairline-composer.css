@@ -1,0 +1,218 @@
+/**
+ * hairline-composer.css — Hairline redesign composer (W2.4 + W2.5).
+ *
+ * OWNERSHIP (docs/HAIRLINE_WORKPLAN.md):
+ *   - W2.4 (this section): idle pill + expanded rect states — the sections
+ *     below down to "END W2.4". Do not add popover/chip rules here.
+ *   - W2.5 (append after this file's W2.4 section): attach popover +
+ *     attachment chip rules. Append a new top-level section below the
+ *     "END W2.4" marker; do not edit the W2.4 sections above it.
+ *
+ * Source: design/hairline/DESIGN_SPEC.md "Composer states" (`10b`) +
+ * design/hairline/bundle/07-composer-idle.png, 08-composer-expanded.png
+ * (bundle prevails on discrepancy, per HAIRLINE_REDESIGN_MAPPING.md §0).
+ *
+ * Consumes tokens from hairline-tokens.css (W1.2) and the per-tenant
+ * `--tenant-*` custom properties injected by HairlineThemeProvider (W1.3).
+ * No hard-coded colors — every color below is a token reference.
+ */
+
+/* ==========================================================
+   1. ROOT WRAPPER
+   ========================================================== */
+
+.hairline-composer {
+  width: 100%;
+  font-family: var(--tenant-font-family, "Plus Jakarta Sans", system-ui, sans-serif);
+}
+
+/* ==========================================================
+   2. PILL — shared base (idle layout is the default; `.is-expanded`
+   overrides below in section 6 restyle it into the expanded rect)
+   ========================================================== */
+
+.hairline-composer-pill {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 9px;
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--surface-raised);
+  border: 1px solid var(--composer-border);
+  border-radius: var(--radius-composer-pill);
+  padding: 8px 8px 8px 12px;
+  box-shadow: var(--shadow-composer);
+  transition:
+    border-radius var(--duration-composer-expand) var(--ease-ui),
+    padding var(--duration-composer-expand) var(--ease-ui);
+}
+
+.hairline-composer-pill.is-expanded {
+  align-items: flex-start;
+  border-radius: var(--radius-composer-expanded);
+  padding: 12px 12px 8px;
+}
+
+/* ==========================================================
+   3. TEXTAREA
+   ========================================================== */
+
+.composer-textarea {
+  order: 2;
+  flex: 1 1 auto;
+  min-width: 0;
+  border: none;
+  outline: none;
+  resize: none;
+  background: transparent;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: var(--type-body-size);
+  line-height: 1.5; /* DESIGN_SPEC.md "Expanded" — "13.5px/1.5 --ink" */
+  padding: 0;
+  margin: 0;
+}
+
+.composer-textarea::placeholder {
+  color: var(--ink-faint);
+}
+
+.hairline-composer-pill.is-expanded .composer-textarea {
+  order: 1;
+  flex: 1 1 100%;
+  width: 100%;
+}
+
+/* ==========================================================
+   4. ICON BUTTONS (attach, mic) — 30px hit target, icon-only
+   ========================================================== */
+
+.composer-icon-btn {
+  order: 1;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--tenant-accent-muted);
+  cursor: pointer;
+  transition: color var(--duration-fill) var(--ease-ui);
+}
+
+.composer-icon-btn:hover {
+  color: var(--tenant-accent-deep);
+}
+
+.composer-icon-btn:focus-visible {
+  outline: 2px solid var(--tenant-accent);
+  outline-offset: 1px;
+  border-radius: var(--radius-feedback-button);
+}
+
+.composer-attach-btn {
+  order: 1;
+}
+
+/* Popover open — icon turns accent-deep (DESIGN_SPEC.md "Attach menu":
+   "tapping + (icon turns --tenant-accent-deep)"). */
+.composer-attach-btn[aria-expanded="true"] {
+  color: var(--tenant-accent-deep);
+}
+
+.composer-mic-btn {
+  order: 3;
+}
+
+.hairline-composer-pill.is-expanded .composer-attach-btn {
+  order: 2;
+  margin-top: 6px;
+}
+
+.hairline-composer-pill.is-expanded .composer-mic-btn {
+  order: 4;
+  margin-top: 6px;
+}
+
+/* ==========================================================
+   5. SPACER — invisible in the idle row (textarea's own flex-grow
+   already separates attach/mic/send); becomes the flexible gap that
+   pushes attach left / mic+send right on the expanded controls row.
+   ========================================================== */
+
+.composer-spacer {
+  display: none;
+}
+
+.hairline-composer-pill.is-expanded .composer-spacer {
+  display: block;
+  order: 3;
+  flex: 1 1 auto;
+}
+
+/* ==========================================================
+   6. SEND BUTTON — unfilled until there's content to send;
+   fills to `--tenant-accent` the moment there is (150ms, DESIGN_SPEC.md
+   "Motion": "send fill/unfill 150ms color").
+   ========================================================== */
+
+.composer-send-btn {
+  order: 4;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--size-send-button);
+  height: var(--size-send-button);
+  border-radius: 50%;
+  border: 1px solid var(--composer-border);
+  background: var(--surface-raised);
+  color: var(--tenant-accent-faint);
+  cursor: pointer;
+  transition:
+    background-color var(--duration-fill) var(--ease-ui),
+    border-color var(--duration-fill) var(--ease-ui),
+    color var(--duration-fill) var(--ease-ui);
+}
+
+.composer-send-btn.is-active {
+  border-color: var(--tenant-accent);
+  background: var(--tenant-accent);
+  color: var(--surface-raised);
+}
+
+.composer-send-btn:disabled {
+  cursor: not-allowed;
+}
+
+.composer-send-btn:not(:disabled):hover {
+  filter: brightness(0.96);
+}
+
+.composer-send-btn:focus-visible {
+  outline: 2px solid var(--tenant-accent);
+  outline-offset: 2px;
+}
+
+.hairline-composer-pill.is-expanded .composer-send-btn {
+  order: 5;
+  margin-top: 6px;
+}
+
+/* ==========================================================
+   7. REDUCED MOTION
+   ========================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  .hairline-composer-pill,
+  .composer-icon-btn,
+  .composer-send-btn {
+    transition: none;
+  }
+}
+
+/* ==================== END W2.4 ==================== */
