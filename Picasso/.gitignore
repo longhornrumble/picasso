@@ -204,3 +204,5 @@ Sandbox/*.json
 
 # Deployment packages
 deployment-*.zip
+# Hairline design bundle — canonical mocks are source-of-truth, always tracked
+!design/hairline/bundle/*.png
