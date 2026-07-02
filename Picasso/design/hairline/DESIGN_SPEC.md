@@ -1,6 +1,6 @@
 # Hairline Chat Widget — Design Spec (Tenant-Themed, Multi-Tenant)
 
-> **Provenance:** transcribed 2026-07-02 from the design handoff bundle README (design director, 10 iterations). The original bundle — `Chat Widget Redesigns.dc.html` (exploration canvas; **Turn 10 `#t10` = canonical master set**), `screenshots/` (PNG captures of every Turn 10 screen), `assets/logo-icon.png` — should be added at `Picasso/design/hairline/bundle/`; **on any discrepancy the original bundle prevails.**
+> **Provenance:** transcribed 2026-07-02 from the design handoff bundle README (design director, 10 iterations). The original bundle lives at [`bundle/`](bundle/) — `Chat Widget Redesigns.dc.html` (exploration canvas; **Turn 10 `#t10` = canonical master set**) and the 11 numbered PNG captures of every Turn 10 screen; **on any discrepancy the original bundle prevails.** (Not included: the canvas runtime `support.js` — the canvas won't render interactively, but its inline markup/styles are readable directly; and `assets/logo-icon.png` — the powered-by MyRecruiter mark asset gets sourced from the brand system when its consumer is built.)
 > **Product amendments (Chris, 2026-07-02, supersede this spec where they differ):** (1) tenant brand axis is name + primary + **secondary** color + **font from a 4-option menu** (Plus Jakarta Sans / Inter / Lato / Arial) — not single-color/single-family; type *scale* below stays fixed. (2) See `Picasso/docs/HAIRLINE_REDESIGN_MAPPING.md` §0 fidelity rule and §7 decisions D1–D10.
 
 ## Overview
@@ -204,6 +204,6 @@ Purpose: the old long Data form, aggressively condensed (decided).
 - Icons: Lucide (lucide.dev), 2px stroke — sliders, x, chevrons, trash-2, download, check, plus, mic, image, file-text, copy, thumbs-up, thumbs-down, arrow-up.
 - Font: Plus Jakarta Sans 400/600/700 (self-hosted in this codebase, not Google Fonts CDN — cross-origin iframe).
 
-## Screenshot index (bundle `screenshots/`, numbered in spec order)
+## Screenshot index ([`bundle/*.png`](bundle/), numbered in spec order)
 
 `01-welcome` · `02-common-questions` · `03-in-flight` · `04-feedback-given` · `05-settings` · `06-privacy` · `07-composer-idle` · `08-composer-expanded` · `09-attach-menu` · `10-photo-attached` · `11-recording`
