@@ -89,6 +89,39 @@ export const strings = {
     },
     clearAllMessages: 'Clear all messages',
     clearAllMessagesFinePrint: "Logged for audit compliance · can't be undone",
+    // Transient label the "Download conversations" row swaps to after a
+    // successful/failed export (~2s, mirrors responseActions.copied's
+    // inline-confirm convention above) — replaces the old panel's
+    // page-level toast notification (HAIRLINE_WORKPLAN.md W3.3: "toast
+    // pattern replaced by spec-conformant inline confirms"). Invented for
+    // W3.3 — no Turn 10 mock shows export feedback at all. Flagged in the
+    // PR alongside clearConfirm below.
+    downloaded: 'Downloaded',
+    downloadFailed: 'Download failed',
+    // DESIGN_SPEC.md screen 5 says the destructive action "requires an
+    // inline confirm (confirm/cancel pill pair replaces the row)" but
+    // doesn't give literal copy for it, and the copy doesn't appear in the
+    // Turn 10 (canonical) bundle markup either — W0.3 flagged this as a
+    // gap. The strings below are copied verbatim from the bundle's Turn 1c
+    // ("1c Clear confirm" screenshot label) exploration, which mocks this
+    // exact interaction (inline confirm/cancel pill pair, "no red panel")
+    // under a slide-over settings layout the product later rejected in
+    // favor of the full-takeover from Turn 10 — the COPY is still the
+    // bundle's own vocabulary for this exact moment, just sourced from a
+    // non-canonical turn. Flagged in the W3.3 PR for Chris to confirm
+    // wording; `confirmingLabel` is carried over unchanged from the
+    // pre-Hairline StateManagementPanel ("Clearing...").
+    clearConfirm: {
+      title: 'Clear this conversation?',
+      body: "This is logged for audit compliance and can't be undone.",
+      confirmLabel: 'Clear messages',
+      confirmingLabel: 'Clearing...',
+      cancelLabel: 'Cancel',
+      // Shown only if the clear itself throws (rare — clearMessages() is a
+      // local state operation, not a network call). Invented; no mock/prose
+      // covers an error path here.
+      errorLabel: 'Failed to clear. Please try again.',
+    },
   },
 
   // DESIGN_SPEC.md "6. Privacy & compliance (`10a Privacy`)"

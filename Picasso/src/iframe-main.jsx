@@ -33,6 +33,10 @@ import "./styles/hairline-shell.css";
 // sheet is live the moment it's imported — old theme.css rules for the
 // retired class names simply have no matching elements left to style.
 import "./styles/hairline-composer.css";
+// Hairline redesign (W3.3+): full-takeover / overlay views (Settings now;
+// Welcome/Common-questions/Privacy append to the same sheet — see its
+// header comment).
+import "./styles/hairline-views.css";
 
 // ============================================================================
 // ANALYTICS STATE (for User Journey Analytics)
