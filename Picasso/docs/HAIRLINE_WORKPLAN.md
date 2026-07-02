@@ -70,7 +70,7 @@
 ## Phase 2 — Core screens (W2.1 ⊸ W2.2 first; then parallel per file-ownership)
 
 ### W2.1 Shell + header `[D1: default = fixed panel, no edge mode]`
-- **Status:** TODO — after W1.2/W1.3
+- **Status:** PR #643
 - **Objective:** DESIGN_SPEC "Widget Shell" + header (wordmark, sliders icon, ✕; no avatar, no subtitle, no help icon).
 - **Owns:** `src/components/chat/ChatHeader.jsx`, shell markup/classes in `ChatWidget.jsx` (container only — not message list, not callout), new `src/styles/hairline-shell.css`.
 - **Done when:** desktop panel is 380×min(640px,100vh−48px) inside the iframe (host change is W6.1 — inside-iframe layout must center/fit until then); 2px `--tenant-accent` top border, radius 12, spec shadow; wordmark renders `chat_title` caps at spec type incl. "BIG BROTHERS BIG SISTERS" stress-test fixture; header icons Lucide 15px muted→deep hover; ChatHeader jest updated.
