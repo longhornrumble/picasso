@@ -77,7 +77,7 @@
 - **Guardrail:** launcher/toggle/callout untouched (out of scope this phase, per spec).
 
 ### W2.2 Thread — asymmetric messages
-- **Status:** TODO — after W2.1
+- **Status:** PR #645
 - **Objective:** DESIGN_SPEC screen 3: user = "YOU" caps label + tinted card (max 85%); bot = wordmark label + plain body; 16px group spacing; **no avatar anywhere**; delete avatar rendering path from the thread.
 - **Owns:** `src/components/chat/MessageBubble.jsx` (render/markup ONLY — the `handleCtaClick`/`handleActionClick` dispatchers are frozen logic), `TypingIndicator.jsx` (dots under wordmark label, quiet palette), new `src/styles/hairline-thread.css`.
 - **Done when:** streaming + finalized messages render per spec against a live staging tenant; typing indicator matches "Loading" spec note; MessageBubble/TypingIndicator jest updated (ARIA/class assertions restyled, behavior assertions intact — esp. `ctaActionContract.test.jsx` still green).
