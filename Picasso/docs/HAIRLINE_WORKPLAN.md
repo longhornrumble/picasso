@@ -23,7 +23,7 @@
 ## Phase 0 — Prep (all parallel, no interdependencies)
 
 ### W0.1 Dead-code deletion
-- **Status:** TODO
+- **Status:** PR #633
 - **Objective:** remove confirmed-dead visual code so later items never map it.
 - **Owns:** delete `src/components/chat/ResponseCard.jsx`, `ResponseCard.css`, `ChatWindow.jsx`, `MessageList.jsx`, `MessageBubble.css`, `MessageBubble.jsx.bak`, `useCSSVariables.js.bak` + their tests/imports.
 - **Done when:** `npm run build:staging` + `npm test` green; `grep -r "ResponseCard\|ChatWindow\|MessageList"` in src returns only deletions' absence (no dangling imports).
