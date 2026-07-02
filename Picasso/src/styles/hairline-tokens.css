@@ -1,0 +1,230 @@
+/**
+ * hairline-tokens.css — Hairline redesign fixed token sheet (W1.2).
+ *
+ * Definitions only. A single `:root` block — no component/class selectors,
+ * no `@media`, no consumer of these tokens yet. Nothing in the live widget
+ * reads these custom properties today, so this file has ZERO visual effect
+ * on its own; old `theme.css` continues to drive everything until each
+ * surface migrates in Phase 2+ (coexistence rule, HAIRLINE_WORKPLAN.md
+ * ground rule #8 — this new `--tenant-*`/`--ink-*`/etc. namespace must not,
+ * and does not, collide with old `--primary-color`-era names).
+ *
+ * Sources (every value below traces to one of these):
+ *   - design/hairline/DESIGN_SPEC.md — "Widget Shell", "Design Tokens"
+ *     (Color — tenant-scoped / fixed, Typography, Spacing & shape, Motion)
+ *     and the per-screen sections (used only to resolve a range/parenthetical
+ *     the summary tables leave ambiguous — see inline notes).
+ *   - design/hairline/bundle/Chat Widget Redesigns.dc.html (Turn 10, `#t10`)
+ *     — the canonical bundle; consulted only where DESIGN_SPEC.md itself
+ *     defers to it (provenance note) or states a range that a specific mock
+ *     instance resolves. Flagged inline as "(bundle-only detail)" wherever a
+ *     value isn't independently stated in DESIGN_SPEC.md's prose.
+ *   - src/theme/tenantTheme.js (W1.1) — reference-default `--tenant-*` values
+ *     are `tenantTheme({ primaryColor: '#a08a4a' })`'s actual computed
+ *     output, not hand-copied from the spec's swatch column (see §6 below).
+ *
+ * Scope boundary (deliberate): this sheet covers the *shared, reusable*
+ * constants — the fixed color table, the general type scale, the general
+ * spacing/radius/shadow/motion tables, and the tenant-ramp reference
+ * defaults. One-off pixel values that appear only in a single screen's mock
+ * (e.g. the "Common questions" overlay header's 12.5px/700 label) are left
+ * for that screen's owning work item (W2.x/W3.x) to pull directly from the
+ * spec/bundle when building that surface — duplicating every such value here
+ * would front-run work this sheet isn't scoped to do.
+ */
+
+:root {
+  /* ==========================================================
+     1. FIXED COLOR TOKENS
+     Source: DESIGN_SPEC.md § "Design Tokens" > "Color — fixed (all tenants)"
+     ========================================================== */
+  --surface: #fffefb;
+  --surface-raised: #ffffff;
+  --ink: #0f172a;
+  --ink-body: #475569;
+  --ink-soft: #64748b;
+  --ink-faint: #94a3b8;
+  --ink-ghost: #b7ae93;
+  --online: #22c55e;
+  --danger: #dc2626;
+  --recording: #dc2626;
+
+  /* "MyRecruiter" brand-mark ink in the powered-by line. Lives in the
+     Typography table's "Powered-by" row ("... 'MyRecruiter' at 10px/700/
+     `#8f8871`"), not the fixed-color table above — kept as its own token
+     rather than folded into the 5 --ink-* names since the spec scopes it to
+     that one wordmark instance specifically. */
+  --poweredby-mark-ink: #8f8871;
+
+  /* ==========================================================
+     2. TYPE SCALE
+     Source: DESIGN_SPEC.md § "Design Tokens" > "Typography" table.
+     Sizes / weights / letter-spacing / line-heights only — per-style TEXT
+     COLOR is a component concern (apply the ink/tenant tokens above; note
+     the Typography table's "Menu row / message (user)" row names `--ink`
+     but DESIGN_SPEC.md's own screen-3/screen-6 prose gives the literal hex
+     `#334155` for user-message and checklist body text instead — an
+     unresolved table-vs-prose divergence for the *component* building that
+     screen to pick up, out of scope for a colorless type-scale sheet).
+     ========================================================== */
+
+  /* Wordmark — header tenant name */
+  --type-wordmark-size: 11px;
+  --type-wordmark-weight: 700;
+  --type-wordmark-tracking: 0.14em;
+
+  /* Page title — "Settings", "Privacy & compliance" */
+  --type-page-title-size: 13px;
+  --type-page-title-weight: 700;
+
+  /* Greeting — "Hi there 👋" */
+  --type-greeting-size: 21px;
+  --type-greeting-weight: 700;
+
+  /* Body — bot messages, welcome copy. The table gives a 1.6-1.65 line-height
+     range; this sheet standardizes on 1.6, matching the value the workplan's
+     W2.3 markdown-typography item already cites ("13.5px/1.6 --ink-body
+     scale"). The bundle's welcome-screen paragraph specifically renders at
+     1.65 (bundle-only detail) — a documented per-instance variance, not a
+     second token. */
+  --type-body-size: 13.5px;
+  --type-body-weight: 400;
+  --type-body-line-height: 1.6;
+
+  /* Menu row / message (user) — the table's "13.5px (13px in cards)"
+     parenthetical, resolved against the bundle: welcome-screen menu-card
+     rows render at 13.5px (default); suggestion-card rows and the
+     user-message card both render at the 13px "in cards" variant. */
+  --type-menu-row-size: 13.5px;
+  --type-menu-row-weight: 600;
+  --type-menu-row-compact-size: 13px;
+  --type-menu-row-compact-line-height: 1.5; /* user-message card body text (bundle-only detail) */
+
+  /* Sender label — bot wordmark label above replies, "YOU" above user
+     messages (color varies by role — tenant tokens, not part of this sheet) */
+  --type-sender-label-size: 9px;
+  --type-sender-label-weight: 700;
+  --type-sender-label-tracking: 0.12em;
+
+  /* Row label — Settings rows ("Current session", "Connection", …) */
+  --type-row-label-size: 13px;
+  --type-row-label-weight: 600;
+
+  /* Row value — Settings row values ("1 message", "Online", …) */
+  --type-row-value-size: 12.5px;
+  --type-row-value-weight: 400;
+
+  /* Group label — "Conversation" / "Preferences" / "Your data" */
+  --type-group-label-size: 11px;
+  --type-group-label-weight: 700;
+
+  /* Fine print — the table's "10-12px / lh 1.5-1.65" range resolves to two
+     concrete per-screen instances DESIGN_SPEC.md's own prose names exactly:
+     the screen-6 privacy paragraph ("one paragraph of fine print (12px/1.65/
+     `--ink-soft`)") and the screen-5 settings audit note ("fine print
+     ... (10px `--ink-ghost`)"). */
+  --type-fine-print-size: 12px; /* screen 6 privacy paragraph */
+  --type-fine-print-weight: 400;
+  --type-fine-print-line-height: 1.65;
+  --type-fine-print-sm-size: 10px; /* screen 5 settings audit note */
+  --type-fine-print-sm-weight: 400;
+  --type-fine-print-sm-line-height: 1.5; /* bundle-only detail */
+  --type-fine-print-sm-tracking: 0.04em; /* bundle-only detail */
+
+  /* Powered-by footer attribution: "Powered by [mark] MyRecruiter" */
+  --type-poweredby-size: 9.5px;
+  --type-poweredby-weight: 400;
+  --type-poweredby-mark-size: 10px;
+  --type-poweredby-mark-weight: 700;
+  --type-poweredby-mark-tracking: 0.02em; /* bundle-only detail */
+
+  /* ==========================================================
+     3. SHELL DIMENSIONS
+     Source: DESIGN_SPEC.md § "Widget Shell"
+     ========================================================== */
+  --shell-width: 380px;
+  --shell-height: min(640px, calc(100vh - 48px));
+  --shell-radius: 12px;
+  --shell-border-width: 1px; /* --hairline-strong border */
+  --shell-border-width-accent: 2px; /* top border, --tenant-accent */
+  --shell-shadow: 0 2px 24px rgba(15, 23, 42, 0.08);
+
+  /* ==========================================================
+     4. SPACING, RADIUS & SHADOW
+     Source: DESIGN_SPEC.md § "Design Tokens" > "Spacing & shape", plus the
+     shadow/radius values called out inline in "Composer states" and
+     "Screens" (Common questions overlay, Attach menu popover).
+     ========================================================== */
+  --space-page-margin: 24px;
+  --space-page-margin-compact: 20px; /* overlay/thread contexts */
+  --space-header-padding: 18px 24px 0; /* welcome header */
+  --space-header-padding-takeover-bottom: 14px; /* takeover pages; hairline divider added by the component */
+
+  --radius-card: 10px; /* menu/settings card, message cards */
+  --space-card-row-padding: 12px 15px; /* menu/settings card rows, default */
+  --space-card-row-padding-settings: 11px 14px; /* settings rows */
+
+  --radius-composer-pill: 999px;
+  --radius-composer-expanded: 18px;
+  --shadow-composer: 0 1px 3px rgba(15, 23, 42, 0.05); /* idle pill */
+
+  --radius-overlay: 12px; /* Common questions overlay card */
+  --shadow-overlay: 0 16px 48px rgba(15, 23, 42, 0.16);
+
+  --radius-popover: 12px; /* attach menu */
+  --shadow-popover: 0 12px 32px rgba(15, 23, 42, 0.14); /* attach menu */
+
+  --space-message-card-padding: 10px 13px; /* user message card */
+
+  --size-feedback-button: 26px;
+  --radius-feedback-button: 8px;
+  --size-send-button: 30px;
+
+  --icon-stroke-width: 2px; /* Lucide, 2px stroke, rounded caps/joins */
+  --icon-size-header: 15px;
+  --icon-size-composer-min: 15px;
+  --icon-size-composer-max: 16px;
+  --icon-size-feedback: 13px;
+  --icon-size-chevron: 13px;
+
+  /* ==========================================================
+     5. MOTION
+     Source: DESIGN_SPEC.md § "Design Tokens" > "Motion", plus the screen-5
+     Settings interaction note ("full takeover slides in from right 240ms").
+     ========================================================== */
+  --ease-ui: cubic-bezier(0.4, 0, 0.2, 1); /* color/UI changes */
+  --ease-reveal: cubic-bezier(0.16, 1, 0.3, 1); /* reveals */
+  --duration-min: 120ms;
+  --duration-max: 320ms;
+  --duration-overlay-reveal: 160ms; /* overlay fade+scale-in */
+  --duration-composer-expand: 200ms; /* pill -> rect height animation */
+  --duration-fill: 150ms; /* send fill/unfill; thumb fill */
+  --duration-settings-slide: 240ms; /* settings takeover slide-in */
+
+  /* ==========================================================
+     6. REFERENCE-DEFAULT TENANT TOKENS (Atlanta Angels gold)
+     Source: tenantTheme({ primaryColor: '#a08a4a' }) — src/theme/tenantTheme.js
+     (W1.1), run directly rather than hand-copied from DESIGN_SPEC.md's
+     swatch column. This is the pre-mount / no-JS fallback ramp so the widget
+     never renders with these tokens undefined; W1.3's HairlineThemeProvider
+     overwrites them per-tenant at runtime (or re-applies the same values for
+     a `#a08a4a`-primary tenant, so nothing visibly changes on mount).
+     Several values differ from DESIGN_SPEC.md's hand-authored reference
+     table by a few /255 — documented in tenantTheme.js's header comment as
+     accepted, deliberate deltas (e.g. --tenant-accent-deep is darkened to
+     the 4.5:1 AA contrast gate rather than swatch-matched: #87743e here vs
+     the spec's #8a7439). Per the fidelity rule this sheet follows the
+     engine's actual output, not the hand-authored swatch, so the reference
+     ramp always matches what the injection provider will produce.
+     ========================================================== */
+  --tenant-accent: #a08a4a;
+  --tenant-accent-deep: #87743e;
+  --tenant-accent-muted: #b8a776;
+  --tenant-accent-faint: #c1b388;
+  --tenant-tint: #f9f7f0;
+  --tenant-tint-deep: #f0ebdf;
+  --hairline: #ece7d8;
+  --hairline-soft: #f1ede0;
+  --hairline-strong: #e7e1cf;
+  --composer-border: #e3dbc6;
+}
