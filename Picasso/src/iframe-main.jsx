@@ -9,6 +9,7 @@ import ChatProviderOrchestrator from './context/ChatProviderOrchestrator.jsx';
 import ChatWidget from './components/chat/ChatWidget.jsx';
 import SchedulingPage from './components/scheduling/SchedulingPage.jsx';
 import { CSSVariablesProvider } from './components/chat/useCSSVariables.js';
+import { HairlineThemeProvider } from './theme/HairlineThemeProvider.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
 import { config as environmentConfig } from './config/environment.js';
 import { _storeGet, _storeSet, getFromSession, saveToSession } from './context/shared/messageHelpers.js';
@@ -677,11 +678,15 @@ function initializeWidget() {
       <ErrorBoundary>
         <ConfigProvider>
           <CSSVariablesProvider>
-            <FormModeProvider>
-              <ChatProviderOrchestrator>
-                {isScheduleMode ? <SchedulingPage /> : <ChatWidget />}
-              </ChatProviderOrchestrator>
-            </FormModeProvider>
+            {/* Hairline redesign (W1.3): coexists with CSSVariablesProvider above —
+                see HAIRLINE_WORKPLAN.md ground rule #8. Removed in W6.2. */}
+            <HairlineThemeProvider>
+              <FormModeProvider>
+                <ChatProviderOrchestrator>
+                  {isScheduleMode ? <SchedulingPage /> : <ChatWidget />}
+                </ChatProviderOrchestrator>
+              </FormModeProvider>
+            </HairlineThemeProvider>
           </CSSVariablesProvider>
         </ConfigProvider>
       </ErrorBoundary>
