@@ -13,7 +13,7 @@ import "./ChatWidget.css";
 import AttachmentMenu from "./AttachmentMenu";
 import MessageBubble from "./MessageBubble";
 import TypingIndicator from "./TypingIndicator";
-import StateManagementPanel from "./StateManagementPanel";
+import SettingsView from "./SettingsView";
 import FormFieldPrompt from "../forms/FormFieldPrompt";
 import FormCompletionCard from "../forms/FormCompletionCard";
 import { useFormMode } from "../../context/FormModeContext";
@@ -689,14 +689,31 @@ function ChatWidget() {
               <AttachmentMenu onClose={() => setShowAttachmentMenu(false)} />
             )}
           </div>
+
+          {/* Hairline redesign (W3.3): Settings full-widget takeover.
+              Rendered only while open (not always-mounted), so it plays its
+              own entrance animation each time; the header/chat-window/
+              footer above stay mounted underneath the whole time — that's
+              what makes "back preserves scroll" free, since nothing above
+              ever unmounts while Settings is showing. Replaces
+              StateManagementPanel's old modal render as the settings icon's
+              destination (StateManagementPanel.jsx itself is left on disk,
+              unreferenced, for W6.2 to delete). */}
+          {showStateManagement && (
+            <SettingsView
+              onBack={() => setShowStateManagement(false)}
+              onClose={() => {
+                // Settings' ✕ closes the whole widget, same as the main
+                // header's ✕ (DESIGN_SPEC.md Interactions: "✕ in header
+                // closes"). Also reset showStateManagement so reopening the
+                // widget lands back on the thread, not mid-settings.
+                setShowStateManagement(false);
+                handleToggle();
+              }}
+            />
+          )}
         </div>
       )}
-
-      {/* Phase 3.4: State Management Panel */}
-      <StateManagementPanel 
-        isOpen={showStateManagement} 
-        onClose={() => setShowStateManagement(false)} 
-      />
     </div>
   );
 }
