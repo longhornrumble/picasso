@@ -131,7 +131,7 @@
 - **Done when:** overlay matches mock (inset 18/58, shadow, hover states); ✕/outside/ESC dismiss; selecting sends the prompt exactly as FollowUpPromptBar did; `quick_help.enabled=false` hides the menu row.
 
 ### W3.3 Settings takeover `[D5 default: omit offline-sync row until decided]`
-- **Status:** TODO — after W2.1 (parallel with W3.1/W3.2)
+- **Status:** PR #649
 - **Objective:** DESIGN_SPEC screen 5: single grouped list (Conversation / Preferences / Your data), slide-in 240ms, back-preserves-scroll; wire to EXISTING StateManagementPanel functionality (session stats, history, connection, export→"Download conversations", clear + inline confirm + audit event).
 - **Owns:** new `src/components/chat/SettingsView.jsx` (+ rules in `hairline-views.css`); retirement of `StateManagementPanel.jsx` rendering (logic/helpers may be reused as imports).
 - **Done when:** every function reachable in the old 3-tab panel is reachable in the new list (or explicitly listed in the PR as intentionally dropped for Chris's sign-off); inline destructive confirm per spec; toast pattern replaced by spec-conformant inline confirms.
