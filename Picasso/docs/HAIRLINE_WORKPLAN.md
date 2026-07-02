@@ -131,7 +131,7 @@
 - **Done when:** overlay matches mock (inset 18/58, shadow, hover states); ✕/outside/ESC dismiss; selecting sends the prompt exactly as FollowUpPromptBar did; `quick_help.enabled=false` hides the menu row.
 
 ### W3.3 Settings takeover `[D5 default: omit offline-sync row until decided]`
-- **Status:** TODO — after W2.1 (parallel with W3.1/W3.2)
+- **Status:** PR #649
 - **Objective:** DESIGN_SPEC screen 5: single grouped list (Conversation / Preferences / Your data), slide-in 240ms, back-preserves-scroll; wire to EXISTING StateManagementPanel functionality (session stats, history, connection, export→"Download conversations", clear + inline confirm + audit event).
 - **Owns:** new `src/components/chat/SettingsView.jsx` (+ rules in `hairline-views.css`); retirement of `StateManagementPanel.jsx` rendering (logic/helpers may be reused as imports).
 - **Done when:** every function reachable in the old 3-tab panel is reachable in the new list (or explicitly listed in the PR as intentionally dropped for Chris's sign-off); inline destructive confirm per spec; toast pattern replaced by spec-conformant inline confirms.
@@ -145,8 +145,9 @@
 ## Phase 4 — Unmocked surfaces (fresh Hairline treatments; parallel — disjoint files; each needs a design-review pass on staging before DONE)
 
 ### W4.1 Conversational forms suite `[D2]`
-- **Owns:** `src/components/forms/FormFieldPrompt.jsx`, `CompositeFieldGroup.jsx`, `FormCompletionCard.jsx`, new `src/styles/hairline-forms.css`. **Status:** TODO
+- **Owns:** `src/components/forms/FormFieldPrompt.jsx`, `CompositeFieldGroup.jsx`, `FormCompletionCard.jsx`, new `src/styles/hairline-forms.css`. **Status:** PR #650
 - **Done when:** all 8 field types + composite + progress + error/suspended/eligibility + completion card re-expressed in Hairline (menu-card anatomy, spec type/spacing); form logic/validation/submission untouched; forms e2e manually verified via `test-composite-fields.html` + a staging form tenant; form ARIA intact.
+- **PR #650 note:** `test-composite-fields.html` does not exist in the repo (checked via `git log` — missing, not this item's regression). Live-tenant e2e also blocked in the build sandbox (no egress to the config Lambda). Substituted with the full Jest suite against the real components (51 tests across all 3 files) + a throwaway static-markup Playwright screenshot proof of the shipped CSS for all 8 states (not committed). Design-review gate + staging verification against a real form tenant still needed before merge.
 
 ### W4.2 In-chat scheduling `[D2]`
 - **Owns:** `src/components/chat/SchedulingSlots.jsx`, `SchedulingDayPicker.jsx`, their rules in `hairline-thread.css`. **Status:** TODO

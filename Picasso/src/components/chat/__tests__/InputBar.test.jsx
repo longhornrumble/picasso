@@ -61,6 +61,25 @@ describe('InputBar — Hairline composer', () => {
       expect(getTextarea()).toBeInTheDocument();
     });
 
+    test('idle empty composer is never in the expanded layout', () => {
+      // Regression: on the real widget the composer mounted stuck in the
+      // tall .is-expanded layout because a mount-time scrollHeight mis-read
+      // flipped isExpanded true (Chris report, 2026-07-02). An empty composer
+      // must always be the single-line pill.
+      const { container } = render(<InputBar />);
+      const pill = container.querySelector('.hairline-composer-pill');
+      expect(pill).toBeInTheDocument();
+      expect(pill).not.toHaveClass('is-expanded');
+    });
+
+    test('composer returns to the single-line pill after content is cleared', () => {
+      const { container } = render(<InputBar />);
+      const pill = container.querySelector('.hairline-composer-pill');
+      fireEvent.change(getTextarea(), { target: { value: 'some typed text' } });
+      fireEvent.change(getTextarea(), { target: { value: '' } });
+      expect(pill).not.toHaveClass('is-expanded');
+    });
+
     test('renders the send button, unfilled (disabled) when empty', () => {
       render(<InputBar />);
       const sendButton = screen.getByRole('button', { name: 'Send' });
