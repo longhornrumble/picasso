@@ -20,6 +20,10 @@ import "./styles/widget-entry.css";
 import "./styles/theme.css";
 import "./styles/fonts.css";
 import "./styles/schedule-page.css";
+// Hairline redesign (W1.2): fixed token sheet — definitions only, nothing
+// consumes these custom properties yet. Imported last for future cascade
+// correctness; zero visual effect today (old theme.css still drives everything).
+import "./styles/hairline-tokens.css";
 
 // ============================================================================
 // ANALYTICS STATE (for User Journey Analytics)
