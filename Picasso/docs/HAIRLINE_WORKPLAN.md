@@ -15,6 +15,7 @@
 7. **A11y preservation** (inventory §9): icon-button aria-labels, Enter-to-send, form ARIA wiring (`aria-describedby`, `role=alert aria-live=polite`), `:focus-visible` outlines, `prefers-reduced-motion`. New overlays: ESC + outside-tap dismiss. Thumbs: `aria-pressed`.
 8. **Coexistence during migration**: old theme.css and new Hairline styles run side-by-side until W6.2. New CSS files + `--tenant-*`/`--ink-*` token namespace must not collide with old `--primary-color`-era names.
 9. Decisions D1–D10 (mapping doc §7): items marked `[D#]` are gated. Where a default is recorded, apply the default if the decision is still open when you start; note it in the PR.
+10. **Always verify against the MyRecruiter test tenant** — `test-dynamic.html?t=my87674d777bf9` (tenant ID `MYR384719`). It's a safe sandbox (config is a copy of a real tenant, so its branding may look like a client — expected). NEVER test against a real client tenant. (Chris, 2026-07-02.)
 
 **Status vocabulary:** `TODO` · `IN-PROGRESS (<agent/branch>)` · `PR #<n>` · `DONE (<merge sha>)` · `BLOCKED (<what>)`
 
