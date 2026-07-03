@@ -155,7 +155,7 @@
 
 ### W4.3 Showcase card `[D2 — includes keep-or-retire call]`
 - **D2 resolved (Chris, this session, 2026-07-02): KEEP + restyle** — not retired.
-- **Owns:** `src/components/chat/ShowcaseCard.jsx` + new `src/styles/hairline-showcase.css`. **Status:** PR #TBD
+- **Owns:** `src/components/chat/ShowcaseCard.jsx` + new `src/styles/hairline-showcase.css`. **Status:** PR #652
 - **Done when:** re-expressed in Hairline (hairline-card anatomy shared with the merged forms/completion card: `--surface-raised` fill, `--hairline` border, `--radius-card`, no shadow; tinted type/stats badges; checklist-icon highlights; container-only CTA row styling — `CTAButton.jsx` itself stays W2.7's); `content_showcase` data shape, CTA dispatch, and ARIA semantics unchanged — only appearance changed.
 
 ### W4.4 In-thread attachments, retry, error/loading states
