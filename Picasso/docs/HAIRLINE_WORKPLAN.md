@@ -182,7 +182,15 @@
 
 ## Phase 5 — Net-new features (each its own mini-project; gated on decisions)
 
-- **W5.1 Thumbs feedback backend + wiring** `[D3]` — feedback endpoint (backend repo), widget POST with message id, PII/AI-governance advisory pass FIRST. **Status:** DEFERRED (D3, Chris 2026-07-02 — thumbs are a post-flip fast-follow; copy shipped in W2.6, thumbs render inert)
+- **W5.1 Thumbs feedback backend + wiring** `[D3]` — feedback endpoint (backend repo), widget POST with message id, PII/AI-governance advisory pass FIRST. **Status:** DEFERRED (D3, Chris 2026-07-02 — thumbs are a post-flip fast-follow; copy shipped in W2.6, thumbs render inert). **Design agreed (Chris, 2026-07-03)** — Anthropic-style feedback capture, Picasso-shaped:
+  - **Thumbs-up records silently** — no modal; at most a brief inline "Thanks for the feedback" confirm mirroring the W2.6 "Copied" pattern.
+  - **Thumbs-down opens a small optional sheet** — category dropdown (optional) + free-text (optional), Cancel/Submit; dismissing without input still records the bare thumbs-down.
+  - **Categories map to Picasso failure modes, not Anthropic's** — actionable by a tenant admin, e.g. *Answer was wrong* / *Didn't answer my question* / *Couldn't find what I was looking for* / *Something looked broken* (final copy at build time). Each points at a fix class: KB gap, CTA coverage, config, or UI bug.
+  - **Data minimization (the load-bearing decision):** the POST carries ONLY the rated exchange — the user question + the rated reply — plus message id, category, and free-text. NEVER the whole conversation (transcripts can contain names/phones/family/foster-care details; this is squarely in CLAUDE.md's PII review triggers).
+  - **Explicit disclosure microcopy in the sheet** (what is sent, to whom), modeled on Anthropic's "submitting this report will send…" line but scoped to the rated exchange.
+  - **Per-tenant feedback store** (tenant separation; retention set during the advisory pass). Mobile renders the sheet within the ≤480 full-screen tier.
+  - **Consumption scope:** analytics/triage (per-tenant thumbs-down rate, per-topic slices, human triage queue) + regression eval sets (downvoted exchanges replayed on prompt/model/KB changes). NO model training — Bedrock models are frozen; the loop tunes KB/config/prompts.
+  - This design is the **input to** the PII/AI-governance advisory gate, not a substitute for it — the gate still runs first and may amend it.
 - **W5.2 Voice recording** `[D4]` — capture UI per spec + transcription backend. **Status:** BLOCKED (D4; default = mic hidden at flip)
 - **W5.3 Offline sync** `[D5]` — **Status:** BLOCKED (D5; default = row omitted)
 
