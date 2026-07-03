@@ -94,7 +94,16 @@ export default function InputBar({ input, setInput }) {
     textarea.style.height = `${Math.min(scrollHeight, maxHeight)}px`;
     textarea.style.overflowY = scrollHeight > maxHeight ? "auto" : "hidden";
 
-    setIsExpanded(scrollHeight > lineHeight * EXPAND_THRESHOLD_MULTIPLIER);
+    // Expansion LATCHES: it only trips upward here and resets in the
+    // empty-input branch above. The measurement is layout-dependent — the
+    // expanded rect gives the textarea full pill width while the idle pill
+    // shares its row with the send button — so text that wraps at idle
+    // width can fit one line at expanded width. Re-deriving downward from
+    // that wider measurement collapses the pill, re-wraps the text, and
+    // oscillates on every keystroke (Chris report, 2026-07-03).
+    if (scrollHeight > lineHeight * EXPAND_THRESHOLD_MULTIPLIER) {
+      setIsExpanded(true);
+    }
   };
 
   useEffect(() => {
