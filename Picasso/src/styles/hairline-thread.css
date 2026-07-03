@@ -295,3 +295,129 @@
     animation: none;
   }
 }
+
+/* ============================================================
+   W2.7 SUGGESTION CARD — CTA rendering as menu-anatomy rows
+   Rendered by `CTAButton.jsx`'s `CTAButtonGroup`/`SuggestionRow`, mounted
+   under the latest bot reply's response-actions row (see MessageBubble.jsx's
+   `isLatestBotMessage` gate — CTAButtonGroup itself has no visibility into
+   sibling messages, so "renders only under the latest bot message" is
+   enforced by the caller, not here).
+
+   Source: DESIGN_SPEC.md "3. In-flight conversation" ("Suggestion card"
+   paragraph) + "4. Feedback given", cross-checked against the canonical
+   bundle (design/hairline/bundle/Chat Widget Redesigns.dc.html, Turn 10
+   `#t10`, `data-screen-label="10a In-flight"`/`"10a Feedback given"`) per
+   the mapping doc's §0 fidelity rule.
+
+   Two bundle-vs-spec divergences resolved here per §0 ("bundle prevails"):
+
+   1. Row padding: DESIGN_SPEC.md's Spacing & shape table gives one generic
+      "Menu/settings card: ... rows 12px 15px padding (11px 14px settings)"
+      figure. The literal bundle markup for THIS card (both the primary and
+      standard rows) renders padding at 10px 14px — a third, bundle-only
+      value not covered by hairline-tokens.css's `--space-card-row-padding`
+      (12px 15px, used by the welcome menu card) or
+      `--space-card-row-padding-settings` (11px 14px). Declared as its own
+      local token below per the same pattern as this file's `--ink-message-
+      user` (section 0) rather than reusing an ill-fitting shared token.
+
+   2. Row arrow color: DESIGN_SPEC.md's Design Tokens table assigns
+      `--tenant-accent-faint` to "Arrows on menu rows" and
+      HAIRLINE_WORKPLAN.md's W2.7 objective paraphrases that as "arrow
+      `--tenant-accent-faint`". The literal bundle markup instead renders
+      EVERY row's arrow glyph (`<span style="color:#a08a4a">→</span>` —
+      `#a08a4a` is `--tenant-accent`, NOT the fainter `--tenant-accent-faint`
+      `#c3b483`) at the full `--tenant-accent` value, on both the emphasized
+      primary row and the standard rows, and on the welcome menu card's rows
+      too (cross-checked at `data-screen-label="10a Welcome"` — identical
+      `color:#a08a4a` arrows there). Per §0 ("on any discrepancy the
+      original bundle prevails") this file uses `--tenant-accent` for the
+      row arrow, not `--tenant-accent-faint`.
+
+   The row arrow itself is a literal "→" glyph in the bundle (not an SVG/
+   Lucide icon), so it's rendered the same way here — a `aria-hidden` text
+   span — rather than introducing an icon dependency the design doesn't use
+   for this element.
+   ============================================================ */
+:root {
+  --space-suggestion-row-padding: 10px 14px;
+}
+
+.hairline-suggestion-card {
+  margin-top: 16px; /* DESIGN_SPEC.md "Thread spacing: 16px between message
+    groups" — the bundle renders the suggestion card as its own flex sibling
+    of the bot message group (same 16px gap as any two message groups); our
+    DOM nests it inside the same message group, so this margin reproduces
+    that same visual rhythm. */
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+}
+
+.hairline-suggestion-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: var(--space-suggestion-row-padding);
+  border: none;
+  border-bottom: 1px solid var(--hairline-soft);
+  background: none;
+  font-family: inherit;
+  font-size: var(--type-menu-row-compact-size);
+  font-weight: var(--type-menu-row-weight);
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--duration-fill) var(--ease-ui);
+}
+
+.hairline-suggestion-row:last-child {
+  border-bottom: none;
+}
+
+.hairline-suggestion-row:hover:not(:disabled) {
+  background: var(--tenant-tint);
+}
+
+.hairline-suggestion-row:focus-visible {
+  outline: 2px solid var(--tenant-accent);
+  outline-offset: -2px;
+}
+
+.hairline-suggestion-row:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.hairline-suggestion-row-label {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.hairline-suggestion-row-arrow {
+  flex: none;
+  color: var(--tenant-accent);
+}
+
+/* Emphasized row — DESIGN_SPEC.md: "primary suggestion row emphasized —
+   --tenant-tint fill, 700 weight, --tenant-accent-deep text; other rows
+   standard." Bundle confirms the arrow stays --tenant-accent (unchanged
+   from the standard row) rather than switching to accent-deep. */
+.hairline-suggestion-row--primary {
+  background: var(--tenant-tint);
+  font-weight: 700;
+  color: var(--tenant-accent-deep);
+}
+
+.hairline-suggestion-row--primary:hover:not(:disabled) {
+  background: var(--tenant-tint);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hairline-suggestion-row {
+    transition: none;
+  }
+}

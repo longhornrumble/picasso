@@ -33,7 +33,7 @@ This PRD defines the implementation of Single Sign-On (SSO) between Bubble (auth
 5. Manual tenant-to-user mapping overhead
 
 ### Target Users
-- **Primary:** Institutional clients accessing analytics dashboards (e.g., MyRecruiter, Austin Angels, Foster Village)
+- **Primary:** Institutional clients accessing analytics dashboards (e.g., MyRecruiter, Austin Angels, MyRecruiter)
 - **Secondary:** System administrators managing multi-tenant access
 
 ---
@@ -264,7 +264,7 @@ User Journey:
 |--------------|-----------|-------------|
 | MyRecruiter | MYR384719 | my87674d777bf9 |
 | Austin Angels | AUS123957 | auc5b0ecb0adcb |
-| Foster Village | FOS402334 | fo85e6a06dcdf4 |
+| MyRecruiter | MYR384719 | my87674d777bf9 |
 
 ---
 
@@ -923,7 +923,7 @@ ANALYTICS_DASHBOARD_URL=https://app.myrecruiter.ai
 |-------|-------------|-----------|-------------|----------|
 | test@myrecruiter.ai | MyRecruiter | MYR384719 | my87674d777bf9 | [Set in Bubble] |
 | test@austinangels.com | Austin Angels | AUS123957 | auc5b0ecb0adcb | [Set in Bubble] |
-| test@fostervillage.org | Foster Village | FOS402334 | fo85e6a06dcdf4 | [Set in Bubble] |
+| test@myrecruiter.ai | MyRecruiter | MYR384719 | my87674d777bf9 | [Set in Bubble] |
 
 ---
 

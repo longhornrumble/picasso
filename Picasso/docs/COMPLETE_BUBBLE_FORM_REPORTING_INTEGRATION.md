@@ -412,7 +412,7 @@ aws lambda create-function-url-config \
 Endpoint: https://[function-url].lambda-url.us-east-1.on.aws/
 Method: POST
 Body: {
-  "tenant_id": "FOS402334",
+  "tenant_id": "MYR384719",
   "start_date": "2024-01-01",
   "end_date": "2024-01-31"
 }
@@ -511,7 +511,7 @@ Update tenant config in S3 (`tenants/{tenant_id}/{tenant_id}-config.json`):
 
 ```json
 {
-  "tenant_id": "FOS402334",
+  "tenant_id": "MYR384719",
   "tenant_hash": "abc123",
   "bubble_integration": {
     "enabled": true,
