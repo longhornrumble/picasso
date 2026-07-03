@@ -19,12 +19,14 @@ import { getBindingSessionId } from './utils/bindingSession.js';
       // Default configuration - will be overridden by tenant config
       position: 'bottom-right',
       minimizedSize: '56px',
-      expandedWidth: '360px',
-      expandedHeight: '640px',
-      activeHeight: '100vh', // Full viewport height after first user message (desktop only)
+      // Hairline shell dims (HAIRLINE_WORKPLAN.md W6.1): fixed 380 × min(640px,
+      // viewport-48px) panel. No more edge/adaptive-height growth (D1 default —
+      // see docs/HAIRLINE_REDESIGN_MAPPING.md §7) — the panel no longer resizes
+      // itself after the first message, so there is no separate "active" height.
+      expandedWidth: '380px',
+      expandedHeight: 'min(640px, calc(100vh - 48px))',
       zIndex: 10000
     },
-    isActive: false, // True after first user message — controls expanded height on desktop
     attribution: null, // Captured on init for analytics
 
     // ========================================================================
@@ -381,13 +383,14 @@ import { getBindingSessionId } from './utils/bindingSession.js';
           break;
 
         case 'MESSAGE_SENT':
+          // Edge/adaptive-height mode retired (D1 default) — the shell no
+          // longer grows after the first message. No-op kept so this event
+          // doesn't fall through to the "Unknown PICASSO_EVENT" log below.
           console.log('💬 Message sent event received');
-          this.activateSession();
           break;
 
         case 'SESSION_CLEARED':
-          console.log('🔄 Session cleared — resetting adaptive height');
-          this.deactivateSession();
+          console.log('🔄 Session cleared event received');
           break;
 
         case 'RESIZE_REQUEST':
@@ -666,64 +669,43 @@ import { getBindingSessionId } from './utils/bindingSession.js';
     // Expand widget to chat interface
     expand() {
       if (this.isOpen) return;
-      
+
       this.isOpen = true;
-      
-      // Enhanced mobile detection and responsive sizing per PRD
-      const isMobile = window.innerWidth <= 768;
-      const isTablet = window.innerWidth > 768 && window.innerWidth <= 1024;
-      
+
+      // Hairline shell breakpoint (D6 default): full-screen sheet at ≤480px
+      // viewport width; fixed 380×min(640px, 100vh-48px) panel otherwise.
+      // The old 768/1024 mobile/tablet tiers and the edge/adaptive-height
+      // growth behavior (D1 default) are retired — see
+      // docs/HAIRLINE_REDESIGN_MAPPING.md §7 D1/D6.
+      const isMobile = window.innerWidth <= 480;
+
       if (isMobile) {
-        // Near-fullscreen overlay with safe margins per PRD
+        // Full-screen sheet — edge-to-edge, no margins, no radius.
         Object.assign(this.container.style, {
           position: 'fixed',
-          top: '10px',
-          left: '10px',
-          bottom: '10px', 
-          right: '10px',
-          width: 'calc(100vw - 20px)',
-          height: 'calc(100vh - 20px)',
-          zIndex: this.config.zIndex + 1000
-        });
-      } else if (isTablet) {
-        // Tablet: Larger but not fullscreen
-        Object.assign(this.container.style, {
-          width: '480px',
-          height: 'calc(100vh - 40px)',
-          bottom: '20px',
-          right: '20px'
-        });
-      } else if (this.isActive) {
-        // Desktop active: full height, flush right edge, rounded left corners only
-        Object.assign(this.container.style, {
-          width: this.config.expandedWidth,
-          height: 'auto',
           top: '0',
+          left: '0',
           bottom: '0',
           right: '0',
-          left: 'auto'
+          width: '100vw',
+          height: '100vh',
+          zIndex: this.config.zIndex + 1000
         });
       } else {
-        // Desktop default: standard dimensions from config
+        // Desktop: fixed shell panel — dimensions from config
         Object.assign(this.container.style, {
           width: this.config.expandedWidth,
           height: this.config.expandedHeight,
           top: 'auto',
           bottom: '20px',
-          right: '20px'
+          right: '20px',
+          left: 'auto'
         });
       }
 
-      // Border radius and edge mode: left-only when active desktop
-      const activeDesktop = !isMobile && !isTablet && this.isActive;
-      Object.assign(this.iframe.style, {
-        borderRadius: activeDesktop ? '12px 0 0 12px' : '12px'
-      });
-      if (activeDesktop) {
-        this.sendCommand('SET_EDGE_MODE', { enabled: true });
-      }
+      this.iframe.style.borderRadius = isMobile ? '0' : '12px';
 
-      console.log(`📈 Widget expanded - ${isMobile ? 'mobile' : isTablet ? 'tablet' : 'desktop'} mode`);
+      console.log(`📈 Widget expanded - ${isMobile ? 'mobile' : 'desktop'} mode`);
     },
     
     // Minimize widget to button
@@ -747,49 +729,6 @@ import { getBindingSessionId } from './utils/bindingSession.js';
       });
 
       console.log('📉 Widget minimized');
-    },
-
-    // Activate session — expand to full height on desktop after first user message
-    activateSession() {
-      if (this.isActive) return;
-      this.isActive = true;
-
-      // If already expanded on desktop, smoothly resize to full height
-      const isMobile = window.innerWidth <= 768;
-      const isTablet = window.innerWidth > 768 && window.innerWidth <= 1024;
-      if (this.isOpen && !isMobile && !isTablet) {
-        Object.assign(this.container.style, {
-          height: 'auto',
-          top: '0',
-          bottom: '0',
-          right: '0',
-          left: 'auto'
-        });
-        this.iframe.style.borderRadius = '12px 0 0 12px';
-        this.sendCommand('SET_EDGE_MODE', { enabled: true });
-        console.log('📐 Session activated — full height, pinned right');
-      }
-    },
-
-    // Deactivate session — return to default height on next open
-    deactivateSession() {
-      this.isActive = false;
-
-      // If currently expanded on desktop, resize back to default
-      const isMobile = window.innerWidth <= 768;
-      const isTablet = window.innerWidth > 768 && window.innerWidth <= 1024;
-      if (this.isOpen && !isMobile && !isTablet) {
-        Object.assign(this.container.style, {
-          height: this.config.expandedHeight,
-          top: 'auto',
-          bottom: '20px',
-          right: '20px',
-          left: 'auto'
-        });
-        this.iframe.style.borderRadius = '12px';
-        this.sendCommand('SET_EDGE_MODE', { enabled: false });
-        console.log('📐 Session deactivated — default height restored');
-      }
     },
 
     // Toggle widget state
@@ -841,24 +780,16 @@ import { getBindingSessionId } from './utils/bindingSession.js';
       if (window.ResizeObserver) {
         const resizeObserver = new ResizeObserver(() => {
           if (this.isOpen) {
-            // Re-apply mobile/desktop sizing
-            const isMobile = window.innerWidth <= 768;
+            // Re-apply mobile/desktop sizing — mirrors expand()'s ≤480 breakpoint
+            const isMobile = window.innerWidth <= 480;
             if (isMobile) {
               Object.assign(this.container.style, {
-                width: 'calc(100vw - 20px)',
-                height: 'calc(100vh - 40px)',
-                bottom: '10px',
-                right: '10px',
-                top: 'auto'
-              });
-            } else if (this.isActive) {
-              Object.assign(this.container.style, {
-                width: this.config.expandedWidth,
-                height: 'auto',
                 top: '0',
+                left: '0',
                 bottom: '0',
                 right: '0',
-                left: 'auto'
+                width: '100vw',
+                height: '100vh'
               });
             } else {
               Object.assign(this.container.style, {
@@ -866,12 +797,14 @@ import { getBindingSessionId } from './utils/bindingSession.js';
                 height: this.config.expandedHeight,
                 bottom: '20px',
                 right: '20px',
-                top: 'auto'
+                top: 'auto',
+                left: 'auto'
               });
             }
+            this.iframe.style.borderRadius = isMobile ? '0' : '12px';
           }
         });
-        
+
         resizeObserver.observe(document.body);
       }
     },
