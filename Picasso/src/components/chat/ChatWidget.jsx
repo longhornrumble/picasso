@@ -620,20 +620,35 @@ function ChatWidget() {
             {isOpen ? <X size={24} /> : <MessagesSquare size={24} />}
           </button>
           
-          {/* Notification badge */}
+          {/* Notification badge — Hairline redesign (W4.5): re-skinned via a
+              new `.hairline-badge` className (styles in ChatWidget.css) so
+              old theme.css's `.chat-notification-badge` rules (still
+              coexisting, several `!important`) simply no longer match —
+              same class-swap strategy hairline-shell.css used for the
+              shell/header. State/logic above is unchanged. */}
           {!isOpen && unreadCount > 0 && (
-            <div className="chat-notification-badge">
+            <div className="hairline-badge">
               {unreadCount}
             </div>
           )}
-          
-          {/* 🔧 FIXED: Callout with proper state management and text override */}
+
+          {/* Callout teaser — Hairline redesign (W4.5): re-skinned via new
+              `.hairline-callout`/`.hairline-callout-text` classNames (styles
+              in ChatWidget.css), same class-swap rationale as the badge
+              above. The launcher button itself (`.chat-toggle-button`
+              above) is explicitly OUT OF SCOPE this phase
+              (HAIRLINE_WORKPLAN.md W4.5) — untouched. All
+              state/handlers/dismiss semantics below are UNCHANGED (frozen —
+              HAIRLINE_WORKPLAN.md ground rule #2); only the markup/classNames
+              changed (the old `.chat-callout-header` wrapper div, which only
+              ever held these same two children, is folded away since
+              `.hairline-callout` is the flex row directly). */}
           {showCallout && (
             <div
-              className={`chat-callout clickable ${showCallout ? 'visible' : ''}`}
+              className="hairline-callout"
               onClick={(e) => {
                 // If clicking the close button, don't open the widget
-                if (e.target.closest('.chat-callout-close')) {
+                if (e.target.closest('.hairline-callout-dismiss')) {
                   return;
                 }
                 // Open the widget when clicking anywhere else on the callout
@@ -642,12 +657,15 @@ function ChatWidget() {
                 }
               }}
             >
-              <div className="chat-callout-header">
-                <div className="chat-callout-text" dangerouslySetInnerHTML={{ __html: sanitizeHTML(calloutText) }}/>
-                <button onClick={handleCalloutClose} className="chat-callout-close">
-                  <X size={14} />
-                </button>
-              </div>
+              <div className="hairline-callout-text" dangerouslySetInnerHTML={{ __html: sanitizeHTML(calloutText) }}/>
+              <button
+                type="button"
+                onClick={handleCalloutClose}
+                className="hairline-icon-button hairline-callout-dismiss"
+                aria-label="Dismiss"
+              >
+                <X size={13} strokeWidth={2} aria-hidden="true" />
+              </button>
             </div>
           )}
         </div>
