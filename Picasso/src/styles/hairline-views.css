@@ -456,11 +456,14 @@ button.hairline-settings-row--button:focus-visible {
   min-height: 0;
   overflow-y: auto;
   box-sizing: border-box;
-  /* Top padding rebalanced 34px->20px when the header gained 14px bottom
-     padding (product amendment, 2026-07-03 — see --space-header-padding):
-     14 + 20 keeps the same 34px header->greeting rhythm as the Turn 10
-     mock. */
-  padding: 20px var(--space-page-margin) 20px;
+  /* 30px top = the same clearance the thread's .chat-window carries (see
+     hairline-shell.css): the header's 28px roll-under fade band is STATIC,
+     and at 20px the greeting's ascenders sat inside its tail — the "H" in
+     "Hi there" rendered visibly blurred at rest (Chris, 2026-07-03),
+     especially at the mobile 22px greeting size. The mock's 34px
+     header->greeting rhythm becomes 44px (header 14 + view 30) — the
+     roll-under amendment's accepted cost. */
+  padding: 30px var(--space-page-margin) 20px;
 }
 
 .hairline-welcome-greeting {

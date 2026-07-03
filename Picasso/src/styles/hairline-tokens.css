@@ -168,8 +168,9 @@
   --space-header-padding: 18px 24px 14px; /* header; 14px bottom is a product
      amendment (Chris, 2026-07-03 — mirror the Claude app's header breathing
      room; DESIGN_SPEC.md provenance block) over the spec's `18px 24px 0`.
-     The welcome view's top padding is rebalanced 34px->20px in
-     hairline-views.css so the welcome composition is unchanged. */
+     The welcome view and the thread both carry 30px top clearance
+     (hairline-views.css / hairline-shell.css) so content at rest sits
+     below the header's 28px roll-under fade band. */
   --space-header-padding-takeover-bottom: 14px; /* takeover pages; hairline divider added by the component */
 
   --radius-card: 10px; /* menu/settings card, message cards */
