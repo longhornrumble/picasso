@@ -38,8 +38,19 @@
  * itself no longer shows a local confirm button — selection sends the signal and the
  * server decides whether to ask for an email first or arm the confirm.
  *
- * Styling reuses the global `.suggested-chip` / `.cta-button` token classes
- * (theme.css) so affordances inherit per-tenant branding without a new stylesheet.
+ * Styling (Hairline W4.2): this is an UNMOCKED surface (Turn 10 has no
+ * scheduling screen) — per HAIRLINE_REDESIGN_MAPPING.md §0 case 2 / §4 item 2,
+ * the appearance below is a fresh Hairline treatment extrapolated from the
+ * vocabulary already established on merged, MOCKED-adjacent surfaces: slot
+ * rows use menu-row anatomy (mirrors src/components/forms/FormFieldPrompt.jsx's
+ * `.hairline-form-menu`/`.hairline-form-menu-row`, itself a W4.1 unmocked-
+ * surface precedent), and the "Yes, book it" commit action uses pill-button
+ * anatomy (mirrors hairline-views.css's `.hairline-pill-button--danger`, the
+ * Settings destructive-confirm pill, as this action's positive-commit twin).
+ * NOT a restyle of the old `.suggested-chip`/`.cta-button` pill look — theme.css
+ * still owns those classes for other surfaces, but this component no longer
+ * references them. Rules live in the "W4.2 IN-CHAT SCHEDULING" section
+ * appended to the end of hairline-thread.css.
  *
  * NOTE (A8b gap — flagged for integrator): the plan calls for static strings to go
  * through a `t()` indirection (A8b). No such helper exists on `staging` yet, so the
@@ -48,6 +59,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
+import { ChevronRight, Info } from 'lucide-react';
 import { useChat } from '../../hooks/useChat';
 import {
   SCHEDULING_CHIP_CLICKED
@@ -191,25 +203,26 @@ export default function SchedulingSlots({ slots = [], schedulingContext }) {
           {contextLine}
         </div>
       )}
-      <div className="suggested-chips">
-        {!selectedSlotId ? (
-          slots.map((slot, index) => (
+      {!selectedSlotId ? (
+        <div className="hairline-scheduling-card" role="group" aria-label="Available times">
+          {slots.map((slot, index) => (
             <button
               key={slot.slotId}
               type="button"
-              className="suggested-chip scheduling-slot-chip"
+              className="hairline-scheduling-row"
               disabled={isTyping}
               onClick={() => handleSelect(slot, index)}
             >
-              {slot.label}
+              <span className="hairline-scheduling-row-label">{slot.label}</span>
+              <ChevronRight className="hairline-scheduling-row-arrow" size={13} strokeWidth={2} aria-hidden="true" />
             </button>
-          ))
-        ) : (
-          selectedSlot && (
-            <span className="scheduling-slot-selected">{selectedSlot.label}</span>
-          )
-        )}
-      </div>
+          ))}
+        </div>
+      ) : (
+        selectedSlot && (
+          <span className="scheduling-slot-selected">{selectedSlot.label}</span>
+        )
+      )}
       {/* §B18c microcopy close — rendered under EVERY slot-chip set, EXACT string.
           NO "More times" chip (operator decision 2026-06-12). */}
       {!selectedSlotId && (
@@ -251,20 +264,24 @@ export function SchedulingConfirmCard({ confirm }) {
 
   return (
     <div className="scheduling-slots scheduling-confirm-card" data-testid="scheduling-confirm" ref={ref}>
-      <div className="suggested-chips">
-        <span className="scheduling-slot-selected">{confirm.slot.label}</span>
+      <div className="hairline-scheduling-card hairline-scheduling-confirm-card">
+        <div className="hairline-scheduling-confirm-row">
+          <span className="scheduling-slot-selected">{confirm.slot.label}</span>
+        </div>
         {confirm.attendee_email && (
-          <span className="scheduling-confirm-email">{confirm.attendee_email}</span>
+          <div className="hairline-scheduling-confirm-row">
+            <span className="scheduling-confirm-email">{confirm.attendee_email}</span>
+          </div>
         )}
-        <button
-          type="button"
-          className="cta-button cta-primary scheduling-confirm-button"
-          disabled={isTyping || confirmed}
-          onClick={handleConfirm}
-        >
-          {SCHEDULING_STRINGS.confirmAffirmative}
-        </button>
       </div>
+      <button
+        type="button"
+        className="hairline-scheduling-confirm-button"
+        disabled={isTyping || confirmed}
+        onClick={handleConfirm}
+      >
+        {SCHEDULING_STRINGS.confirmAffirmative}
+      </button>
     </div>
   );
 }
@@ -283,7 +300,8 @@ export function SchedulingNotice({ notice }) {
     SCHEDULING_STRINGS.notices[notice] || SCHEDULING_STRINGS.noticeFallback;
   return (
     <div className="scheduling-notice" role="status" data-testid="scheduling-notice">
-      {text}
+      <Info size={15} strokeWidth={2} aria-hidden="true" />
+      <span>{text}</span>
     </div>
   );
 }

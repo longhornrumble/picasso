@@ -24,14 +24,21 @@
  * Schema discipline: unknown / malformed entries in `days` are skipped silently
  * (missing `date` or `label`) — old-shape data must never crash this reader.
  *
- * Styling reuses `.suggested-chip` / shared token classes (theme.css) so the
- * strip inherits per-tenant branding without a new stylesheet.
+ * Styling (Hairline W4.2): UNMOCKED surface — per HAIRLINE_REDESIGN_MAPPING.md
+ * §0 case 2 / §4 item 2, the strip is a fresh Hairline treatment using
+ * hairline-chip anatomy (a horizontally-scrolling row of discrete pill
+ * chips), not a restyle of the old `.suggested-chip` look. Chip shape is a
+ * pill (radius matches the P1-7 fix's inline `borderRadius:'16px'` below —
+ * kept as-is, see that comment); chip colors/border/hover/focus come from
+ * `.hairline-day-chip` in the "W4.2 IN-CHAT SCHEDULING" section appended to
+ * the end of hairline-thread.css.
  *
  * NOTE (A8b gap — mirrors SchedulingSlots): user-facing copy is centralized in
  * DAY_PICKER_STRINGS for a trivial swap once A8b lands.
  */
 
 import React, { useState } from 'react';
+import { Check } from 'lucide-react';
 import { useChat } from '../../hooks/useChat';
 import { SCHEDULING_DAY_STRIP_ENGAGED } from '../../analytics/eventConstants';
 
@@ -141,7 +148,7 @@ export default function SchedulingDayPicker({ days = [], user_time_zone: _tz }) 
       {!selectedDate ? (
         /* Scrollable strip — CSS logical properties; overflow-x scroll for ≤375px */
         <div
-          className="scheduling-day-strip"
+          className="scheduling-day-strip hairline-day-strip"
           role="group"
           aria-label={DAY_PICKER_STRINGS.stripAriaLabel}
           // CSS logical: inline direction scroll
@@ -156,17 +163,16 @@ export default function SchedulingDayPicker({ days = [], user_time_zone: _tz }) 
               <button
                 key={day.date}
                 type="button"
-                className="suggested-chip scheduling-day-chip"
+                className="hairline-day-chip"
                 disabled={isTyping}
                 aria-label={DAY_PICKER_STRINGS.chipAriaLabel(displayLabel)}
-                // P1-7 fix: the strip is a NON-wrapping flex row, and
-                // .suggested-chip's `overflow: hidden` zeroes the flex
-                // automatic minimum size — so default flex-shrink:1 squeezed
-                // all 7 chips into the container width, clipping each label
-                // to a circle. `flex: 0 0 auto` keeps the chip at its natural
-                // label width (the strip scrolls instead, as designed), and
-                // the 16px radius pins the same pill shape SchedulingSlots
-                // chips get from .suggested-chip.
+                // P1-7 fix (preserved as-is — Hairline restyle does not touch
+                // layout behavior): the strip is a NON-wrapping flex row, so
+                // default flex-shrink:1 squeezed all 7 chips into the
+                // container width, clipping each label to a circle.
+                // `flex: 0 0 auto` keeps the chip at its natural label width
+                // (the strip scrolls instead, as designed), and the 16px
+                // radius pins the pill shape.
                 style={{ flex: '0 0 auto', borderRadius: '16px' }}
                 onClick={() => handleSelect(day, index)}
               >
@@ -178,18 +184,23 @@ export default function SchedulingDayPicker({ days = [], user_time_zone: _tz }) 
       ) : (
         /* Post-selection: show the chosen day label as a static affordance */
         <div
-          className="scheduling-day-selected-display"
+          className="scheduling-day-selected-display hairline-day-selected"
           role="status"
           aria-live="polite"
           data-testid="scheduling-day-selected-display"
         >
-          {selectedDay
-            ? DAY_PICKER_STRINGS.selectedAnnouncement(
-                selectedDay.label.length > MAX_LABEL_LENGTH
-                  ? selectedDay.label.slice(0, MAX_LABEL_LENGTH)
-                  : selectedDay.label
-              )
-            : null}
+          {selectedDay && (
+            <>
+              <Check size={13} strokeWidth={2} aria-hidden="true" />
+              <span>
+                {DAY_PICKER_STRINGS.selectedAnnouncement(
+                  selectedDay.label.length > MAX_LABEL_LENGTH
+                    ? selectedDay.label.slice(0, MAX_LABEL_LENGTH)
+                    : selectedDay.label
+                )}
+              </span>
+            </>
+          )}
         </div>
       )}
     </div>

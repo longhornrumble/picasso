@@ -6,13 +6,36 @@ exports[`SchedulingSlots — generic chips snapshot: chip markup contains the la
   data-testid="scheduling-slots"
 >
   <div
-    class="suggested-chips"
+    aria-label="Available times"
+    class="hairline-scheduling-card"
+    role="group"
   >
     <button
-      class="suggested-chip scheduling-slot-chip"
+      class="hairline-scheduling-row"
       type="button"
     >
-      Tue, Jun 3 · 2:00 PM
+      <span
+        class="hairline-scheduling-row-label"
+      >
+        Tue, Jun 3 · 2:00 PM
+      </span>
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-chevron-right hairline-scheduling-row-arrow"
+        fill="none"
+        height="13"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="13"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="m9 18 6-6-6-6"
+        />
+      </svg>
     </button>
   </div>
   <p
