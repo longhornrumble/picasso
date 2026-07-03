@@ -454,7 +454,7 @@
   justify-content: center;
   gap: 4px;
   padding: 6px 12px 10px;
-  font-size: 9.5px;
+  font-size: var(--type-poweredby-size);
   font-weight: 400;
   color: var(--ink-ghost);
   line-height: 1;
@@ -467,7 +467,7 @@
 }
 
 .hairline-footer-brand {
-  font-size: 10px;
+  font-size: var(--type-poweredby-mark-size);
   font-weight: 700;
   color: #8f8871;
 }
