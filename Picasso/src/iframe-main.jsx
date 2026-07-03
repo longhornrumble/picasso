@@ -49,6 +49,12 @@ import "./styles/hairline-views.css";
 // markup — old `.form-field-prompt`/`.composite-field-*`/
 // `.form-completion-*` classes are gone from those components.
 import "./styles/hairline-forms.css";
+// Hairline redesign (W4.3): showcase card — unmocked surface (D2: keep +
+// restyle, not retire), fresh Hairline treatment reusing the hairline-card
+// anatomy established by hairline-forms.css. ShowcaseCard.jsx renders
+// exclusively under new `.hairline-showcase*` markup — old `.showcase-card*`
+// classes in theme.css are gone from that component.
+import "./styles/hairline-showcase.css";
 
 // ============================================================================
 // ANALYTICS STATE (for User Journey Analytics)
