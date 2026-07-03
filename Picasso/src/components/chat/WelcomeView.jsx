@@ -54,6 +54,11 @@ export default function WelcomeView({ onOpenQuestions }) {
   const maxDisplay = actionChipsConfig.max_display || 3;
   const chips = chipsVisible ? allChips.slice(0, maxDisplay) : [];
 
+  // W3.2 (QuestionsOverlay.jsx): tolerant read, default true — mirrors
+  // FollowUpPromptBar.jsx's old `enabled !== false` default so a tenant that
+  // never set quick_help.enabled keeps seeing the row.
+  const quickHelpEnabled = config?.quick_help?.enabled !== false;
+
   // Byte-identical to MessageBubble.jsx's handleActionClick "send_query"
   // path — see file header comment.
   const dispatchChip = (chip) => {
@@ -110,24 +115,26 @@ export default function WelcomeView({ onOpenQuestions }) {
           </button>
         ))}
 
-        {/* Fixed row, not tenant-gated — DESIGN_SPEC.md "Common questions
-            (folded into the menu)". Opens the questions overlay
-            (DESIGN_SPEC.md screen 2); that overlay is W3.2
-            (QuestionsOverlay.jsx, not yet built as of this item) — wiring
-            deferred to ChatWidget.jsx's `onOpenQuestions`, a documented
-            no-op until then (same deferred-wiring pattern SettingsView.jsx
-            used for its Privacy row ahead of W3.4). */}
-        <button
-          type="button"
-          className="hairline-menu-row"
-          onClick={onOpenQuestions}
-          aria-label={strings.welcome.commonQuestionsRow}
-        >
-          <span className="hairline-menu-row-label">{strings.welcome.commonQuestionsRow}</span>
-          <span className="hairline-menu-row-arrow" aria-hidden="true">
-            →
-          </span>
-        </button>
+        {/* Fixed row (copy not tenant-gated) — DESIGN_SPEC.md "Common
+            questions (folded into the menu)". Opens the questions overlay
+            (DESIGN_SPEC.md screen 2, W3.2's QuestionsOverlay.jsx) via
+            ChatWidget.jsx's `onOpenQuestions`. The row ITSELF is gated on
+            `quick_help.enabled` (tolerant read, default true) — W3.2's
+            "hide the entry point when quick_help.enabled===false" done
+            criterion — same pattern as the tenant chips above. */}
+        {quickHelpEnabled && (
+          <button
+            type="button"
+            className="hairline-menu-row"
+            onClick={onOpenQuestions}
+            aria-label={strings.welcome.commonQuestionsRow}
+          >
+            <span className="hairline-menu-row-label">{strings.welcome.commonQuestionsRow}</span>
+            <span className="hairline-menu-row-arrow" aria-hidden="true">
+              →
+            </span>
+          </button>
+        )}
       </div>
     </div>
   );

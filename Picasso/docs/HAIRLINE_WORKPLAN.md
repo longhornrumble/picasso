@@ -126,7 +126,7 @@
 - **Guardrail:** chip dispatch payloads (`action_chip_triggered`, `target_branch`…) byte-identical to current.
 
 ### W3.2 Common questions overlay
-- **Status:** TODO — after W3.1
+- **Status:** PR #663
 - **Objective:** DESIGN_SPEC screen 2: dimmed/blurred underlay, overlay card, rows from `quick_help.prompts`; select → close + send as user message. Replaces FollowUpPromptBar.
 - **Owns:** new `src/components/chat/QuestionsOverlay.jsx` (+ rules in `hairline-views.css`); deletion of `FollowUpPromptBar.jsx` usage.
 - **Done when:** overlay matches mock (inset 18/58, shadow, hover states); ✕/outside/ESC dismiss; selecting sends the prompt exactly as FollowUpPromptBar did; `quick_help.enabled=false` hides the menu row.

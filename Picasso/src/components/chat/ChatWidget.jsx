@@ -15,6 +15,7 @@ import MessageBubble from "./MessageBubble";
 import TypingIndicator from "./TypingIndicator";
 import SettingsView from "./SettingsView";
 import WelcomeView from "./WelcomeView";
+import QuestionsOverlay from "./QuestionsOverlay";
 import FormFieldPrompt from "../forms/FormFieldPrompt";
 import FormCompletionCard from "../forms/FormCompletionCard";
 import { useFormMode } from "../../context/FormModeContext";
@@ -60,12 +61,14 @@ function ChatWidget() {
   );
   const activeView = hasStartedThread ? "thread" : "welcome";
 
-  // W3.2 (QuestionsOverlay.jsx) owns the real destination for this — not yet
-  // built as of this item. Documented no-op in the meantime (same
-  // deferred-wiring pattern SettingsView.jsx used for its Privacy row ahead
-  // of W3.4).
+  // W3.2: opens the Common questions overlay (QuestionsOverlay.jsx),
+  // summoned from WelcomeView's "Common questions" row. `showQuestionsOverlay`
+  // is deliberately its own boolean (not folded into `activeView`) — same
+  // reasoning as `showStateManagement` above: it's a takeover layered on top
+  // of whichever content view is showing, not a replacement for it.
+  const [showQuestionsOverlay, setShowQuestionsOverlay] = useState(false);
   const handleOpenQuestions = useCallback(() => {
-    // W3.2: opens the Common questions overlay.
+    setShowQuestionsOverlay(true);
   }, []);
 
   // In iframe mode, we don't need breakpoints - the iframe container handles responsive sizing
@@ -766,6 +769,17 @@ function ChatWidget() {
                 handleToggle();
               }}
             />
+          )}
+
+          {/* Hairline redesign (W3.2): Common questions overlay. Rendered
+              only while open, same covers-the-whole-shell approach as
+              SettingsView above (DESIGN_SPEC.md screen 2's dimmed underlay
+              covers the header too). Selecting a row sends the prompt and
+              closes itself (QuestionsOverlay.jsx's onClose call inside
+              handleSelect) — closing here is just resetting this boolean so
+              the next open starts fresh. */}
+          {showQuestionsOverlay && (
+            <QuestionsOverlay onClose={() => setShowQuestionsOverlay(false)} />
           )}
         </div>
       )}
