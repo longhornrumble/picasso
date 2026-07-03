@@ -119,6 +119,15 @@ export default function MessageBubble({
   const [clickedButtonIds, setClickedButtonIds] = useState(new Set());
   // Track if ANY button in this message has been clicked (disables all buttons)
   const [anyButtonClicked, setAnyButtonClicked] = useState(false);
+  // True once this message's stream has painted any text (set by
+  // writeAccumulated below). A just-created streaming placeholder has
+  // content '' — rendering its sender label before any text exists showed
+  // an EMPTY wordmark headline above the typing indicator's own
+  // label+dots (Chris's mobile report 2026-07-03, pre-first-chunk phase;
+  // the mid-stream half of that report is ChatWidget's hasStreamedContent
+  // gate). The label waits for text; the placeholder element itself must
+  // still mount — the streamingRegistry writes chunks into it.
+  const [hasLiveText, setHasLiveText] = useState(false);
 
   const isUser = role === "user";
   // Hairline redesign (W2.2): bot sender label sources chat_title, matching
@@ -309,7 +318,13 @@ export default function MessageBubble({
       }
       // Keep an internal buffer for debugging and minimal comparisons
       bufferRef.current = accum || '';
-      
+
+      // First real text -> the sender label may render (see hasLiveText
+      // above). Repeat sets are no-op bailouts. NB: gate on the raw buffer,
+      // not nextText \u2014 the '\u200B' placeholder below is NOT trimmable
+      // whitespace and would count as text.
+      if (bufferRef.current.trim().length > 0) setHasLiveText(true);
+
       const nextText = bufferRef.current.length ? bufferRef.current : '\u200B';
       
       // Full markdown processing for streaming content
@@ -995,12 +1010,18 @@ export default function MessageBubble({
             user's tinted card; tenant chat_title caps (accent-deep) above the
             bot's plain text. No avatar anywhere (deleted from the thread's
             render path per HAIRLINE_WORKPLAN.md W2.2 — the avatar data
-            pipeline itself is W6.2, out of scope here). */}
-        <div
-          className={`hairline-sender-label ${isUser ? "hairline-sender-label--user" : "hairline-sender-label--bot"}`}
-        >
-          {isUser ? strings.thread.youSenderLabel : chatTitle}
-        </div>
+            pipeline itself is W6.2, out of scope here).
+            A still-empty streaming placeholder renders NO label — before the
+            first chunk, the typing indicator's own label+dots is the sole
+            headline; the label appears with the first painted text (see
+            hasLiveText above). */}
+        {(isUser || !streamingFlag || hasLiveText || !!content) && (
+          <div
+            className={`hairline-sender-label ${isUser ? "hairline-sender-label--user" : "hairline-sender-label--bot"}`}
+          >
+            {isUser ? strings.thread.youSenderLabel : chatTitle}
+          </div>
+        )}
 
         {/* Text Content */}
         {/* Single container for entire lifecycle - streaming and markdown.
