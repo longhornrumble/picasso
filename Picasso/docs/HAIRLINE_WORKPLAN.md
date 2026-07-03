@@ -189,8 +189,9 @@
 ## Phase 6 — Flip (sequential)
 
 ### W6.1 Host layer dims + breakpoint
-- **Owns:** `src/widget-host.js` (expandedWidth 380, expandedHeight min(640,100vh−48px), mobile sheet ≤480 `[D6]`, edge-mode removal `[D1 default]`). **Status:** TODO — after P2–P4 complete
+- **Owns:** `src/widget-host.js` (expandedWidth 380, expandedHeight min(640,100vh−48px), mobile sheet ≤480 `[D6]`, edge-mode removal `[D1 default]`). **Status:** PR #671
 - **Done when:** open/close/resize verified on staging across desktop/mobile viewports; postMessage protocol unchanged except retired SET_EDGE_MODE `[D1]`.
+- **D1 + D6 defaults applied**: edge/adaptive-height mode fully retired (`isActive`/`activateSession`/`deactivateSession`/`activeHeight`/all `SET_EDGE_MODE` sends removed — grep-confirmed clean in `widget-host.js`); old 768/1024 mobile/tablet tiers retired in favor of a single ≤480 full-screen-sheet breakpoint (viewports in the old 768–1024 "tablet" range now render at the desktop 380px panel). Verified on the dev harness (desktop + ≤480 mobile via live Playwright resize against `test-dynamic.html?t=my87674d777bf9`) — staging verification pending merge. `iframe-main.jsx`'s `SET_EDGE_MODE` case handler and `theme.css`'s `.edge-mode` rules are now unreachable dead code (no sender remains); left in place — W6.1 owns only `widget-host.js` — flagged for W6.2/W6.6 cleanup.
 
 ### W6.2 Old-system deletion
 - **Owns:** delete `theme.css`, `useCSSVariables.js`, CSSVariablesProvider path, avatar pipeline, feature-display var machinery, Montserrat/Poppins leftovers; retire legacy `--*` names. **Status:** TODO — after W6.1
