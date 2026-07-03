@@ -657,9 +657,9 @@ The Picasso frontend includes a dynamic tenant configuration system that allows 
 **`dev.config.json`** - Central configuration point for development tenant selection
 ```json
 {
-  "DEFAULT_TENANT_HASH": "fo85e6a06dcdf4",
-  "TENANT_NAME": "Foster Village",
-  "DESCRIPTION": "Development tenant configuration - change DEFAULT_TENANT_HASH to test different tenants"
+  "DEFAULT_TENANT_HASH": "my87674d777bf9",
+  "TENANT_NAME": "MyRecruiter test tenant (MYR384719)",
+  "DESCRIPTION": "Development tenant configuration - always test against the MyRecruiter tenant (safe sandbox)"
 }
 ```
 
@@ -672,7 +672,7 @@ The system uses a three-tier configuration hierarchy:
 1. **Build-time default** (from `dev.config.json`) → Used in development mode only
 2. **Runtime override** (from `data-tenant` attribute) → For testing specific tenants
 3. **URL parameter** (`?tenant=HASH`) → For quick testing
-4. **Fallback** (`my87674d777bf9` - Atlanta Angels) → If nothing else is specified
+4. **Fallback** (`my87674d777bf9` - MyRecruiter test tenant, MYR384719) → If nothing else is specified
 
 The tenant hash flows through the system:
 ```
@@ -692,15 +692,15 @@ To switch between different tenants during development:
 ```bash
 # 1. Edit dev.config.json
 # Change "DEFAULT_TENANT_HASH" to desired tenant hash
-# Example tenant hashes:
-#   - fo85e6a06dcdf4 (Foster Village)
-#   - my87674d777bf9 (Atlanta Angels)
+# Always use the MyRecruiter test tenant:
+#   - my87674d777bf9 (MyRecruiter test tenant, MYR384719 — the DEFAULT; safe sandbox)
+# Do NOT test against real client tenants.
 
 # 2. Restart the dev server (required for build-time injection)
 npm run dev
 
 # 3. Server logs will confirm which tenant is loaded:
-# ✅ Loaded dev config: Foster Village (fo85e6a06dcdf4)
+# ✅ Loaded dev config: MyRecruiter test tenant (my87674d777bf9)
 
 # 4. Open browser and test
 # Visit http://localhost:8000/test-local-dev.html
@@ -730,11 +730,11 @@ This approach ensures:
 
 # Method 2: Runtime override (no restart needed)
 # Add data-tenant attribute to script tag in HTML
-<script src="http://localhost:8000/widget.js" data-tenant="fo85e6a06dcdf4"></script>
+<script src="http://localhost:8000/widget.js" data-tenant="my87674d777bf9"></script>
 
 # Method 3: URL parameter (temporary testing)
 # Add ?tenant=HASH to URL
-http://localhost:8000/test-local-dev.html?tenant=fo85e6a06dcdf4
+http://localhost:8000/test-local-dev.html?tenant=my87674d777bf9
 ```
 
 ### Verification
@@ -935,23 +935,17 @@ Current test pages in the repository:
 - `test-aus123957.html` - AUS123957 tenant test
 - `test-composite-fields.html` - Composite form fields test
 
+**⚠️ ALWAYS test with the MyRecruiter tenant (`my87674d777bf9`, tenant ID `MYR384719`).**
+It is a **safe sandbox**: its config is a *copy of a real tenant's config* served under MYR384719, so it exercises real-shaped config while never touching a live client. Its on-screen branding may therefore look like a client (e.g. Atlanta Angels) — that's expected; it's still the MyRecruiter test tenant. Do **not** point local or staging tests at a real client tenant. This is the default in `dev.config.json` and the default `?t=` for `test-dynamic.html`.
+
 **Dynamic Tenant Testing (Recommended)**
 
-Use `test-dynamic.html` to test any tenant without editing files:
+Use `test-dynamic.html` to test the MyRecruiter tenant without editing files:
 ```
-http://localhost:8000/test-dynamic.html?t=TENANT_HASH
-```
-
-Examples:
-```bash
-# Test MyRecruiter default tenant
 http://localhost:8000/test-dynamic.html?t=my87674d777bf9
-
-# Test Foster Village tenant
-http://localhost:8000/test-dynamic.html?t=fo85e6a06dcdf4
 ```
 
-The page reads the `?t=` parameter and dynamically loads the widget with that tenant hash. Defaults to `my87674d777bf9` if no parameter is provided.
+The page reads the `?t=` parameter and dynamically loads the widget with that tenant hash. Defaults to `my87674d777bf9` (MyRecruiter test tenant) if no parameter is provided — so just opening `test-dynamic.html` uses the correct tenant.
 
 **All test pages should follow the embedded widget pattern shown above.**
 
@@ -1267,7 +1261,7 @@ Cards are automatically extracted during tenant onboarding:
 - Filter unqualified users early
 - Then present program options
 
-**Exploration-First** (e.g., Foster Village):
+**Exploration-First**:
 - Show multiple program options
 - Match user interests
 - Progressive disclosure of actions
