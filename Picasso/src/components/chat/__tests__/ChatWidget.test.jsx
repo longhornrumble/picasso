@@ -146,6 +146,31 @@ describe('ChatWidget — fullpage mode renders open (W6.3 audit fix F6)', () => 
   });
 });
 
+describe('ChatWidget — typing indicator yields to the streaming reply (W6.3 follow-up)', () => {
+  const THREAD = [
+    { id: 'user_1', role: 'user', content: 'Hi' },
+    { id: 'bot_1', role: 'assistant', content: '', isStreaming: true },
+  ];
+
+  it('shows the indicator while typing and no chunk has painted yet', () => {
+    setChat(THREAD, { isTyping: true, hasStreamedContent: false });
+    render(<ChatWidget />);
+    expect(screen.getByTestId('typing-indicator')).toBeInTheDocument();
+  });
+
+  it('hides the indicator once the reply is streaming (first chunk painted) — no double sender label', () => {
+    setChat(THREAD, { isTyping: true, hasStreamedContent: true });
+    render(<ChatWidget />);
+    expect(screen.queryByTestId('typing-indicator')).not.toBeInTheDocument();
+  });
+
+  it('tolerates providers that do not define hasStreamedContent (HTTP fallback) — indicator behaves as before', () => {
+    setChat(THREAD, { isTyping: true });
+    render(<ChatWidget />);
+    expect(screen.getByTestId('typing-indicator')).toBeInTheDocument();
+  });
+});
+
 describe('ChatWidget — welcome vs. thread view derivation', () => {
   it('shows WelcomeView (not the thread) on a fresh session with the seeded welcome sentinel', () => {
     setChat([{ id: 'welcome', role: 'assistant', content: 'Hi!' }]);

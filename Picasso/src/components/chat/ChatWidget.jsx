@@ -24,7 +24,7 @@ import { sanitizeHTML } from "../../utils/security";
 import { _storeGet, _storeSet, _storeRemove } from "../../context/shared/messageHelpers";
 
 function ChatWidget() {
-  const { messages, isTyping, renderMode, recordFormCompletion } = useChat();
+  const { messages, isTyping, hasStreamedContent, renderMode, recordFormCompletion } = useChat();
   const { config } = useConfig();
   const { isFormMode, isSuspended, cancelForm, isFormComplete, completedFormData, completedFormConfig, currentFormId, clearCompletionState } = useFormMode();
 
@@ -766,7 +766,18 @@ function ChatWidget() {
                   />
                 </div>
               )}
-              {isTyping && !isFormMode && <TypingIndicator />}
+              {/* Typing indicator = the PRE-reply state only (DESIGN_SPEC.md
+                  "Loading": dots pulse under the wordmark label while
+                  waiting). Once the reply's first chunk paints, the
+                  streaming message group above carries the wordmark label —
+                  keeping the indicator mounted showed a SECOND label + dots
+                  under the answer for the whole stream (Chris's mobile
+                  report 2026-07-03). `hasStreamedContent` comes from
+                  StreamingChatProvider (first-chunk latch, reset per send);
+                  the HTTP fallback provider doesn't define it (undefined →
+                  indicator behaves as before, correct for non-streamed
+                  replies that arrive whole). */}
+              {isTyping && !isFormMode && !hasStreamedContent && <TypingIndicator />}
             </div>
           )}
 
