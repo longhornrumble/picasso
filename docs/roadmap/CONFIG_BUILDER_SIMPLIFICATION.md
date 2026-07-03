@@ -43,7 +43,7 @@ References to retired/never-real names that mislead agents; fix during #1 or opp
 
 ## Sequencing vs the widget redesign
 
-- ✅ **Anytime (independent)**: findings #1–#4 (dead code, draft, restore decision, merge consolidation) — **executed 2026-07-02/03**; remaining operator step: visual E2E on the staging builder (MYR384719: load → edit → Save → Deploy → reload; deploy should 200 with a version bump on the incrementVersion scheme).
+- ✅ **Anytime (independent)**: findings #1–#4 (dead code, draft, restore decision, merge consolidation) — **executed 2026-07-02/03; operator E2E PASSED 2026-07-03** (MYR384719 deploy 200, version bumped 1.0→1.1, backup written, `card_inventory` shed). The E2E surfaced two latent staging-infra gaps, both Terraform-fixed same night: Function URL CORS lacked `if-match`/`etag` (picasso#658) and the tenant-config bucket's write-deny allowlist never sanctioned the config-manager role (picasso#661 — no staging builder write had ever been possible). **Prod-promote prerequisite: add the same two CORS values to prod's hand-managed Function URL before the next builder-frontend prod dispatch** (the bucket deny is staging-replica-only; prod needs no equivalent).
 - **After the Hairline token contract exists (redesign P1)**: #9 ramp preview, #10 skeleton rewrite, new fields (D9/D10) — the 4-place sync (Zod + types + UI + skeleton) should land as one PR per field.
 - **After the widget flip (redesign P6)**: #11 preview rebuild against final Hairline markup; config content passes (emoji labels, casing) are part of the flip checklist, not this project.
 

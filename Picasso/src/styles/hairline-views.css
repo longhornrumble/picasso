@@ -420,3 +420,247 @@ button.hairline-settings-row--button:focus-visible {
 }
 
 /* ==================== END W3.3 (settings) — W3.1/W3.2/W3.4 append below ==================== */
+
+/* ==================== W3.1: WELCOME VIEW ==================== */
+
+/**
+ * Source: design/hairline/DESIGN_SPEC.md "1. Welcome (`10a Welcome`)" +
+ * "Widget Shell" (content = "flex:1, scrolls"); cross-checked against the
+ * canonical bundle (design/hairline/bundle/Chat Widget Redesigns.dc.html,
+ * Turn 10, `data-screen-label="10a Welcome"`) for the exact px values
+ * DESIGN_SPEC.md's summary tables leave implicit (34px content top padding,
+ * 10px/26px greeting/paragraph margins, the 1.65 paragraph line-height
+ * already flagged as a documented bundle-only variance in
+ * hairline-tokens.css's Typography section).
+ *
+ * Fidelity note (bundle prevails, mapping doc §0): DESIGN_SPEC.md's Design
+ * Tokens table lists "Arrows on menu rows" under `--tenant-accent-faint`,
+ * but the bundle's actual welcome-screen markup renders the menu-row arrow
+ * glyph in `--tenant-accent` (`color:#a08a4a` — the un-faint accent, not
+ * `#c3b483`). This file follows the bundle. Also per the bundle: the arrow
+ * is a literal "→" text glyph, not an SVG/Lucide icon — DESIGN_SPEC.md's
+ * "Assets" icon list has no arrow-right entry, only "arrow-up" (composer
+ * send) and "chevrons" (settings rows), consistent with this being a text
+ * character rather than an icon component.
+ *
+ * Layout: rendered by WelcomeView.jsx as the `.hairline-shell`'s content
+ * child (sibling of `.hairline-header`/`.chat-footer-container`) in place
+ * of `.chat-window` while `ChatWidget.jsx`'s derived `activeView` is
+ * "welcome" — same flex slot, so no shell-level changes needed.
+ */
+
+.hairline-welcome-view {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 34px var(--space-page-margin) 20px;
+}
+
+.hairline-welcome-greeting {
+  margin: 0 0 10px;
+  font-size: var(--type-greeting-size);
+  font-weight: var(--type-greeting-weight);
+  color: var(--ink);
+}
+
+.hairline-welcome-message {
+  margin: 0 0 26px;
+  font-size: var(--type-body-size);
+  font-weight: var(--type-body-weight);
+  line-height: 1.65; /* bundle-only variance, documented in hairline-tokens.css */
+  color: var(--ink-body);
+}
+
+.hairline-menu-card {
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+}
+
+.hairline-menu-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: var(--space-card-row-padding);
+  margin: 0;
+  border: none;
+  border-bottom: 1px solid var(--hairline-soft);
+  background: transparent;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--duration-fill) var(--ease-ui);
+}
+
+.hairline-menu-card > .hairline-menu-row:last-child {
+  border-bottom: none;
+}
+
+.hairline-menu-row:hover,
+.hairline-menu-row:focus-visible {
+  background: var(--tenant-tint);
+}
+
+.hairline-menu-row:focus-visible {
+  outline: 2px solid var(--tenant-accent);
+  outline-offset: -2px;
+}
+
+.hairline-menu-row:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.hairline-menu-row-label {
+  font-size: var(--type-menu-row-size);
+  font-weight: var(--type-menu-row-weight);
+  color: var(--ink);
+}
+
+.hairline-menu-row-arrow {
+  flex: none;
+  color: var(--tenant-accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hairline-menu-row {
+    transition: none;
+  }
+}
+
+/* ==================== END W3.1 (welcome view) — W3.2/W3.4 append below ==================== */
+
+/* ==================== W3.2: COMMON QUESTIONS OVERLAY ==================== */
+
+/**
+ * Source: design/hairline/DESIGN_SPEC.md "2. Common questions
+ * (`10a Common questions`)"; cross-checked against the canonical bundle
+ * (design/hairline/bundle/Chat Widget Redesigns.dc.html, Turn 10,
+ * `data-screen-label="10a Common questions"`) for the exact px values
+ * DESIGN_SPEC.md's prose leaves implicit (header row padding 13px 15px/gap
+ * 9px, row padding 6px 0 wrapper + 10px 15px each, no divider between rows —
+ * unlike `.hairline-menu-row` above, which DOES have row dividers). Per the
+ * fidelity rule (mapping doc §0) the bundle prevails on these specifics.
+ *
+ * Rendered by QuestionsOverlay.jsx as a `.hairline-shell`-covering overlay
+ * (position: absolute; inset: 0, same z-index tier as
+ * `.hairline-settings-view` above — the two are mutually exclusive in
+ * practice: the overlay physically covers the header's settings icon while
+ * open, so there's no path to open Settings underneath it). The dimmed
+ * underlay sits behind the card and in front of everything else in the
+ * shell (header included), matching the bundle: the header is a DOM sibling
+ * rendered BEFORE the underlay, so the underlay's semi-transparent fill +
+ * blur dims it too, exactly like the Turn 10 mock's dimmed wordmark.
+ */
+
+.hairline-questions-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+}
+
+.hairline-questions-underlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 254, 251, 0.6);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+
+.hairline-questions-card {
+  position: absolute;
+  top: 58px;
+  left: 18px;
+  right: 18px;
+  max-height: calc(100% - 58px - 18px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  background: var(--surface-raised);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-overlay);
+  box-shadow: var(--shadow-overlay);
+  animation: hairline-questions-reveal var(--duration-overlay-reveal) var(--ease-reveal);
+}
+
+@keyframes hairline-questions-reveal {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.hairline-questions-header {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 13px 15px;
+  border-bottom: 1px solid var(--hairline-soft);
+  /* Bundle: close icon strokes `--tenant-accent-muted`, hover `--tenant-accent-deep`
+     — `.hairline-icon-button` (hairline-shell.css) inherits `color` and
+     already implements that hover, so setting the base color here is enough. */
+  color: var(--tenant-accent-muted);
+}
+
+.hairline-questions-title {
+  flex: 1;
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--tenant-accent-deep);
+}
+
+.hairline-questions-rows {
+  padding: 6px 0;
+}
+
+.hairline-questions-row {
+  display: block;
+  width: 100%;
+  padding: 10px 15px;
+  margin: 0;
+  border: none;
+  background: transparent;
+  font-family: inherit;
+  text-align: left;
+  font-size: 13px;
+  color: var(--ink-body);
+  cursor: pointer;
+  transition:
+    background-color var(--duration-fill) var(--ease-ui),
+    color var(--duration-fill) var(--ease-ui);
+}
+
+.hairline-questions-row:hover,
+.hairline-questions-row:focus-visible {
+  background: var(--tenant-tint);
+  color: var(--ink);
+}
+
+.hairline-questions-row:focus-visible {
+  outline: 2px solid var(--tenant-accent);
+  outline-offset: -2px;
+}
+
+.hairline-questions-row:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hairline-questions-card {
+    animation: none;
+  }
+
+  .hairline-questions-row {
+    transition: none;
+  }
+}
+
+/* ==================== END W3.2 (common questions overlay) — W3.4 append below ==================== */

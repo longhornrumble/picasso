@@ -14,6 +14,8 @@ import AttachmentMenu from "./AttachmentMenu";
 import MessageBubble from "./MessageBubble";
 import TypingIndicator from "./TypingIndicator";
 import SettingsView from "./SettingsView";
+import WelcomeView from "./WelcomeView";
+import QuestionsOverlay from "./QuestionsOverlay";
 import FormFieldPrompt from "../forms/FormFieldPrompt";
 import FormCompletionCard from "../forms/FormCompletionCard";
 import { useFormMode } from "../../context/FormModeContext";
@@ -27,6 +29,47 @@ function ChatWidget() {
 
   // Resolve widget behavior: merges mobile overrides onto global defaults when on mobile
   const widgetBehavior = useMemo(() => resolveWidgetBehavior(config), [config]);
+
+  // Hairline redesign (W3.1): welcome vs. thread content view.
+  //
+  // DESIGN_SPEC.md's state model lists `activeView` as
+  // welcome | thread | questionsOverlay | settings | privacy | historyList.
+  // Settings/privacy/historyList are W3.3/W3.4's own takeover views, already
+  // wired independently below via `showStateManagement` (a boolean overlay
+  // rendered on top of everything, per W3.3 — see its render note further
+  // down). This item extends the model with the remaining two states,
+  // welcome/thread, WITHOUT folding settings into the same enum: doing so
+  // would require restructuring how SettingsView mounts (it deliberately
+  // keeps header/content/footer mounted underneath itself so "back
+  // preserves scroll" is free — HAIRLINE_WORKPLAN.md guardrail says not to
+  // rewrite that wiring). So there are two independent, composable pieces
+  // of view-state here: `activeView` (welcome|thread, content area only)
+  // and `showStateManagement` (settings takeover, layered on top of either).
+  //
+  // `activeView` is DERIVED from `messages`, not separate state: every chat
+  // provider seeds a sentinel `{id: 'welcome', ...}` message (or no message
+  // at all, if the tenant has no `welcome_message` configured) before any
+  // real interaction, and `clearMessages()` (frozen, unchanged by this
+  // item) resets back to that same shape. So "has anything besides the
+  // sentinel happened yet" is exactly "welcome vs. thread" — first open,
+  // returning mid-conversation, first send, and "Clear all messages" (which
+  // calls the SAME clearMessages()) all fall out of this one computation for
+  // free, with no new state to keep in sync.
+  const hasStartedThread = useMemo(
+    () => messages.some((msg) => msg.id !== "welcome"),
+    [messages]
+  );
+  const activeView = hasStartedThread ? "thread" : "welcome";
+
+  // W3.2: opens the Common questions overlay (QuestionsOverlay.jsx),
+  // summoned from WelcomeView's "Common questions" row. `showQuestionsOverlay`
+  // is deliberately its own boolean (not folded into `activeView`) — same
+  // reasoning as `showStateManagement` above: it's a takeover layered on top
+  // of whichever content view is showing, not a replacement for it.
+  const [showQuestionsOverlay, setShowQuestionsOverlay] = useState(false);
+  const handleOpenQuestions = useCallback(() => {
+    setShowQuestionsOverlay(true);
+  }, []);
 
   // In iframe mode, we don't need breakpoints - the iframe container handles responsive sizing
   // The widget should always fill its container
@@ -618,66 +661,81 @@ function ChatWidget() {
             onOpenSettings={() => setShowStateManagement(true)}
           />
 
-          <div ref={chatWindowRef} className="chat-window">
-            <div className="chat-header-spacer" />
-            {messages.map((msg, idx) => {
-              const isLastMessage = idx === messages.length - 1;
-              return (
-                <div
-                  key={msg.id || idx}
-                  ref={isLastMessage ? lastMessageRef : null}
-                >
-                  <MessageBubble
-                    id={msg.id}
-                    role={msg.role}
-                    content={msg.content}
-                    files={msg.files}
-                    actions={msg.actions}
-                    cards={msg.cards}
-                    ctaButtons={msg.ctaButtons}
-                    showcaseCard={msg.showcaseCard}
-                    suggestedChips={msg.suggestedChips}
-                    uploadState={msg.uploadState}
-                    onCancel={msg.onCancel}
-                    isStreaming={msg.isStreaming}
-                    metadata={msg.metadata}
-                    renderMode={renderMode}
+          {activeView === "welcome" ? (
+            <WelcomeView onOpenQuestions={handleOpenQuestions} />
+          ) : (
+            <div ref={chatWindowRef} className="chat-window">
+              <div className="chat-header-spacer" />
+              {/* The sentinel welcome message (id: 'welcome') stays in the
+                  provider's `messages` array for step-numbering/analytics
+                  purposes (frozen — see providers), but its content is now
+                  shown only via WelcomeView above, before the thread starts.
+                  Hairline's In-flight mock (bundle 03-in-flight.png) opens
+                  directly on the user's first message, not a repeated
+                  greeting bubble, so it's filtered out of the rendered
+                  thread here (presentation-only; the underlying array is
+                  untouched). */}
+              {messages
+                .filter((msg) => msg.id !== "welcome")
+                .map((msg, idx, visibleMessages) => {
+                  const isLastMessage = idx === visibleMessages.length - 1;
+                  return (
+                    <div
+                      key={msg.id || idx}
+                      ref={isLastMessage ? lastMessageRef : null}
+                    >
+                      <MessageBubble
+                        id={msg.id}
+                        role={msg.role}
+                        content={msg.content}
+                        files={msg.files}
+                        actions={msg.actions}
+                        cards={msg.cards}
+                        ctaButtons={msg.ctaButtons}
+                        showcaseCard={msg.showcaseCard}
+                        suggestedChips={msg.suggestedChips}
+                        uploadState={msg.uploadState}
+                        onCancel={msg.onCancel}
+                        isStreaming={msg.isStreaming}
+                        metadata={msg.metadata}
+                        renderMode={renderMode}
+                      />
+                    </div>
+                  );
+                })}
+              {/* Render form field prompt when in form mode OR suspended BUT NOT when complete */}
+              {(isFormMode || isSuspended) && !isFormComplete && (
+                <div ref={lastMessageRef}>
+                  <FormFieldPrompt onCancel={cancelForm} />
+                </div>
+              )}
+              {/* Render form completion card when form is complete */}
+              {isFormComplete && completedFormData && (
+                <div ref={lastMessageRef}>
+                  <FormCompletionCard
+                    formId={currentFormId}
+                    formData={completedFormData}
+                    formFields={completedFormConfig?.fields}
+                    config={completedFormConfig?.post_submission}
+                    onEndSession={() => {
+                      // Form completion already recorded via useEffect above
+                      // Don't call recordFormCompletion here to avoid duplicate submissions
+                      clearCompletionState();
+                      // Close the widget
+                      setIsOpen(false);
+                    }}
+                    onContinue={() => {
+                      // Form completion already recorded via useEffect above
+                      // Don't call recordFormCompletion here to avoid duplicate submissions
+                      clearCompletionState();
+                      // Widget stays open for continued conversation
+                    }}
                   />
                 </div>
-              );
-            })}
-            {/* Render form field prompt when in form mode OR suspended BUT NOT when complete */}
-            {(isFormMode || isSuspended) && !isFormComplete && (
-              <div ref={lastMessageRef}>
-                <FormFieldPrompt onCancel={cancelForm} />
-              </div>
-            )}
-            {/* Render form completion card when form is complete */}
-            {isFormComplete && completedFormData && (
-              <div ref={lastMessageRef}>
-                <FormCompletionCard
-                  formId={currentFormId}
-                  formData={completedFormData}
-                  formFields={completedFormConfig?.fields}
-                  config={completedFormConfig?.post_submission}
-                  onEndSession={() => {
-                    // Form completion already recorded via useEffect above
-                    // Don't call recordFormCompletion here to avoid duplicate submissions
-                    clearCompletionState();
-                    // Close the widget
-                    setIsOpen(false);
-                  }}
-                  onContinue={() => {
-                    // Form completion already recorded via useEffect above
-                    // Don't call recordFormCompletion here to avoid duplicate submissions
-                    clearCompletionState();
-                    // Widget stays open for continued conversation
-                  }}
-                />
-              </div>
-            )}
-            {isTyping && !isFormMode && <TypingIndicator />}
-          </div>
+              )}
+              {isTyping && !isFormMode && <TypingIndicator />}
+            </div>
+          )}
 
           <div className="chat-footer-container">
             <div className="input-container">
@@ -711,6 +769,17 @@ function ChatWidget() {
                 handleToggle();
               }}
             />
+          )}
+
+          {/* Hairline redesign (W3.2): Common questions overlay. Rendered
+              only while open, same covers-the-whole-shell approach as
+              SettingsView above (DESIGN_SPEC.md screen 2's dimmed underlay
+              covers the header too). Selecting a row sends the prompt and
+              closes itself (QuestionsOverlay.jsx's onClose call inside
+              handleSelect) — closing here is just resetting this boolean so
+              the next open starts fresh. */}
+          {showQuestionsOverlay && (
+            <QuestionsOverlay onClose={() => setShowQuestionsOverlay(false)} />
           )}
         </div>
       )}

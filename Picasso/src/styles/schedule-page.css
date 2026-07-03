@@ -3,8 +3,16 @@
  * Scoped under .sched-page. Driven by the tenant branding CSS custom properties that
  * useCSSVariables.js already sets on :root (--primary-color, --font-family, …) with
  * graceful fallbacks, so the page reads obviously per-tenant without a new theme system.
- * Also restyles the reused §B18 components (.scheduling-slots / .suggested-chip / …)
+ * Also restyles the reused §B18 components (.scheduling-slots / .hairline-scheduling-row / …)
  * into full-width rows WITHIN this scope only — the in-chat widget is untouched.
+ *
+ * Hairline W4.2 compat note: SchedulingSlots.jsx/SchedulingConfirmCard were
+ * restyled for the in-chat widget (see hairline-thread.css's "W4.2 IN-CHAT
+ * SCHEDULING" section) and no longer emit `.suggested-chips`/`.suggested-chip`/
+ * `.scheduling-confirm-button`. The selectors below were mechanically renamed
+ * to the new class names so this page's own `--sp-*`-token look (unchanged
+ * values) keeps working — this page itself stays out of the Hairline redesign
+ * per HAIRLINE_REDESIGN_MAPPING.md §7 D8 ("dropped from this program").
  */
 
 .sched-page {
@@ -159,12 +167,12 @@
 /* ── reused §B18 SchedulingSlots → full-width ROWS within this page only ── */
 .sched-page .scheduling-slots { margin-top: 4px; }
 .sched-page .scheduling-context-line { color: var(--sp-muted); font-size: 13px; margin-bottom: 10px; }
-.sched-page .scheduling-slots .suggested-chips {
+.sched-page .scheduling-slots .hairline-scheduling-card {
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
-.sched-page .scheduling-slots .suggested-chip {
+.sched-page .scheduling-slots .hairline-scheduling-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -181,7 +189,7 @@
   cursor: pointer;
   transition: 0.12s;
 }
-.sched-page .scheduling-slots .suggested-chip:hover:not(:disabled) {
+.sched-page .scheduling-slots .hairline-scheduling-row:hover:not(:disabled) {
   border-color: var(--sp-brand);
   background: color-mix(in srgb, var(--sp-brand) 5%, #fff);
 }
@@ -207,7 +215,7 @@
 }
 
 /* primary / danger buttons */
-.sched-cta, .sched-page .scheduling-confirm-button {
+.sched-cta, .sched-page .hairline-scheduling-confirm-button {
   border: 0;
   background: var(--sp-brand);
   color: #fff;
@@ -219,7 +227,7 @@
   cursor: pointer;
   box-shadow: 0 8px 18px color-mix(in srgb, var(--sp-brand) 30%, transparent);
 }
-.sched-cta:disabled, .sched-page .scheduling-confirm-button:disabled {
+.sched-cta:disabled, .sched-page .hairline-scheduling-confirm-button:disabled {
   background: #c8d3cf;
   box-shadow: none;
   cursor: not-allowed;

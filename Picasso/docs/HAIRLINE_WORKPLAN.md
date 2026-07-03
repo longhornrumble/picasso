@@ -85,7 +85,7 @@
 - **Guardrail:** the sanitizer pipeline, streaming imperative writer, retry logic, and all dispatch handlers are functionality — do not alter. `MessageBubble.jsx` is single-owner: W2.3/W2.7 queue behind this item.
 
 ### W2.3 Markdown typography
-- **Status:** TODO — after W2.2
+- **Status:** PR #660
 - **Objective:** style rendered markdown (lists, links, bold, code, tables) inside bot plain-text at the 13.5px/1.6 `--ink-body` scale; links `--tenant-accent-deep` underline 2px offset.
 - **Owns:** markdown rules in `hairline-thread.css` (`.message-text`, `.streaming-formatted` descendants); NO js changes.
 - **Done when:** `test-dynamic.html` conversation with lists/links/bold renders cleanly in both streaming and finalized paths; no headers styling needed (backend bans them) but h-tags degrade gracefully if present.
@@ -119,14 +119,14 @@
 ## Phase 3 — Views
 
 ### W3.1 Welcome view + menu card
-- **Status:** TODO — after W2.1/W2.2 (NOT parallel with them; touches ChatWidget + providers)
+- **Status:** PR #659
 - **Objective:** DESIGN_SPEC screen 1: distinct welcome state (greeting `[D7 default: fixed copy]`, `welcome_message` paragraph, menu card from `action_chips.default_chips` + appended "Common questions" row) replacing the current welcome-bubble+chips presentation; thread begins on first send.
 - **Owns:** view-state logic in `ChatWidget.jsx`, new `src/components/chat/WelcomeView.jsx`, new `src/styles/hairline-views.css`; **welcome-seeding touchpoints in the three providers** (`StreamingChatProvider`, `HTTPChatProvider`, `ChatProvider`) — hoist or adjust all three consistently (pipeline-audit watch item).
 - **Done when:** first open shows welcome per mock; menu rows dispatch exactly like today's chips (same metadata to backend); returning mid-conversation shows thread not welcome; "Clear all messages" returns to welcome; works on BOTH streaming and HTTP providers; provider tests updated.
 - **Guardrail:** chip dispatch payloads (`action_chip_triggered`, `target_branch`…) byte-identical to current.
 
 ### W3.2 Common questions overlay
-- **Status:** TODO — after W3.1
+- **Status:** PR #663
 - **Objective:** DESIGN_SPEC screen 2: dimmed/blurred underlay, overlay card, rows from `quick_help.prompts`; select → close + send as user message. Replaces FollowUpPromptBar.
 - **Owns:** new `src/components/chat/QuestionsOverlay.jsx` (+ rules in `hairline-views.css`); deletion of `FollowUpPromptBar.jsx` usage.
 - **Done when:** overlay matches mock (inset 18/58, shadow, hover states); ✕/outside/ESC dismiss; selecting sends the prompt exactly as FollowUpPromptBar did; `quick_help.enabled=false` hides the menu row.
@@ -151,7 +151,7 @@
 - **PR #650 note:** `test-composite-fields.html` does not exist in the repo (checked via `git log` — missing, not this item's regression). Live-tenant e2e also blocked in the build sandbox (no egress to the config Lambda). Substituted with the full Jest suite against the real components (51 tests across all 3 files) + a throwaway static-markup Playwright screenshot proof of the shipped CSS for all 8 states (not committed). Design-review gate + staging verification against a real form tenant still needed before merge.
 
 ### W4.2 In-chat scheduling `[D2]`
-- **Owns:** `src/components/chat/SchedulingSlots.jsx`, `SchedulingDayPicker.jsx`, their rules in `hairline-thread.css`. **Status:** TODO
+- **Owns:** `src/components/chat/SchedulingSlots.jsx`, `SchedulingDayPicker.jsx`, their rules in `hairline-thread.css`. **Status:** PR #664
 - **Done when:** day strip, slot rows, confirm card, notice re-expressed (suggestion-card anatomy); `scheduling_action` payloads unchanged; snapshots regenerated deliberately.
 
 ### W4.3 Showcase card `[D2 — includes keep-or-retire call]`
@@ -160,8 +160,9 @@
 - **Done when:** re-expressed in Hairline (hairline-card anatomy shared with the merged forms/completion card: `--surface-raised` fill, `--hairline` border, `--radius-card`, no shadow; tinted type/stats badges; checklist-icon highlights; container-only CTA row styling — `CTAButton.jsx` itself stays W2.7's); `content_showcase` data shape, CTA dispatch, and ARIA semantics unchanged — only appearance changed.
 
 ### W4.4 In-thread attachments, retry, error/loading states
-- **Owns:** in-thread rendering in `FIlePreview.jsx` (coordinate with W2.5 if concurrent), `ErrorBoundary.jsx`/`.css`, `ChatProviderOrchestrator.css`, iframe loading placeholder in `iframe-main.jsx`. **Status:** TODO
+- **Owns:** in-thread rendering in `FIlePreview.jsx` (coordinate with W2.5 if concurrent), `ErrorBoundary.jsx`/`.css`, `ChatProviderOrchestrator.css`, iframe loading placeholder in `iframe-main.jsx`. **Status:** PR #662
 - **Done when:** sent image/video/PDF, retry button, error fallback, loading states all quiet-palette Hairline; reduced-motion respected.
+- **PR #662 note:** `ErrorBoundary.jsx`/`.css` actually live at `src/components/ErrorBoundary.jsx` (not `src/components/chat/`) — corrected path, same files. Provider `message.files` drop (StreamingChatProvider/HTTPChatProvider) means the in-thread attachment preview is unreachable at runtime — flagged, not fixed (frozen functionality, separate item). Reachable-but-ephemeral states (provider loading, iframe loading/error, error boundary, retry button) plus the unreachable attachment previews verified via a throwaway static-markup Playwright screenshot against the real built CSS (not committed) rather than a live catch-in-the-act screenshot — same precedent as W4.1 (PR #650). `ChatProviderOrchestrator.css`'s `.chat-provider-loading` had a pre-existing `display: none` silently hiding its loading text; fixed as part of this restyle (CSS-only, no logic change).
 
 ### W4.5 Callout re-skin + fullpage + mobile sheet `[D6 default: ≤480 sheet]`
 - **Owns:** callout markup in `ChatWidget.jsx` + `ChatWidget.css`, fullpage-mode rules, mobile-sheet rules in `hairline-shell.css`. **Status:** TODO

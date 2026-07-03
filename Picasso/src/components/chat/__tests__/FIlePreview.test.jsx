@@ -1,12 +1,15 @@
 /**
- * FilePreview Component Tests — Hairline attachment chip (W2.5)
+ * FilePreview Component Tests — Hairline attachment chip (W2.5) + in-thread
+ * attachment preview (W4.4)
  *
- * Scope: only the "attachment chip" branch (uploading / error / any
- * complete-but-non-previewable file) is restyled by W2.5 — see
- * FIlePreview.jsx's header comment. The image/video/PDF inline-preview
- * branches are W4.4's scope; this suite asserts they are left untouched
- * (old classnames) as a boundary regression check, without asserting their
- * internal styling.
+ * Scope: the "attachment chip" branch (uploading / error / any
+ * complete-but-non-previewable file) is W2.5's DESIGN_SPEC.md "Photo
+ * attached" chip anatomy — see FIlePreview.jsx's header comment. The
+ * image/video/PDF inline-preview branches are W4.4's unmocked-surface
+ * restyle (`.hairline-attachment-preview*`, see hairline-attachments.css);
+ * this suite's boundary block asserts the two branches remain mutually
+ * exclusive (which one renders for a given file/state), not the internal
+ * styling of either.
  *
  * NOTE: filename intentionally matches the source file's unusual
  * capitalization (`FIlePreview.jsx`) — see docs/HAIRLINE_WORKPLAN.md W2.5.
@@ -71,19 +74,19 @@ describe('FilePreview — Hairline attachment chip', () => {
     });
   });
 
-  describe('in-thread preview boundary (W4.4 scope — left untouched)', () => {
-    test('a complete image still renders via the old rich inline-preview branch, not the chip', () => {
+  describe('in-thread preview boundary (W4.4 scope)', () => {
+    test('a complete image renders via the hairline in-thread preview, not the chip', () => {
       render(<FilePreview file={imageFile} uploadState="complete" />);
 
-      expect(document.querySelector('.image-preview')).toBeInTheDocument();
+      expect(document.querySelector('.hairline-attachment-preview-media--image')).toBeInTheDocument();
       expect(document.querySelector('.hairline-attachment-chip')).not.toBeInTheDocument();
       expect(screen.getByAltText('IMG_2043.jpg')).toHaveAttribute('src', 'blob:mock');
     });
 
-    test('a complete video still renders via the old rich inline-preview branch, not the chip', () => {
+    test('a complete video renders via the hairline in-thread preview, not the chip', () => {
       render(<FilePreview file={videoFile} uploadState="complete" />);
 
-      expect(document.querySelector('.video-preview')).toBeInTheDocument();
+      expect(document.querySelector('.hairline-attachment-preview-media--video')).toBeInTheDocument();
       expect(document.querySelector('.hairline-attachment-chip')).not.toBeInTheDocument();
     });
 
@@ -91,13 +94,13 @@ describe('FilePreview — Hairline attachment chip', () => {
       render(<FilePreview file={{ ...imageFile, url: undefined }} uploadState="uploading" />);
 
       expect(document.querySelector('.hairline-attachment-chip')).toBeInTheDocument();
-      expect(document.querySelector('.image-preview')).not.toBeInTheDocument();
+      expect(document.querySelector('.hairline-attachment-preview-media--image')).not.toBeInTheDocument();
     });
 
-    test('a complete PDF still renders via the old rich inline-preview branch, not the chip', () => {
+    test('a complete PDF renders via the hairline in-thread preview, not the chip', () => {
       render(<FilePreview file={pdfFile} uploadState="complete" />);
 
-      expect(document.querySelector('.pdf-preview')).toBeInTheDocument();
+      expect(document.querySelector('.hairline-attachment-preview-media--pdf')).toBeInTheDocument();
       expect(document.querySelector('.hairline-attachment-chip')).not.toBeInTheDocument();
     });
 
@@ -105,7 +108,7 @@ describe('FilePreview — Hairline attachment chip', () => {
       render(<FilePreview file={pdfFile} uploadState="uploading" />);
 
       expect(document.querySelector('.hairline-attachment-chip')).toBeInTheDocument();
-      expect(document.querySelector('.pdf-preview')).not.toBeInTheDocument();
+      expect(document.querySelector('.hairline-attachment-preview-media--pdf')).not.toBeInTheDocument();
     });
   });
 });
