@@ -1,3 +1,16 @@
+// src/components/forms/CompositeFieldGroup.jsx
+//
+// Hairline redesign (W4.1): multi-field groups (name/address/
+// phone_with_consent) restyled to a grouped hairline card
+// (`.hairline-composite*`); the phone_with_consent Yes/No toggle reuses
+// the shared `.hairline-form-menu*` menu-row classes (select-buttons =
+// menu rows, per HAIRLINE_REDESIGN_MAPPING.md §4 item 1). Unmocked
+// surface — see FormFieldPrompt.jsx's header comment. Styles live in
+// src/styles/hairline-forms.css.
+//
+// FROZEN (do not change): per-subfield required/pattern/phone validation,
+// the name-field auto-capitalize normalization, and the `onSubmit(values)`
+// payload shape.
 import React, { useState } from 'react';
 
 /**
@@ -108,21 +121,21 @@ export default function CompositeFieldGroup({ field, onSubmit, inputRef, labelId
     const consentSubfield = field.subfields.find(sf => sf.type === 'select');
 
     return (
-      <form onSubmit={handleSubmit} className="composite-field-group" aria-labelledby={labelId}>
-        <div className="composite-field-container">
+      <form onSubmit={handleSubmit} className="hairline-composite" aria-labelledby={labelId}>
+        <div className="hairline-composite-group">
           {/* Phone input */}
           {phoneSubfield && (
-            <div className="composite-field-item">
-              <label htmlFor={phoneSubfield.id} className="composite-field-label">
+            <div className="hairline-composite-item">
+              <label htmlFor={phoneSubfield.id} className="hairline-composite-label">
                 {phoneSubfield.label}
-                {phoneSubfield.required && <span className="required-indicator">*</span>}
+                {phoneSubfield.required && <span className="hairline-composite-required" aria-hidden="true">*</span>}
               </label>
               <input
                 ref={inputRef}
                 id={phoneSubfield.id}
                 name={phoneSubfield.id}
                 type="tel"
-                className={`composite-field-input ${errors[phoneSubfield.id] ? 'error' : ''}`}
+                className={`hairline-composite-input${errors[phoneSubfield.id] ? ' hairline-composite-input--error' : ''}`}
                 value={values[phoneSubfield.id] || ''}
                 onChange={(e) => handleChange(phoneSubfield.id, e.target.value)}
                 placeholder={phoneSubfield.placeholder || '(555) 123-4567'}
@@ -130,7 +143,7 @@ export default function CompositeFieldGroup({ field, onSubmit, inputRef, labelId
                 aria-describedby={errors[phoneSubfield.id] ? `error-${phoneSubfield.id}` : undefined}
               />
               {errors[phoneSubfield.id] && (
-                <div id={`error-${phoneSubfield.id}`} className="composite-field-error" role="alert" aria-live="polite">
+                <div id={`error-${phoneSubfield.id}`} className="hairline-composite-error" role="alert" aria-live="polite">
                   {errors[phoneSubfield.id]}
                 </div>
               )}
@@ -139,17 +152,17 @@ export default function CompositeFieldGroup({ field, onSubmit, inputRef, labelId
 
           {/* SMS Consent toggle */}
           {consentSubfield && (
-            <div className="composite-field-item" style={{ marginTop: '12px' }}>
-              <label className="composite-field-label" id={`label-${consentSubfield.id}`}>
+            <div className="hairline-composite-item hairline-composite-consent">
+              <label className="hairline-composite-label" id={`label-${consentSubfield.id}`}>
                 {consentSubfield.label || consentSubfield.prompt}
               </label>
               {consentSubfield.disclosure && (
-                <div className="form-field-hint" style={{ marginBottom: '8px', fontSize: '12px', lineHeight: '1.4' }}>
+                <div className="hairline-composite-hint">
                   {consentSubfield.disclosure}
                 </div>
               )}
               <div
-                className="form-select-options"
+                className="hairline-form-menu"
                 role="group"
                 aria-labelledby={`label-${consentSubfield.id}`}
               >
@@ -157,7 +170,7 @@ export default function CompositeFieldGroup({ field, onSubmit, inputRef, labelId
                   <button
                     key={option.value}
                     type="button"
-                    className={`form-select-option ${values[consentSubfield.id] === option.value ? 'selected' : ''}`}
+                    className={`hairline-form-menu-row${values[consentSubfield.id] === option.value ? ' hairline-form-menu-row--selected' : ''}`}
                     onClick={() => handleChange(consentSubfield.id, option.value)}
                     aria-pressed={values[consentSubfield.id] === option.value}
                   >
@@ -171,7 +184,7 @@ export default function CompositeFieldGroup({ field, onSubmit, inputRef, labelId
 
         <button
           type="submit"
-          className="form-submit-button"
+          className="hairline-form-submit"
           disabled={!isValid}
         >
           Submit
@@ -182,23 +195,23 @@ export default function CompositeFieldGroup({ field, onSubmit, inputRef, labelId
 
   // Default rendering for name, address composites
   return (
-    <form onSubmit={handleSubmit} className="composite-field-group" aria-labelledby={labelId}>
-      <div className="composite-field-container">
+    <form onSubmit={handleSubmit} className="hairline-composite" aria-labelledby={labelId}>
+      <div className="hairline-composite-group">
         {field.subfields.map((subfield, index) => (
-          <div key={subfield.id} className="composite-field-item">
+          <div key={subfield.id} className="hairline-composite-item">
             <label
               htmlFor={subfield.id}
-              className="composite-field-label"
+              className="hairline-composite-label"
             >
               {subfield.label}
-              {subfield.required && <span className="required-indicator">*</span>}
+              {subfield.required && <span className="hairline-composite-required" aria-hidden="true">*</span>}
             </label>
             <input
               ref={index === 0 ? inputRef : null}
               id={subfield.id}
               name={subfield.id}
               type="text"
-              className={`composite-field-input ${errors[subfield.id] ? 'error' : ''}`}
+              className={`hairline-composite-input${errors[subfield.id] ? ' hairline-composite-input--error' : ''}`}
               value={values[subfield.id] || ''}
               onChange={(e) => handleChange(subfield.id, e.target.value)}
               placeholder={subfield.placeholder || ''}
@@ -208,7 +221,7 @@ export default function CompositeFieldGroup({ field, onSubmit, inputRef, labelId
             {errors[subfield.id] && (
               <div
                 id={`error-${subfield.id}`}
-                className="composite-field-error"
+                className="hairline-composite-error"
                 role="alert"
                 aria-live="polite"
               >
@@ -221,7 +234,7 @@ export default function CompositeFieldGroup({ field, onSubmit, inputRef, labelId
 
       <button
         type="submit"
-        className="form-submit-button"
+        className="hairline-form-submit"
         disabled={!isValid}
       >
         Submit

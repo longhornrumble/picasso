@@ -3,12 +3,13 @@ import React, { useState, useRef, useEffect, useMemo, useCallback, useLayoutEffe
 import { useConfig } from "../../hooks/useConfig";
 import { useChat } from "../../hooks/useChat";
 import FormModeContext, { useFormMode } from "../../context/FormModeContext";
-import { config as environmentConfig } from "../../config/environment";
+import strings from "../../i18n/strings";
 import FilePreview from "./FIlePreview";  // Note: File has unusual capitalization
 import { streamingRegistry } from "../../utils/streamingRegistry";
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import CTAButton, { CTAButtonGroup } from './CTAButton';
+import ResponseActions from './ResponseActions'; // W2.6: copy + inert thumbs row
 import FormCompletionCard from '../forms/FormCompletionCard';
 import ShowcaseCard from './ShowcaseCard';
 import SchedulingSlots, { SchedulingNotice, SchedulingConfirmCard } from './SchedulingSlots';
@@ -80,26 +81,6 @@ const processStreamingMarkdown = (text) => {
   }
 };
 
-// --- Avatar URL helper (unchanged, but slightly tidied) ---
-const getAvatarUrl = (config) => {
-  const { tenant_id, branding, _cloudfront } = config || {};
-  const avatarSources = [
-    branding?.avatar_url,
-    branding?.logo_url,
-    branding?.bot_avatar_url,
-    branding?.icon,
-    branding?.custom_icons?.bot_avatar,
-    _cloudfront?.urls?.avatar,
-    tenant_id ? `${environmentConfig.API_BASE_URL}/tenants/${tenant_id}/avatar.png` : null,
-    tenant_id ? `${environmentConfig.API_BASE_URL}/tenants/${tenant_id}/logo.png` : null,
-    tenant_id ? environmentConfig.getLegacyS3Url(tenant_id, "FVC_logo.png") : null,
-    tenant_id ? environmentConfig.getLegacyS3Url(tenant_id, "avatar.png") : null,
-    tenant_id ? environmentConfig.getLegacyS3Url(tenant_id, "logo.png") : null,
-    `${environmentConfig.API_BASE_URL}/collateral/default-avatar.png`,
-  ];
-  return avatarSources.find((url) => url && url.trim()) || `${environmentConfig.API_BASE_URL}/collateral/default-avatar.png`;
-};
-
 /**
  * Props contract notes:
  * - `content` should be sanitized HTML for finalized messages (from ChatProvider).
@@ -131,9 +112,8 @@ export default function MessageBubble({
 }) {
   const { config } = useConfig();
   const { isFormMode } = useFormMode();
-  const { addMessage, sendMessage, isTyping, retryMessage, recordFormCompletion } = useChat();
+  const { addMessage, sendMessage, isTyping, retryMessage, recordFormCompletion, messages } = useChat();
   const formMode = useContext(FormModeContext);
-  const [avatarError, setAvatarError] = useState(false);
 
   // Track which CTA buttons have been clicked (by button ID) for this message
   const [clickedButtonIds, setClickedButtonIds] = useState(new Set());
@@ -141,7 +121,12 @@ export default function MessageBubble({
   const [anyButtonClicked, setAnyButtonClicked] = useState(false);
 
   const isUser = role === "user";
-  const avatarSrc = getAvatarUrl(config);
+  // Hairline redesign (W2.2): bot sender label sources chat_title, matching
+  // ChatHeader.jsx's wordmark resolution exactly (HAIRLINE_REDESIGN_MAPPING.md
+  // §2 "Surviving tenant-config reads" — chat_title feeds both the wordmark
+  // AND the bot sender label). Supersedes the pre-Hairline
+  // bot_name-then-chat_title-then-"Assistant" fallback chain.
+  const chatTitle = config?.branding?.chat_title || "Chat";
 
   // --- Resolve message identity & streaming state ---
   const messageId = useMemo(() => {
@@ -516,6 +501,29 @@ export default function MessageBubble({
   }, [streamingFlag, messageId, resolveLiveEl]);
 
   const isFinalized = (!streamingFlag && !!content);
+
+  // W2.7 (DESIGN_SPEC.md screen 3): suggestion-card CTAs render only under
+  // the LATEST bot message in the thread — not every past bot reply that
+  // still carries a ctaButtons array (older messages keep ctaButtons
+  // indefinitely; nothing clears them on newer turns — verified against
+  // StreamingChatProvider/HTTPChatProvider). CTAButtonGroup has no
+  // visibility into sibling messages, so this is computed here from the
+  // full messages list (already exposed by both chat providers via
+  // useChat()) purely to GATE the render below — it does not touch
+  // handleCtaClick, the _position contract, or the ctaButtons prop itself.
+  // Falls back to `true` (render as before) when `messages` is absent or
+  // has no resolvable bot message, so every pre-existing test's mocked
+  // ChatContext (which stub `messages: []`) keeps passing unchanged.
+  const isLatestBotMessage = useMemo(() => {
+    if (!Array.isArray(messages) || messages.length === 0) return true;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const r = messages[i]?.role;
+      if (r === 'assistant' || r === 'bot') {
+        return messages[i]?.id === messageId;
+      }
+    }
+    return true;
+  }, [messages, messageId]);
 
   const handleActionClick = (action) => {
     if (isTyping) return;
@@ -904,91 +912,106 @@ export default function MessageBubble({
     return hasLongText ? "long-text" : "";
   };
 
+  // Hairline redesign (W2.2): the streaming/finalized text container itself
+  // is FROZEN (sanitizer pipeline + imperative streaming writer target this
+  // exact node/props — see the ref/attrs/handlers below, unchanged from
+  // pre-Hairline). Only what WRAPS it changes: user messages get the tinted
+  // `.hairline-message-card`, bot messages render it plain (no bubble) per
+  // DESIGN_SPEC.md screen 3. Declaring the node once and placing it in one of
+  // two mutually-exclusive wrappers below keeps the frozen props byte-identical
+  // in both branches.
+  const messageTextNode = (
+    <div
+      ref={streamingContainerRef}
+      className={`message-text ${streamingFlag ? 'streaming' : ''}`}
+      data-streaming={streamingFlag ? "true" : "false"}
+      data-stream-id={messageId}
+      data-was-streamed={metadata?.streamCompleted ? "true" : "false"}
+      aria-live="polite"
+      role="article"
+      suppressHydrationWarning
+      // For messages that were streamed, content is managed imperatively
+      // For non-streamed messages, use React's dangerouslySetInnerHTML
+      dangerouslySetInnerHTML={
+        (!streamingFlag) && typeof content === 'string' && content.length
+          ? { __html: content }
+          : undefined
+      }
+      // Analytics: Track link clicks via event delegation.
+      // C1.2 (amended 2026-06-12): payload is ADDITIVE — new fields + legacy-compat
+      // fields retained so the live dashboard (SessionTimelineEvent.tsx:186) can still
+      // render payload.link_text until Wave-2 migrates to payload.label.
+      onClick={(e) => {
+        const anchor = e.target.closest('a');
+        if (anchor && anchor.href) {
+          const rawLabel = (anchor.textContent || anchor.innerText || '').trim();
+          // Compute legacy fields the same way the pre-existing code did
+          // (reference: origin/staging MessageBubble.jsx:941-950)
+          let linkDomain = 'unknown';
+          let category = 'unknown';
+          try {
+            const u = new URL(anchor.href);
+            linkDomain = u.hostname;
+            category = u.protocol === 'mailto:' ? 'email'
+                     : u.protocol === 'tel:'    ? 'phone'
+                     : 'web';
+          } catch { /* invalid URL — leave defaults */ }
+          emitAnalyticsEvent(LINK_CLICKED, {
+            // C1.2 new fields
+            url: anchor.href,
+            label: rawLabel.slice(0, 120),
+            source: 'message',
+            // Legacy-compat fields (drop after Wave-2 dashboard update)
+            link_text: rawLabel,
+            link_domain: linkDomain,
+            category
+          });
+        }
+      }}
+      style={{
+        display: "block",
+        visibility: "visible",
+        opacity: 1,
+        whiteSpace: "normal",
+        wordBreak: "break-word",
+        transition: "none",
+        willChange: streamingFlag ? "contents" : "auto",
+        contentVisibility: "visible",
+        contain: "none",
+        isolation: "auto"
+      }}
+    />
+  );
+
   return (
-    <div className={`message ${isUser ? "user" : "bot"}`} data-message-id={messageId || undefined}>
-      <div className="message-content">
-        {/* Bot header with avatar inside bubble */}
-        {!isUser && (
-          <div className="message-header">
-            <div className="message-avatar">
-              {!avatarError && (
-                <img
-                  src={avatarSrc}
-                  onError={() => setAvatarError(true)}
-                  onLoad={() => setAvatarError(false)}
-                  alt="Avatar"
-                  crossOrigin="anonymous"
-                />
-              )}
-            </div>
-            <div className="message-sender-name">
-              {config?.branding?.bot_name || config?.branding?.chat_title || "Assistant"}
-            </div>
-          </div>
-        )}
+    <div
+      className={`hairline-message ${isUser ? "hairline-message--user" : "hairline-message--bot"}`}
+      data-message-id={messageId || undefined}
+    >
+      <div className="hairline-message-group">
+        {/* Sender label — DESIGN_SPEC.md screen 3: "YOU" caps (muted) above the
+            user's tinted card; tenant chat_title caps (accent-deep) above the
+            bot's plain text. No avatar anywhere (deleted from the thread's
+            render path per HAIRLINE_WORKPLAN.md W2.2 — the avatar data
+            pipeline itself is W6.2, out of scope here). */}
+        <div
+          className={`hairline-sender-label ${isUser ? "hairline-sender-label--user" : "hairline-sender-label--bot"}`}
+        >
+          {isUser ? strings.thread.youSenderLabel : chatTitle}
+        </div>
 
         {/* Text Content */}
-        {/* Single container for entire lifecycle - streaming and markdown */}
-        <div
-          ref={streamingContainerRef}
-          className={`message-text ${streamingFlag ? 'streaming' : ''}`}
-          data-streaming={streamingFlag ? "true" : "false"}
-          data-stream-id={messageId}
-          data-was-streamed={metadata?.streamCompleted ? "true" : "false"}
-          aria-live="polite"
-          role="article"
-          suppressHydrationWarning
-          // For messages that were streamed, content is managed imperatively
-          // For non-streamed messages, use React's dangerouslySetInnerHTML
-          dangerouslySetInnerHTML={
-            (!streamingFlag) && typeof content === 'string' && content.length
-              ? { __html: content }
-              : undefined
-          }
-          // Analytics: Track link clicks via event delegation.
-          // C1.2 (amended 2026-06-12): payload is ADDITIVE — new fields + legacy-compat
-          // fields retained so the live dashboard (SessionTimelineEvent.tsx:186) can still
-          // render payload.link_text until Wave-2 migrates to payload.label.
-          onClick={(e) => {
-            const anchor = e.target.closest('a');
-            if (anchor && anchor.href) {
-              const rawLabel = (anchor.textContent || anchor.innerText || '').trim();
-              // Compute legacy fields the same way the pre-existing code did
-              // (reference: origin/staging MessageBubble.jsx:941-950)
-              let linkDomain = 'unknown';
-              let category = 'unknown';
-              try {
-                const u = new URL(anchor.href);
-                linkDomain = u.hostname;
-                category = u.protocol === 'mailto:' ? 'email'
-                         : u.protocol === 'tel:'    ? 'phone'
-                         : 'web';
-              } catch { /* invalid URL — leave defaults */ }
-              emitAnalyticsEvent(LINK_CLICKED, {
-                // C1.2 new fields
-                url: anchor.href,
-                label: rawLabel.slice(0, 120),
-                source: 'message',
-                // Legacy-compat fields (drop after Wave-2 dashboard update)
-                link_text: rawLabel,
-                link_domain: linkDomain,
-                category
-              });
-            }
-          }}
-          style={{
-            display: "block",
-            visibility: "visible",
-            opacity: 1,
-            whiteSpace: "normal",
-            wordBreak: "break-word",
-            transition: "none",
-            willChange: streamingFlag ? "contents" : "auto",
-            contentVisibility: "visible",
-            contain: "none",
-            isolation: "auto"
-          }}
-        />
+        {/* Single container for entire lifecycle - streaming and markdown.
+            User: wrapped in the tinted card. Bot: rendered plain, no bubble. */}
+        {isUser ? (
+          <div className="hairline-message-card">{messageTextNode}</div>
+        ) : (
+          messageTextNode
+        )}
+
+        {/* Response actions (W2.6) — DESIGN_SPEC.md screen 3: copy + inert
+            thumbs row under every completed (non-streaming) bot reply only. */}
+        {!isUser && isFinalized && <ResponseActions replyHtml={content} />}
 
         {/* Retry button for failed messages */}
         {metadata.can_retry && !metadata.retry_failed && (
@@ -1024,8 +1047,10 @@ export default function MessageBubble({
           </div>
         )}
 
-        {/* CTA Buttons (assistant/bot only) */}
-        {(role === "assistant" || role === "bot") && ctaButtons && ctaButtons.length > 0 && (
+        {/* CTA Buttons (assistant/bot only) — W2.7: latest-bot-message-only gate.
+            "Disappears once used" is handled inside CTAButtonGroup itself
+            (clickedButtonIds), not here. */}
+        {(role === "assistant" || role === "bot") && ctaButtons && ctaButtons.length > 0 && isLatestBotMessage && (
           <CTAButtonGroup
             ctas={ctaButtons}
             onCtaClick={handleCtaClick}

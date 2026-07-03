@@ -106,7 +106,7 @@ describe('ShowcaseCard', () => {
       render(<ShowcaseCard showcaseCard={fullShowcaseCard} onCTAClick={mockOnCTAClick} />);
 
       const image = screen.getByAltText('Holiday Giving Guide 2025');
-      expect(image).toHaveClass('showcase-card-image');
+      expect(image).toHaveClass('hairline-showcase-image');
       expect(image).toHaveAttribute('src', 'https://example.com/holiday.jpg');
       expect(image).toHaveAttribute('loading', 'lazy');
     });
@@ -123,7 +123,7 @@ describe('ShowcaseCard', () => {
       render(<ShowcaseCard showcaseCard={fullShowcaseCard} onCTAClick={mockOnCTAClick} />);
 
       const highlightsList = screen.getByLabelText('Key highlights');
-      expect(highlightsList).toHaveClass('showcase-card-highlights');
+      expect(highlightsList).toHaveClass('hairline-showcase-highlights');
 
       fullShowcaseCard.highlights.forEach((highlight) => {
         expect(screen.getByText(highlight)).toBeInTheDocument();
@@ -146,7 +146,7 @@ describe('ShowcaseCard', () => {
 
       const highlightItems = screen.getAllByRole('listitem');
       highlightItems.forEach((item) => {
-        expect(item).toHaveClass('showcase-card-highlight');
+        expect(item).toHaveClass('hairline-showcase-highlight');
       });
     });
   });
@@ -319,11 +319,11 @@ describe('ShowcaseCard', () => {
     it('should apply all required CSS classes', () => {
       render(<ShowcaseCard showcaseCard={fullShowcaseCard} onCTAClick={mockOnCTAClick} />);
 
-      expect(screen.getByRole('article')).toHaveClass('showcase-card');
-      expect(screen.getByRole('img')).toHaveClass('showcase-card-image');
-      expect(screen.getByText('campaign')).toHaveClass('showcase-card-type');
-      expect(screen.getByRole('heading')).toHaveClass('showcase-card-title');
-      expect(screen.getByText('Make a child\'s holiday magical')).toHaveClass('showcase-card-tagline');
+      expect(screen.getByRole('article')).toHaveClass('hairline-showcase');
+      expect(screen.getByRole('img')).toHaveClass('hairline-showcase-image');
+      expect(screen.getByText('campaign')).toHaveClass('hairline-showcase-type');
+      expect(screen.getByRole('heading')).toHaveClass('hairline-showcase-title');
+      expect(screen.getByText('Make a child\'s holiday magical')).toHaveClass('hairline-showcase-tagline');
     });
 
     it('should accept and apply custom className', () => {
@@ -336,7 +336,7 @@ describe('ShowcaseCard', () => {
       );
 
       const article = screen.getByRole('article');
-      expect(article).toHaveClass('showcase-card');
+      expect(article).toHaveClass('hairline-showcase');
       expect(article).toHaveClass('custom-class');
     });
 
@@ -350,8 +350,8 @@ describe('ShowcaseCard', () => {
       );
 
       const article = screen.getByRole('article');
-      expect(article).toHaveClass('showcase-card');
-      expect(article.className).toBe('showcase-card');
+      expect(article).toHaveClass('hairline-showcase');
+      expect(article.className).toBe('hairline-showcase');
     });
   });
 

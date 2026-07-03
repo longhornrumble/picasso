@@ -236,27 +236,47 @@ describe('CTAButton - Context-Based CTA Styling', () => {
   });
 });
 
+// W2.7: CTAButtonGroup now renders the DESIGN_SPEC.md "Suggestion card"
+// menu-anatomy (a bordered `.hairline-suggestion-card` of
+// `.hairline-suggestion-row` buttons) instead of the old pill-button row.
+// These tests assert the restyled markup/classes; the click-dispatch
+// contract (onCtaClick called with the untouched cta object) is unchanged
+// and re-verified below alongside the restyle.
 describe('CTAButtonGroup', () => {
-  describe('Multiple Buttons with Position Metadata', () => {
-    test('renders multiple CTAs with correct position classes', () => {
+  describe('Row rendering — menu-card anatomy (W2.7)', () => {
+    test('renders a bordered suggestion card with one row per cta', () => {
       const ctas = [
         { _position: 'primary', label: 'Primary CTA', action: 'start_form', id: 'cta1' },
         { _position: 'secondary', label: 'Secondary CTA 1', action: 'navigate', id: 'cta2' },
         { _position: 'secondary', label: 'Secondary CTA 2', action: 'navigate', id: 'cta3' },
       ];
 
-      render(<CTAButtonGroup ctas={ctas} />);
+      const { container } = render(<CTAButtonGroup ctas={ctas} />);
 
-      const primaryButton = screen.getByRole('button', { name: /primary cta/i });
-      const secondary1 = screen.getByRole('button', { name: /secondary cta 1/i });
-      const secondary2 = screen.getByRole('button', { name: /secondary cta 2/i });
-
-      expect(primaryButton).toHaveClass('cta-primary');
-      expect(secondary1).toHaveClass('cta-secondary');
-      expect(secondary2).toHaveClass('cta-secondary');
+      const card = container.querySelector('.hairline-suggestion-card');
+      expect(card).toBeInTheDocument();
+      expect(card).toHaveAttribute('role', 'group');
+      expect(card.querySelectorAll('.hairline-suggestion-row')).toHaveLength(3);
     });
 
-    test('handles mixed position metadata and fallback styling', () => {
+    test('primary row gets the emphasized class; other rows are standard', () => {
+      const ctas = [
+        { _position: 'primary', label: 'Primary CTA', action: 'start_form', id: 'cta1' },
+        { _position: 'secondary', label: 'Secondary CTA', action: 'navigate', id: 'cta2' },
+      ];
+
+      render(<CTAButtonGroup ctas={ctas} />);
+
+      const primaryRow = screen.getByRole('button', { name: /primary cta/i });
+      const secondaryRow = screen.getByRole('button', { name: /secondary cta/i });
+
+      expect(primaryRow).toHaveClass('hairline-suggestion-row');
+      expect(primaryRow).toHaveClass('hairline-suggestion-row--primary');
+      expect(secondaryRow).toHaveClass('hairline-suggestion-row');
+      expect(secondaryRow).not.toHaveClass('hairline-suggestion-row--primary');
+    });
+
+    test('a cta without _position renders as a standard (non-emphasized) row', () => {
       const ctas = [
         { _position: 'primary', label: 'With Position', action: 'start_form', id: 'cta1' },
         { label: 'Without Position', action: 'navigate', id: 'cta2' },
@@ -267,8 +287,21 @@ describe('CTAButtonGroup', () => {
       const withPosition = screen.getByRole('button', { name: /with position/i });
       const withoutPosition = screen.getByRole('button', { name: /without position/i });
 
-      expect(withPosition).toHaveClass('cta-primary');
-      expect(withoutPosition).toHaveClass('cta-secondary'); // Fallback
+      expect(withPosition).toHaveClass('hairline-suggestion-row--primary');
+      expect(withoutPosition).not.toHaveClass('hairline-suggestion-row--primary');
+    });
+
+    test('row renders a label span and an aria-hidden arrow span', () => {
+      const ctas = [{ label: 'Learn about mentoring', action: 'navigate', id: 'cta1' }];
+
+      const { container } = render(<CTAButtonGroup ctas={ctas} />);
+
+      const row = screen.getByRole('button', { name: /learn about mentoring/i });
+      const label = row.querySelector('.hairline-suggestion-row-label');
+      const arrow = row.querySelector('.hairline-suggestion-row-arrow');
+
+      expect(label).toHaveTextContent('Learn about mentoring');
+      expect(arrow).toHaveAttribute('aria-hidden', 'true');
     });
 
     test('renders null when ctas array is empty', () => {
@@ -280,8 +313,10 @@ describe('CTAButtonGroup', () => {
       const { container } = render(<CTAButtonGroup />);
       expect(container.firstChild).toBeNull();
     });
+  });
 
-    test('passes onClick handler to all buttons', () => {
+  describe('Click dispatch (frozen contract)', () => {
+    test('passes onClick handler to all rows with the untouched cta object', () => {
       const onClick = jest.fn();
       const ctas = [
         { _position: 'primary', label: 'Button 1', action: 'start_form', id: 'cta1' },
@@ -297,23 +332,7 @@ describe('CTAButtonGroup', () => {
       expect(onClick).toHaveBeenCalledWith(ctas[1]);
     });
 
-    test('disables clicked buttons when clickedButtonIds is provided', () => {
-      const clickedIds = new Set(['cta1']);
-      const ctas = [
-        { _position: 'primary', label: 'Clicked Button', action: 'start_form', id: 'cta1' },
-        { _position: 'secondary', label: 'Not Clicked', action: 'navigate', id: 'cta2' },
-      ];
-
-      render(<CTAButtonGroup ctas={ctas} clickedButtonIds={clickedIds} />);
-
-      const clickedButton = screen.getByRole('button', { name: /clicked button/i });
-      const notClickedButton = screen.getByRole('button', { name: /not clicked/i });
-
-      expect(clickedButton).toBeDisabled();
-      expect(notClickedButton).not.toBeDisabled();
-    });
-
-    test('all buttons disabled when group is disabled', () => {
+    test('all rows disabled when group is disabled (but the card still renders)', () => {
       const ctas = [
         { _position: 'primary', label: 'Button 1', action: 'start_form', id: 'cta1' },
         { _position: 'secondary', label: 'Button 2', action: 'navigate', id: 'cta2' },
@@ -326,6 +345,36 @@ describe('CTAButtonGroup', () => {
 
       expect(button1).toBeDisabled();
       expect(button2).toBeDisabled();
+    });
+  });
+
+  // W2.7 / DESIGN_SPEC.md screen 3: "suggestions ... disappear once used" —
+  // HAIRLINE_WORKPLAN.md W2.7 explicitly sanctions replacing the pre-Hairline
+  // "disable all buttons in the message after any click" *styling* with a
+  // "remove the card" *styling*. This supersedes the old disabled-buttons
+  // assertion (this is the intended design per the workplan, not a silently
+  // dropped behavioral assertion).
+  describe('Disappears once used (W2.7)', () => {
+    test('the entire card is removed once any cta in the group has been clicked', () => {
+      const clickedIds = new Set(['cta1']);
+      const ctas = [
+        { _position: 'primary', label: 'Clicked Button', action: 'start_form', id: 'cta1' },
+        { _position: 'secondary', label: 'Not Clicked', action: 'navigate', id: 'cta2' },
+      ];
+
+      const { container } = render(<CTAButtonGroup ctas={ctas} clickedButtonIds={clickedIds} />);
+
+      expect(container.firstChild).toBeNull();
+      expect(screen.queryByRole('button', { name: /clicked button/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /not clicked/i })).not.toBeInTheDocument();
+    });
+
+    test('renders normally when clickedButtonIds is empty', () => {
+      const ctas = [{ label: 'Button 1', action: 'start_form', id: 'cta1' }];
+
+      render(<CTAButtonGroup ctas={ctas} clickedButtonIds={new Set()} />);
+
+      expect(screen.getByRole('button', { name: /button 1/i })).toBeInTheDocument();
     });
   });
 });

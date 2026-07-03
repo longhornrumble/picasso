@@ -2,7 +2,7 @@
 
 ## Summary
 
-All three wireframes have been updated to match the Foster Village analytics dashboard styling.
+All three wireframes have been updated to match the MyRecruiter analytics dashboard styling.
 
 ## Design System Changes
 
@@ -135,7 +135,7 @@ For quick reference when updating remaining files:
 2. ⏳ Update CTA Editor to v2
 3. ⏳ Update Form Editor to v2
 
-All three editors will then have consistent styling that matches the Foster Village analytics dashboard, providing a cohesive user experience across the platform.
+All three editors will then have consistent styling that matches the MyRecruiter analytics dashboard, providing a cohesive user experience across the platform.
 
 ## Implementation Notes
 

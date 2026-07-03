@@ -9,6 +9,7 @@ import ChatProviderOrchestrator from './context/ChatProviderOrchestrator.jsx';
 import ChatWidget from './components/chat/ChatWidget.jsx';
 import SchedulingPage from './components/scheduling/SchedulingPage.jsx';
 import { CSSVariablesProvider } from './components/chat/useCSSVariables.js';
+import { HairlineThemeProvider } from './theme/HairlineThemeProvider.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
 import { config as environmentConfig } from './config/environment.js';
 import { _storeGet, _storeSet, getFromSession, saveToSession } from './context/shared/messageHelpers.js';
@@ -20,6 +21,40 @@ import "./styles/widget-entry.css";
 import "./styles/theme.css";
 import "./styles/fonts.css";
 import "./styles/schedule-page.css";
+// Hairline redesign (W1.2): fixed token sheet — definitions only.
+import "./styles/hairline-tokens.css";
+// Hairline redesign (W2.1): shell + header — the first surface to actually
+// consume the token sheet above (ChatWidget.jsx's shell container +
+// ChatHeader.jsx). Imported after it for cascade correctness.
+import "./styles/hairline-shell.css";
+// Hairline redesign (W2.4): composer idle/expanded restyle. InputBar.jsx
+// renders the new `.hairline-composer` markup exclusively (old
+// `.input-bar-container` classes are gone from that component), so this
+// sheet is live the moment it's imported — old theme.css rules for the
+// retired class names simply have no matching elements left to style.
+import "./styles/hairline-composer.css";
+// Hairline redesign (W2.2): thread (asymmetric messages) + typing indicator.
+// MessageBubble.jsx/TypingIndicator.jsx render the new `.hairline-message*`
+// markup exclusively — old `.message`/`.message.user`/`.message.bot`/
+// `.message-content` classes are gone from those components.
+import "./styles/hairline-thread.css";
+// Hairline redesign (W3.3+): full-takeover / overlay views (Settings now;
+// Welcome/Common-questions/Privacy append to the same sheet — see its
+// header comment).
+import "./styles/hairline-views.css";
+// Hairline redesign (W4.1): conversational forms suite — unmocked surface,
+// fresh Hairline treatment (no Turn 10 mock). FormFieldPrompt.jsx,
+// CompositeFieldGroup.jsx, and FormCompletionCard.jsx render exclusively
+// under new `.hairline-form*`/`.hairline-composite*`/`.hairline-completion*`
+// markup — old `.form-field-prompt`/`.composite-field-*`/
+// `.form-completion-*` classes are gone from those components.
+import "./styles/hairline-forms.css";
+// Hairline redesign (W4.3): showcase card — unmocked surface (D2: keep +
+// restyle, not retire), fresh Hairline treatment reusing the hairline-card
+// anatomy established by hairline-forms.css. ShowcaseCard.jsx renders
+// exclusively under new `.hairline-showcase*` markup — old `.showcase-card*`
+// classes in theme.css are gone from that component.
+import "./styles/hairline-showcase.css";
 
 // ============================================================================
 // ANALYTICS STATE (for User Journey Analytics)
@@ -673,11 +708,15 @@ function initializeWidget() {
       <ErrorBoundary>
         <ConfigProvider>
           <CSSVariablesProvider>
-            <FormModeProvider>
-              <ChatProviderOrchestrator>
-                {isScheduleMode ? <SchedulingPage /> : <ChatWidget />}
-              </ChatProviderOrchestrator>
-            </FormModeProvider>
+            {/* Hairline redesign (W1.3): coexists with CSSVariablesProvider above —
+                see HAIRLINE_WORKPLAN.md ground rule #8. Removed in W6.2. */}
+            <HairlineThemeProvider>
+              <FormModeProvider>
+                <ChatProviderOrchestrator>
+                  {isScheduleMode ? <SchedulingPage /> : <ChatWidget />}
+                </ChatProviderOrchestrator>
+              </FormModeProvider>
+            </HairlineThemeProvider>
           </CSSVariablesProvider>
         </ConfigProvider>
       </ErrorBoundary>

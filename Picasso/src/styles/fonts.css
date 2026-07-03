@@ -9,48 +9,57 @@
  * To add a new font:
  * 1. Download woff2 files to public/fonts/<fontname>/
  * 2. Add @font-face declarations below
- * 3. Add to SUPPORTED_FONTS in fontLoader.js
+ *
+ * Hairline redesign font menu (fixed 4-option tenant menu):
+ *   Plus Jakarta Sans (reference/default) | Inter | Lato | Arial
+ *
+ * Weight mapping — the spec's 400/600/700 scale is NOT offered uniformly
+ * by every family:
+ *   - Plus Jakarta Sans: native 400/600/700. Google serves one variable
+ *     woff2 per unicode range for this family; the same file backs all
+ *     three @font-face weight declarations below and the browser selects
+ *     the correct instance from the variable font's weight axis.
+ *   - Inter: native 400/500/600/700, same single-file-per-range pattern.
+ *     Untouched by this redesign (kept exactly as it was).
+ *   - Lato: NO 600 (SemiBold) weight exists upstream — Google only
+ *     publishes static 400 and 700 latin files for Lato. Any request for
+ *     font-weight 600 is mapped to the 700 file: see the 600 @font-face
+ *     block below, which intentionally points at lato-latin-700.woff2.
+ *   - Arial: system font. No self-hosted files, no @font-face rule —
+ *     referenced directly by font-family name and resolved by the OS.
  */
 
 /* =============================================================================
-   MONTSERRAT
-   Popular geometric sans-serif with distinctive double-story 'g'
-   Weights: 400 (Regular), 500 (Medium), 600 (SemiBold), 700 (Bold)
+   PLUS JAKARTA SANS
+   Reference/default family for the Hairline widget redesign; also matches
+   the marketing brand typeface.
+   Weights: 400 (Regular), 600 (SemiBold), 700 (Bold)
    ============================================================================= */
 
 @font-face {
-  font-family: 'Montserrat';
+  font-family: 'Plus Jakarta Sans';
   font-style: normal;
   font-weight: 400;
   font-display: swap;
-  src: url('/fonts/montserrat/montserrat-latin.woff2') format('woff2');
+  src: url('/fonts/plus-jakarta-sans/plus-jakarta-sans-latin.woff2') format('woff2');
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
 @font-face {
-  font-family: 'Montserrat';
-  font-style: normal;
-  font-weight: 500;
-  font-display: swap;
-  src: url('/fonts/montserrat/montserrat-latin.woff2') format('woff2');
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
-}
-
-@font-face {
-  font-family: 'Montserrat';
+  font-family: 'Plus Jakarta Sans';
   font-style: normal;
   font-weight: 600;
   font-display: swap;
-  src: url('/fonts/montserrat/montserrat-latin.woff2') format('woff2');
+  src: url('/fonts/plus-jakarta-sans/plus-jakarta-sans-latin.woff2') format('woff2');
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
 @font-face {
-  font-family: 'Montserrat';
+  font-family: 'Plus Jakarta Sans';
   font-style: normal;
   font-weight: 700;
   font-display: swap;
-  src: url('/fonts/montserrat/montserrat-latin.woff2') format('woff2');
+  src: url('/fonts/plus-jakarta-sans/plus-jakarta-sans-latin.woff2') format('woff2');
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
@@ -97,43 +106,44 @@
 }
 
 /* =============================================================================
-   POPPINS
-   Geometric sans-serif with friendly, rounded aesthetics
-   Weights: 400 (Regular), 500 (Medium), 600 (SemiBold), 700 (Bold)
+   LATO
+   Weights: 400 (Regular), 700 (Bold)
+   NOTE: Lato has no 600 (SemiBold) weight upstream — Google only publishes
+   static 400 and 700 latin files for this family. The 600 block below is a
+   deliberate weight-mapping shim: it points at the SAME 700 file so that any
+   consumer requesting font-weight: 600 with font-family Lato still resolves
+   to a real, self-hosted face instead of a synthetic/faux-bold fallback.
    ============================================================================= */
 
 @font-face {
-  font-family: 'Poppins';
+  font-family: 'Lato';
   font-style: normal;
   font-weight: 400;
   font-display: swap;
-  src: url('/fonts/poppins/poppins-latin.woff2') format('woff2');
+  src: url('/fonts/lato/lato-latin-400.woff2') format('woff2');
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
 @font-face {
-  font-family: 'Poppins';
-  font-style: normal;
-  font-weight: 500;
-  font-display: swap;
-  src: url('/fonts/poppins/poppins-latin.woff2') format('woff2');
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
-}
-
-@font-face {
-  font-family: 'Poppins';
+  font-family: 'Lato';
   font-style: normal;
   font-weight: 600;
   font-display: swap;
-  src: url('/fonts/poppins/poppins-latin.woff2') format('woff2');
+  src: url('/fonts/lato/lato-latin-700.woff2') format('woff2'); /* mapped: no native 600 file — see NOTE above */
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
 @font-face {
-  font-family: 'Poppins';
+  font-family: 'Lato';
   font-style: normal;
   font-weight: 700;
   font-display: swap;
-  src: url('/fonts/poppins/poppins-latin.woff2') format('woff2');
+  src: url('/fonts/lato/lato-latin-700.woff2') format('woff2');
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
+
+/*
+ * ARIAL — system font, intentionally has no @font-face rule here.
+ * Selected directly by name (font-family: Arial, sans-serif) and resolved
+ * by the OS/browser; no woff2 files are shipped for it.
+ */

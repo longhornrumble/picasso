@@ -311,8 +311,8 @@ graph TB
   "event_id": "evt_abc123",
   "schema_version": "1.0.0",
   "session_id": "sess_xyz789",
-  "tenant_id": "FOS402334",
-  "tenant_hash": "fo85e6a06dcdf4",
+  "tenant_id": "MYR384719",
+  "tenant_hash": "my87674d777bf9",
   "step_number": 1,
   "event_type": "MESSAGE_SENT",
   "event_payload": {
@@ -333,8 +333,8 @@ graph TB
   "event_id": "evt_def456",
   "schema_version": "1.0.0",
   "session_id": "sess_xyz789",
-  "tenant_id": "FOS402334",
-  "tenant_hash": "fo85e6a06dcdf4",
+  "tenant_id": "MYR384719",
+  "tenant_hash": "my87674d777bf9",
   "step_number": 1,
   "event_type": "MESSAGE_RECEIVED",
   "event_payload": {
@@ -357,8 +357,8 @@ graph TB
   "event_id": "evt_form123",
   "schema_version": "1.0.0",
   "session_id": "sess_xyz789",
-  "tenant_id": "FOS402334",
-  "tenant_hash": "fo85e6a06dcdf4",
+  "tenant_id": "MYR384719",
+  "tenant_hash": "my87674d777bf9",
   "step_number": 5,
   "event_type": "FORM_COMPLETED",
   "event_payload": {
@@ -413,7 +413,7 @@ TBLPROPERTIES ('has_encrypted_data'='false');
 
 ```json
 {
-  "pk": "TENANT#fo85e6a06dcdf4",
+  "pk": "TENANT#my87674d777bf9",
   "sk": "METRIC#conversations_summary#30d",
   "data": {
     "total_conversations": 142,
@@ -554,7 +554,7 @@ TBLPROPERTIES ('has_encrypted_data'='false');
 3. **Analytics_Event_Processor** triggered by SQS
 4. **Analytics_Event_Processor** decodes tenant_hash → tenant_id using S3 mappings
 5. **Analytics_Event_Processor** writes NDJSON files to S3 with Hive-style partitioning:
-   - Path: `s3://picasso-analytics/analytics/tenant_id=FOS402334/year=2025/month=12/day=20/*.json`
+   - Path: `s3://picasso-analytics/analytics/tenant_id=MYR384719/year=2025/month=12/day=20/*.json`
 6. **Athena** discovers partitions automatically
 7. **Analytics_Aggregator** runs hourly via EventBridge
 8. **Analytics_Aggregator** queries Athena for all active tenants

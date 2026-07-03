@@ -1,0 +1,422 @@
+/**
+ * hairline-views.css — Hairline redesign full-takeover / overlay views.
+ *
+ * SHARED FILE — owned jointly across Phase 3 items (docs/HAIRLINE_WORKPLAN.md):
+ *   - W3.3 (this section): Settings takeover — SettingsView.jsx.
+ *   - W3.1 (welcome view + menu card) and W3.2 (common questions overlay)
+ *     append their own top-level sections after the "END W3.3" marker below.
+ *   - W3.4 (privacy & compliance takeover) appends after that.
+ * Each item's section is self-contained (its own selectors, its own
+ * reduced-motion block) — do not edit another item's section; append yours
+ * after the last END marker.
+ *
+ * Source (W3.3 section): design/hairline/DESIGN_SPEC.md screen 5
+ * ("5. Settings") + "Design Tokens" (Spacing & shape, Typography, Motion);
+ * design/hairline/bundle/05-settings.png (Turn 10, canonical); the inline
+ * destructive-confirm visual treatment (pill buttons, "no red panel") is
+ * adapted from the bundle's Turn 1c "1c Clear confirm" exploration — see
+ * SettingsView.jsx / strings.js for the copy-provenance note.
+ *
+ * Consumes tokens from hairline-tokens.css (W1.2) and the per-tenant
+ * `--tenant-*` custom properties injected by HairlineThemeProvider (W1.3).
+ * No hard-coded colors — every color below is a token reference. Icon
+ * buttons reuse `.hairline-icon-button` from hairline-shell.css (W2.1) —
+ * that file is not modified here, only its class is referenced.
+ */
+
+/* ==================== W3.3: SETTINGS TAKEOVER ==================== */
+
+/* ==========================================================
+   1. ROOT — full-widget takeover, slides in from the right.
+   `.hairline-shell` (hairline-shell.css) is already `position: absolute`,
+   which is a valid containing block for this `position: absolute` child —
+   no changes needed there. Rendered only while open (ChatWidget.jsx), so
+   the header/chat-window/footer underneath stay mounted the whole time and
+   never lose their scroll position ("back preserves scroll").
+   ========================================================== */
+
+.hairline-settings-view {
+  position: absolute;
+  inset: 0;
+  /* Must clear every other positioned/z-indexed element inside the shell —
+     notably theme.css's `.chat-footer-container` (z-index: 15, still
+     coexisting per HAIRLINE_WORKPLAN.md ground rule #8) and this sheet's
+     own attach popover (hairline-composer.css, z-index: 20) — or the
+     takeover doesn't actually cover the composer (caught via live
+     dev-harness screenshot, not by jsdom tests, which don't compute
+     stacking contexts). */
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  overflow: hidden;
+  font-family: var(--tenant-font-family, "Plus Jakarta Sans", system-ui, sans-serif);
+  color: var(--ink);
+  animation: hairline-settings-slide-in var(--duration-settings-slide, 240ms) var(--ease-reveal);
+}
+
+@keyframes hairline-settings-slide-in {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+/* ==========================================================
+   2. TAKEOVER HEADER — back chevron + page title (left), close (right).
+   DESIGN_SPEC.md "Design Tokens" > "Spacing & shape": "Header padding:
+   ... with 14px bottom + hairline divider on takeover pages."
+   ========================================================== */
+
+.hairline-takeover-header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px var(--space-page-margin) var(--space-header-padding-takeover-bottom);
+  border-bottom: 1px solid var(--hairline-soft);
+}
+
+.hairline-takeover-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.hairline-page-title {
+  margin: 0;
+  font-size: var(--type-page-title-size);
+  font-weight: var(--type-page-title-weight);
+  color: var(--ink);
+}
+
+/* ==========================================================
+   3. SCROLLING CONTENT
+   ========================================================== */
+
+.hairline-settings-content {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 6px var(--space-page-margin) 16px;
+}
+
+.hairline-settings-group-label {
+  margin: 14px 2px 6px;
+  font-size: var(--type-group-label-size);
+  font-weight: var(--type-group-label-weight);
+  color: var(--tenant-accent-muted);
+  /* Casing rule (DESIGN_SPEC.md): caps reserved for wordmark + sender
+     labels only — group labels render sentence case as authored. */
+}
+
+.hairline-settings-content > .hairline-settings-group-label:first-child {
+  margin-top: 0;
+}
+
+/* ==========================================================
+   4. GROUPED CARD + ROWS (Conversation / Preferences / Your data)
+   ========================================================== */
+
+.hairline-settings-card {
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+}
+
+.hairline-settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: var(--space-card-row-padding-settings);
+  margin: 0;
+  border: none;
+  border-bottom: 1px solid var(--hairline-soft);
+  background: transparent;
+  font-family: inherit;
+  text-align: left;
+  color: inherit;
+}
+
+.hairline-settings-card > .hairline-settings-row:last-child {
+  border-bottom: none;
+}
+
+button.hairline-settings-row--button {
+  cursor: pointer;
+  transition: background-color var(--duration-fill) var(--ease-ui);
+}
+
+button.hairline-settings-row--button:hover,
+button.hairline-settings-row--button:focus-visible {
+  background: var(--tenant-tint);
+}
+
+button.hairline-settings-row--button:focus-visible {
+  outline: 2px solid var(--tenant-accent);
+  outline-offset: -2px;
+}
+
+.hairline-settings-row-label {
+  font-size: var(--type-row-label-size);
+  font-weight: var(--type-row-label-weight);
+  color: var(--ink);
+}
+
+.hairline-settings-row-label--accent {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--tenant-accent-deep);
+  font-weight: 700;
+}
+
+.hairline-settings-row-value {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  font-size: var(--type-row-value-size);
+  font-weight: var(--type-row-value-weight);
+  color: var(--ink-faint);
+}
+
+.hairline-settings-chevron {
+  display: inline-flex;
+  align-items: center;
+  color: var(--tenant-accent-faint);
+}
+
+.hairline-connection-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.hairline-connection-dot.is-online {
+  background: var(--online);
+}
+
+/* DESIGN_SPEC.md Interactions: "Offline: Connection row shows gray dot" —
+   no fixed token is named for this exact dot in the Design Tokens table;
+   --ink-faint is the closest fixed "gray" ink token. */
+.hairline-connection-dot.is-offline {
+  background: var(--ink-faint);
+}
+
+/* ==========================================================
+   5. CLEAR ALL MESSAGES — default row + fine print
+   ========================================================== */
+
+.hairline-settings-clear-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin-top: 18px;
+  padding: 0 2px;
+  border: none;
+  background: transparent;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--danger);
+  cursor: pointer;
+  text-align: left;
+  transition: opacity var(--duration-fill) var(--ease-ui);
+}
+
+.hairline-settings-clear-row:hover,
+.hairline-settings-clear-row:focus-visible {
+  opacity: 0.8;
+}
+
+.hairline-settings-clear-row:focus-visible {
+  outline: 2px solid var(--danger);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.hairline-settings-fine-print {
+  margin: 6px 2px 0;
+  font-size: var(--type-fine-print-sm-size);
+  letter-spacing: var(--type-fine-print-sm-tracking);
+  line-height: var(--type-fine-print-sm-line-height);
+  color: var(--ink-ghost);
+}
+
+/* ==========================================================
+   6. INLINE DESTRUCTIVE CONFIRM — replaces the row above per DESIGN_SPEC.md
+   ("confirm/cancel pill pair replaces the row"); visual treatment adapted
+   from bundle Turn 1c "1c Clear confirm" ("inline confirm, no red panel").
+   ========================================================== */
+
+.hairline-settings-clear-confirm {
+  margin-top: 18px;
+  padding: 0 2px;
+}
+
+.hairline-settings-clear-confirm-title {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--ink);
+  margin-bottom: 4px;
+}
+
+.hairline-settings-clear-confirm-body {
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--ink-faint);
+  margin-bottom: 12px;
+}
+
+.hairline-settings-clear-confirm-error {
+  font-size: 11.5px;
+  color: var(--danger);
+  margin: -6px 0 10px;
+}
+
+.hairline-settings-clear-confirm-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.hairline-pill-button {
+  flex: 1 1 0;
+  padding: 8px 0;
+  border-radius: 999px;
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    filter var(--duration-fill) var(--ease-ui),
+    opacity var(--duration-fill) var(--ease-ui);
+}
+
+.hairline-pill-button--danger {
+  border: none;
+  background: var(--danger);
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.hairline-pill-button--outline {
+  border: 1px solid var(--hairline-strong);
+  background: transparent;
+  color: var(--ink-soft);
+  font-weight: 600;
+}
+
+.hairline-pill-button:not(:disabled):hover {
+  filter: brightness(0.95);
+}
+
+.hairline-pill-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.hairline-pill-button:focus-visible {
+  outline: 2px solid var(--tenant-accent);
+  outline-offset: 2px;
+}
+
+/* ==========================================================
+   7. HISTORY DRILL-IN SUB-VIEW — unmocked capability (fidelity rule §0.2):
+   the Turn 10 bundle mocks the top-level Settings list only, not the
+   "History" row's drill-in target. Designed fresh from the same hairline
+   card/row vocabulary as section 4 above.
+   ========================================================== */
+
+.hairline-settings-history-loading,
+.hairline-settings-empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 32px 12px;
+  color: var(--ink-faint);
+  font-size: 12.5px;
+  text-align: center;
+}
+
+.hairline-settings-empty-state {
+  flex-direction: column;
+}
+
+.hairline-spin {
+  animation: hairline-settings-spin 1s linear infinite;
+}
+
+@keyframes hairline-settings-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.hairline-settings-history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+}
+
+.hairline-settings-history-item {
+  padding: var(--space-card-row-padding-settings);
+  border-bottom: 1px solid var(--hairline-soft);
+}
+
+.hairline-settings-history-list > .hairline-settings-history-item:last-child {
+  border-bottom: none;
+}
+
+.hairline-settings-history-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: var(--type-row-label-size);
+  font-weight: var(--type-row-label-weight);
+  color: var(--ink);
+}
+
+.hairline-settings-history-item-duration {
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: var(--ink-faint);
+}
+
+.hairline-settings-history-item-summary {
+  margin-top: 4px;
+  font-size: 11.5px;
+  color: var(--ink-soft);
+}
+
+/* ==========================================================
+   8. REDUCED MOTION
+   ========================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  .hairline-settings-view {
+    animation: none;
+  }
+
+  .hairline-spin {
+    animation: none;
+  }
+
+  button.hairline-settings-row--button,
+  .hairline-settings-clear-row,
+  .hairline-pill-button {
+    transition: none;
+  }
+}
+
+/* ==================== END W3.3 (settings) — W3.1/W3.2/W3.4 append below ==================== */
