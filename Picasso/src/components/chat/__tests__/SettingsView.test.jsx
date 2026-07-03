@@ -7,13 +7,13 @@
  * to the SAME `clearMessages()` from useChat() — which is where the
  * SESSION_CLEARED audit/analytics event actually lives (StreamingChatProvider.jsx /
  * HTTPChatProvider.jsx), so asserting this component calls it is the
- * correct "same audit event" contract for a component-level test — export
- * builds the same payload shape and triggers a download, history renders
- * from localStorage. Markup/class assertions are new (restyle + tabs→list
- * restructure, per ground rule #6).
+ * correct "same audit event" contract for a component-level test. Markup/
+ * class assertions are new (restyle + tabs→list restructure, per ground
+ * rule #6). History + Download rows removed 2026-07-03 (Chris decision) —
+ * their absence is regression-asserted below.
  */
 import React from 'react';
-import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import SettingsView from '../SettingsView';
 import { useChat } from '../../../hooks/useChat';
@@ -40,20 +40,8 @@ function setOnline(isOnline) {
   });
 }
 
-beforeAll(() => {
-  if (!global.URL.createObjectURL) {
-    global.URL.createObjectURL = jest.fn();
-  }
-  if (!global.URL.revokeObjectURL) {
-    global.URL.revokeObjectURL = jest.fn();
-  }
-});
-
 beforeEach(() => {
   jest.useFakeTimers({ legacyFakeTimers: false });
-  jest.spyOn(global.URL, 'createObjectURL').mockReturnValue('blob:mock-url');
-  jest.spyOn(global.URL, 'revokeObjectURL').mockImplementation(() => {});
-  jest.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
   setOnline(true);
   localStorage.clear();
 });
@@ -160,105 +148,26 @@ describe('SettingsView — Hairline settings takeover (W3.3)', () => {
     });
   });
 
-  describe('history — old panel\'s History tab, reachable via drill-in row', () => {
-    test('History row shows "None yet" when no stored history exists', () => {
-      useChat.mockReturnValue(baseChat());
-      render(<SettingsView onBack={jest.fn()} onClose={jest.fn()} />);
-      expect(screen.getByText('None yet')).toBeInTheDocument();
-    });
-
-    test('History row shows a pluralized count when history exists', () => {
+  describe('history + download rows removed (Chris decision, 2026-07-03)', () => {
+    // History was a dead read (nothing ever wrote the picasso_conversations
+    // archive; storage is session-only) and Download exported metadata only
+    // and was blocked by the iframe sandbox. Both rows removed — see
+    // SettingsView.jsx header.
+    test('renders no History row, even when the legacy storage key has data', () => {
       localStorage.setItem(
         HISTORY_KEY,
         JSON.stringify([{ conversationId: 'c1', metadata: { created: '2026-01-01T00:00:00.000Z' }, messages: [] }])
       );
       useChat.mockReturnValue(baseChat());
       render(<SettingsView onBack={jest.fn()} onClose={jest.fn()} />);
-      expect(screen.getByText('1 conversation')).toBeInTheDocument();
+      expect(screen.queryByText('History')).not.toBeInTheDocument();
+      expect(screen.queryByText('None yet')).not.toBeInTheDocument();
     });
 
-    test('clicking History drills into the history list, showing stored conversations', async () => {
-      localStorage.setItem(
-        HISTORY_KEY,
-        JSON.stringify([
-          {
-            conversationId: 'c1',
-            metadata: { created: '2026-01-01T00:00:00.000Z', lastSummary: 'Talked about volunteering' },
-            messages: [
-              { timestamp: '2026-01-01T00:00:00.000Z' },
-              { timestamp: '2026-01-01T00:05:00.000Z' },
-            ],
-          },
-        ])
-      );
+    test('renders no Download conversations row', () => {
       useChat.mockReturnValue(baseChat());
       render(<SettingsView onBack={jest.fn()} onClose={jest.fn()} />);
-
-      fireEvent.click(screen.getByText('History').closest('button'));
-
-      expect(await screen.findByText('Talked about volunteering', { exact: false })).toBeInTheDocument();
-      expect(screen.getByText('5 min')).toBeInTheDocument();
-    });
-
-    test('history sub-view shows the empty state when there is no history', () => {
-      useChat.mockReturnValue(baseChat());
-      render(<SettingsView onBack={jest.fn()} onClose={jest.fn()} />);
-      fireEvent.click(screen.getByText('History').closest('button'));
-      expect(screen.getByText('No conversation history found')).toBeInTheDocument();
-    });
-
-    test('history sub-view\'s back button returns to the grouped list', () => {
-      useChat.mockReturnValue(baseChat());
-      render(<SettingsView onBack={jest.fn()} onClose={jest.fn()} />);
-      fireEvent.click(screen.getByText('History').closest('button'));
-      fireEvent.click(screen.getByRole('button', { name: /back to settings/i }));
-      expect(screen.getByText('Conversation')).toBeInTheDocument();
-      expect(screen.getByText('Current session')).toBeInTheDocument();
-    });
-  });
-
-  describe('download conversations — export, frozen payload shape (no message content)', () => {
-    test('clicking triggers a JSON download built from messages + history', () => {
-      useChat.mockReturnValue(baseChat());
-      render(<SettingsView onBack={jest.fn()} onClose={jest.fn()} />);
-
-      fireEvent.click(screen.getByText('Download conversations').closest('button'));
-
-      expect(global.URL.createObjectURL).toHaveBeenCalledTimes(1);
-      const blob = global.URL.createObjectURL.mock.calls[0][0];
-      expect(blob.type).toBe('application/json');
-      expect(HTMLAnchorElement.prototype.click).toHaveBeenCalledTimes(1);
-    });
-
-    test('shows a transient "Downloaded" confirmation, then reverts', () => {
-      useChat.mockReturnValue(baseChat());
-      render(<SettingsView onBack={jest.fn()} onClose={jest.fn()} />);
-
-      fireEvent.click(screen.getByText('Download conversations').closest('button'));
-      expect(screen.getByText('Downloaded')).toBeInTheDocument();
-
-      act(() => {
-        jest.advanceTimersByTime(2000);
-      });
-      expect(screen.getByText('Download conversations')).toBeInTheDocument();
-    });
-
-    test('shows an inline "Download failed" (not a toast) if the export throws, then reverts', () => {
-      useChat.mockReturnValue(baseChat());
-      global.URL.createObjectURL.mockImplementation(() => {
-        throw new Error('blob boom');
-      });
-      render(<SettingsView onBack={jest.fn()} onClose={jest.fn()} />);
-
-      fireEvent.click(screen.getByText('Download conversations').closest('button'));
-
-      expect(screen.getByText('Download failed')).toBeInTheDocument();
-      expect(document.querySelector('.state-notification')).not.toBeInTheDocument();
-
-      act(() => {
-        jest.advanceTimersByTime(2000);
-      });
-      expect(screen.getByText('Download conversations')).toBeInTheDocument();
+      expect(screen.queryByText('Download conversations')).not.toBeInTheDocument();
     });
   });
 

@@ -85,9 +85,8 @@ export const strings = {
     },
     rows: {
       currentSession: 'Current session',
-      history: 'History',
-      // Empty-state value shown when no past conversations exist.
-      historyEmpty: 'None yet',
+      // History + Download rows removed (Chris, 2026-07-03) — see
+      // SettingsView.jsx header; their strings went with them.
       connection: 'Connection',
       // The two fixed values the Connection row's status can show.
       connectionOnline: 'Online',
@@ -95,20 +94,10 @@ export const strings = {
       offlineSync: 'Offline sync',
       storage: 'Storage',
       storageValue: 'Session · clears on close',
-      downloadConversations: 'Download conversations',
       privacyAndCompliance: 'Privacy & compliance',
     },
     clearAllMessages: 'Clear all messages',
     clearAllMessagesFinePrint: "Logged for audit compliance · can't be undone",
-    // Transient label the "Download conversations" row swaps to after a
-    // successful/failed export (~2s, mirrors responseActions.copied's
-    // inline-confirm convention above) — replaces the old panel's
-    // page-level toast notification (HAIRLINE_WORKPLAN.md W3.3: "toast
-    // pattern replaced by spec-conformant inline confirms"). Invented for
-    // W3.3 — no Turn 10 mock shows export feedback at all. Flagged in the
-    // PR alongside clearConfirm below.
-    downloaded: 'Downloaded',
-    downloadFailed: 'Download failed',
     // DESIGN_SPEC.md screen 5 says the destructive action "requires an
     // inline confirm (confirm/cancel pill pair replaces the row)" but
     // doesn't give literal copy for it, and the copy doesn't appear in the
