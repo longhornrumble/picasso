@@ -116,6 +116,15 @@
 - **Done when:** V4 tenant on staging shows spec-fidelity suggestion cards; click dispatch table untouched (all action types verified via `ctaActionContract.test.jsx` + manual `start_form`/`send_query`/`external_link`/`show_info` clicks); "disappear once used" replaces disabled-after-click styling; CTAButton jest rewritten.
 - **Guardrail:** `_position` contract and `handleCtaClick` semantics frozen.
 
+### W2.7b Plain CTAButton export restyle (follow-up to W2.7)
+- **Status:** PR #667
+- **Objective:** W2.7 restyled `CTAButtonGroup`/`SuggestionRow` (MessageBubble's suggestion-card path) but deliberately left the PLAIN default `CTAButton` export on the old `.cta-button`/`.cta-primary`/`.cta-secondary` pill look, because that export's only live consumer (`ShowcaseCard.jsx`) was BLOCKED on decision D2 at the time. D2 is now resolved (W4.3, keep + restyle), so this item brings the plain export into the Hairline vocabulary.
+- **Owns:** `src/components/chat/CTAButton.jsx` (plain default export ONLY — `CTAButtonGroup`/`SuggestionRow` untouched), a new W2.7b section appended to the end of `hairline-thread.css`.
+- **Treatment chosen**: Turn 10 has no standalone CTA-button mock. ShowcaseCard renders exactly one primary CTA (full-width, prominent) and zero or more secondary CTAs (compact, wrapped in a row) — the same "one decisive full-width action + lighter secondary actions" shape as the conversational-forms submit/cancel pair (`hairline-forms.css` `.hairline-form-submit`/`.hairline-form-cancel`, W4.1). Reused verbatim: new classes `.hairline-cta`/`.hairline-cta--primary` (solid `--tenant-accent` fill)/`.hairline-cta--secondary` (transparent, `--hairline`-bordered) rather than inventing a third button recipe. Flagged for the design-review gate, same as W4.1/W4.3's judgment calls.
+- **Done when:** the plain CTAButton no longer renders the old pill look in either of its render contexts (ShowcaseCard's primary/secondary CTA row; MessageBubble only reaches this export indirectly via ShowcaseCard — confirmed by grep, no other direct `<CTAButton` usage in the codebase); `ctaActionContract.test.jsx` untouched and green; CTAButton jest updated for the restyled classNames (behavioral assertions — onClick dispatch, disabled state, data-attributes, null-render — kept intact); `npm test` green (46 suites / 909 tests); `npm run build:staging` succeeds.
+- **Verification note:** live dev harness (`test-dynamic.html?t=my87674d777bf9`) was not used directly — the sandbox's esbuild dev server port (8000) was occupied by a concurrent agent session (see "Stay out of" note in this item's task brief), and the shared Playwright MCP browser instance was found to be live-in-use by another concurrent session (unrelated `chat.myrecruiter.ai` console traffic observed) — further live-browser navigation was avoided to not disrupt that session. Verified instead via a throwaway static-markup Playwright screenshot (not committed) that mounts the ACTUAL `CTAButton.jsx`/`ShowcaseCard.jsx` components (unmodified imports) against the real compiled `dist/staging/iframe-main.css` bundle — same precedent as W4.1 (PR #650) and W4.4 (PR #662). Confirmed: filled full-width primary button, outlined secondary buttons in a row, disabled state, no old pill classNames present.
+- **Guardrail:** `_position` contract and `handleCtaClick`/dispatch semantics frozen — only `CTAButton.jsx`'s plain-export rendering changed.
+
 ## Phase 3 — Views
 
 ### W3.1 Welcome view + menu card
@@ -151,7 +160,7 @@
 - **PR #650 note:** `test-composite-fields.html` does not exist in the repo (checked via `git log` — missing, not this item's regression). Live-tenant e2e also blocked in the build sandbox (no egress to the config Lambda). Substituted with the full Jest suite against the real components (51 tests across all 3 files) + a throwaway static-markup Playwright screenshot proof of the shipped CSS for all 8 states (not committed). Design-review gate + staging verification against a real form tenant still needed before merge.
 
 ### W4.2 In-chat scheduling `[D2]`
-- **Owns:** `src/components/chat/SchedulingSlots.jsx`, `SchedulingDayPicker.jsx`, their rules in `hairline-thread.css`. **Status:** TODO
+- **Owns:** `src/components/chat/SchedulingSlots.jsx`, `SchedulingDayPicker.jsx`, their rules in `hairline-thread.css`. **Status:** PR #664
 - **Done when:** day strip, slot rows, confirm card, notice re-expressed (suggestion-card anatomy); `scheduling_action` payloads unchanged; snapshots regenerated deliberately.
 
 ### W4.3 Showcase card `[D2 — includes keep-or-retire call]`

@@ -193,7 +193,7 @@ describe('SchedulingSlots — §B18b context line', () => {
     );
     const slotEl = container.querySelector('.scheduling-slots');
     const contextEl = container.querySelector('[data-testid="scheduling-context-line"]');
-    const chipsEl = container.querySelector('.suggested-chips');
+    const chipsEl = container.querySelector('.hairline-scheduling-card');
     // Context line must come before chips in document order.
     expect(slotEl.children[0]).toBe(contextEl);
     expect(slotEl.children[1]).toBe(chipsEl);
