@@ -93,7 +93,12 @@ export const strings = {
       connectionOffline: 'Offline',
       offlineSync: 'Offline sync',
       storage: 'Storage',
-      storageValue: 'Session · clears on close',
+      // Truthful sessionStorage semantics (Chris, 2026-07-03): the
+      // conversation survives closing/reopening the WIDGET (reload
+      // continuity) and clears when the browser TAB closes — the old
+      // "clears on close" read as widget-close, which is exactly when it
+      // does NOT clear.
+      storageValue: 'This tab · clears when the tab closes',
       privacyAndCompliance: 'Privacy & compliance',
     },
     clearAllMessages: 'Clear all messages',
