@@ -1,5 +1,5 @@
 import { describe, it, expect } from '@jest/globals';
-import { trimHistoryForSend, mergeSchedulingSlots } from '../messageHelpers';
+import { trimHistoryForSend, mergeSchedulingSlots, computeWelcomeActions } from '../messageHelpers';
 
 const u = (content) => ({ role: 'user', content });
 const a = (content) => ({ role: 'assistant', content });
@@ -105,5 +105,83 @@ describe('mergeSchedulingSlots', () => {
     expect(mergeSchedulingSlots(existing, [null, { label: 'orphan' }, slot('s2')]))
       .toEqual([slot('s1'), slot('s2')]);
     expect(mergeSchedulingSlots(existing, undefined)).toEqual(existing);
+  });
+});
+
+// Hoisted W3.1 (HAIRLINE_WORKPLAN.md pipeline-audit watch item): this exact
+// gate+slice was duplicated inline across StreamingChatProvider.jsx (session
+// init + clearMessages), HTTPChatProvider.jsx (session init + clearMessages),
+// and ChatProvider.jsx's `generateWelcomeActions` memo. These tests pin the
+// single shared implementation all three now call.
+describe('computeWelcomeActions', () => {
+  const chip = (label, target_branch = null) => ({
+    label,
+    value: `Tell me about ${label}`,
+    target_branch,
+  });
+
+  it('returns [] when tenantConfig is missing/falsy', () => {
+    expect(computeWelcomeActions(undefined)).toEqual([]);
+    expect(computeWelcomeActions(null)).toEqual([]);
+  });
+
+  it('returns [] when action_chips is absent entirely', () => {
+    expect(computeWelcomeActions({})).toEqual([]);
+  });
+
+  it('returns [] when enabled is false (even if show_on_welcome is true)', () => {
+    expect(
+      computeWelcomeActions({
+        action_chips: { enabled: false, show_on_welcome: true, default_chips: { a: chip('A') } },
+      })
+    ).toEqual([]);
+  });
+
+  it('returns [] when show_on_welcome is false (even if enabled is true)', () => {
+    expect(
+      computeWelcomeActions({
+        action_chips: { enabled: true, show_on_welcome: false, default_chips: { a: chip('A') } },
+      })
+    ).toEqual([]);
+  });
+
+  it('handles the v1.4.1 dictionary format, dropping the object keys', () => {
+    const donate = chip('Donate', 'donation_interest');
+    const learnMore = chip('Learn More', null);
+    const out = computeWelcomeActions({
+      action_chips: {
+        enabled: true,
+        show_on_welcome: true,
+        default_chips: { donate, learn_more: learnMore },
+      },
+    });
+    expect(out).toEqual([donate, learnMore]);
+  });
+
+  it('handles the legacy v1.3 array format', () => {
+    const chips = [chip('Volunteer'), chip('Contact')];
+    const out = computeWelcomeActions({
+      action_chips: { enabled: true, show_on_welcome: true, default_chips: chips },
+    });
+    expect(out).toEqual(chips);
+  });
+
+  it('slices to max_display (default 3 when unset)', () => {
+    const chips = [chip('A'), chip('B'), chip('C'), chip('D')];
+    const defaultSliced = computeWelcomeActions({
+      action_chips: { enabled: true, show_on_welcome: true, default_chips: chips },
+    });
+    expect(defaultSliced).toEqual([chip('A'), chip('B'), chip('C')]);
+
+    const customSliced = computeWelcomeActions({
+      action_chips: { enabled: true, show_on_welcome: true, default_chips: chips, max_display: 2 },
+    });
+    expect(customSliced).toEqual([chip('A'), chip('B')]);
+  });
+
+  it('tolerates a missing default_chips key', () => {
+    expect(
+      computeWelcomeActions({ action_chips: { enabled: true, show_on_welcome: true } })
+    ).toEqual([]);
   });
 });

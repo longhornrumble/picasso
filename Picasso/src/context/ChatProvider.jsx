@@ -1,9 +1,9 @@
-import React, { useState, useCallback, useEffect, useRef, useMemo } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import { useConfig } from "../hooks/useConfig";
 import { config as environmentConfig } from '../config/environment';
 import { ChatContext } from './shared/ChatContext';
 import { useFormMode } from './FormModeContext';
-import { _storeGet, _storeSet, _storeRemove, _storeKeys } from './shared/messageHelpers';
+import { _storeGet, _storeSet, _storeRemove, _storeKeys, computeWelcomeActions } from './shared/messageHelpers';
 import PropTypes from "prop-types";
 import { 
   errorLogger, 
@@ -1273,25 +1273,11 @@ const ChatProvider = ({ children }) => {
     };
   }, []);
 
-  // PERFORMANCE: Memoize welcome actions to prevent unnecessary recalculation
-  const generateWelcomeActions = useMemo(() => {
-    return (config) => {
-      if (!config) return [];
-      
-      const actionChipsConfig = config.action_chips || {};
-      
-      if (!actionChipsConfig.enabled || !actionChipsConfig.show_on_welcome) {
-        return [];
-      }
-      
-      // Handle both array (legacy) and dictionary (v1.4.1) formats
-      const rawChips = actionChipsConfig.default_chips || {};
-      const chips = Array.isArray(rawChips) ? rawChips : Object.values(rawChips);
-      const maxDisplay = actionChipsConfig.max_display || 3;
-
-      return chips.slice(0, maxDisplay);
-    };
-  }, []);
+  // HAIRLINE_WORKPLAN.md W3.1: welcome-action-chip computation hoisted to
+  // computeWelcomeActions() in shared/messageHelpers.js (was a local memo
+  // here, duplicated inline in Streaming/HTTPChatProvider — see that
+  // function's doc comment). `generateWelcomeActions(tenantConfig)` below
+  // is now `computeWelcomeActions(tenantConfig)` at both call sites.
 
   useEffect(() => {
     console.log('[ChatProvider] Welcome message effect triggered:', {
@@ -1325,7 +1311,7 @@ const ChatProvider = ({ children }) => {
           action_chips: tenantConfig.action_chips,
           tenantConfig: tenantConfig
         });
-        const welcomeActions = generateWelcomeActions(tenantConfig);
+        const welcomeActions = computeWelcomeActions(tenantConfig);
         console.log('[ChatProvider] Generated welcome actions:', welcomeActions);
 
         // Sanitize welcome message async
@@ -1369,7 +1355,7 @@ const ChatProvider = ({ children }) => {
       } else if (messages.length === 0 && !hasInitializedMessages) {
         // No messages at all, ensure we show welcome
         errorLogger.logInfo('🎬 No messages found, setting welcome message');
-        const welcomeActions = generateWelcomeActions(tenantConfig);
+        const welcomeActions = computeWelcomeActions(tenantConfig);
         sanitizeMessage(tenantConfig.welcome_message || "Hello! How can I help you today?")
           .then(sanitizedContent => {
             // Don't wrap here - MessageBubble handles the streaming-formatted wrapper
@@ -1391,7 +1377,7 @@ const ChatProvider = ({ children }) => {
           });
       }
     }
-  }, [tenantConfig, generateWelcomeActions, hasInitializedMessages, messages, isConversationManagerInitialized]);
+  }, [tenantConfig, hasInitializedMessages, messages, isConversationManagerInitialized]);
 
   const getTenantHash = () => {
     return tenantConfig?.tenant_hash || 

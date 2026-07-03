@@ -26,6 +26,7 @@ import {
   clearSession,
   trimHistoryForSend,
   mergeSchedulingSlots,
+  computeWelcomeActions,
   _storeGet,
   _storeKeys
 } from './shared/messageHelpers';
@@ -536,20 +537,10 @@ export default function StreamingChatProvider({ children }) {
           
           // Add welcome message if configured
           if (tenantConfig?.welcome_message) {
-            // Generate welcome action chips if configured
-            const welcomeActions = [];
-            if (tenantConfig?.action_chips?.enabled && tenantConfig?.action_chips?.show_on_welcome) {
-              // Handle both array (legacy) and dictionary (v1.4.1) formats
-              const rawChips = tenantConfig.action_chips.default_chips || {};
-              const chips = Array.isArray(rawChips) ? rawChips : Object.values(rawChips);
-              const maxDisplay = tenantConfig.action_chips.max_display || 3;
-              welcomeActions.push(...chips.slice(0, maxDisplay));
-            }
-            
             const welcomeMessage = createAssistantMessage(tenantConfig.welcome_message, {
               id: 'welcome',
               isWelcome: true,
-              actions: welcomeActions
+              actions: computeWelcomeActions(tenantConfig)
             });
             setMessages([welcomeMessage]);
             saveToSession('picasso_messages', [welcomeMessage]);
@@ -1481,20 +1472,10 @@ export default function StreamingChatProvider({ children }) {
     // Restore welcome message and action cards
     const newMessages = [];
     if (tenantConfig?.welcome_message) {
-      // Generate welcome action chips if configured
-      const welcomeActions = [];
-      if (tenantConfig?.action_chips?.enabled && tenantConfig?.action_chips?.show_on_welcome) {
-        // Handle both array (legacy) and dictionary (v1.4.1) formats
-        const rawChips = tenantConfig.action_chips.default_chips || {};
-        const chips = Array.isArray(rawChips) ? rawChips : Object.values(rawChips);
-        const maxDisplay = tenantConfig.action_chips.max_display || 3;
-        welcomeActions.push(...chips.slice(0, maxDisplay));
-      }
-
       const welcomeMessage = createAssistantMessage(tenantConfig.welcome_message, {
         id: 'welcome',
         isWelcome: true,
-        actions: welcomeActions
+        actions: computeWelcomeActions(tenantConfig)
       });
       newMessages.push(welcomeMessage);
     }
