@@ -152,6 +152,20 @@ body.keyboard-visible .hairline-shell {
   -webkit-mask-image: linear-gradient(to bottom, black 0%, transparent 100%);
 }
 
+/* The zone above is a STATIC band over the top of the scroll viewport, so
+   the thread needs matching top padding or its FIRST message sits inside
+   the band before any scrolling happens (Chris's report: the "YOU" label
+   rendered blurred at scrollTop 0 — theme.css gives .chat-window
+   `padding-top: 0`). With the padding ≥ the band height, unscrolled
+   content starts below the fade and the band only ever touches content
+   that has actually scrolled up — "blur on scroll" with no scroll
+   listener. (The welcome view's own 20px top padding leaves at most the
+   band's near-transparent tail over its greeting — deliberate, verified
+   crisp.) */
+body[data-iframe="true"] .chat-window {
+  padding-top: 30px;
+}
+
 .hairline-wordmark {
   margin: 0;
   min-width: 0; /* flex-shrink below its content width so long names wrap
