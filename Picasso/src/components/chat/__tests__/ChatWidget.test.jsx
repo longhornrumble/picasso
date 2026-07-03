@@ -118,6 +118,34 @@ beforeEach(() => {
   useConfig.mockReturnValue({ config: OPEN_CONFIG });
 });
 
+describe('ChatWidget — fullpage mode renders open (W6.3 audit fix F6)', () => {
+  afterEach(() => {
+    document.body.classList.remove('fullpage-mode');
+  });
+
+  it('initializes open when body has fullpage-mode, without start_open', () => {
+    // iframe-main.jsx adds body.fullpage-mode + chat-open at boot for
+    // ?mode=fullpage; the isOpen init must honor it or the chat-open sync
+    // effect strips the class and the standalone page renders blank
+    // (fullpage CSS hides the launcher — the W6.3 audit's F6 regression).
+    document.body.classList.add('fullpage-mode');
+    useConfig.mockReturnValue({ config: { widget_behavior: {} } });
+    setChat([{ id: 'welcome', role: 'assistant', content: 'Hi!' }]);
+    render(<ChatWidget />);
+
+    expect(screen.getByTestId('welcome-view')).toBeInTheDocument();
+    expect(document.body.classList.contains('chat-open')).toBe(true);
+  });
+
+  it('without fullpage-mode and without start_open, stays closed', () => {
+    useConfig.mockReturnValue({ config: { widget_behavior: {} } });
+    setChat([{ id: 'welcome', role: 'assistant', content: 'Hi!' }]);
+    render(<ChatWidget />);
+
+    expect(screen.queryByTestId('welcome-view')).not.toBeInTheDocument();
+  });
+});
+
 describe('ChatWidget — welcome vs. thread view derivation', () => {
   it('shows WelcomeView (not the thread) on a fresh session with the seeded welcome sentinel', () => {
     setChat([{ id: 'welcome', role: 'assistant', content: 'Hi!' }]);

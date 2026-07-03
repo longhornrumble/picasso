@@ -125,8 +125,10 @@ export default function MessageBubble({
   // ChatHeader.jsx's wordmark resolution exactly (HAIRLINE_REDESIGN_MAPPING.md
   // §2 "Surviving tenant-config reads" — chat_title feeds both the wordmark
   // AND the bot sender label). Supersedes the pre-Hairline
-  // bot_name-then-chat_title-then-"Assistant" fallback chain.
-  const chatTitle = config?.branding?.chat_title || "Chat";
+  // bot_name-then-chat_title-then-"Assistant" fallback chain. W6.3 audit
+  // fix F5: also tolerate the top-level chat_title (kept in lockstep with
+  // ChatHeader.jsx — see its comment).
+  const chatTitle = config?.branding?.chat_title || config?.chat_title || "Chat";
 
   // --- Resolve message identity & streaming state ---
   const messageId = useMemo(() => {

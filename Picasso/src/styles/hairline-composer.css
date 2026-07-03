@@ -420,3 +420,54 @@
 }
 
 /* ==================== END W2.5 ==================== */
+
+/* ============================================================
+   W6.3 audit fix (F2) — FOOTER STRIP + POWERED-BY
+   (DESIGN_SPEC.md Typography "Powered-by" row + screen 1 footer)
+
+   `.hairline-footer-container` replaces the class-swapped old
+   `chat-footer-container` (ChatWidget.jsx): theme.css gave that a white
+   `--background-color` band, a blue-tinted `--border-color` border-top,
+   and bottom radii — none of which exist in the mocks, where the composer
+   and powered-by line sit directly on the warm `--surface`. It keeps the
+   old container's structural jobs: fixed footer of the shell flex column
+   (`flex-shrink: 0`, the old iframe rule), and the positioning context
+   the absolutely-anchored attach popover relies on.
+   ============================================================ */
+
+.hairline-footer-container {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  background: transparent;
+  z-index: 15;
+}
+
+/* "Powered by [16px mark] MyRecruiter" — centered beneath the composer.
+   Prefix 9.5px/400 --ink-ghost; brand name 10px/700 #8f8871 (spec
+   literal — a fixed platform-attribution color, not a tenant token);
+   mark 16px. */
+.hairline-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px 12px 10px;
+  font-size: 9.5px;
+  font-weight: 400;
+  color: var(--ink-ghost);
+  line-height: 1;
+}
+
+.hairline-footer-mark {
+  width: 16px;
+  height: 16px;
+  display: block;
+}
+
+.hairline-footer-brand {
+  font-size: 10px;
+  font-weight: 700;
+  color: #8f8871;
+}

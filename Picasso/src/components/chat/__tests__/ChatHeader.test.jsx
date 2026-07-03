@@ -42,6 +42,15 @@ describe('ChatHeader — Hairline shell + header (W2.1)', () => {
     expect(screen.getByText('Chat')).toHaveClass('hairline-wordmark');
   });
 
+  test('renders the top-level chat_title when branding.chat_title is absent (W6.3 F5)', () => {
+    // The mapping doc §2 names top-level chat_title as the wordmark source;
+    // Master_Function injects branding.chat_title today, but a config with
+    // only the top-level field must not render as "Chat".
+    setConfig({ chat_title: 'Atlanta Angels' });
+    render(<ChatHeader onClose={() => {}} onOpenSettings={() => {}} />);
+    expect(screen.getByText('Atlanta Angels')).toHaveClass('hairline-wordmark');
+  });
+
   test('falls back to "Chat" when config itself is null (pre-fetch state)', () => {
     // ChatWidget.jsx never mounts ChatHeader before config resolves (it
     // early-returns a loading state), but ChatHeader is a unit under test on

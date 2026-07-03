@@ -154,7 +154,7 @@ describe('FormFieldPrompt — Hairline forms suite', () => {
       useFormMode.mockReturnValue(makeFormMode({ getCurrentField: jest.fn(() => textField), cancelForm }));
       render(<FormFieldPrompt onCancel={onCancel} />);
 
-      fireEvent.click(screen.getByRole('button', { name: 'Cancel Form' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel form' }));
       expect(cancelForm).toHaveBeenCalledTimes(1);
       expect(onCancel).toHaveBeenCalledTimes(1);
     });

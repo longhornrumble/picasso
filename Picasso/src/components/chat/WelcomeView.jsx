@@ -97,7 +97,13 @@ export default function WelcomeView({ onOpenQuestions }) {
           would OVERRIDE that to "listitem", which is how an earlier draft
           of this file accidentally broke keyboard/AT semantics — caught by
           WelcomeView.test.jsx's aria-label assertion resolving to the wrong
-          role. Same plain-card-of-buttons pattern as SettingsView.jsx. */}
+          role. Same plain-card-of-buttons pattern as SettingsView.jsx.
+
+          W6.3 audit fix (F4): a tenant with no visible chips AND
+          quick_help disabled would otherwise render an EMPTY bordered card
+          — a stray hairline box under the welcome paragraph (observed live
+          against a minimal/fallback config). Zero rows -> no card. */}
+      {(chips.length > 0 || quickHelpEnabled) && (
       <div className="hairline-menu-card">
         {chips.map((chip, index) => (
           <button
@@ -136,6 +142,7 @@ export default function WelcomeView({ onOpenQuestions }) {
           </button>
         )}
       </div>
+      )}
     </div>
   );
 }

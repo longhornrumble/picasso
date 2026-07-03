@@ -110,7 +110,17 @@ function ChatWidget() {
   // Chat state with sessionStorage persistence (matches conversation persistence)
   const [isOpen, setIsOpen] = useState(() => {
     const widgetConfig = widgetBehavior;
-    
+
+    // Fullpage/schedule standalone pages always render open (W6.3 audit fix
+    // F6): iframe-main.jsx adds body.fullpage-mode + chat-open at boot, but
+    // the chat-open body-class sync effect below strips it again when this
+    // state initializes closed — and fullpage CSS hides the launcher, so
+    // the page rendered blank (regression vs the pre-Hairline fullpage,
+    // whose always-in-DOM .chat-container was shown by fullpage CSS alone).
+    if (typeof document !== "undefined" && document.body.classList.contains("fullpage-mode")) {
+      return true;
+    }
+
     if (!widgetConfig.remember_state) {
       return widgetConfig.start_open || false;
     }
@@ -760,12 +770,19 @@ function ChatWidget() {
             </div>
           )}
 
-          <div className="chat-footer-container">
+          {/* Hairline redesign (W6.3 audit fix F2): class-swapped from the old
+              `chat-footer-container` so theme.css's white band + blue-tinted
+              border-top + bottom-radius rules stop matching (same class-swap
+              strategy as the shell/header/badge/callout). Styles live in
+              hairline-composer.css; the inner `.input-container` keeps its
+              theme.css 6px 12px padding (load-bearing for composer position,
+              unchanged). */}
+          <div className="hairline-footer-container">
             <div className="input-container">
               <InputBar input={input} setInput={setInput} onPlusClick={() => setShowAttachmentMenu(true)} />
             </div>
-            
-            <ChatFooter brandText={config?.branding?.brandText || "AI"} />
+
+            <ChatFooter />
             {showAttachmentMenu && config?.features?.photo_uploads !== undefined && (
               <AttachmentMenu onClose={() => setShowAttachmentMenu(false)} />
             )}
