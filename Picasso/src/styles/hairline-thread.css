@@ -145,6 +145,33 @@
   color: var(--ink-message-user);
 }
 
+/* The LIVE-send path wraps user text in the same `.streaming-formatted`
+   markdown wrapper bot replies use
+   (`<div class="streaming-formatted"><p>…</p></div>`), so the card's inner
+   <p> picks up paragraph margins the card's spec padding (10px 13px)
+   doesn't budget for — a one-line user bubble rendered ~75px tall instead
+   of ~42px (W6.3 follow-up, Chris's mobile report 2026-07-03; the audit's
+   session-restore seeding stored plain text, which is why it slipped
+   past). The bot side already pins its own paragraph rhythm
+   (`.hairline-message--bot .streaming-formatted p` below); this is the
+   user-card counterpart: flush margins so the card hugs its content, with
+   a modest gap kept between paragraphs if a user ever sends multiple.
+
+   Coexistence override (documented `!important` exception, same rationale
+   and selector shape as the bot-side one below): theme.css's
+   showcase-exclusion group — `.streaming-formatted p:not(×3)` /
+   `.message-text p:not(×3)` at (0,4,1) and `div.streaming-formatted
+   p:not(×3)` at (0,4,2), all `margin: 16px !important` — outranks any
+   plain-specificity rule, so this must be ≥(0,5,1) + !important (verified
+   live by enumerating every matching margin rule). Dies with theme.css. */
+.hairline-message.hairline-message--user .hairline-message-group .hairline-message-card .streaming-formatted p {
+  margin: 0 !important;
+}
+
+.hairline-message.hairline-message--user .hairline-message-group .hairline-message-card .streaming-formatted p + p {
+  margin-top: var(--space-markdown-block-gap) !important;
+}
+
 /* ============================================================
    4. BOT MESSAGE — plain body text, no bubble/card, no avatar
    Source: DESIGN_SPEC.md screen 3 "plain body text 13.5px/1.6 --ink-body".
