@@ -119,7 +119,37 @@ body.keyboard-visible .hairline-shell {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: var(--space-header-padding); /* 18px 24px 0 */
+  padding: var(--space-header-padding); /* 18px 24px 14px — see token comment */
+  /* Anchor + stacking context for the ::after roll-under zone below, so it
+     paints above the sibling scroll area's content. Kept well under the
+     footer container (z 15) and the takeover/overlay views. */
+  position: relative;
+  z-index: 3;
+}
+
+/* Scroll roll-under zone (product amendment — Chris, 2026-07-03, mirroring
+   the Claude app): content scrolling up toward the header fades and blurs
+   out instead of clipping hard at the scroll viewport's top edge. The zone
+   hangs BELOW the header, over the top of the sibling scroll area
+   (thread/welcome); it is pure paint (pointer-events none). The mask fades
+   both the surface tint and the backdrop blur toward the bottom, so the
+   effect tapers to nothing. The gradient's transparent stop is --surface
+   (#fffefb, a FIXED all-tenant token) at zero alpha — `transparent` would
+   gray-band mid-gradient in some engines. Firefox <103 has no
+   backdrop-filter: the fade still works, only the blur is absent. */
+.hairline-header::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  height: 28px;
+  pointer-events: none;
+  background: linear-gradient(to bottom, var(--surface) 0%, rgba(255, 254, 251, 0) 100%);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  mask-image: linear-gradient(to bottom, black 0%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, black 0%, transparent 100%);
 }
 
 .hairline-wordmark {

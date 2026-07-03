@@ -454,7 +454,11 @@ button.hairline-settings-row--button:focus-visible {
   min-height: 0;
   overflow-y: auto;
   box-sizing: border-box;
-  padding: 34px var(--space-page-margin) 20px;
+  /* Top padding rebalanced 34px->20px when the header gained 14px bottom
+     padding (product amendment, 2026-07-03 — see --space-header-padding):
+     14 + 20 keeps the same 34px header->greeting rhythm as the Turn 10
+     mock. */
+  padding: 20px var(--space-page-margin) 20px;
 }
 
 .hairline-welcome-greeting {
