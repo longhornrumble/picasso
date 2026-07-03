@@ -9,7 +9,19 @@ import { getBindingSessionId } from './utils/bindingSession.js';
 
 (function() {
   'use strict';
-  
+
+  // Dynamic-viewport height where the browser supports it (Safari 15.4+,
+  // Chrome 108+, FF 101+). On iOS Safari, `100vh` is the LARGEST viewport
+  // (address bar collapsed) — so a 100vh mobile sheet's composer/footer sat
+  // hidden under the EXPANDED browser chrome (Chris's iPhone 12 Pro Max
+  // report, 2026-07-03). `100dvh` tracks the real visible viewport as the
+  // bar expands/collapses: full-bleed when collapsed, no dead space, no
+  // hidden composer. Older browsers keep the 100vh behavior they had.
+  const VIEWPORT_H =
+    (typeof CSS !== 'undefined' && CSS.supports && CSS.supports('height', '100dvh'))
+      ? '100dvh'
+      : '100vh';
+
   const PicassoWidget = {
     iframe: null,
     container: null,
@@ -23,8 +35,10 @@ import { getBindingSessionId } from './utils/bindingSession.js';
       // viewport-48px) panel. No more edge/adaptive-height growth (D1 default —
       // see docs/HAIRLINE_REDESIGN_MAPPING.md §7) — the panel no longer resizes
       // itself after the first message, so there is no separate "active" height.
+      // Dynamic-viewport unit so the bottom-anchored panel also stays fully
+      // visible on tablets with collapsing browser chrome.
       expandedWidth: '380px',
-      expandedHeight: 'min(640px, calc(100vh - 48px))',
+      expandedHeight: `min(640px, calc(${VIEWPORT_H} - 48px))`,
       zIndex: 10000
     },
     attribution: null, // Captured on init for analytics
@@ -681,6 +695,9 @@ import { getBindingSessionId } from './utils/bindingSession.js';
 
       if (isMobile) {
         // Full-screen sheet — edge-to-edge, no margins, no radius.
+        // Height uses the dynamic viewport unit (VIEWPORT_H) so the sheet's
+        // composer/footer track the visible viewport instead of hiding
+        // under mobile browser chrome.
         Object.assign(this.container.style, {
           position: 'fixed',
           top: '0',
@@ -688,7 +705,7 @@ import { getBindingSessionId } from './utils/bindingSession.js';
           bottom: '0',
           right: '0',
           width: '100vw',
-          height: '100vh',
+          height: VIEWPORT_H,
           zIndex: this.config.zIndex + 1000
         });
       } else {
@@ -815,7 +832,7 @@ import { getBindingSessionId } from './utils/bindingSession.js';
                 bottom: '0',
                 right: '0',
                 width: '100vw',
-                height: '100vh'
+                height: VIEWPORT_H
               });
             } else {
               Object.assign(this.container.style, {

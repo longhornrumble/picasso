@@ -30,6 +30,15 @@
 const fs = require('fs');
 const path = require('path');
 
+// Mirrors widget-host.js's VIEWPORT_H feature-detect (dynamic viewport
+// height where supported; 100vh fallback). jsdom's CSS.supports doesn't
+// know dvh, so the harness — like any non-dvh browser — resolves to
+// '100vh'; the static-source guard below pins the real file's dvh branch.
+const VIEWPORT_H =
+  (typeof CSS !== 'undefined' && CSS.supports && CSS.supports('height', '100dvh'))
+    ? '100dvh'
+    : '100vh';
+
 function makeWidget() {
   const sentCommands = [];
 
@@ -39,7 +48,7 @@ function makeWidget() {
     iframe: { style: {} },
     config: {
       expandedWidth: '380px',
-      expandedHeight: 'min(640px, calc(100vh - 48px))',
+      expandedHeight: `min(640px, calc(${VIEWPORT_H} - 48px))`,
       zIndex: 10000
     },
     _sentCommands: sentCommands,
@@ -63,7 +72,7 @@ function makeWidget() {
           bottom: '0',
           right: '0',
           width: '100vw',
-          height: '100vh',
+          height: VIEWPORT_H,
           zIndex: this.config.zIndex + 1000
         });
       } else {
@@ -121,7 +130,7 @@ function makeWidget() {
           bottom: '0',
           right: '0',
           width: '100vw',
-          height: '100vh'
+          height: VIEWPORT_H
         });
       } else {
         Object.assign(this.container.style, {
@@ -167,13 +176,15 @@ describe('widget-host shell dims + breakpoint (W6.1)', () => {
     setInnerWidth(originalInnerWidth);
   });
 
-  test('desktop (>480px): expands to 380 x min(640px, calc(100vh - 48px)) with 12px radius', () => {
+  test('desktop (>480px): expands to 380 x min(640px, calc(viewport - 48px)) with 12px radius', () => {
     setInnerWidth(1024);
     const w = makeWidget();
     w.expand();
 
     expect(w.container.style.width).toBe('380px');
-    expect(w.container.style.height).toBe('min(640px, calc(100vh - 48px))');
+    // VIEWPORT_H resolves to '100vh' in jsdom (no dvh support) — the same
+    // fallback any non-dvh browser gets.
+    expect(w.container.style.height).toBe(`min(640px, calc(${VIEWPORT_H} - 48px))`);
     expect(w.iframe.style.borderRadius).toBe('12px');
   });
 
@@ -192,7 +203,7 @@ describe('widget-host shell dims + breakpoint (W6.1)', () => {
     w.expand();
 
     expect(w.container.style.width).toBe('100vw');
-    expect(w.container.style.height).toBe('100vh');
+    expect(w.container.style.height).toBe(VIEWPORT_H);
     expect(w.container.style.top).toBe('0');
     expect(w.container.style.left).toBe('0');
     expect(w.container.style.right).toBe('0');
@@ -305,6 +316,10 @@ describe('widget-host shell dims + breakpoint (W6.1)', () => {
 
       expect(source).toMatch(/notifyViewportTier/);
       expect(source).toMatch(/0 2px 24px rgba\(15, 23, 42, 0\.08\)/);
+      // Dynamic-viewport sheet height (mobile-chrome fix, 2026-07-03): the
+      // dvh feature-detect must stay — jsdom can't exercise the dvh branch,
+      // so this guard pins it in the source.
+      expect(source).toMatch(/100dvh/);
     });
   });
 
