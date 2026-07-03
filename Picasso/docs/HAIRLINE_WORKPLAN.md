@@ -119,7 +119,7 @@
 ## Phase 3 — Views
 
 ### W3.1 Welcome view + menu card
-- **Status:** TODO — after W2.1/W2.2 (NOT parallel with them; touches ChatWidget + providers)
+- **Status:** PR #659
 - **Objective:** DESIGN_SPEC screen 1: distinct welcome state (greeting `[D7 default: fixed copy]`, `welcome_message` paragraph, menu card from `action_chips.default_chips` + appended "Common questions" row) replacing the current welcome-bubble+chips presentation; thread begins on first send.
 - **Owns:** view-state logic in `ChatWidget.jsx`, new `src/components/chat/WelcomeView.jsx`, new `src/styles/hairline-views.css`; **welcome-seeding touchpoints in the three providers** (`StreamingChatProvider`, `HTTPChatProvider`, `ChatProvider`) — hoist or adjust all three consistently (pipeline-audit watch item).
 - **Done when:** first open shows welcome per mock; menu rows dispatch exactly like today's chips (same metadata to backend); returning mid-conversation shows thread not welcome; "Clear all messages" returns to welcome; works on BOTH streaming and HTTP providers; provider tests updated.

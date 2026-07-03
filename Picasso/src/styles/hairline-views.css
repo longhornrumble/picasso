@@ -420,3 +420,115 @@ button.hairline-settings-row--button:focus-visible {
 }
 
 /* ==================== END W3.3 (settings) — W3.1/W3.2/W3.4 append below ==================== */
+
+/* ==================== W3.1: WELCOME VIEW ==================== */
+
+/**
+ * Source: design/hairline/DESIGN_SPEC.md "1. Welcome (`10a Welcome`)" +
+ * "Widget Shell" (content = "flex:1, scrolls"); cross-checked against the
+ * canonical bundle (design/hairline/bundle/Chat Widget Redesigns.dc.html,
+ * Turn 10, `data-screen-label="10a Welcome"`) for the exact px values
+ * DESIGN_SPEC.md's summary tables leave implicit (34px content top padding,
+ * 10px/26px greeting/paragraph margins, the 1.65 paragraph line-height
+ * already flagged as a documented bundle-only variance in
+ * hairline-tokens.css's Typography section).
+ *
+ * Fidelity note (bundle prevails, mapping doc §0): DESIGN_SPEC.md's Design
+ * Tokens table lists "Arrows on menu rows" under `--tenant-accent-faint`,
+ * but the bundle's actual welcome-screen markup renders the menu-row arrow
+ * glyph in `--tenant-accent` (`color:#a08a4a` — the un-faint accent, not
+ * `#c3b483`). This file follows the bundle. Also per the bundle: the arrow
+ * is a literal "→" text glyph, not an SVG/Lucide icon — DESIGN_SPEC.md's
+ * "Assets" icon list has no arrow-right entry, only "arrow-up" (composer
+ * send) and "chevrons" (settings rows), consistent with this being a text
+ * character rather than an icon component.
+ *
+ * Layout: rendered by WelcomeView.jsx as the `.hairline-shell`'s content
+ * child (sibling of `.hairline-header`/`.chat-footer-container`) in place
+ * of `.chat-window` while `ChatWidget.jsx`'s derived `activeView` is
+ * "welcome" — same flex slot, so no shell-level changes needed.
+ */
+
+.hairline-welcome-view {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 34px var(--space-page-margin) 20px;
+}
+
+.hairline-welcome-greeting {
+  margin: 0 0 10px;
+  font-size: var(--type-greeting-size);
+  font-weight: var(--type-greeting-weight);
+  color: var(--ink);
+}
+
+.hairline-welcome-message {
+  margin: 0 0 26px;
+  font-size: var(--type-body-size);
+  font-weight: var(--type-body-weight);
+  line-height: 1.65; /* bundle-only variance, documented in hairline-tokens.css */
+  color: var(--ink-body);
+}
+
+.hairline-menu-card {
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+}
+
+.hairline-menu-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: var(--space-card-row-padding);
+  margin: 0;
+  border: none;
+  border-bottom: 1px solid var(--hairline-soft);
+  background: transparent;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--duration-fill) var(--ease-ui);
+}
+
+.hairline-menu-card > .hairline-menu-row:last-child {
+  border-bottom: none;
+}
+
+.hairline-menu-row:hover,
+.hairline-menu-row:focus-visible {
+  background: var(--tenant-tint);
+}
+
+.hairline-menu-row:focus-visible {
+  outline: 2px solid var(--tenant-accent);
+  outline-offset: -2px;
+}
+
+.hairline-menu-row:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.hairline-menu-row-label {
+  font-size: var(--type-menu-row-size);
+  font-weight: var(--type-menu-row-weight);
+  color: var(--ink);
+}
+
+.hairline-menu-row-arrow {
+  flex: none;
+  color: var(--tenant-accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hairline-menu-row {
+    transition: none;
+  }
+}
+
+/* ==================== END W3.1 (welcome view) — W3.2/W3.4 append below ==================== */
