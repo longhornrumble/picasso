@@ -186,6 +186,18 @@ module "tenant_config_staging" {
   # (severs the prod-account cross-account read). One-directional dep:
   # this module's bucket policy ← cloudfront-widget-staging's ARN.
   cloudfront_distribution_arn = module.cloudfront_widget_staging[0].distribution_arn
+
+  # Sanctioned config authors, exempt from DenyMutationsFromStagingAccount:
+  # ADA (form notification-settings edits, #599) + the config-builder backend
+  # (Picasso_Config_Manager save/deploy — its writes were denied until
+  # 2026-07-03, surfaced by the first staging-builder deploy E2E). Literal
+  # ARNs by the variable's own precedent, which keeps the module dep
+  # one-directional (lambda_config_manager_staging already consumes this
+  # module's bucket_name).
+  config_writer_role_arns = [
+    "arn:aws:iam::525409062831:role/Analytics_Dashboard_API-role",
+    "arn:aws:iam::525409062831:role/Picasso_Config_Manager-exec-staging",
+  ]
 }
 
 # Issue #5 batch 2a: dependent state for staging-account Lambdas. Each table

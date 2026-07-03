@@ -301,6 +301,32 @@ export const trimHistoryForSend = (messages, { maxUserTurns = 20, maxAssistant =
 };
 
 /**
+ * Compute the welcome-view action chips for a tenant config.
+ *
+ * Hoisted (HAIRLINE_WORKPLAN.md W3.1 pipeline-audit watch item — "the
+ * welcome-message/chips seeding is duplicated across THREE providers"):
+ * this exact gate+slice was previously duplicated inline in
+ * StreamingChatProvider.jsx (session init + clearMessages),
+ * HTTPChatProvider.jsx (session init + clearMessages), and re-implemented
+ * as a local `generateWelcomeActions` memo in ChatProvider.jsx. Pure
+ * extraction — behavior is unchanged, including the array (v1.3, legacy)
+ * vs dictionary (v1.4.1) `default_chips` format handling. See
+ * TENANT_CONFIG_SCHEMA.md "action_chips" for the shape.
+ *
+ * @param {object} tenantConfig
+ * @returns {Array} welcome action chips (possibly empty)
+ */
+export const computeWelcomeActions = (tenantConfig) => {
+  if (!tenantConfig?.action_chips?.enabled || !tenantConfig?.action_chips?.show_on_welcome) {
+    return [];
+  }
+  const rawChips = tenantConfig.action_chips.default_chips || {};
+  const chips = Array.isArray(rawChips) ? rawChips : Object.values(rawChips);
+  const maxDisplay = tenantConfig.action_chips.max_display || 3;
+  return chips.slice(0, maxDisplay);
+};
+
+/**
  * Merge incoming scheduling slots into a message's existing schedulingSlots.
  *
  * Multi-day fix (companion to lambda fix/agent-multiday-slots): an agent turn

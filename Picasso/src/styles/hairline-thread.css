@@ -421,3 +421,308 @@
     transition: none;
   }
 }
+
+/* ============================================================
+   W2.3 MARKDOWN TYPOGRAPHY — bot-reply markdown descendants
+   Rendered inside the frozen `.message-text` node (MessageBubble.jsx) for
+   finalized bot replies, and inside the imperatively-written
+   `.streaming-formatted` wrapper (also MessageBubble.jsx — see its
+   `writeAccumulated`) while a reply is still streaming. Both live only
+   under `.hairline-message--bot` (section 4 above already sets that
+   ancestor's own font-size/line-height/color to the 13.5px/1.6 --ink-body
+   body scale) — markdown never renders inside the user's tinted card, so
+   every selector here is scoped to the bot branch on purpose, matching
+   section 4's own precedent.
+
+   Per HAIRLINE_REDESIGN_MAPPING.md §4 item 4: this is an UNMOCKED surface
+   (Turn 10 shows plain paragraphs only). Lists/links/bold/em follow
+   directly from the DESIGN_SPEC.md tables already cited elsewhere in this
+   file (Typography, link treatment in the screen-6 fine-print paragraph:
+   "`--tenant-accent-deep`, underline, 2px offset" — the only link
+   instance the spec actually mocks, generalized here to every inline
+   link). Code/tables have no mock or spec table at all — designed fresh
+   in the Hairline vocabulary (hairline border + hairline-soft quiet
+   surface, same materials as the suggestion/menu cards above) rather than
+   porting theme.css's old `.message-content code/pre/table` rules
+   (rgba(0,0,0,*) hard-codes — see theme.css ~L1280-1313 — which the
+   coexistence rule (ground rule #8) forbids reusing here anyway since
+   they're keyed off `.message-content`, a class this thread no longer
+   renders).
+
+   Headers: `prompt_v4.js` bans markdown headers server-side, so h1-h6
+   should never actually appear — the rule below is a graceful-degradation
+   backstop only (render near body scale/weight, never the huge UA
+   default), per the workplan's explicit "no header styling needed... but
+   h-tags degrade gracefully if present" done-when clause.
+
+   Local tokens: no existing hairline-tokens.css value fits a
+   markdown-block vertical rhythm or a quiet code radius, so two are
+   declared here (same pattern as section 0's `--ink-message-user` and the
+   W2.7 preamble's `--space-suggestion-row-padding`) rather than inventing
+   bare numbers inline. The 8px/4px scale rhymes with this file's existing
+   rhythm (16px between message groups, 4px between typing dots).
+   ============================================================ */
+:root {
+  --space-markdown-block-gap: 8px; /* paragraph/list/table/heading bottom margin */
+  --space-markdown-item-gap: 4px; /* list item bottom margin */
+  --radius-code: 6px; /* quiet inline-code / code-block corner */
+}
+
+/* Last block-level child of a bot reply never carries trailing margin,
+   regardless of which element type it is (paragraph, list, table, or a
+   stray heading) — mirrors the old theme.css first/last-child trim
+   (~L1260-1263) without needing a rule per element type. */
+.hairline-message--bot .message-text > :last-child,
+.hairline-message--bot .streaming-formatted > :last-child {
+  margin-bottom: 0;
+}
+
+/* --- Paragraphs -------------------------------------------------------
+   Font-size/line-height/color are NOT restated here: both `.message-text`
+   and `.streaming-formatted` inherit the 13.5px/1.6/--ink-body triple from
+   section 4's `.hairline-message--bot .message-text` rule (all three
+   properties are CSS-inheritable), so a bare <p> already renders on-scale.
+   Only the UA default block margin needs resetting to this file's rhythm. */
+.hairline-message--bot .message-text p,
+.hairline-message--bot .streaming-formatted p {
+  margin: 0 0 var(--space-markdown-block-gap);
+}
+
+/* Coexistence override (documented `!important` exception — see the
+   heading rule below for the other one this file needs). theme.css's
+   "MARKDOWN TYPOGRAPHY (from production)" block carries several bare,
+   un-scoped `!important` paragraph-margin rules that still match this new
+   markup because they key off the same alive `.message-text`/`.streaming`/
+   `.streaming-formatted` class names MessageBubble.jsx intentionally keeps
+   (this file's own top-of-file note). Verified empirically (grepped +
+   hand-computed specificity, not assumed) rather than caught only by eye:
+   the highest-specificity survivor in the FINALIZED path is
+   `.message-text p:not(.showcase-card-tagline):not(...):not(...)`
+   (theme.css ~L1071 — three chained `:not()` clauses each add a class to
+   the specificity total: 4 classes + 1 element = (0,4,1) !important,
+   forcing `margin: 16px 0 16px 0`). In the STREAMING path the survivor is
+   `.message-text.streaming p:not(...):not(...):not(...)` /
+   `.streaming .streaming-formatted p:not(...):not(...):not(...)`
+   (theme.css ~L1082-1083 — 5 classes + 1 element = (0,5,1) !important,
+   forcing `margin: 16px 0`). Left unaddressed, every bot paragraph would
+   render with theme.css's 16px rhythm instead of this file's 8px one, and
+   — more visibly — a stray 16px top margin ahead of the FIRST paragraph
+   would break section 2's tight 6px sender-label-to-content gap.
+   The selectors below use this thread's real, already-present ancestor
+   classes (not padding/hacks) to reach the same specificity: 4 real
+   classes + `p` = (0,4,1) for the finalized path — an EXACT tie with
+   theme.css's rule, correctly broken in this file's favor because
+   iframe-main.jsx imports theme.css BEFORE hairline-thread.css (later
+   source position wins a same-specificity `!important` tie); and 6 real
+   classes + `p` = (0,6,1) for the streaming path, which clearly exceeds
+   (0,5,1) with no tie involved. */
+.hairline-message.hairline-message--bot .hairline-message-group .message-text p {
+  margin: 0 0 var(--space-markdown-block-gap) !important;
+}
+
+.hairline-message.hairline-message--bot .hairline-message-group .message-text.streaming .streaming-formatted p {
+  margin: 0 0 var(--space-markdown-block-gap) !important;
+}
+
+/* The generic "last block-level child loses its trailing margin" rule above
+   this section is non-`!important` (0,3,0) and cannot reach through the
+   `!important` paragraph rules just above when the last child happens to be
+   a <p> — so the zero-bottom-margin case needs the same specificity/
+   `!important` treatment, scoped to :last-child specifically (not
+   :last-of-type — this means "is the final element", which is what the
+   trailing-margin trim is actually for). */
+.hairline-message.hairline-message--bot .hairline-message-group .message-text p:last-child,
+.hairline-message.hairline-message--bot .hairline-message-group .message-text.streaming .streaming-formatted p:last-child {
+  margin-bottom: 0 !important;
+}
+
+/* --- Lists (ul/ol/li) --------------------------------------------------
+   Indentation via padding-left (not the UA default margin) keeps the
+   bullet/number glyph clear of the 24px page margin the thread already
+   sits in. Nested lists get a small top gap instead of inheriting the
+   outer list's full block gap (avoids doubled spacing between a parent
+   item and its nested sub-list). */
+.hairline-message--bot .message-text ul,
+.hairline-message--bot .message-text ol,
+.hairline-message--bot .streaming-formatted ul,
+.hairline-message--bot .streaming-formatted ol {
+  margin: 0 0 var(--space-markdown-block-gap);
+  padding-left: 20px;
+}
+
+.hairline-message--bot .message-text li,
+.hairline-message--bot .streaming-formatted li {
+  margin-bottom: var(--space-markdown-item-gap);
+}
+
+.hairline-message--bot .message-text li:last-child,
+.hairline-message--bot .streaming-formatted li:last-child {
+  margin-bottom: 0;
+}
+
+.hairline-message--bot .message-text li > ul,
+.hairline-message--bot .message-text li > ol,
+.hairline-message--bot .streaming-formatted li > ul,
+.hairline-message--bot .streaming-formatted li > ol {
+  margin-top: var(--space-markdown-item-gap);
+  margin-bottom: 0;
+}
+
+/* --- Links --------------------------------------------------------------
+   DESIGN_SPEC.md's one mocked link instance (screen 6 "privacy notice"):
+   "--tenant-accent-deep, underline, 2px offset" — applied to every inline
+   markdown link, plus the auto-linked bare-URL case MessageBubble.jsx's
+   streaming path also produces. `word-break` keeps a long unbroken URL
+   from overflowing the 380px shell. `:focus-visible` preserves keyboard
+   a11y per HAIRLINE_WORKPLAN.md ground rule #7 (MessageBubble's own onClick
+   analytics delegation, and the target="_top"/rel handling, are untouched
+   — this file only adds paint, no behavior). */
+.hairline-message--bot .message-text a,
+.hairline-message--bot .streaming-formatted a {
+  color: var(--tenant-accent-deep);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  word-break: break-word;
+}
+
+.hairline-message--bot .message-text a:focus-visible,
+.hairline-message--bot .streaming-formatted a:focus-visible {
+  outline: 2px solid var(--tenant-accent);
+  outline-offset: 2px;
+}
+
+/* --- Bold / italic ------------------------------------------------------
+   600 matches the Typography table's next weight step up from body's 400
+   (the "Menu row / message" row) rather than the UA default 700 — keeps
+   emphasis quiet, consistent with the rest of the Hairline type ramp. */
+.hairline-message--bot .message-text strong,
+.hairline-message--bot .message-text b,
+.hairline-message--bot .streaming-formatted strong,
+.hairline-message--bot .streaming-formatted b {
+  font-weight: 600;
+}
+
+.hairline-message--bot .message-text em,
+.hairline-message--bot .message-text i,
+.hairline-message--bot .streaming-formatted em,
+.hairline-message--bot .streaming-formatted i {
+  font-style: italic;
+}
+
+/* --- Inline code + code blocks -------------------------------------------
+   Unmocked (§4 item 4) — quiet hairline-vocabulary treatment: same
+   materials as the suggestion/menu cards (`--hairline-soft` fill,
+   `--hairline` border) instead of theme.css's old rgba(0,0,0,*) fills.
+   Monospace stack matches theme.css's existing choice (~L1281/1290) —
+   reusing a proven system-font stack, not a tenant/brand concern. Sizing
+   is relative (0.93em off the inherited 13.5px body context) so code stays
+   legible at "the body scale" per the done-when criterion while reading
+   slightly quieter than surrounding prose, same ratio theme.css used
+   (0.92em) for the same reason. */
+.hairline-message--bot .message-text code,
+.hairline-message--bot .streaming-formatted code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+  font-size: 0.93em;
+  color: var(--ink);
+  background: var(--hairline-soft);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-code);
+  padding: 0.1em 0.4em;
+}
+
+.hairline-message--bot .message-text pre,
+.hairline-message--bot .streaming-formatted pre {
+  margin: 0 0 var(--space-markdown-block-gap);
+  padding: 10px 12px;
+  background: var(--hairline-soft);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-code);
+  overflow-x: auto;
+  line-height: 1.5;
+}
+
+/* Reset the inline-code treatment when code sits inside a pre block — the
+   pre element already supplies the background/border/padding. */
+.hairline-message--bot .message-text pre code,
+.hairline-message--bot .streaming-formatted pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  border-radius: 0;
+}
+
+/* --- Tables ---------------------------------------------------------------
+   Unmocked (§4 item 4), occasional per the workplan. `display:block` +
+   `overflow-x:auto` on the table itself (rather than a wrapper div, which
+   would need a markup change this CSS-only item cannot make) lets a wide
+   table scroll horizontally inside the 380px shell instead of breaking the
+   layout — the standard no-wrapper responsive-table technique. */
+.hairline-message--bot .message-text table,
+.hairline-message--bot .streaming-formatted table {
+  display: block;
+  overflow-x: auto;
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0 0 var(--space-markdown-block-gap);
+  font-size: 0.93em;
+}
+
+.hairline-message--bot .message-text th,
+.hairline-message--bot .message-text td,
+.hairline-message--bot .streaming-formatted th,
+.hairline-message--bot .streaming-formatted td {
+  border: 1px solid var(--hairline);
+  padding: 6px 8px;
+  text-align: left;
+}
+
+.hairline-message--bot .message-text th,
+.hairline-message--bot .streaming-formatted th {
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--hairline-soft);
+}
+
+/* --- Headings (graceful degradation only) ---------------------------------
+   `prompt_v4.js` bans markdown headers server-side, so these should never
+   render — this is a backstop so a stray h1-h6 (e.g. a future prompt
+   regression, or a tenant KB snippet that slips through) degrades to
+   near-body scale instead of the UA default huge/bold block. Not a styled
+   "heading" treatment — deliberately as plain as the paragraph rule above,
+   just bumped one weight step for a hint of hierarchy.
+
+   `!important` on font-size only (the second of this file's two documented
+   exceptions to the no-`!important` norm per HAIRLINE_WORKPLAN.md ground
+   rule — the paragraph rule above is the first): theme.css's coexisting
+   `.message-text h1..h6 { font-size: *em !important; }` rule
+   (theme.css ~L1354-1364) is a BARE `.message-text` selector — unlike this
+   file's other old-theme neighbors, it isn't qualified by `.message-content`
+   or `.message.bot`, so it still matches this new markup's `.message-text`/
+   `.streaming-formatted` nodes and would otherwise win the cascade on
+   font-size alone (its own `!important` beats this rule's higher
+   specificity). Its scaled range (1.0-1.2em) isn't itself "huge/broken", but
+   letting it leak through would make h1-h3 render a few px larger than the
+   flat near-body scale this backstop intends — matching its `!important`
+   is the only way to actually get that flat scale. font-weight/line-height/
+   color aren't touched by that old rule, so only font-size needs it. */
+.hairline-message--bot .message-text h1,
+.hairline-message--bot .message-text h2,
+.hairline-message--bot .message-text h3,
+.hairline-message--bot .message-text h4,
+.hairline-message--bot .message-text h5,
+.hairline-message--bot .message-text h6,
+.hairline-message--bot .streaming-formatted h1,
+.hairline-message--bot .streaming-formatted h2,
+.hairline-message--bot .streaming-formatted h3,
+.hairline-message--bot .streaming-formatted h4,
+.hairline-message--bot .streaming-formatted h5,
+.hairline-message--bot .streaming-formatted h6 {
+  margin: 0 0 var(--space-markdown-block-gap);
+  font-size: 1em !important;
+  font-weight: 600;
+  line-height: var(--type-body-line-height);
+  color: var(--ink-body);
+}
+
+/* ==================== END W2.3 (markdown typography) ==================== */
