@@ -281,4 +281,26 @@ describe('WelcomeView — "Common questions" row', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Common questions' }));
     expect(addMessage).not.toHaveBeenCalled();
   });
+
+  // W3.2 done-when: "quick_help.enabled=false hides the menu row."
+  it('renders the row when quick_help.enabled is true', () => {
+    setConfig({ quick_help: { enabled: true } });
+    setChat();
+    render(<WelcomeView onOpenQuestions={jest.fn()} />);
+    expect(screen.getByRole('button', { name: 'Common questions' })).toBeInTheDocument();
+  });
+
+  it('renders the row when quick_help is entirely absent from config (tolerant default true)', () => {
+    setConfig({});
+    setChat();
+    render(<WelcomeView onOpenQuestions={jest.fn()} />);
+    expect(screen.getByRole('button', { name: 'Common questions' })).toBeInTheDocument();
+  });
+
+  it('hides the row when quick_help.enabled is explicitly false', () => {
+    setConfig({ quick_help: { enabled: false, prompts: ['Q1?'] } });
+    setChat();
+    render(<WelcomeView onOpenQuestions={jest.fn()} />);
+    expect(screen.queryByRole('button', { name: 'Common questions' })).not.toBeInTheDocument();
+  });
 });

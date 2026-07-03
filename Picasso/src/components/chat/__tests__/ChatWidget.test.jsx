@@ -55,7 +55,22 @@ jest.mock('../SettingsView', () => ({
     </div>
   ),
 }));
-jest.mock('../WelcomeView', () => ({ __esModule: true, default: () => <div data-testid="welcome-view" /> }));
+jest.mock('../WelcomeView', () => ({
+  __esModule: true,
+  default: ({ onOpenQuestions }) => (
+    <div data-testid="welcome-view">
+      <button onClick={onOpenQuestions}>open-questions</button>
+    </div>
+  ),
+}));
+jest.mock('../QuestionsOverlay', () => ({
+  __esModule: true,
+  default: ({ onClose }) => (
+    <div data-testid="questions-overlay">
+      <button onClick={onClose}>close-questions</button>
+    </div>
+  ),
+}));
 jest.mock('../../forms/FormFieldPrompt', () => ({ __esModule: true, default: () => null }));
 jest.mock('../../forms/FormCompletionCard', () => ({ __esModule: true, default: () => null }));
 
@@ -182,6 +197,37 @@ describe('ChatWidget — Settings takeover is independent of welcome/thread', ()
     expect(screen.getByTestId('settings-view')).toBeInTheDocument();
     // The header/composer stay mounted underneath (W3.3's "back preserves
     // scroll" contract) regardless of which content view is active.
+    expect(screen.getByTestId('chat-header')).toBeInTheDocument();
+    expect(screen.getByTestId('input-bar')).toBeInTheDocument();
+  });
+});
+
+describe('ChatWidget — Common questions overlay wiring (W3.2)', () => {
+  it('is closed by default, and opens when WelcomeView\'s "Common questions" row fires onOpenQuestions', () => {
+    setChat([{ id: 'welcome', role: 'assistant', content: 'Hi!' }]);
+    render(<ChatWidget />);
+
+    expect(screen.queryByTestId('questions-overlay')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText('open-questions'));
+    expect(screen.getByTestId('questions-overlay')).toBeInTheDocument();
+  });
+
+  it('closes when QuestionsOverlay calls onClose', () => {
+    setChat([{ id: 'welcome', role: 'assistant', content: 'Hi!' }]);
+    render(<ChatWidget />);
+
+    fireEvent.click(screen.getByText('open-questions'));
+    expect(screen.getByTestId('questions-overlay')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('close-questions'));
+    expect(screen.queryByTestId('questions-overlay')).not.toBeInTheDocument();
+  });
+
+  it('the header/composer stay mounted underneath the overlay', () => {
+    setChat([{ id: 'welcome', role: 'assistant', content: 'Hi!' }]);
+    render(<ChatWidget />);
+
+    fireEvent.click(screen.getByText('open-questions'));
     expect(screen.getByTestId('chat-header')).toBeInTheDocument();
     expect(screen.getByTestId('input-bar')).toBeInTheDocument();
   });
