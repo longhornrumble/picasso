@@ -128,10 +128,13 @@ export const strings = {
       retentionVaries: 'Retention varies by data type',
     },
     // Rewritten with spec amendment 6 (Chris, 2026-07-03): the old copy
-    // described the removed Download/export feature. Now a plain-English
-    // storage disclosure matching the Settings clear-row fine print.
-    finePrint:
-      'Your conversation is stored only in this browser and is gone once you close this tab. See the privacy notice for retention details.',
+    // described the removed Download/export feature. Split in two so the
+    // storage disclosure ALWAYS renders — only the notice sentence (whose
+    // link needs config.privacy_notice_url) is conditional. Before the
+    // split, tenants without the URL showed no explanation at all.
+    storageDisclosure:
+      'Your conversation is stored only in this browser and is gone once you close this tab.',
+    noticeSentence: 'See the privacy notice for retention details.',
     // The "privacy notice" substring within finePrint above is a link to
     // config.privacy_notice_url; kept separately so a consumer can splice
     // the fine print around the link.
