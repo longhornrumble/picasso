@@ -80,6 +80,31 @@ describe('InputBar — Hairline composer', () => {
       expect(pill).not.toHaveClass('is-expanded');
     });
 
+    test('expansion latches: a one-line measurement in the expanded layout does not collapse the pill', () => {
+      // Regression: the expanded rect gives the textarea full pill width, so
+      // text that wrapped at idle width can measure one line once expanded.
+      // Re-deriving isExpanded downward from that wider measurement collapsed
+      // the pill and oscillated on every keystroke (Chris report, 2026-07-03).
+      // Once tripped, expansion must persist until the composer is emptied.
+      const { container } = render(<InputBar />);
+      const pill = container.querySelector('.hairline-composer-pill');
+      const textarea = getTextarea();
+
+      // Wrapped at idle width → trips expansion.
+      Object.defineProperty(textarea, 'scrollHeight', { configurable: true, value: 60 });
+      fireEvent.change(textarea, { target: { value: "Tell me about mentoring, I've always wanted to" } });
+      expect(pill).toHaveClass('is-expanded');
+
+      // Same text measures a single line at expanded width → must stay latched.
+      Object.defineProperty(textarea, 'scrollHeight', { configurable: true, value: 20 });
+      fireEvent.change(textarea, { target: { value: "Tell me about mentoring, I've always wanted to h" } });
+      expect(pill).toHaveClass('is-expanded');
+
+      // Emptying the composer is the only reset back to the idle pill.
+      fireEvent.change(textarea, { target: { value: '' } });
+      expect(pill).not.toHaveClass('is-expanded');
+    });
+
     test('renders the send button, unfilled (disabled) when empty', () => {
       render(<InputBar />);
       const sendButton = screen.getByRole('button', { name: 'Send' });
