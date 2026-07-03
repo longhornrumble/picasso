@@ -105,13 +105,13 @@ Content note: existing tenant configs carry **emoji-laden chip labels** ("🎯 G
 ## 7. Decisions needed (blocking items marked ⛔ for Phase-2 start)
 
 - **D1 ⛔ Edge/adaptive-height mode**: current widget grows to full viewport height flush-right after the first message (`SET_EDGE_MODE`). The Hairline shell is a fixed `min(640px, 100vh−48px)` panel. **Default per the fidelity rule (§0): drop it — the design's shell spec prevails** — unless you explicitly want the growth behavior re-specced for Hairline.
-- **D2 Forms / in-chat scheduling / showcase cards**: confirm all three are in-scope for the flip (restyled by extrapolation, §4). Showcase especially — keep or retire?
-- **D3 Feedback (thumbs)**: ship with the flip or fast-follow? Needs a backend endpoint (none exists), an events/storage decision, and a PII/AI-governance advisory pass ("feeds the LLM improvement loop"). Copy-button can ship with the flip regardless (client-only).
+- **D2 Forms / in-chat scheduling / showcase cards**: confirm all three are in-scope for the flip (restyled by extrapolation, §4). Showcase especially — keep or retire? **ANSWERED (Chris, 2026-07-02): all in-scope; showcase = KEEP + restyle (W4.3 done).**
+- **D3 Feedback (thumbs)**: ship with the flip or fast-follow? Needs a backend endpoint (none exists), an events/storage decision, and a PII/AI-governance advisory pass ("feeds the LLM improvement loop"). Copy-button can ship with the flip regardless (client-only). **ANSWERED (Chris, 2026-07-02): FAST-FOLLOW. Copy shipped in W2.6; thumbs render inert (`// W5.1`); backend + governance = post-flip W5.1.**
 - **D4 Voice recording**: mic is decorative today. Options: (a) implement capture + transcription backend (largest net-new lift), (b) ship the recording UI only for tenants with `voice_input` once backend exists, (c) hide mic at flip. Recommend (c) then (a/b) as its own project.
 - **D5 Offline sync toggle**: no offline-sync feature exists. Implement, or drop the row from Settings at flip?
 - **D6 Mobile breakpoint**: adopt the design's ≤480 full-screen sheet (and retire the 768 tier), or keep 768?
 - **D7 Greeting copy** ("Hi there 👋"): fixed product copy or per-tenant field? (If per-tenant: 4-place sync. Recommend fixed, revisit with Spanish i18n which will need these chrome strings localizable anyway.)
-- **D8 Scheduling page** (`schedule-page.css`): restyle to Hairline in this program or as a follow-on? It's a standalone token set either way.
+- **D8 Scheduling page** (`schedule-page.css`): restyle to Hairline in this program or as a follow-on? It's a standalone token set either way. **ANSWERED (Chris, 2026-07-02): EXCLUDED — it's a standalone webpage, not part of the widget; dropped from this program (W4.6 cancelled).**
 - **D9 `privacy_notice_url`**: confirm adding the tenant field (recommended; the page's link needs a destination).
 - **D10 Secondary color's role in the ramp**: the design spec derives everything from one accent; the product model captures primary + secondary per tenant. What does secondary drive — e.g. the tint family, a second emphasis slot, or captured-but-unused until the design director assigns it a slot? (Recommend: capture in config builder now; widget consumes primary only until this is answered — avoids inventing a visual role the design didn't define.)
 
