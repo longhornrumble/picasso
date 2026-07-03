@@ -168,6 +168,19 @@ describe('WelcomeView — menu card rows', () => {
     expect(rows[0]).toHaveTextContent('Common questions');
   });
 
+  it('renders NO menu card at all when there are zero chips AND quick_help is disabled (W6.3 F4)', () => {
+    // A minimal/fallback config (action_chips.enabled false, quick_help
+    // enabled false) must not leave an empty bordered card — the stray
+    // hairline box observed in the W6.3 fidelity audit.
+    const { container } = (() => {
+      setConfig({ action_chips: { enabled: false }, quick_help: { enabled: false } });
+      setChat();
+      return render(<WelcomeView onOpenQuestions={jest.fn()} />);
+    })();
+    expect(screen.queryAllByRole('button')).toHaveLength(0);
+    expect(container.querySelector('.hairline-menu-card')).toBeNull();
+  });
+
   it('menu rows are real buttons with aria-labels', () => {
     setConfig({
       action_chips: {

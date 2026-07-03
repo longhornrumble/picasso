@@ -704,8 +704,31 @@ import { getBindingSessionId } from './utils/bindingSession.js';
       }
 
       this.iframe.style.borderRadius = isMobile ? '0' : '12px';
+      // Shell shadow (DESIGN_SPEC.md "Widget Shell": 0 2px 24px
+      // rgba(15,23,42,0.08)) lives on the host iframe — a fixed, non-tenant
+      // value. The shell's own box-shadow can't bleed past the iframe edge,
+      // so the desktop panel needs it here (W6.3 audit fix F3). The sheet
+      // and the closed launcher/callout states carry no panel shadow.
+      this.iframe.style.boxShadow = isMobile ? 'none' : '0 2px 24px rgba(15, 23, 42, 0.08)';
+      this.notifyViewportTier(isMobile);
 
       console.log(`📈 Widget expanded - ${isMobile ? 'mobile' : 'desktop'} mode`);
+    },
+
+    // Tell the iframe which viewport tier the HOST is in (W6.3 audit fix
+    // F3): inside the iframe, media queries see only the iframe's own
+    // ~380px viewport, so the ≤480 mobile-sheet decision (D6) must come
+    // from out here. iframe-main.jsx's pre-existing SIZE_CHANGE command
+    // handler maps this onto the `iframe-mobile`/`iframe-desktop` body
+    // classes that hairline-shell.css gates the sheet styling on.
+    notifyViewportTier(isMobile) {
+      if (this.iframe && this.iframe.contentWindow) {
+        this.iframe.contentWindow.postMessage({
+          type: 'PICASSO_COMMAND',
+          action: 'SIZE_CHANGE',
+          payload: { size: isMobile ? 'mobile' : 'desktop', isMobile }
+        }, '*');
+      }
     },
     
     // Minimize widget to button
@@ -725,7 +748,8 @@ import { getBindingSessionId } from './utils/bindingSession.js';
       });
 
       Object.assign(this.iframe.style, {
-        borderRadius: '50%'
+        borderRadius: '50%',
+        boxShadow: 'none'
       });
 
       console.log('📉 Widget minimized');
@@ -769,7 +793,9 @@ import { getBindingSessionId } from './utils/bindingSession.js';
       // Keep circular border radius only if dimensions are square
       const isSquare = Math.abs(dimensions.width - dimensions.height) < 10;
       Object.assign(this.iframe.style, {
-        borderRadius: isSquare ? '50%' : '12px'
+        borderRadius: isSquare ? '50%' : '12px',
+        // Closed-state dims (launcher / launcher+callout) — no panel shadow.
+        boxShadow: 'none'
       });
 
       console.log(`📏 Applied dimensions: ${dimensions.width}x${dimensions.height}px at bottom-right corner`);
@@ -802,6 +828,8 @@ import { getBindingSessionId } from './utils/bindingSession.js';
               });
             }
             this.iframe.style.borderRadius = isMobile ? '0' : '12px';
+            this.iframe.style.boxShadow = isMobile ? 'none' : '0 2px 24px rgba(15, 23, 42, 0.08)';
+            this.notifyViewportTier(isMobile);
           }
         });
 

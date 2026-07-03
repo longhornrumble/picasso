@@ -19,8 +19,12 @@ import { X, Sliders } from "lucide-react";
 export default function ChatHeader({ onClose, onOpenSettings }) {
   const { config } = useConfig();
 
-  // Same read as the pre-Hairline header — chat_title sourcing is frozen.
-  const chatTitle = config?.branding?.chat_title || "Chat";
+  // Pre-Hairline read (branding.chat_title) plus the top-level chat_title
+  // the mapping doc §2 names as the wordmark source (W6.3 audit fix F5):
+  // Master_Function-served configs carry branding.chat_title today, but a
+  // config with only the top-level field must not render as "CHAT" —
+  // tolerant-read discipline (CLAUDE.md Schema Discipline).
+  const chatTitle = config?.branding?.chat_title || config?.chat_title || "Chat";
 
   return (
     <header className="hairline-header">

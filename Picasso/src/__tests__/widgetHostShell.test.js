@@ -16,9 +16,15 @@
  *    borderRadius 0 — D6 default (retires the old 768/1024 mobile/tablet tiers)
  *  - D1 default: edge/adaptive-height mode fully retired — SET_EDGE_MODE is
  *    never sent, and MESSAGE_SENT/SESSION_CLEARED no longer resize the shell
+ *  - W6.3 audit fix F3: expand()/resize apply the shell shadow on desktop
+ *    (none on the sheet / closed states) and notify the iframe of the host's
+ *    viewport tier via the SIZE_CHANGE command (drives the `iframe-mobile`
+ *    body class that hairline-shell.css gates the sheet styling on — an
+ *    in-iframe media query can't see the host viewport; the 380px desktop
+ *    iframe always matched `max-width: 480px`)
  *  - a static-source guard that fails if SET_EDGE_MODE/isActive/
  *    activateSession/deactivateSession are ever reintroduced into
- *    widget-host.js
+ *    widget-host.js, and that the F3 shadow + tier-notify lines stay present
  */
 
 const fs = require('fs');
@@ -72,6 +78,18 @@ function makeWidget() {
       }
 
       this.iframe.style.borderRadius = isMobile ? '0' : '12px';
+      this.iframe.style.boxShadow = isMobile ? 'none' : '0 2px 24px rgba(15, 23, 42, 0.08)';
+      this.notifyViewportTier(isMobile);
+    },
+
+    // Mirrors widget-host.js notifyViewportTier() — the real method posts a
+    // SIZE_CHANGE PICASSO_COMMAND to the iframe; the harness captures it on
+    // the same channel as sendCommand so tests can assert on it.
+    notifyViewportTier(isMobile) {
+      sentCommands.push({
+        action: 'SIZE_CHANGE',
+        payload: { size: isMobile ? 'mobile' : 'desktop', isMobile }
+      });
     },
 
     // Mirrors widget-host.js minimize()
@@ -88,6 +106,7 @@ function makeWidget() {
         left: 'auto'
       });
       this.iframe.style.borderRadius = '50%';
+      this.iframe.style.boxShadow = 'none';
     },
 
     // Mirrors widget-host.js setupResizeObserver()'s ResizeObserver callback body
@@ -115,6 +134,8 @@ function makeWidget() {
         });
       }
       this.iframe.style.borderRadius = isMobile ? '0' : '12px';
+      this.iframe.style.boxShadow = isMobile ? 'none' : '0 2px 24px rgba(15, 23, 42, 0.08)';
+      this.notifyViewportTier(isMobile);
     },
 
     // Mirrors widget-host.js handlePicassoEvent()'s MESSAGE_SENT/SESSION_CLEARED
@@ -220,6 +241,71 @@ describe('widget-host shell dims + breakpoint (W6.1)', () => {
     w.handleWindowResize();
 
     expect(w.container.style.width).toBeUndefined();
+  });
+
+  describe('W6.3 audit fix F3: shell shadow + host-driven viewport tier', () => {
+    test('desktop expand applies the shell shadow and notifies the desktop tier', () => {
+      setInnerWidth(1024);
+      const w = makeWidget();
+      w.expand();
+
+      expect(w.iframe.style.boxShadow).toBe('0 2px 24px rgba(15, 23, 42, 0.08)');
+      expect(w._sentCommands).toContainEqual({
+        action: 'SIZE_CHANGE',
+        payload: { size: 'desktop', isMobile: false }
+      });
+    });
+
+    test('mobile expand carries no panel shadow and notifies the mobile tier', () => {
+      setInnerWidth(480);
+      const w = makeWidget();
+      w.expand();
+
+      expect(w.iframe.style.boxShadow).toBe('none');
+      expect(w._sentCommands).toContainEqual({
+        action: 'SIZE_CHANGE',
+        payload: { size: 'mobile', isMobile: true }
+      });
+    });
+
+    test('minimize clears the shadow (closed launcher/callout carry no panel shadow)', () => {
+      setInnerWidth(1024);
+      const w = makeWidget();
+      w.expand();
+      w.minimize();
+
+      expect(w.iframe.style.boxShadow).toBe('none');
+    });
+
+    test('resizing across the breakpoint re-notifies the tier and re-applies the shadow', () => {
+      setInnerWidth(1024);
+      const w = makeWidget();
+      w.expand();
+      w._sentCommands.length = 0;
+
+      setInnerWidth(400);
+      w.handleWindowResize();
+      expect(w.iframe.style.boxShadow).toBe('none');
+      expect(w._sentCommands).toContainEqual({
+        action: 'SIZE_CHANGE',
+        payload: { size: 'mobile', isMobile: true }
+      });
+
+      setInnerWidth(1024);
+      w.handleWindowResize();
+      expect(w.iframe.style.boxShadow).toBe('0 2px 24px rgba(15, 23, 42, 0.08)');
+      expect(w._sentCommands).toContainEqual({
+        action: 'SIZE_CHANGE',
+        payload: { size: 'desktop', isMobile: false }
+      });
+    });
+
+    test('widget-host.js source keeps the F3 shadow + tier-notify lines (mirror lockstep guard)', () => {
+      const source = fs.readFileSync(path.join(__dirname, '../widget-host.js'), 'utf8');
+
+      expect(source).toMatch(/notifyViewportTier/);
+      expect(source).toMatch(/0 2px 24px rgba\(15, 23, 42, 0\.08\)/);
+    });
   });
 
   describe('D1 default: edge/adaptive-height mode retired', () => {

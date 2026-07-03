@@ -90,6 +90,14 @@ describe('MessageBubble — Hairline thread (W2.2)', () => {
     expect(textEl.innerHTML).toContain('Hello there');
   });
 
+  test('bot sender label tolerates a top-level chat_title (no branding block) — W6.3 F5', () => {
+    // Same tolerant read as ChatHeader.jsx's wordmark (kept in lockstep):
+    // branding.chat_title first, then the mapping doc §2's top-level field.
+    setConfig({ chat_title: 'Atlanta Angels' });
+    renderBubble({ role: 'assistant', content: '<p>Hi</p>', renderMode: 'static' });
+    expect(screen.getByText('Atlanta Angels')).toHaveClass('hairline-sender-label--bot');
+  });
+
   test('bot sender label falls back to "Chat" on an old-shape config (no chat_title)', () => {
     setConfig({});
     renderBubble({ role: 'assistant', content: 'hi', renderMode: 'static' });

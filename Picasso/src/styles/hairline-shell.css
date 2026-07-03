@@ -80,13 +80,6 @@
   will-change: opacity, transform;
 }
 
-/* Mobile: full-screen sheet gets no rounded corners (existing iframe-mobile
-   contract; the Hairline mobile-sheet treatment itself is W4.5 — this only
-   preserves the radius-removal behavior the old .chat-container had). */
-body[data-iframe="true"].iframe-mobile .hairline-shell {
-  border-radius: 0;
-}
-
 /* iOS Safari safe-area + dynamic-viewport keyboard handling — functional
    mobile-compat fixes ported from theme.css's .chat-container rules
    (src/utils/mobileCompatibility.js toggles these classes/vars; unrelated
@@ -224,39 +217,55 @@ html body.fullpage-mode .hairline-shell {
 }
 
 /* ============================================================
-   W4.5 — MOBILE SHEET (D6 default applied: ≤480px viewport = full-screen
-   sheet, per DESIGN_SPEC.md "Widget Shell" + HAIRLINE_REDESIGN_MAPPING.md
-   §7 D6). Inside-iframe CSS only: this fires once the iframe's OWN
-   viewport is ≤480px wide, whatever width the host currently grants the
-   iframe element. Changing what width the host actually grants on mobile
-   (today's breakpoint is 768, keyed off a DIFFERENT mechanism — the
-   `.iframe-mobile` body class set via postMessage from widget-host.js) is
-   W6.1's job, not this item's — HAIRLINE_WORKPLAN.md W4.5 scopes this item
-   to "the inside-iframe sheet styling that W6.1 will trigger". A plain
-   viewport media query (rather than gating on `.iframe-mobile`) is the
-   correct primitive here: it's self-contained, matches D6's stated ≤480
-   threshold exactly (today's `.iframe-mobile` threshold is 768, not 480),
-   and needs no host-side change to already be correct once W6.1 grants a
-   ≤480 iframe on mobile. `.hairline-shell` only exists in the DOM while
-   `isOpen` is true (ChatWidget.jsx), so this can never accidentally match
-   the small closed-state toggle/callout iframe.
+   W4.5/W6.3 — MOBILE SHEET (D6: ≤480px HOST viewport = full-screen sheet,
+   per DESIGN_SPEC.md "Widget Shell" + HAIRLINE_REDESIGN_MAPPING.md §7 D6).
 
-   No new motion is introduced by this state (a static breakpoint, same as
-   the fullpage-mode rule above and the rule it replaces) — nothing here
-   needs a `prefers-reduced-motion` override.
+   W6.3 audit fix (F3): W4.5 originally gated this on
+   `@media (max-width: 480px)` — but that query evaluates against the
+   IFRAME's own viewport, and W6.1's host grants the desktop panel exactly
+   380px, so 380 ≤ 480 matched ALWAYS and the sheet rules permanently
+   zeroed the desktop shell's 1px hairline border, 12px radius, shadow,
+   and 3px shadow-bleed inset. The correct primitive is the HOST's own
+   mobile decision (`window.innerWidth <= 480` in widget-host.js's
+   expand()/resize observer — the only place the real host viewport is
+   knowable), delivered as the `iframe-mobile` body class via the
+   pre-existing `SIZE_CHANGE` PICASSO_COMMAND (iframe-main.jsx already
+   consumed it; widget-host.js now actually sends it). Default (no class)
+   = desktop panel styling, which is the right fallback for a host that
+   never reports.
+
+   No new motion is introduced by this state — nothing here needs a
+   `prefers-reduced-motion` override.
    ========================================================== */
 
-@media (max-width: 480px) {
-  .hairline-shell {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    max-width: none;
-    margin: 0;
-    border: none;
-    border-top: var(--shell-border-width-accent) solid var(--tenant-accent);
-    border-radius: 0;
-    box-shadow: none;
-  }
+body[data-iframe="true"].iframe-mobile .hairline-shell {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  margin: 0;
+  border: none;
+  border-top: var(--shell-border-width-accent) solid var(--tenant-accent);
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* ============================================================
+   W6.3 audit fix (F1) — hide the launcher while the panel is open.
+   The open panel fills the ENTIRE host iframe (W6.1: 380 ×
+   min(640px, 100vh−48px), or the full-screen sheet on mobile), so
+   theme.css's `.chat-open .chat-toggle-wrapper` rule — which floats the
+   toggle at fixed bottom-right/z-99999, correct for the OLD panel that
+   left room beneath itself — now overlays the Hairline composer and
+   INTERCEPTS clicks on the send button (Playwright-verified: clicking
+   Send times out with "chat-toggle-button intercepts pointer events").
+   The header ✕ is the design's close affordance (DESIGN_SPEC.md
+   "Interactions & Behavior"); the launcher only exists while closed.
+   `!important` is required to beat theme.css's `display: block
+   !important` at equal specificity during coexistence.
+   ========================================================== */
+
+body[data-iframe="true"].chat-open .chat-toggle-wrapper {
+  display: none !important;
 }

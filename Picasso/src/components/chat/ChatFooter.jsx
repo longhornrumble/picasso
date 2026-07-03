@@ -1,54 +1,30 @@
-// Enhanced ChatFooter.jsx with MyRecruiter company logo
-import React, { useState } from "react";
-import { useConfig } from "../../hooks/useConfig";
-import { config as environmentConfig } from '../../config/environment';
+// Hairline redesign (W6.3 audit fix F2) — powered-by attribution line.
+//
+// DESIGN_SPEC.md Typography table "Powered-by" row + screen 1 footer:
+// "Powered by [16px MyRecruiter icon] MyRecruiter", centered beneath the
+// composer — prefix 9.5px/400 `--ink-ghost`, brand name 10px/700 #8f8871.
+// Styles live in hairline-composer.css (`.hairline-footer*`).
+//
+// The MyRecruiter mark is a BUNDLED asset (`public/myrecruiter-mark.png`,
+// copied to the dist root by esbuild.config.mjs) per DESIGN_SPEC.md
+// "Assets": "real logo asset to be bundled — do not hotlink". This
+// replaces the old hardcoded prod-S3 `MyRecruiterLogo.png` hotlink (the
+// 107×20 full-wordmark image), which doubled as the brand name and stayed
+// in the old widget's visual idiom. The mark is decorative (alt="") —
+// the brand name is always present as text, so a failed image load
+// degrades gracefully without JS error handling.
+//
+// Platform attribution is fixed copy (never tenant-configurable — same
+// policy as the old component); strings from src/i18n/strings.js.
+import React from "react";
+import strings from "../../i18n/strings";
 
-export default function ChatFooter({ brandText = "MyRecruiter" }) {
-  const { config } = useConfig();
-  const [logoError, setLogoError] = useState(false);
-  
-  // MyRecruiter platform logo - always points to the MyRecruiter brand asset, never tenant-configurable
-  const myRecruiterLogoUrl = 'https://picassocode.s3.us-east-1.amazonaws.com/collateral/MyRecruiterLogo.png';
-  const showLogo = myRecruiterLogoUrl && !logoError;
-  
-  const handleLogoError = () => {
-    console.log('❌ MyRecruiter logo failed to load:', myRecruiterLogoUrl);
-    setLogoError(true);
-  };
-
-  const handleLogoLoad = () => {
-    console.log('✅ MyRecruiter logo loaded successfully:', myRecruiterLogoUrl);
-    setLogoError(false);
-  };
-
+export default function ChatFooter() {
   return (
-    <div className="chat-footer-container">
-      {/* Hairline redesign (W3.2): the "Help Menu" pill/panel formerly
-          mounted here (FollowUpPromptBar.jsx) is replaced by the Common
-          questions overlay (QuestionsOverlay.jsx), summoned from the
-          welcome menu's "Common questions" row — see ChatWidget.jsx. */}
-      {/* Powered By Section - Below the button */}
-      <div className="chat-footer">
-        <span className="chat-footer-content">
-          Powered by{" "}
-          
-          {showLogo ? (
-            // Show MyRecruiter company logo
-            <img 
-              src={myRecruiterLogoUrl}
-              onError={handleLogoError}
-              onLoad={handleLogoLoad}
-              alt={brandText}
-              className="chat-footer-logo"
-            />
-          ) : (
-            // Fallback to text only if MyRecruiter logo fails to load
-            <span className="chat-footer-brand-text">
-              {brandText}
-            </span>
-          )}
-        </span>
-      </div>
+    <div className="hairline-footer">
+      <span className="hairline-footer-powered">{strings.footer.poweredByPrefix}</span>
+      <img className="hairline-footer-mark" src="/myrecruiter-mark.png" alt="" aria-hidden="true" />
+      <span className="hairline-footer-brand">{strings.footer.brandName}</span>
     </div>
   );
 }
