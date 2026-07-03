@@ -3,7 +3,6 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { MessagesSquare, X } from "lucide-react";
 import { useChat } from "../../hooks/useChat";
 import { useConfig } from "../../hooks/useConfig";
-import { useCSSVariables } from "./useCSSVariables";
 import { initializeMobileCompatibility } from "../../utils/mobileCompatibility";
 import { resolveWidgetBehavior } from "../../utils/resolveWidgetBehavior";
 import ChatHeader from "./ChatHeader";
@@ -75,9 +74,6 @@ function ChatWidget() {
   // In iframe mode, we don't need breakpoints - the iframe container handles responsive sizing
   // The widget should always fill its container
 
-  // Apply CSS variables for theming
-  useCSSVariables(config);
-  
   // PHASE 1B: Record form completion automatically when form completes
   useEffect(() => {
     if (isFormComplete && completedFormData && currentFormId && recordFormCompletion) {

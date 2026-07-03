@@ -101,6 +101,21 @@ describe('reschedule', () => {
   });
 });
 
+describe('legacy branding vars (W6.2: old useCSSVariables.js/CSSVariablesProvider deleted)', () => {
+  afterEach(() => {
+    ['--primary-color', '--font-color', '--background-color', '--border-color', '--border-radius', '--font-family']
+      .forEach((name) => document.documentElement.style.removeProperty(name));
+  });
+
+  test('mounting the page sets --primary-color from config.branding and falls back for unset fields', async () => {
+    renderPage('reschedule');
+    await screen.findByText('Atlanta Angels');
+    expect(document.documentElement.style.getPropertyValue('--primary-color')).toBe('#a1905f');
+    // not present on the mocked config's branding object -> old system's default
+    expect(document.documentElement.style.getPropertyValue('--font-color')).toBe('#374151');
+  });
+});
+
 describe('cancel', () => {
   test('cancel mode → Cancel Appointment → mutate cancel → success', async () => {
     mutateBooking.mockResolvedValue({ outcome: 'deleted' });
