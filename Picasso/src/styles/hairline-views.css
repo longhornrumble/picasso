@@ -329,77 +329,8 @@ button.hairline-settings-row--button:focus-visible {
   outline-offset: 2px;
 }
 
-/* ==========================================================
-   7. HISTORY DRILL-IN SUB-VIEW — unmocked capability (fidelity rule §0.2):
-   the Turn 10 bundle mocks the top-level Settings list only, not the
-   "History" row's drill-in target. Designed fresh from the same hairline
-   card/row vocabulary as section 4 above.
-   ========================================================== */
-
-.hairline-settings-history-loading,
-.hairline-settings-empty-state {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 32px 12px;
-  color: var(--ink-faint);
-  font-size: 12.5px;
-  text-align: center;
-}
-
-.hairline-settings-empty-state {
-  flex-direction: column;
-}
-
-.hairline-spin {
-  animation: hairline-settings-spin 1s linear infinite;
-}
-
-@keyframes hairline-settings-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.hairline-settings-history-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-card);
-  overflow: hidden;
-}
-
-.hairline-settings-history-item {
-  padding: var(--space-card-row-padding-settings);
-  border-bottom: 1px solid var(--hairline-soft);
-}
-
-.hairline-settings-history-list > .hairline-settings-history-item:last-child {
-  border-bottom: none;
-}
-
-.hairline-settings-history-item-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: var(--type-row-label-size);
-  font-weight: var(--type-row-label-weight);
-  color: var(--ink);
-}
-
-.hairline-settings-history-item-duration {
-  margin-top: 2px;
-  font-size: 11.5px;
-  color: var(--ink-faint);
-}
-
-.hairline-settings-history-item-summary {
-  margin-top: 4px;
-  font-size: 11.5px;
-  color: var(--ink-soft);
-}
+/* Section 7 (history drill-in sub-view) removed with the Settings History
+   row (Chris, 2026-07-03) — see SettingsView.jsx header. */
 
 /* ==========================================================
    8. REDUCED MOTION
@@ -407,10 +338,6 @@ button.hairline-settings-row--button:focus-visible {
 
 @media (prefers-reduced-motion: reduce) {
   .hairline-settings-view {
-    animation: none;
-  }
-
-  .hairline-spin {
     animation: none;
   }
 

@@ -145,6 +145,7 @@
 - **Objective:** DESIGN_SPEC screen 5: single grouped list (Conversation / Preferences / Your data), slide-in 240ms, back-preserves-scroll; wire to EXISTING StateManagementPanel functionality (session stats, history, connection, export→"Download conversations", clear + inline confirm + audit event).
 - **Owns:** new `src/components/chat/SettingsView.jsx` (+ rules in `hairline-views.css`); retirement of `StateManagementPanel.jsx` rendering (logic/helpers may be reused as imports).
 - **Done when:** every function reachable in the old 3-tab panel is reachable in the new list (or explicitly listed in the PR as intentionally dropped for Chris's sign-off); inline destructive confirm per spec; toast pattern replaced by spec-conformant inline confirms.
+- **Amended (Chris, 2026-07-03 — spec amendment 5):** History + Download rows REMOVED post-audit. History was a dead read (nothing ever wrote `picasso_conversations`; storage is session-only) and Download exported metadata only AND was silently blocked by the iframe sandbox (no `allow-downloads` token) while reporting "Downloaded". Rows, sub-view, helpers, strings, and CSS deleted; clear-all still purges the vestigial key. Transcript export = possible future feature via the PII advisory gate, NOT a resurrection of these rows.
 
 ### W3.4 Privacy & compliance page
 - **Status:** DONE (f7383e0)

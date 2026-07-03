@@ -22,20 +22,21 @@
 // toggle is omitted — no offline-sync feature exists to back it. See the
 // W3.3 PR description for the full old-panel-function → new-home mapping,
 // including the additional (non-D5) drops flagged there for sign-off.
+//
+// History + Download rows REMOVED (Chris decision, 2026-07-03): History was
+// a dead read — nothing has ever written the `picasso_conversations` archive
+// it listed (storage is session-only, so cross-session history has no data
+// by design); Download exported metadata only (no message content) and was
+// silently blocked by the iframe sandbox anyway. If transcript export is
+// ever wanted, it's a deliberate new feature through the PII advisory gate,
+// not a resurrection of these rows. Clear-all still purges the vestigial
+// history key alongside the real current-conversation session key.
 import React, { useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Download, History, RefreshCw, Trash2, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Trash2, X } from "lucide-react";
 import { useChat } from "../../hooks/useChat";
 import { errorLogger } from "../../utils/errorHandling";
-import { config as environmentConfig } from "../../config/environment";
 import strings from "../../i18n/strings";
-import {
-  buildConversationExportPayload,
-  clearStoredConversationHistory,
-  formatConversationDate,
-  formatConversationDuration,
-  loadStoredConversationHistory,
-  triggerJSONDownload,
-} from "./settingsHelpers";
+import { clearStoredConversationHistory } from "./settingsHelpers";
 
 /** Focus trap: keeps Tab/Shift+Tab cycling within `containerRef`'s focusable
  * elements. The thread underneath stays mounted (that's what makes "back
@@ -70,100 +71,20 @@ function useFocusTrap(containerRef, enabled) {
   }, [containerRef, enabled]);
 }
 
-function HistoryListSubView({ onBack, onClose, isLoading, history }) {
-  const backRef = useRef(null);
-
-  useEffect(() => {
-    backRef.current?.focus();
-  }, []);
-
-  return (
-    <>
-      <div className="hairline-takeover-header">
-        <div className="hairline-takeover-header-left">
-          <button
-            ref={backRef}
-            type="button"
-            className="hairline-icon-button"
-            onClick={onBack}
-            aria-label="Back to settings"
-          >
-            <ChevronLeft size={15} strokeWidth={2} aria-hidden="true" />
-          </button>
-          <h3 className="hairline-page-title">{strings.settings.rows.history}</h3>
-        </div>
-        <button type="button" className="hairline-icon-button" onClick={onClose} aria-label="Close chat">
-          <X size={15} strokeWidth={2} aria-hidden="true" />
-        </button>
-      </div>
-
-      <div className="hairline-settings-content">
-        {isLoading ? (
-          <div className="hairline-settings-history-loading">
-            <RefreshCw size={16} strokeWidth={2} className="hairline-spin" aria-hidden="true" />
-            Loading history…
-          </div>
-        ) : history.length > 0 ? (
-          <ul className="hairline-settings-history-list">
-            {history.map((conv, index) => (
-              <li key={conv.conversationId || index} className="hairline-settings-history-item">
-                <div className="hairline-settings-history-item-header">
-                  <span>{formatConversationDate(conv.metadata?.created)}</span>
-                  <span>{conv.messages?.length || 0} messages</span>
-                </div>
-                <div className="hairline-settings-history-item-duration">
-                  {formatConversationDuration(conv)}
-                </div>
-                {conv.metadata?.lastSummary && (
-                  <div className="hairline-settings-history-item-summary">
-                    {conv.metadata.lastSummary.slice(0, 60)}…
-                  </div>
-                )}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <div className="hairline-settings-empty-state">
-            <History size={28} strokeWidth={2} aria-hidden="true" />
-            <p>No conversation history found</p>
-          </div>
-        )}
-      </div>
-    </>
-  );
-}
-
 export default function SettingsView({ onBack, onClose, onOpenPrivacy }) {
   const chatContext = useChat();
-  const { conversationMetadata = {}, clearMessages, messages = [] } = chatContext;
+  const { clearMessages, messages = [] } = chatContext;
 
   const rootRef = useRef(null);
   const backButtonRef = useRef(null);
 
-  const [subView, setSubView] = useState("list"); // 'list' | 'history'
-  const [conversationHistory, setConversationHistory] = useState([]);
-  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [isConfirmingClear, setIsConfirmingClear] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
   const [clearError, setClearError] = useState(null);
-  const [downloadStatus, setDownloadStatus] = useState("idle"); // 'idle' | 'success' | 'error'
 
   // Same read as the pre-Hairline panel: a direct, non-reactive
   // navigator.onLine check (frozen — see file header).
   const isOnline = typeof navigator !== "undefined" ? navigator.onLine : true;
-
-  // Load history on mount — mirrors the old panel loading it whenever its
-  // History tab (the default tab) was visible on open.
-  useEffect(() => {
-    setIsLoadingHistory(true);
-    try {
-      setConversationHistory(loadStoredConversationHistory(10));
-    } catch (error) {
-      errorLogger.logError(error, { context: "load_conversation_history" });
-    } finally {
-      setIsLoadingHistory(false);
-    }
-  }, []);
 
   // A11y (HAIRLINE_WORKPLAN.md ground rule #7 + W3.3 guardrails): focus
   // moves into the takeover on mount; ESC returns to the thread.
@@ -201,7 +122,6 @@ export default function SettingsView({ onBack, onClose, onOpenPrivacy }) {
         await clearMessages();
       }
       clearStoredConversationHistory();
-      setConversationHistory([]);
       setIsConfirmingClear(false);
       // DESIGN_SPEC.md Interactions & Behavior: "Clear messages: inline
       // confirm; on confirm, clears thread, logs audit event, returns to
@@ -218,28 +138,6 @@ export default function SettingsView({ onBack, onClose, onOpenPrivacy }) {
     }
   };
 
-  const handleDownload = () => {
-    try {
-      // Same computation as the pre-Hairline panel (frozen — see
-      // settingsHelpers.js's buildConversationExportPayload doc comment for
-      // the pre-existing "undefined..." quirk this preserves verbatim).
-      const tenantHashDisplay = `${environmentConfig.getTenantHashFromURL()?.slice(0, 8)}...`;
-      const payload = buildConversationExportPayload({
-        tenantHashDisplay,
-        messages,
-        conversationMetadata,
-        conversationHistory,
-      });
-      triggerJSONDownload(payload, `picasso-conversations-${Date.now()}.json`);
-      setDownloadStatus("success");
-    } catch (error) {
-      errorLogger.logError(error, { context: "export_conversations" });
-      setDownloadStatus("error");
-    } finally {
-      setTimeout(() => setDownloadStatus("idle"), 2000);
-    }
-  };
-
   const handlePrivacyClick = () => {
     // W3.4 (HAIRLINE_WORKPLAN.md): opens the dedicated Privacy & compliance
     // takeover (DESIGN_SPEC.md screen 6, PrivacyView.jsx). ChatWidget.jsx
@@ -251,17 +149,6 @@ export default function SettingsView({ onBack, onClose, onOpenPrivacy }) {
 
   const messageCount = messages.length;
   const currentSessionValue = `${messageCount} ${messageCount === 1 ? "message" : "messages"}`;
-  const historyValue =
-    conversationHistory.length === 0
-      ? strings.settings.rows.historyEmpty
-      : `${conversationHistory.length} ${conversationHistory.length === 1 ? "conversation" : "conversations"}`;
-
-  const downloadLabel =
-    downloadStatus === "success"
-      ? strings.settings.downloaded
-      : downloadStatus === "error"
-      ? strings.settings.downloadFailed
-      : strings.settings.rows.downloadConversations;
 
   return (
     <div
@@ -271,15 +158,7 @@ export default function SettingsView({ onBack, onClose, onOpenPrivacy }) {
       aria-modal="true"
       aria-label={strings.settings.pageTitle}
     >
-      {subView === "history" ? (
-        <HistoryListSubView
-          onBack={() => setSubView("list")}
-          onClose={onClose}
-          isLoading={isLoadingHistory}
-          history={conversationHistory}
-        />
-      ) : (
-        <>
+      <>
           <div className="hairline-takeover-header">
             <div className="hairline-takeover-header-left">
               <button
@@ -305,19 +184,7 @@ export default function SettingsView({ onBack, onClose, onOpenPrivacy }) {
                 <span className="hairline-settings-row-label">{strings.settings.rows.currentSession}</span>
                 <span className="hairline-settings-row-value">{currentSessionValue}</span>
               </div>
-              <button
-                type="button"
-                className="hairline-settings-row hairline-settings-row--button"
-                onClick={() => setSubView("history")}
-              >
-                <span className="hairline-settings-row-label">{strings.settings.rows.history}</span>
-                <span className="hairline-settings-row-value">
-                  {historyValue}
-                  <span className="hairline-settings-chevron">
-                    <ChevronRight size={13} strokeWidth={2} aria-hidden="true" />
-                  </span>
-                </span>
-              </button>
+              {/* History row removed (Chris, 2026-07-03) — see file header. */}
             </div>
 
             <h4 className="hairline-settings-group-label">{strings.settings.groups.preferences}</h4>
@@ -343,16 +210,8 @@ export default function SettingsView({ onBack, onClose, onOpenPrivacy }) {
                 <span className="hairline-settings-row-label">{strings.settings.rows.storage}</span>
                 <span className="hairline-settings-row-value">{strings.settings.rows.storageValue}</span>
               </div>
-              <button
-                type="button"
-                className="hairline-settings-row hairline-settings-row--button"
-                onClick={handleDownload}
-              >
-                <span className="hairline-settings-row-label hairline-settings-row-label--accent">
-                  <Download size={13} strokeWidth={2} aria-hidden="true" />
-                  {downloadLabel}
-                </span>
-              </button>
+              {/* Download-conversations row removed (Chris, 2026-07-03) —
+                  see file header. */}
               <button
                 type="button"
                 className="hairline-settings-row hairline-settings-row--button"
@@ -404,8 +263,7 @@ export default function SettingsView({ onBack, onClose, onOpenPrivacy }) {
               <p className="hairline-settings-fine-print">{strings.settings.clearAllMessagesFinePrint}</p>
             )}
           </div>
-        </>
-      )}
+      </>
     </div>
   );
 }
