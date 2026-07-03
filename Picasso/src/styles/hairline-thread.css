@@ -1029,3 +1029,112 @@
 }
 
 /* ==================== END W4.2 (in-chat scheduling) ==================== */
+
+/* ============================================================
+   W2.7b PLAIN CTA BUTTON — restyle of CTAButton.jsx's default export
+   Follow-up to W2.7 (merged): W2.7 restyled `CTAButtonGroup`/`SuggestionRow`
+   (MessageBubble's suggestion-card path) but deliberately left the PLAIN
+   default `CTAButton` export on the old `.cta-button`/`.cta-primary`/
+   `.cta-secondary` pill look, because that export's only live consumer,
+   ShowcaseCard.jsx, was still BLOCKED on decision D2 at the time. D2 is now
+   resolved (W4.3, keep + restyle), so this closes that gap.
+
+   Vocabulary: Turn 10 has no standalone CTA-button mock — ShowcaseCard is
+   itself an unmocked surface (HAIRLINE_REDESIGN_MAPPING.md §0 case 2 / §4).
+   ShowcaseCard renders exactly one primary CTA (full-width, prominent) and
+   zero or more secondary CTAs (compact, wrapped in a row) — see
+   hairline-showcase.css's `.hairline-showcase-actions`/
+   `.hairline-showcase-secondary-actions` container rules (W4.3, unchanged
+   here). That "one decisive full-width action + lighter secondary actions"
+   shape is identical to the conversational-forms submit/cancel pair
+   (hairline-forms.css `.hairline-form-submit`/`.hairline-form-cancel`,
+   W4.1) — reused verbatim (solid `--tenant-accent` fill for primary,
+   transparent `--hairline`-bordered button for secondary) rather than
+   inventing a third button recipe. Flagged for the design-review gate, same
+   as W4.1/W4.3's judgment calls.
+
+   New exclusive class names (`.hairline-cta*`) rather than restyling
+   `.cta-button`/`.cta-primary`/`.cta-secondary` in place — same precedent as
+   every other Hairline file in this codebase (hairline-shell.css,
+   hairline-forms.css, this file's own W2.2/W2.7 sections): CTAButton.jsx
+   now renders exclusively under `.hairline-cta*`, so theme.css's
+   `.cta-button` rules simply have no matching elements left here — no
+   `!important` fights, no coexistence risk with old pill styling.
+
+   FROZEN: dispatch (`onClick(cta)`, `emitAnalyticsEvent`) and the
+   `_position`/action-fallback contract live in CTAButton.jsx, untouched by
+   this file — see that component's header comment.
+   ============================================================ */
+.hairline-cta {
+  box-sizing: border-box;
+  font-family: inherit;
+  font-size: var(--type-menu-row-size);
+  font-weight: var(--type-menu-row-weight);
+  cursor: pointer;
+  transition:
+    background-color var(--duration-fill) var(--ease-ui),
+    border-color var(--duration-fill) var(--ease-ui),
+    color var(--duration-fill) var(--ease-ui);
+}
+
+.hairline-cta:focus-visible {
+  outline: 2px solid var(--tenant-accent);
+  outline-offset: 2px;
+}
+
+.hairline-cta:disabled {
+  cursor: not-allowed;
+}
+
+/* Primary — same recipe as .hairline-form-submit (W4.1): solid fill,
+   full-width (ShowcaseCard mounts this as the sole child of a flex-column
+   container, so 100% reproduces the mock's "full-width, prominent" call
+   out in ShowcaseCard.jsx's header comment). */
+.hairline-cta--primary {
+  width: 100%;
+  padding: 11px 16px;
+  background: var(--tenant-accent);
+  color: var(--surface-raised);
+  border: none;
+  border-radius: var(--radius-card);
+}
+
+.hairline-cta--primary:hover:not(:disabled) {
+  background: var(--tenant-accent-deep);
+}
+
+.hairline-cta--primary:disabled {
+  background: var(--hairline);
+  color: var(--ink-faint);
+}
+
+/* Secondary — same recipe as .hairline-form-cancel (W4.1): transparent,
+   outlined, auto-width (ShowcaseCard wraps these in a flex-row container,
+   matching "smaller, in a row" from ShowcaseCard.jsx's header comment). */
+.hairline-cta--secondary {
+  padding: 8px 16px;
+  background: transparent;
+  color: var(--ink-soft);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-card);
+}
+
+.hairline-cta--secondary:hover:not(:disabled) {
+  background: var(--tenant-tint);
+  border-color: var(--hairline-strong);
+  color: var(--ink);
+}
+
+.hairline-cta--secondary:disabled {
+  color: var(--ink-faint);
+  border-color: var(--hairline);
+  background: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hairline-cta {
+    transition: none;
+  }
+}
+
+/* ==================== END W2.7b (plain CTA button) ==================== */
