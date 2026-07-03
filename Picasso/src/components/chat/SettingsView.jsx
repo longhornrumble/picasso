@@ -133,7 +133,7 @@ function HistoryListSubView({ onBack, onClose, isLoading, history }) {
   );
 }
 
-export default function SettingsView({ onBack, onClose }) {
+export default function SettingsView({ onBack, onClose, onOpenPrivacy }) {
   const chatContext = useChat();
   const { conversationMetadata = {}, clearMessages, messages = [] } = chatContext;
 
@@ -241,12 +241,12 @@ export default function SettingsView({ onBack, onClose }) {
   };
 
   const handlePrivacyClick = () => {
-    // W3.4 (HAIRLINE_WORKPLAN.md) owns the dedicated Privacy & compliance
-    // takeover (DESIGN_SPEC.md screen 6) — sequenced after this item in the
-    // workplan's dependency graph, not built yet. The row renders here per
-    // the mock (chevron affordance) so the grouped list matches the design;
-    // wiring is a deliberate no-op until W3.4 lands. See the W3.3 PR
-    // description.
+    // W3.4 (HAIRLINE_WORKPLAN.md): opens the dedicated Privacy & compliance
+    // takeover (DESIGN_SPEC.md screen 6, PrivacyView.jsx). ChatWidget.jsx
+    // renders it as a sibling view at the same z-index tier as this
+    // component (mutually exclusive, not nested inside this component's own
+    // tree) — see ChatWidget.jsx's render comment for why.
+    onOpenPrivacy?.();
   };
 
   const messageCount = messages.length;

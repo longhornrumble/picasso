@@ -94,12 +94,22 @@ describe('SettingsView — Hairline settings takeover (W3.3)', () => {
       expect(screen.queryByText('Offline sync')).not.toBeInTheDocument();
     });
 
-    test('renders the "Privacy & compliance" row (inert pending W3.4)', () => {
+    test('clicking the "Privacy & compliance" row calls onOpenPrivacy (W3.4)', () => {
+      const onOpenPrivacy = jest.fn();
+      useChat.mockReturnValue(baseChat());
+      render(<SettingsView onBack={jest.fn()} onClose={jest.fn()} onOpenPrivacy={onOpenPrivacy} />);
+      const row = screen.getByText('Privacy & compliance').closest('button');
+      expect(row).toBeInTheDocument();
+
+      fireEvent.click(row);
+
+      expect(onOpenPrivacy).toHaveBeenCalledTimes(1);
+    });
+
+    test('clicking the "Privacy & compliance" row without onOpenPrivacy does not throw (tolerant of the prop being omitted)', () => {
       useChat.mockReturnValue(baseChat());
       render(<SettingsView onBack={jest.fn()} onClose={jest.fn()} />);
       const row = screen.getByText('Privacy & compliance').closest('button');
-      expect(row).toBeInTheDocument();
-      // No destination view exists yet (W3.4) — clicking must not throw.
       expect(() => fireEvent.click(row)).not.toThrow();
     });
   });

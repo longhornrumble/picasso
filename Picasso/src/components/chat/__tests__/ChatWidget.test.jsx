@@ -49,9 +49,19 @@ jest.mock('../MessageBubble', () => ({
 jest.mock('../TypingIndicator', () => ({ __esModule: true, default: () => <div data-testid="typing-indicator" /> }));
 jest.mock('../SettingsView', () => ({
   __esModule: true,
-  default: ({ onBack }) => (
+  default: ({ onBack, onOpenPrivacy }) => (
     <div data-testid="settings-view">
       <button onClick={onBack}>back</button>
+      <button onClick={onOpenPrivacy}>open-privacy</button>
+    </div>
+  ),
+}));
+jest.mock('../PrivacyView', () => ({
+  __esModule: true,
+  default: ({ onBack, onClose }) => (
+    <div data-testid="privacy-view">
+      <button onClick={onBack}>back-to-settings</button>
+      <button onClick={onClose}>close-privacy</button>
     </div>
   ),
 }));
@@ -197,6 +207,62 @@ describe('ChatWidget — Settings takeover is independent of welcome/thread', ()
     expect(screen.getByTestId('settings-view')).toBeInTheDocument();
     // The header/composer stay mounted underneath (W3.3's "back preserves
     // scroll" contract) regardless of which content view is active.
+    expect(screen.getByTestId('chat-header')).toBeInTheDocument();
+    expect(screen.getByTestId('input-bar')).toBeInTheDocument();
+  });
+});
+
+describe('ChatWidget — Privacy takeover wiring (W3.4)', () => {
+  it('is closed by default, and opens (replacing SettingsView) when its "Privacy & compliance" row fires onOpenPrivacy', () => {
+    setChat([{ id: 'welcome', role: 'assistant', content: 'Hi!' }]);
+    render(<ChatWidget />);
+
+    fireEvent.click(screen.getByText('open-settings'));
+    expect(screen.getByTestId('settings-view')).toBeInTheDocument();
+    expect(screen.queryByTestId('privacy-view')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('open-privacy'));
+
+    expect(screen.getByTestId('privacy-view')).toBeInTheDocument();
+    // Mutually exclusive at render time (ChatWidget.jsx's render comment) —
+    // SettingsView unmounts while PrivacyView is showing.
+    expect(screen.queryByTestId('settings-view')).not.toBeInTheDocument();
+  });
+
+  it('back from Privacy returns to Settings, not the thread', () => {
+    setChat([{ id: 'welcome', role: 'assistant', content: 'Hi!' }]);
+    render(<ChatWidget />);
+
+    fireEvent.click(screen.getByText('open-settings'));
+    fireEvent.click(screen.getByText('open-privacy'));
+    expect(screen.getByTestId('privacy-view')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('back-to-settings'));
+
+    expect(screen.queryByTestId('privacy-view')).not.toBeInTheDocument();
+    expect(screen.getByTestId('settings-view')).toBeInTheDocument();
+  });
+
+  it('Privacy\'s close (X) closes the whole takeover, same as Settings\' own close', () => {
+    setChat([{ id: 'welcome', role: 'assistant', content: 'Hi!' }]);
+    render(<ChatWidget />);
+
+    fireEvent.click(screen.getByText('open-settings'));
+    fireEvent.click(screen.getByText('open-privacy'));
+
+    fireEvent.click(screen.getByText('close-privacy'));
+
+    expect(screen.queryByTestId('privacy-view')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('settings-view')).not.toBeInTheDocument();
+  });
+
+  it('the header/composer stay mounted underneath Privacy', () => {
+    setChat([{ id: 'welcome', role: 'assistant', content: 'Hi!' }]);
+    render(<ChatWidget />);
+
+    fireEvent.click(screen.getByText('open-settings'));
+    fireEvent.click(screen.getByText('open-privacy'));
+
     expect(screen.getByTestId('chat-header')).toBeInTheDocument();
     expect(screen.getByTestId('input-bar')).toBeInTheDocument();
   });

@@ -147,7 +147,7 @@
 - **Done when:** every function reachable in the old 3-tab panel is reachable in the new list (or explicitly listed in the PR as intentionally dropped for Chris's sign-off); inline destructive confirm per spec; toast pattern replaced by spec-conformant inline confirms.
 
 ### W3.4 Privacy & compliance page
-- **Status:** TODO — after W3.3
+- **Status:** PR #668
 - **Objective:** DESIGN_SPEC screen 6: checklist card + fine print; "privacy notice" links `config.privacy_notice_url`, **row/link hidden when field absent** (tolerant read).
 - **Owns:** new `src/components/chat/PrivacyView.jsx` (+ rules in `hairline-views.css`).
 - **Done when:** matches mock; absent-field fixture renders without the link and without errors; copy from `strings.js`.

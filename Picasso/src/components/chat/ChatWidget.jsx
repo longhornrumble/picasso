@@ -14,6 +14,7 @@ import AttachmentMenu from "./AttachmentMenu";
 import MessageBubble from "./MessageBubble";
 import TypingIndicator from "./TypingIndicator";
 import SettingsView from "./SettingsView";
+import PrivacyView from "./PrivacyView";
 import WelcomeView from "./WelcomeView";
 import QuestionsOverlay from "./QuestionsOverlay";
 import FormFieldPrompt from "../forms/FormFieldPrompt";
@@ -140,6 +141,10 @@ function ChatWidget() {
   const [calloutDismissed, setCalloutDismissed] = useState(false);
   const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
   const [showStateManagement, setShowStateManagement] = useState(false);
+  // W3.4: whether Settings' "Privacy & compliance" row has drilled into
+  // PrivacyView. Scoped inside `showStateManagement` (only meaningful while
+  // Settings is open) — see the render block below for how the two combine.
+  const [showPrivacy, setShowPrivacy] = useState(false);
   
   // Track last read message and user interaction
   const [lastReadMessageIndex, setLastReadMessageIndex] = useState(() => {
@@ -748,28 +753,52 @@ function ChatWidget() {
             )}
           </div>
 
-          {/* Hairline redesign (W3.3): Settings full-widget takeover.
-              Rendered only while open (not always-mounted), so it plays its
-              own entrance animation each time; the header/chat-window/
-              footer above stay mounted underneath the whole time — that's
-              what makes "back preserves scroll" free, since nothing above
-              ever unmounts while Settings is showing. Replaces
+          {/* Hairline redesign (W3.3/W3.4): Settings full-widget takeover,
+              plus its own nested Privacy & compliance page (W3.4). Rendered
+              only while open (not always-mounted), so it plays its own
+              entrance animation each time; the header/chat-window/footer
+              above stay mounted underneath the whole time — that's what
+              makes "back preserves scroll" free, since nothing above ever
+              unmounts while Settings/Privacy is showing. Replaces
               StateManagementPanel's old modal render as the settings icon's
               destination (StateManagementPanel.jsx itself is left on disk,
-              unreferenced, for W6.2 to delete). */}
-          {showStateManagement && (
-            <SettingsView
-              onBack={() => setShowStateManagement(false)}
-              onClose={() => {
-                // Settings' ✕ closes the whole widget, same as the main
-                // header's ✕ (DESIGN_SPEC.md Interactions: "✕ in header
-                // closes"). Also reset showStateManagement so reopening the
-                // widget lands back on the thread, not mid-settings.
-                setShowStateManagement(false);
-                handleToggle();
-              }}
-            />
-          )}
+              unreferenced, for W6.2 to delete).
+
+              Settings and Privacy are mutually exclusive AT RENDER TIME
+              (`showPrivacy` nested inside the `showStateManagement` gate):
+              opening Privacy from Settings' "Privacy & compliance" row
+              unmounts SettingsView and mounts PrivacyView in its place, at
+              the same z-index tier — not stacked on top of it. That keeps
+              each view's own ESC listener independent (only one is ever
+              mounted at a time), so a single ESC press pops exactly one
+              level (Privacy -> Settings -> thread), matching
+              DESIGN_SPEC.md's "back returns to settings" for this page. */}
+          {showStateManagement &&
+            (showPrivacy ? (
+              <PrivacyView
+                onBack={() => setShowPrivacy(false)}
+                onClose={() => {
+                  // Same "close the whole widget" contract as Settings' own
+                  // ✕ below.
+                  setShowPrivacy(false);
+                  setShowStateManagement(false);
+                  handleToggle();
+                }}
+              />
+            ) : (
+              <SettingsView
+                onBack={() => setShowStateManagement(false)}
+                onOpenPrivacy={() => setShowPrivacy(true)}
+                onClose={() => {
+                  // Settings' ✕ closes the whole widget, same as the main
+                  // header's ✕ (DESIGN_SPEC.md Interactions: "✕ in header
+                  // closes"). Also reset showStateManagement so reopening the
+                  // widget lands back on the thread, not mid-settings.
+                  setShowStateManagement(false);
+                  handleToggle();
+                }}
+              />
+            ))}
 
           {/* Hairline redesign (W3.2): Common questions overlay. Rendered
               only while open, same covers-the-whole-shell approach as
