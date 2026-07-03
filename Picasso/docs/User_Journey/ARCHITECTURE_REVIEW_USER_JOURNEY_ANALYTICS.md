@@ -193,7 +193,7 @@ The proposed architecture follows industry best practices for event-driven analy
   "event_id": "evt_abc123xyz789",  // Idempotency key
   "timestamp": "2025-12-18T14:30:00.123Z",  // ISO 8601
   "session_id": "sess_abc123def456",
-  "tenant_hash": "fo85e6a06dcdf4",
+  "tenant_hash": "my87674d777bf9",
   "step_number": 5,
   "event_type": "CTA_CLICKED",
   "payload": {
@@ -937,7 +937,7 @@ User logs into Bubble
 Bubble generates JWT token
     {
       "sub": "user_123",
-      "tenant_hash": "fo85e6a06dcdf4",
+      "tenant_hash": "my87674d777bf9",
       "role": "admin",
       "exp": 1640000000
     }

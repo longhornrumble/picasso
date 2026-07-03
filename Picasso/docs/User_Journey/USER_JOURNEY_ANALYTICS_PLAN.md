@@ -411,7 +411,7 @@ Compare what's available vs. what's used:
 {
   "timestamp": "2025-12-18T14:30:00.123Z",
   "session_id": "sess_abc123def456",
-  "tenant_hash": "fo85e6a06dcdf4",
+  "tenant_hash": "my87674d777bf9",
   "step_number": 5
 }
 ```
@@ -552,7 +552,7 @@ GSI: tenant-date-index (for querying by date range)
 
 **Query: Conversation depth distribution**
 ```
-pk = TENANT#fo85e6a06dcdf4
+pk = TENANT#my87674d777bf9
 → Group by message_count → "32% had 2 messages, 26% had 3 messages"
 ```
 
@@ -1007,7 +1007,7 @@ iframe.contentWindow.postMessage({
 ```json
 {
   "session_id": "sess_abc123def456",
-  "tenant_hash": "fo85e6a06dcdf4",
+  "tenant_hash": "my87674d777bf9",
   "ga_client_id": "123456789.1702900000",
   "attribution": {
     "utm_source": "facebook",
@@ -1181,7 +1181,7 @@ def get_attribution_funnel(event, context):
 ```json
 {
   "schema_version": "1.0.0",
-  "tenant_id": "fo85e6a06dcdf4",
+  "tenant_id": "my87674d777bf9",
   "session_id": "sess_abc123def456",
   "timestamp": "2025-12-18T14:30:00.123Z",
   "event": {

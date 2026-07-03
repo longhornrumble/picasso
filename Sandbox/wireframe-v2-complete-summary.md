@@ -2,7 +2,7 @@
 
 ## ✅ All Three Wireframes Updated
 
-All wireframes now match your Foster Village analytics dashboard's clean green design.
+All wireframes now match your MyRecruiter analytics dashboard's clean green design.
 
 ## Files Created
 
