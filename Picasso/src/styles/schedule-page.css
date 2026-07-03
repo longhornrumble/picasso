@@ -1,8 +1,12 @@
 /* schedule-page.css — the branded full-page scheduling surface (M1a).
  *
- * Scoped under .sched-page. Driven by the tenant branding CSS custom properties that
- * useCSSVariables.js already sets on :root (--primary-color, --font-family, …) with
- * graceful fallbacks, so the page reads obviously per-tenant without a new theme system.
+ * Scoped under .sched-page. Driven by tenant branding CSS custom properties
+ * (--primary-color, --font-family, …) with graceful fallbacks, so the page reads
+ * obviously per-tenant without a new theme system. Hairline redesign (W6.2): the
+ * old useCSSVariables.js/CSSVariablesProvider system that used to set these on
+ * :root was deleted; this page now sources them itself via
+ * `useLegacySchedulePageBrandingVars` (see SchedulingPage.jsx) — same var names,
+ * same fallback values, so this file needed no changes.
  * Also restyles the reused §B18 components (.scheduling-slots / .hairline-scheduling-row / …)
  * into full-width rows WITHIN this scope only — the in-chat widget is untouched.
  *

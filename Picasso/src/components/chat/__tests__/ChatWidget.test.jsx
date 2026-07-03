@@ -25,7 +25,6 @@ import { useFormMode } from '../../../context/FormModeContext';
 jest.mock('../../../hooks/useChat', () => ({ useChat: jest.fn() }));
 jest.mock('../../../hooks/useConfig', () => ({ useConfig: jest.fn() }));
 jest.mock('../../../context/FormModeContext', () => ({ useFormMode: jest.fn() }));
-jest.mock('../useCSSVariables', () => ({ useCSSVariables: jest.fn() }));
 
 jest.mock('../ChatHeader', () => ({
   __esModule: true,

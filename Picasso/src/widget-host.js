@@ -1,7 +1,7 @@
 /**
  * Picasso Widget Host Script
  * Creates iframe with complete CSS isolation for the chat widget
- * Uses your existing React app, theme.css, and useCSSVariables system
+ * Uses your existing React app and the Hairline token system
  */
 
 import { config as environmentConfig } from './config/environment.js';
