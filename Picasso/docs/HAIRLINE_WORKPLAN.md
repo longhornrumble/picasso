@@ -85,7 +85,7 @@
 - **Guardrail:** the sanitizer pipeline, streaming imperative writer, retry logic, and all dispatch handlers are functionality — do not alter. `MessageBubble.jsx` is single-owner: W2.3/W2.7 queue behind this item.
 
 ### W2.3 Markdown typography
-- **Status:** TODO — after W2.2
+- **Status:** PR #660
 - **Objective:** style rendered markdown (lists, links, bold, code, tables) inside bot plain-text at the 13.5px/1.6 `--ink-body` scale; links `--tenant-accent-deep` underline 2px offset.
 - **Owns:** markdown rules in `hairline-thread.css` (`.message-text`, `.streaming-formatted` descendants); NO js changes.
 - **Done when:** `test-dynamic.html` conversation with lists/links/bold renders cleanly in both streaming and finalized paths; no headers styling needed (backend bans them) but h-tags degrade gracefully if present.
