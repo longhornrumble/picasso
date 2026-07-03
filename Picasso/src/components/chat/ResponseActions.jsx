@@ -86,7 +86,8 @@ export default function ResponseActions({ replyHtml }) {
         type="button"
         className="hairline-response-action-btn"
         onClick={handleCopy}
-        aria-label="Copy response"
+        title={strings.responseActions.copy}
+        aria-label={strings.responseActions.copy}
       >
         {copied ? (
           <Check size={13} strokeWidth={2} aria-hidden="true" />
@@ -100,7 +101,8 @@ export default function ResponseActions({ replyHtml }) {
         className={`hairline-response-action-btn${feedback === "up" ? " hairline-response-action-btn--active" : ""}`}
         onClick={handleThumbUp}
         aria-pressed={feedback === "up"}
-        aria-label="Good response"
+        title={strings.responseActions.goodResponse}
+        aria-label={strings.responseActions.goodResponse}
       >
         <ThumbsUp
           size={13}
@@ -115,7 +117,8 @@ export default function ResponseActions({ replyHtml }) {
         className={`hairline-response-action-btn${feedback === "down" ? " hairline-response-action-btn--active" : ""}`}
         onClick={handleThumbDown}
         aria-pressed={feedback === "down"}
-        aria-label="Poor response"
+        title={strings.responseActions.badResponse}
+        aria-label={strings.responseActions.badResponse}
       >
         <ThumbsDown
           size={13}

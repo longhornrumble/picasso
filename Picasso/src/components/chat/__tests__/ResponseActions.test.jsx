@@ -47,7 +47,7 @@ describe('ResponseActions — copy (W2.6)', () => {
     render(<ResponseActions replyHtml="<p>Hello <strong>world</strong></p>" />);
 
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Copy response' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
     });
 
     expect(writeTextMock).toHaveBeenCalledWith('Hello world');
@@ -61,7 +61,7 @@ describe('ResponseActions — copy (W2.6)', () => {
     render(<ResponseActions replyHtml="<p>Hi</p>" />);
 
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Copy response' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
     });
     expect(screen.getByText('Copied')).toBeInTheDocument();
 
@@ -78,7 +78,7 @@ describe('ResponseActions — copy (W2.6)', () => {
     render(<ResponseActions replyHtml="<p>Hi</p>" />);
 
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Copy response' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
     });
 
     expect(screen.queryByText('Copied')).not.toBeInTheDocument();
@@ -90,7 +90,7 @@ describe('ResponseActions — copy (W2.6)', () => {
     render(<ResponseActions replyHtml="<p>Hi</p>" />);
 
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Copy response' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
     });
 
     expect(screen.queryByText('Copied')).not.toBeInTheDocument();
@@ -103,7 +103,7 @@ describe('ResponseActions — copy (W2.6)', () => {
     render(<ResponseActions />);
 
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Copy response' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
     });
 
     expect(writeTextMock).toHaveBeenCalledWith('');
@@ -116,7 +116,7 @@ describe('ResponseActions — copy (W2.6)', () => {
     const { unmount } = render(<ResponseActions replyHtml="<p>Hi</p>" />);
 
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Copy response' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
     });
     expect(screen.getByText('Copied')).toBeInTheDocument();
 
@@ -139,8 +139,8 @@ describe('ResponseActions — thumbs are inert (D3 fast-follow, W5.1)', () => {
   test('mutually exclusive toggle with correct aria-pressed', () => {
     render(<ResponseActions replyHtml="<p>Hi</p>" />);
 
-    const up = screen.getByRole('button', { name: 'Good response' });
-    const down = screen.getByRole('button', { name: 'Poor response' });
+    const up = screen.getByRole('button', { name: 'Give positive feedback' });
+    const down = screen.getByRole('button', { name: 'Give negative feedback' });
 
     expect(up).toHaveAttribute('aria-pressed', 'false');
     expect(down).toHaveAttribute('aria-pressed', 'false');
@@ -165,8 +165,8 @@ describe('ResponseActions — thumbs are inert (D3 fast-follow, W5.1)', () => {
 
     render(<ResponseActions replyHtml="<p>Hi</p>" />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Good response' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Poor response' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Give positive feedback' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Give negative feedback' }));
 
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -174,8 +174,24 @@ describe('ResponseActions — thumbs are inert (D3 fast-follow, W5.1)', () => {
   test('copy, thumbs-up, and thumbs-down buttons all have aria-labels', () => {
     render(<ResponseActions replyHtml="<p>Hi</p>" />);
 
-    expect(screen.getByRole('button', { name: 'Copy response' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Good response' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Poor response' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Copy' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Give positive feedback' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Give negative feedback' })).toBeInTheDocument();
+  });
+
+  test('all three buttons carry hover text (title) matching their accessible name', () => {
+    // Chris request 2026-07-03: the icons need hover tooltips — "Copy",
+    // "Give positive feedback", "Give negative feedback".
+    render(<ResponseActions replyHtml="<p>Hi</p>" />);
+
+    expect(screen.getByRole('button', { name: 'Copy' })).toHaveAttribute('title', 'Copy');
+    expect(screen.getByRole('button', { name: 'Give positive feedback' })).toHaveAttribute(
+      'title',
+      'Give positive feedback'
+    );
+    expect(screen.getByRole('button', { name: 'Give negative feedback' })).toHaveAttribute(
+      'title',
+      'Give negative feedback'
+    );
   });
 });

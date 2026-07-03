@@ -70,6 +70,9 @@ export const strings = {
   // DESIGN_SPEC.md "4. Feedback given (`10a Feedback given`)"
   responseActions: {
     copied: 'Copied',
+    copy: 'Copy',
+    goodResponse: 'Give positive feedback',
+    badResponse: 'Give negative feedback',
   },
 
   // DESIGN_SPEC.md "5. Settings (`10a Settings`)"
