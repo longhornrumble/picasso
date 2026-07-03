@@ -192,23 +192,8 @@ button.hairline-settings-row--button:focus-visible {
   color: var(--tenant-accent-faint);
 }
 
-.hairline-connection-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  flex: none;
-}
-
-.hairline-connection-dot.is-online {
-  background: var(--online);
-}
-
-/* DESIGN_SPEC.md Interactions: "Offline: Connection row shows gray dot" —
-   no fixed token is named for this exact dot in the Design Tokens table;
-   --ink-faint is the closest fixed "gray" ink token. */
-.hairline-connection-dot.is-offline {
-  background: var(--ink-faint);
-}
+/* Connection-dot rules removed with the Connection row (spec amendment 6,
+   Chris 2026-07-03) — see SettingsView.jsx header. */
 
 /* ==========================================================
    5. CLEAR ALL MESSAGES — default row + fine print
