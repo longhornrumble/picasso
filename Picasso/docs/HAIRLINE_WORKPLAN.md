@@ -117,7 +117,7 @@
 - **Guardrail:** `_position` contract and `handleCtaClick` semantics frozen.
 
 ### W2.7b Plain CTAButton export restyle (follow-up to W2.7)
-- **Status:** PR #665
+- **Status:** PR #667
 - **Objective:** W2.7 restyled `CTAButtonGroup`/`SuggestionRow` (MessageBubble's suggestion-card path) but deliberately left the PLAIN default `CTAButton` export on the old `.cta-button`/`.cta-primary`/`.cta-secondary` pill look, because that export's only live consumer (`ShowcaseCard.jsx`) was BLOCKED on decision D2 at the time. D2 is now resolved (W4.3, keep + restyle), so this item brings the plain export into the Hairline vocabulary.
 - **Owns:** `src/components/chat/CTAButton.jsx` (plain default export ONLY — `CTAButtonGroup`/`SuggestionRow` untouched), a new W2.7b section appended to the end of `hairline-thread.css`.
 - **Treatment chosen**: Turn 10 has no standalone CTA-button mock. ShowcaseCard renders exactly one primary CTA (full-width, prominent) and zero or more secondary CTAs (compact, wrapped in a row) — the same "one decisive full-width action + lighter secondary actions" shape as the conversational-forms submit/cancel pair (`hairline-forms.css` `.hairline-form-submit`/`.hairline-form-cancel`, W4.1). Reused verbatim: new classes `.hairline-cta`/`.hairline-cta--primary` (solid `--tenant-accent` fill)/`.hairline-cta--secondary` (transparent, `--hairline`-bordered) rather than inventing a third button recipe. Flagged for the design-review gate, same as W4.1/W4.3's judgment calls.
