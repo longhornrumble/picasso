@@ -165,7 +165,7 @@ describe('MessageBubble - ShowcaseCard Integration', () => {
     );
 
     // No showcase card elements should be present
-    const showcaseCards = document.querySelectorAll('.showcase-card');
+    const showcaseCards = document.querySelectorAll('.hairline-showcase');
     expect(showcaseCards.length).toBe(0);
   });
 
@@ -240,7 +240,7 @@ describe('MessageBubble - ShowcaseCard Integration', () => {
     );
 
     // Verify ShowcaseCard component is rendered with data
-    const showcaseCardElement = container.querySelector('.showcase-card');
+    const showcaseCardElement = container.querySelector('.hairline-showcase');
     expect(showcaseCardElement).toBeInTheDocument();
     expect(showcaseCardElement).toHaveAttribute('data-showcase-id', 'test_card');
     expect(showcaseCardElement).toHaveAttribute('data-showcase-type', 'event');
@@ -431,7 +431,7 @@ describe('MessageBubble - Accessibility', () => {
       />
     );
 
-    const showcaseCardElement = container.querySelector('.showcase-card');
+    const showcaseCardElement = container.querySelector('.hairline-showcase');
 
     // Check ARIA attributes
     expect(showcaseCardElement).toHaveAttribute('role', 'article');

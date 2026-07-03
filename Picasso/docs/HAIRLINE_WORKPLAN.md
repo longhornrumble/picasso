@@ -154,8 +154,9 @@
 - **Done when:** day strip, slot rows, confirm card, notice re-expressed (suggestion-card anatomy); `scheduling_action` payloads unchanged; snapshots regenerated deliberately.
 
 ### W4.3 Showcase card `[D2 — includes keep-or-retire call]`
-- **Owns:** `src/components/chat/ShowcaseCard.jsx` + rules. **Status:** BLOCKED (D2)
-- **Done when:** per D2 either retired (delete + BSH keeps emitting into a no-op = flag for backend follow-up) or re-expressed in Hairline; ARIA semantics preserved if kept.
+- **D2 resolved (Chris, this session, 2026-07-02): KEEP + restyle** — not retired.
+- **Owns:** `src/components/chat/ShowcaseCard.jsx` + new `src/styles/hairline-showcase.css`. **Status:** PR #652
+- **Done when:** re-expressed in Hairline (hairline-card anatomy shared with the merged forms/completion card: `--surface-raised` fill, `--hairline` border, `--radius-card`, no shadow; tinted type/stats badges; checklist-icon highlights; container-only CTA row styling — `CTAButton.jsx` itself stays W2.7's); `content_showcase` data shape, CTA dispatch, and ARIA semantics unchanged — only appearance changed.
 
 ### W4.4 In-thread attachments, retry, error/loading states
 - **Owns:** in-thread rendering in `FIlePreview.jsx` (coordinate with W2.5 if concurrent), `ErrorBoundary.jsx`/`.css`, `ChatProviderOrchestrator.css`, iframe loading placeholder in `iframe-main.jsx`. **Status:** TODO
