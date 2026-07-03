@@ -91,13 +91,16 @@ export default function PrivacyView({ onBack, onClose }) {
   useFocusTrap(rootRef, true);
 
   const privacyNoticeUrl = config?.privacy_notice_url;
-  const { finePrint, privacyNoticeLinkText } = strings.privacy;
-  const fineTextParts = privacyNoticeUrl ? finePrint.split(privacyNoticeLinkText) : null;
-  // Defensive: only render the spliced fine print if the link text was
+  const { storageDisclosure, noticeSentence, privacyNoticeLinkText } = strings.privacy;
+  const noticeParts = privacyNoticeUrl ? noticeSentence.split(privacyNoticeLinkText) : null;
+  // Defensive: only render the spliced notice sentence if the link text was
   // actually found inside it (a future copy change to strings.js shouldn't
   // be able to render a broken/undefined fragment — tolerant read applies to
-  // our own copy module too, not just the tenant config).
-  const showFinePrint = Boolean(privacyNoticeUrl) && fineTextParts?.length === 2;
+  // our own copy module too, not just the tenant config). The storage
+  // disclosure itself renders unconditionally — before this split, tenants
+  // without privacy_notice_url showed no explanation at all (Chris,
+  // 2026-07-03).
+  const showNoticeSentence = Boolean(privacyNoticeUrl) && noticeParts?.length === 2;
 
   const checklistItems = [
     strings.privacy.checklist.encryptedInTransit,
@@ -146,20 +149,24 @@ export default function PrivacyView({ onBack, onClose }) {
           ))}
         </div>
 
-        {showFinePrint && (
-          <p className="hairline-privacy-fine-print">
-            {fineTextParts[0]}
-            <a
-              href={privacyNoticeUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hairline-privacy-link"
-            >
-              {privacyNoticeLinkText}
-            </a>
-            {fineTextParts[1]}
-          </p>
-        )}
+        <p className="hairline-privacy-fine-print">
+          {storageDisclosure}
+          {showNoticeSentence && (
+            <>
+              {" "}
+              {noticeParts[0]}
+              <a
+                href={privacyNoticeUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hairline-privacy-link"
+              >
+                {privacyNoticeLinkText}
+              </a>
+              {noticeParts[1]}
+            </>
+          )}
+        </p>
       </div>
     </div>
   );

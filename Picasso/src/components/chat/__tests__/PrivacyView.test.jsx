@@ -70,6 +70,7 @@ describe('PrivacyView — tenant policy link (NEW config read, D9)', () => {
     expect(
       screen.getByText(/Your conversation is stored only in this browser/)
     ).toBeInTheDocument();
+    expect(screen.getByText(/for retention details/)).toBeInTheDocument();
   });
 
   it('REQUIRED forward-compatible-reads fixture: renders without the link and without errors when privacy_notice_url is absent (old-shape config)', () => {
@@ -78,9 +79,12 @@ describe('PrivacyView — tenant policy link (NEW config read, D9)', () => {
     expect(() => render(<PrivacyView onBack={jest.fn()} onClose={jest.fn()} />)).not.toThrow();
 
     expect(screen.queryByRole('link', { name: 'privacy notice' })).not.toBeInTheDocument();
+    // The storage disclosure renders even without the URL (Chris,
+    // 2026-07-03) — only the notice sentence with its link is conditional.
     expect(
-      screen.queryByText(/Your conversation is stored only in this browser/)
-    ).not.toBeInTheDocument();
+      screen.getByText(/Your conversation is stored only in this browser/)
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/for retention details/)).not.toBeInTheDocument();
     // The checklist still renders — the page stands on its own without the link.
     expect(screen.getByText('All data is encrypted in transit')).toBeInTheDocument();
   });
