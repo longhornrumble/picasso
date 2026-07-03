@@ -1,4 +1,16 @@
-/* ErrorBoundary.css - Styles for error UI using CSS variables */
+/* ErrorBoundary.css — Hairline redesign fallback UI (W4.4).
+ *
+ * Unmocked surface (HAIRLINE_REDESIGN_MAPPING.md §4 item 5 — "error
+ * boundary" has no Turn 10 mock). Fresh Hairline treatment: quiet palette,
+ * hairline-card anatomy (surface-raised fill, hairline border, radius-card,
+ * no shadow — same recipe as the menu/settings/form cards), ink type
+ * scale, Lucide icon (see ErrorBoundary.jsx). The component's logic (error
+ * capture, reload handler, dev-only details) is unchanged — restyle only.
+ * No dark-mode variant: Hairline defines one warm-off-white surface for
+ * all tenants (design/hairline/DESIGN_SPEC.md "Widget Shell"), so the old
+ * `prefers-color-scheme: dark` block (which referenced pre-Hairline
+ * `--bg-*`/`--border-color` vars) is dropped rather than translated.
+ */
 
 .error-boundary-container {
   display: flex;
@@ -7,122 +19,114 @@
   justify-content: center;
   min-height: 400px;
   width: 100%;
-  padding: var(--spacing-lg, 1.5rem);
-  background-color: var(--error-bg, var(--bg-tertiary));
-  font-family: var(--font-family);
+  padding: 24px;
+  background-color: var(--surface, #fffefb);
+  font-family: "Plus Jakarta Sans", system-ui, sans-serif;
 }
 
 .error-boundary-panel {
-  background-color: var(--error-bg, var(--bg-primary));
-  border: 1px solid var(--error-border);
-  border-radius: var(--border-radius, 12px);
-  padding: var(--spacing-lg, 1.5rem);
-  max-width: 500px;
+  background-color: var(--surface-raised, #ffffff);
+  border: 1px solid var(--hairline, #ede7d3);
+  border-radius: var(--radius-card, 10px);
+  padding: 24px;
+  max-width: 320px;
   width: 100%;
-  box-shadow: var(--container-shadow);
   text-align: center;
 }
 
 .error-icon {
   margin: 0 auto 16px;
-  display: block;
-}
-
-.error-icon svg {
-  width: 48px;
-  height: 48px;
-  stroke: var(--error-icon-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--danger, #dc2626);
 }
 
 .error-heading {
-  font-size: 18px;
-  font-weight: var(--font-weight-semibold, 600);
-  color: var(--error-heading-color);
+  font-size: var(--type-page-title-size, 13px);
+  font-weight: var(--type-page-title-weight, 700);
+  color: var(--ink, #0f172a);
   margin: 0 0 8px 0;
   line-height: 1.4;
 }
 
 .error-message {
-  font-size: var(--font-size-base, 14px);
-  color: var(--error-text-color);
-  line-height: var(--line-height-base, 1.5);
+  font-size: var(--type-body-size, 13.5px);
+  color: var(--ink-body, #475569);
+  line-height: var(--type-body-line-height, 1.6);
   margin: 0 0 20px 0;
 }
 
 .error-message-subtitle {
   display: block;
   margin-top: 4px;
-  font-size: 13px;
-  opacity: 0.8;
+  color: var(--ink-soft, #64748b);
 }
 
 .error-reload-button {
-  background-color: var(--error-button-bg, var(--primary-color));
-  color: var(--error-button-text);
-  padding: 10px 20px;
-  border-radius: var(--border-radius-small, 8px);
-  font-size: var(--font-size-base, 14px);
-  font-weight: 500;
+  background-color: var(--tenant-accent, #a08a4a);
+  color: #fff;
+  padding: 8px 20px;
+  border-radius: var(--radius-composer-pill, 999px);
+  font-size: var(--type-row-label-size, 13px);
+  font-weight: 600;
   border: none;
   cursor: pointer;
-  transition: background-color 0.2s ease;
+  transition: background-color var(--duration-fill, 150ms) var(--ease-ui, ease);
 }
 
 .error-reload-button:hover {
-  background-color: var(--error-button-hover-bg, var(--primary-dark));
+  background-color: var(--tenant-accent-deep, #87743e);
 }
 
 .error-reload-button:active {
   transform: scale(0.98);
 }
 
+.error-reload-button:focus-visible {
+  outline: 2px solid var(--tenant-accent, #a08a4a);
+  outline-offset: 2px;
+}
+
 .error-details {
   margin-top: 20px;
   text-align: left;
-  border-top: 1px solid var(--error-border);
+  border-top: 1px solid var(--hairline-soft, #f2eddc);
   padding-top: 16px;
 }
 
 .error-details-summary {
   cursor: pointer;
   margin-bottom: 8px;
-  font-size: var(--font-size-base, 14px);
-  color: var(--text-secondary);
-  font-weight: 500;
+  font-size: var(--type-row-value-size, 12.5px);
+  color: var(--ink-soft, #64748b);
+  font-weight: 600;
 }
 
 .error-details-summary:hover {
-  color: var(--text-primary);
+  color: var(--ink, #0f172a);
 }
 
 .error-details-content {
-  background-color: var(--error-details-bg);
-  border: 1px solid var(--error-details-border);
-  border-radius: var(--border-radius-small, 8px);
+  background-color: var(--surface, #fffefb);
+  border: 1px solid var(--hairline, #ede7d3);
+  border-radius: 8px;
   padding: 12px;
-  font-size: 12px;
-  font-family: monospace;
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   overflow-x: auto;
   white-space: pre-wrap;
   word-break: break-all;
   max-height: 200px;
   overflow-y: auto;
-  color: var(--text-primary);
+  color: var(--ink-body, #475569);
 }
 
 /* Mobile responsiveness */
 @media (max-width: 640px) {
   .error-boundary-panel {
-    padding: var(--spacing-md, 1rem);
+    padding: 20px;
     max-width: calc(100% - 32px);
-  }
-
-  .error-heading {
-    font-size: 16px;
-  }
-
-  .error-message {
-    font-size: 13px;
   }
 
   .error-reload-button {
@@ -141,19 +145,12 @@
   }
 }
 
-/* Dark mode support (when implemented) */
-@media (prefers-color-scheme: dark) {
-  .error-boundary-container {
-    background-color: var(--bg-tertiary, #1f2937);
+@media (prefers-reduced-motion: reduce) {
+  .error-reload-button {
+    transition: none;
   }
 
-  .error-boundary-panel {
-    background-color: var(--bg-secondary, #111827);
-    border-color: var(--border-color, #374151);
-  }
-
-  .error-details-content {
-    background-color: var(--bg-primary, #030712);
-    border-color: var(--border-color, #374151);
+  .error-reload-button:active {
+    transform: none;
   }
 }

@@ -2,7 +2,6 @@
 import React, { useState } from "react";
 import { useConfig } from "../../hooks/useConfig";
 import { config as environmentConfig } from '../../config/environment';
-import FollowUpPromptBar from "./FollowUpPromptBar";
 
 export default function ChatFooter({ brandText = "MyRecruiter" }) {
   const { config } = useConfig();
@@ -24,9 +23,10 @@ export default function ChatFooter({ brandText = "MyRecruiter" }) {
 
   return (
     <div className="chat-footer-container">
-      {/* Quick Help Button - Above the logo */}
-      <FollowUpPromptBar />
-      
+      {/* Hairline redesign (W3.2): the "Help Menu" pill/panel formerly
+          mounted here (FollowUpPromptBar.jsx) is replaced by the Common
+          questions overlay (QuestionsOverlay.jsx), summoned from the
+          welcome menu's "Common questions" row — see ChatWidget.jsx. */}
       {/* Powered By Section - Below the button */}
       <div className="chat-footer">
         <span className="chat-footer-content">
