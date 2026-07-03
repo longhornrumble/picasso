@@ -109,7 +109,7 @@
 - **Done when:** copy uses clipboard API on the reply's plain text, "Copied" confirm ~2s per spec; thumbs toggle visually (mutually exclusive, `aria-pressed`) with a no-op handler clearly marked `// W5.1`; renders only on completed (non-streaming) bot messages; unit tests for copy + toggle state.
 
 ### W2.7 Suggestion card (CTA rendering)
-- **Status:** TODO — after W2.2 (queue on MessageBubble ownership)
+- **Status:** PR #651
 - **Objective:** CTAs render as a menu-anatomy card; `_position: 'primary'` row emphasized (tint fill, 700, accent-deep), others standard; arrow `--tenant-accent-faint`; suggestions only under the latest bot message, removed once used.
 - **Owns:** `src/components/chat/CTAButton.jsx` (becomes row-card renderer), suggestion-card rules in `hairline-thread.css`.
 - **Done when:** V4 tenant on staging shows spec-fidelity suggestion cards; click dispatch table untouched (all action types verified via `ctaActionContract.test.jsx` + manual `start_form`/`send_query`/`external_link`/`show_info` clicks); "disappear once used" replaces disabled-after-click styling; CTAButton jest rewritten.
