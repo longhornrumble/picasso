@@ -2,12 +2,8 @@
  * SchedulingPage — the branded full-page scheduling surface (M1, Calendly-style).
  *
  * Mounted by iframe-main when ?mode=schedule. Lives inside the existing provider tree
- * (ConfigProvider → ChatProviderOrchestrator), so the streaming chat (useChat) is wired.
- * Per-tenant branding for this page's own `--sp-*` token set comes from
- * `useLegacySchedulePageBrandingVars` below (Hairline redesign W6.2: the old
- * useCSSVariables.js/CSSVariablesProvider system this page used to ride on was
- * deleted; this page is excluded from the Hairline redesign — D8 — so it carries
- * its own minimal replacement instead of adopting the new --tenant-* tokens).
+ * (ConfigProvider → CSSVariablesProvider → ChatProviderOrchestrator), so per-tenant
+ * branding (CSS vars from useCSSVariables) and the streaming chat (useChat) are wired.
  *
  * TWO SEPARATE PATHS (operator design 2026-06-14):
  *   • The SCHEDULER (deterministic): "Choose a Day" quick buttons + a "Pick a date"
@@ -30,7 +26,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useConfig } from '../../context/ConfigProvider.jsx';
 import { useChat } from '../../hooks/useChat';
 import { proposeTimes, mutateBooking } from '../../utils/schedulingGateway';
-import { useLegacySchedulePageBrandingVars } from './useLegacySchedulePageBrandingVars.js';
 import SchedulingMonthCalendar from './SchedulingMonthCalendar.jsx';
 import SchedulingSlots, {
   SchedulingConfirmCard,
@@ -106,8 +101,6 @@ function formatCurrent(startAt, tz) {
 export default function SchedulingPage() {
   const { config } = useConfig();
   const { messages = [], sendMessage, isTyping } = useChat();
-
-  useLegacySchedulePageBrandingVars(config);
 
   const tenantHash = qp('t');
   const session = qp('session');

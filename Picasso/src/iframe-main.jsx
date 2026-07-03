@@ -8,6 +8,7 @@ import { FormModeProvider } from './context/FormModeContext.jsx';
 import ChatProviderOrchestrator from './context/ChatProviderOrchestrator.jsx';
 import ChatWidget from './components/chat/ChatWidget.jsx';
 import SchedulingPage from './components/scheduling/SchedulingPage.jsx';
+import { CSSVariablesProvider } from './components/chat/useCSSVariables.js';
 import { HairlineThemeProvider } from './theme/HairlineThemeProvider.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
 import { config as environmentConfig } from './config/environment.js';
@@ -17,6 +18,7 @@ import { setupGlobalErrorHandling, performanceMonitor } from './utils/errorHandl
 import { performanceTracker } from './utils/performanceTracking.js';
 import { SCHEMA_VERSION, ALL_EVENT_TYPES } from './analytics/eventConstants.js';
 import "./styles/widget-entry.css";
+import "./styles/theme.css";
 import "./styles/fonts.css";
 import "./styles/schedule-page.css";
 // Hairline redesign (W1.2): fixed token sheet — definitions only.
@@ -418,6 +420,15 @@ function setupCommandListener() {
           }
           break;
           
+        case 'SET_EDGE_MODE':
+          // Flush widget to right edge — remove right border-radius and gaps
+          if (payload?.enabled) {
+            document.body.classList.add('edge-mode');
+          } else {
+            document.body.classList.remove('edge-mode');
+          }
+          break;
+
         case 'MINIMIZE':
           console.log('📡 Received MINIMIZE command');
           document.body.classList.remove('chat-open');
@@ -708,20 +719,17 @@ function initializeWidget() {
     root.render(
       <ErrorBoundary>
         <ConfigProvider>
-          {/* Hairline redesign (W6.2): the old CSSVariablesProvider/
-              useCSSVariables.js system that used to wrap this tree was
-              deleted here — every surface now derives its palette from
-              HairlineThemeProvider's --tenant-* tokens. The scheduling page
-              (excluded from Hairline, D8) still needs a handful of the old
-              --primary-color-era vars; it sources those itself via
-              useLegacySchedulePageBrandingVars (see SchedulingPage.jsx). */}
-          <HairlineThemeProvider>
-            <FormModeProvider>
-              <ChatProviderOrchestrator>
-                {isScheduleMode ? <SchedulingPage /> : <ChatWidget />}
-              </ChatProviderOrchestrator>
-            </FormModeProvider>
-          </HairlineThemeProvider>
+          <CSSVariablesProvider>
+            {/* Hairline redesign (W1.3): coexists with CSSVariablesProvider above —
+                see HAIRLINE_WORKPLAN.md ground rule #8. Removed in W6.2. */}
+            <HairlineThemeProvider>
+              <FormModeProvider>
+                <ChatProviderOrchestrator>
+                  {isScheduleMode ? <SchedulingPage /> : <ChatWidget />}
+                </ChatProviderOrchestrator>
+              </FormModeProvider>
+            </HairlineThemeProvider>
+          </CSSVariablesProvider>
         </ConfigProvider>
       </ErrorBoundary>
     );
