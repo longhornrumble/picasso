@@ -71,14 +71,14 @@
 ## Phase 2 — Core screens (W2.1 ⊸ W2.2 first; then parallel per file-ownership)
 
 ### W2.1 Shell + header `[D1: default = fixed panel, no edge mode]`
-- **Status:** PR #643
+- **Status:** DONE (709c45f)
 - **Objective:** DESIGN_SPEC "Widget Shell" + header (wordmark, sliders icon, ✕; no avatar, no subtitle, no help icon).
 - **Owns:** `src/components/chat/ChatHeader.jsx`, shell markup/classes in `ChatWidget.jsx` (container only — not message list, not callout), new `src/styles/hairline-shell.css`.
 - **Done when:** desktop panel is 380×min(640px,100vh−48px) inside the iframe (host change is W6.1 — inside-iframe layout must center/fit until then); 2px `--tenant-accent` top border, radius 12, spec shadow; wordmark renders `chat_title` caps at spec type incl. "BIG BROTHERS BIG SISTERS" stress-test fixture; header icons Lucide 15px muted→deep hover; ChatHeader jest updated.
 - **Guardrail:** launcher/toggle/callout untouched (out of scope this phase, per spec).
 
 ### W2.2 Thread — asymmetric messages
-- **Status:** PR #645
+- **Status:** DONE (cb1cfe9)
 - **Objective:** DESIGN_SPEC screen 3: user = "YOU" caps label + tinted card (max 85%); bot = wordmark label + plain body; 16px group spacing; **no avatar anywhere**; delete avatar rendering path from the thread.
 - **Owns:** `src/components/chat/MessageBubble.jsx` (render/markup ONLY — the `handleCtaClick`/`handleActionClick` dispatchers are frozen logic), `TypingIndicator.jsx` (dots under wordmark label, quiet palette), new `src/styles/hairline-thread.css`.
 - **Done when:** streaming + finalized messages render per spec against a live staging tenant; typing indicator matches "Loading" spec note; MessageBubble/TypingIndicator jest updated (ARIA/class assertions restyled, behavior assertions intact — esp. `ctaActionContract.test.jsx` still green).
@@ -91,26 +91,26 @@
 - **Done when:** `test-dynamic.html` conversation with lists/links/bold renders cleanly in both streaming and finalized paths; no headers styling needed (backend bans them) but h-tags degrade gracefully if present.
 
 ### W2.4 Composer — idle + expanded
-- **Status:** PR #641
+- **Status:** DONE (8bf1dfc)
 - **Objective:** DESIGN_SPEC composer states 1–2: pill (+ / placeholder / mic / send), unfilled-until-content send (text OR attachment), pill→radius-18 rect expansion at wrap, controls drop row, auto-grow 4 lines then scroll.
 - **Owns:** `src/components/chat/InputBar.jsx`, new `src/styles/hairline-composer.css`.
 - **Done when:** all idle/typing/expanded states match spec (200ms expansion, 150ms send fill, spec easings); Enter/Shift+Enter preserved; send not clickable when empty; `aria-label`s intact; mic renders per `features.voice_input` but stays inert `[D4 default: hidden at flip — render behind the flag, no recording]`; InputBar tests updated.
 - **Guardrail:** the send path, upload wiring, and form-mode placeholder logic are frozen; the current double-row mode is replaced by the spec's single pill — that IS the design, not a behavior change.
 
 ### W2.5 Attach popover + attachment chips
-- **Status:** PR #644
+- **Status:** DONE (af8a93a)
 - **Objective:** DESIGN_SPEC composer states 3–4: two-row popover ("Photo or video" · "File", per feature flags), chip above composer (thumb slot, name, size, ✕), chips stack, send fills when chip present.
 - **Owns:** `src/components/chat/AttachmentMenu.jsx`, `src/components/chat/FIlePreview.jsx` (chip form + in-thread rendering can split: chip here, in-thread is W4.4), popover/chip rules in `hairline-composer.css`.
 - **Done when:** popover anchors above-left, ESC/outside-tap dismiss, spec shadow/radius; chip matches mock incl. upload progress/error states re-expressed in Hairline; feature-flag gating preserved (4 current options collapse to the 2 spec rows: photo+camera+video → "Photo or video").
 
 ### W2.6 Response actions — copy (client-only slice)
-- **Status:** PR #646
+- **Status:** DONE (470a737)
 - **Objective:** copy · thumbs row under completed bot replies per DESIGN_SPEC screens 3–4 — **copy functional; thumbs rendered but inert** `[D3: thumbs POST is W5.1]`.
 - **Owns:** new `src/components/chat/ResponseActions.jsx` + its rules in `hairline-thread.css`; one mount line in `MessageBubble.jsx` (coordinate w/ W2.2 owner if concurrent).
 - **Done when:** copy uses clipboard API on the reply's plain text, "Copied" confirm ~2s per spec; thumbs toggle visually (mutually exclusive, `aria-pressed`) with a no-op handler clearly marked `// W5.1`; renders only on completed (non-streaming) bot messages; unit tests for copy + toggle state.
 
 ### W2.7 Suggestion card (CTA rendering)
-- **Status:** PR #651
+- **Status:** DONE (5b6e130)
 - **Objective:** CTAs render as a menu-anatomy card; `_position: 'primary'` row emphasized (tint fill, 700, accent-deep), others standard; arrow `--tenant-accent-faint`; suggestions only under the latest bot message, removed once used.
 - **Owns:** `src/components/chat/CTAButton.jsx` (becomes row-card renderer), suggestion-card rules in `hairline-thread.css`.
 - **Done when:** V4 tenant on staging shows spec-fidelity suggestion cards; click dispatch table untouched (all action types verified via `ctaActionContract.test.jsx` + manual `start_form`/`send_query`/`external_link`/`show_info` clicks); "disappear once used" replaces disabled-after-click styling; CTAButton jest rewritten.
@@ -132,7 +132,7 @@
 - **Done when:** overlay matches mock (inset 18/58, shadow, hover states); ✕/outside/ESC dismiss; selecting sends the prompt exactly as FollowUpPromptBar did; `quick_help.enabled=false` hides the menu row.
 
 ### W3.3 Settings takeover `[D5 default: omit offline-sync row until decided]`
-- **Status:** PR #649
+- **Status:** DONE (fb855b5)
 - **Objective:** DESIGN_SPEC screen 5: single grouped list (Conversation / Preferences / Your data), slide-in 240ms, back-preserves-scroll; wire to EXISTING StateManagementPanel functionality (session stats, history, connection, export→"Download conversations", clear + inline confirm + audit event).
 - **Owns:** new `src/components/chat/SettingsView.jsx` (+ rules in `hairline-views.css`); retirement of `StateManagementPanel.jsx` rendering (logic/helpers may be reused as imports).
 - **Done when:** every function reachable in the old 3-tab panel is reachable in the new list (or explicitly listed in the PR as intentionally dropped for Chris's sign-off); inline destructive confirm per spec; toast pattern replaced by spec-conformant inline confirms.
@@ -146,7 +146,7 @@
 ## Phase 4 — Unmocked surfaces (fresh Hairline treatments; parallel — disjoint files; each needs a design-review pass on staging before DONE)
 
 ### W4.1 Conversational forms suite `[D2]`
-- **Owns:** `src/components/forms/FormFieldPrompt.jsx`, `CompositeFieldGroup.jsx`, `FormCompletionCard.jsx`, new `src/styles/hairline-forms.css`. **Status:** PR #650
+- **Owns:** `src/components/forms/FormFieldPrompt.jsx`, `CompositeFieldGroup.jsx`, `FormCompletionCard.jsx`, new `src/styles/hairline-forms.css`. **Status:** DONE (def403d)
 - **Done when:** all 8 field types + composite + progress + error/suspended/eligibility + completion card re-expressed in Hairline (menu-card anatomy, spec type/spacing); form logic/validation/submission untouched; forms e2e manually verified via `test-composite-fields.html` + a staging form tenant; form ARIA intact.
 - **PR #650 note:** `test-composite-fields.html` does not exist in the repo (checked via `git log` — missing, not this item's regression). Live-tenant e2e also blocked in the build sandbox (no egress to the config Lambda). Substituted with the full Jest suite against the real components (51 tests across all 3 files) + a throwaway static-markup Playwright screenshot proof of the shipped CSS for all 8 states (not committed). Design-review gate + staging verification against a real form tenant still needed before merge.
 
@@ -156,7 +156,7 @@
 
 ### W4.3 Showcase card `[D2 — includes keep-or-retire call]`
 - **D2 resolved (Chris, this session, 2026-07-02): KEEP + restyle** — not retired.
-- **Owns:** `src/components/chat/ShowcaseCard.jsx` + new `src/styles/hairline-showcase.css`. **Status:** PR #652
+- **Owns:** `src/components/chat/ShowcaseCard.jsx` + new `src/styles/hairline-showcase.css`. **Status:** DONE (ac7ed70)
 - **Done when:** re-expressed in Hairline (hairline-card anatomy shared with the merged forms/completion card: `--surface-raised` fill, `--hairline` border, `--radius-card`, no shadow; tinted type/stats badges; checklist-icon highlights; container-only CTA row styling — `CTAButton.jsx` itself stays W2.7's); `content_showcase` data shape, CTA dispatch, and ARIA semantics unchanged — only appearance changed.
 
 ### W4.4 In-thread attachments, retry, error/loading states
@@ -168,11 +168,11 @@
 - **Done when:** callout doesn't clash with Hairline (launcher itself untouched); fullpage mode renders the new shell edge-to-edge; ≤480 full-screen sheet per spec (host-side breakpoint lands in W6.1).
 
 ### W4.6 Scheduling page `[D8]`
-- **Owns:** `src/components/scheduling/*`, `src/styles/schedule-page.css`. **Status:** BLOCKED (D8)
+- **Owns:** `src/components/scheduling/*`, `src/styles/schedule-page.css`. **Status:** EXCLUDED (D8, Chris 2026-07-02 — scheduling page is a standalone webpage, not part of the widget; dropped from this program)
 
 ## Phase 5 — Net-new features (each its own mini-project; gated on decisions)
 
-- **W5.1 Thumbs feedback backend + wiring** `[D3]` — feedback endpoint (backend repo), widget POST with message id, PII/AI-governance advisory pass FIRST. **Status:** BLOCKED (D3)
+- **W5.1 Thumbs feedback backend + wiring** `[D3]` — feedback endpoint (backend repo), widget POST with message id, PII/AI-governance advisory pass FIRST. **Status:** DEFERRED (D3, Chris 2026-07-02 — thumbs are a post-flip fast-follow; copy shipped in W2.6, thumbs render inert)
 - **W5.2 Voice recording** `[D4]` — capture UI per spec + transcription backend. **Status:** BLOCKED (D4; default = mic hidden at flip)
 - **W5.3 Offline sync** `[D5]` — **Status:** BLOCKED (D5; default = row omitted)
 
