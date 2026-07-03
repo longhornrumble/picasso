@@ -218,7 +218,12 @@ resource "aws_lambda_function_url" "config_manager" {
   cors {
     allow_origins = ["*"]
     allow_methods = ["*"]
-    allow_headers = ["authorization", "content-type"]
+    # if-match: the builder sends If-Match on PUT /config (save + deploy) for
+    # optimistic concurrency; without it the browser preflight blocks the PUT.
+    allow_headers = ["authorization", "content-type", "if-match"]
+    # etag: the client reads the response ETag header to chain the next
+    # If-Match; without exposure it falls back to the body etag on load only.
+    expose_headers = ["etag"]
   }
 }
 
