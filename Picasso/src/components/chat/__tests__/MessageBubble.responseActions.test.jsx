@@ -69,7 +69,7 @@ describe('MessageBubble — ResponseActions mount (W2.6)', () => {
     });
 
     expect(container.querySelector('.hairline-response-actions')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Copy response' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Copy' })).toBeInTheDocument();
   });
 
   test('does NOT render response actions on a user message', () => {
