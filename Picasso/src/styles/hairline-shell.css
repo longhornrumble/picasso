@@ -180,3 +180,83 @@ body.keyboard-visible .hairline-shell {
     transition: none;
   }
 }
+
+/* ============================================================
+   W4.5 — FULLPAGE MODE
+   docs/HAIRLINE_WORKPLAN.md W4.5. Re-establishes the fullpage-mode edge-
+   to-edge treatment that lived in src/styles/widget-entry.css against the
+   panel's OLD `.chat-container` className — W2.1 (this file) renamed that
+   className to `.hairline-shell`, which orphaned those rules (they stopped
+   matching anything, silently breaking `?mode=fullpage` — see
+   iframe-main.jsx's `isFullpageMode` branch, which sets `body.fullpage-mode`
+   + `chat-open`). Moved here (not duplicated) so fullpage-mode CSS for the
+   shell lives beside the shell it styles; widget-entry.css now has a
+   pointer comment in its place. Not to be confused with the
+   `.fullpage-chat-container`/`.fullpage-header`/etc. family in theme.css,
+   which targets a different, already-dead legacy fullpage DOM structure —
+   unrelated, left untouched.
+
+   No `!important` needed (unlike the rule this replaces): these selectors
+   are strictly more specific than the plain `.hairline-shell` rule above,
+   so ordinary cascade specificity wins outright (HAIRLINE_WORKPLAN.md
+   ground rule #8 — avoid `!important` unless unavoidable).
+   ========================================================== */
+
+body.fullpage-mode .hairline-shell,
+body[data-iframe="true"].fullpage-mode .hairline-shell,
+body[data-iframe="true"].fullpage-mode.chat-open .hairline-shell,
+html body.fullpage-mode .hairline-shell {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  margin: 0;
+  /* `border: none` clears the shell's normal 1px hairline-strong border on
+     every side; `border-top` immediately after re-adds JUST the 2px
+     tenant-accent brand signature edge-to-edge (fullpage isn't mocked by
+     Turn 10 — HAIRLINE_REDESIGN_MAPPING.md §4 item 6 — but every OTHER
+     Hairline surface keeps this top border, so fullpage does too). */
+  border: none;
+  border-top: var(--shell-border-width-accent) solid var(--tenant-accent);
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* ============================================================
+   W4.5 — MOBILE SHEET (D6 default applied: ≤480px viewport = full-screen
+   sheet, per DESIGN_SPEC.md "Widget Shell" + HAIRLINE_REDESIGN_MAPPING.md
+   §7 D6). Inside-iframe CSS only: this fires once the iframe's OWN
+   viewport is ≤480px wide, whatever width the host currently grants the
+   iframe element. Changing what width the host actually grants on mobile
+   (today's breakpoint is 768, keyed off a DIFFERENT mechanism — the
+   `.iframe-mobile` body class set via postMessage from widget-host.js) is
+   W6.1's job, not this item's — HAIRLINE_WORKPLAN.md W4.5 scopes this item
+   to "the inside-iframe sheet styling that W6.1 will trigger". A plain
+   viewport media query (rather than gating on `.iframe-mobile`) is the
+   correct primitive here: it's self-contained, matches D6's stated ≤480
+   threshold exactly (today's `.iframe-mobile` threshold is 768, not 480),
+   and needs no host-side change to already be correct once W6.1 grants a
+   ≤480 iframe on mobile. `.hairline-shell` only exists in the DOM while
+   `isOpen` is true (ChatWidget.jsx), so this can never accidentally match
+   the small closed-state toggle/callout iframe.
+
+   No new motion is introduced by this state (a static breakpoint, same as
+   the fullpage-mode rule above and the rule it replaces) — nothing here
+   needs a `prefers-reduced-motion` override.
+   ========================================================== */
+
+@media (max-width: 480px) {
+  .hairline-shell {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    margin: 0;
+    border: none;
+    border-top: var(--shell-border-width-accent) solid var(--tenant-accent);
+    border-radius: 0;
+    box-shadow: none;
+  }
+}

@@ -11,11 +11,6 @@
   font-size: var(--font-size-base, 14px);
 }
 
-/* Callout container - clickable to open chat */
-.chat-callout.clickable {
-  cursor: pointer;
-}
-
 /* Callout close button */
 .callout-close-button {
   cursor: pointer;
@@ -68,3 +63,131 @@ body[data-iframe="true"] .chat-widget-root {
   height: 100vh !important;
   pointer-events: auto !important;
 }
+
+/* ============================================================
+   HAIRLINE REDESIGN (W4.5) — callout teaser + unread badge re-skin.
+   docs/HAIRLINE_WORKPLAN.md W4.5 / design/hairline/DESIGN_SPEC.md §4 item 7
+   (unmocked surface — no Turn 10 mock for these two elements; re-skinned
+   fresh from the Hairline vocabulary per HAIRLINE_REDESIGN_MAPPING.md §0).
+
+   The launcher (`.chat-toggle-wrapper` / `.chat-toggle-button`, theme.css)
+   is explicitly OUT OF SCOPE this phase and untouched. Both elements below
+   are its direct children and inherit their positioning CONTEXT from it
+   (`.chat-toggle-wrapper` is `position: fixed`) — only their own
+   `position: absolute` offsets are set here, ported 1:1 from theme.css's
+   iframe-mode values (`body[data-iframe="true"] .chat-callout` /
+   `.chat-notification-badge`) since `data-iframe="true"` is unconditionally
+   set by iframe-main.jsx (this widget only ever renders embedded).
+
+   New classNames (`.hairline-badge`, `.hairline-callout*`) rather than
+   restyling the old `.chat-notification-badge`/`.chat-callout*` classes in
+   place — same class-swap strategy hairline-shell.css used for the
+   shell/header (see that file's header comment): theme.css's rules for the
+   old names carry many `!important` declarations, and swapping to an
+   exclusive class name sidesteps that fight entirely per
+   HAIRLINE_WORKPLAN.md ground rule #8 ("avoid !important unless genuinely
+   unavoidable"). Judgment call: the badge fill uses `--tenant-accent`
+   (not the fixed `--danger` token) — Overview.md's "a single accent color
+   doing all emphasis work" reads more consistently with the rest of the
+   quiet Hairline palette than an unrelated red notification dot would.
+   ============================================================ */
+
+.hairline-badge {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  max-width: 24px;
+  flex-shrink: 0;
+  overflow: hidden;
+  border-radius: 50%;
+  background: var(--tenant-accent);
+  border: 2px solid var(--surface-raised);
+  color: var(--surface-raised);
+  font-family: var(--tenant-font-family, "Plus Jakarta Sans", system-ui, sans-serif);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Small-iframe (closed, no callout) container tuning — ported from
+   theme.css's equivalent `@container (max-width: 100px)` rule so the badge
+   doesn't crowd the button inside the tightly-sized closed iframe
+   (`measureClosedDimensions()` in ChatWidget.jsx sizes the closed iframe to
+   ~92x92 when no callout is showing). */
+@container (max-width: 100px) {
+  .hairline-badge {
+    width: 20px;
+    height: 20px;
+    min-width: 20px;
+    max-width: 20px;
+    font-size: 10px;
+    top: -6px;
+    right: -6px;
+  }
+}
+
+.hairline-callout {
+  position: absolute;
+  bottom: 50%;
+  right: 70px;
+  transform: translateY(50%);
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: max-content;
+  max-width: 260px;
+  padding: 12px 14px;
+  background: var(--surface-raised);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-popover);
+  box-shadow: var(--shadow-popover);
+  cursor: pointer;
+  font-family: var(--tenant-font-family, "Plus Jakarta Sans", system-ui, sans-serif);
+}
+
+.hairline-callout-text {
+  flex: 1;
+  margin: 0;
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-line-height);
+  color: var(--ink-body);
+  text-align: left;
+}
+
+/* `.hairline-icon-button` base (hairline-shell.css) supplies the
+   idle/hover/focus-visible scaffold; only the idle color differs here from
+   its header usage (muted → deep on hover/focus, same as everywhere else). */
+.hairline-callout .hairline-icon-button {
+  flex: 0 0 auto;
+  color: var(--tenant-accent-muted);
+}
+
+.hairline-callout .hairline-icon-button:hover,
+.hairline-callout .hairline-icon-button:focus-visible {
+  color: var(--tenant-accent-deep);
+}
+
+/* NOTE (verified live, not ported): theme.css also has a
+   `@container`/`@media (max-width: 480px) { .chat-callout { display: none } }`
+   pair. It looks like a "hide in a narrow iframe" defensive rule, but it is
+   dead code in practice — a MORE specific rule later in theme.css,
+   `body[data-iframe="true"][data-callout-visible="true"]:not(.chat-open)
+   .chat-callout { display: block !important; ... }`, always wins whenever
+   the callout is actually showing (ChatWidget.jsx sets
+   `data-callout-visible="true"` on exactly the same condition that renders
+   the callout), and the closed-with-callout iframe is sized by
+   `measureClosedDimensions()` to ~462px — already under 480 in the normal
+   case. Confirmed on the live dev harness: the old callout renders at
+   iframe width 462px regardless of that hide rule. Porting the hide rule
+   forward without its countervailing override would have made the callout
+   newly invisible in its normal state, so it's intentionally NOT
+   reproduced here — this preserves actual (not textually-apparent) frozen
+   behavior. */

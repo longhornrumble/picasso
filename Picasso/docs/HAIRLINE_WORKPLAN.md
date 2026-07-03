@@ -174,7 +174,7 @@
 - **PR #662 note:** `ErrorBoundary.jsx`/`.css` actually live at `src/components/ErrorBoundary.jsx` (not `src/components/chat/`) — corrected path, same files. Provider `message.files` drop (StreamingChatProvider/HTTPChatProvider) means the in-thread attachment preview is unreachable at runtime — flagged, not fixed (frozen functionality, separate item). Reachable-but-ephemeral states (provider loading, iframe loading/error, error boundary, retry button) plus the unreachable attachment previews verified via a throwaway static-markup Playwright screenshot against the real built CSS (not committed) rather than a live catch-in-the-act screenshot — same precedent as W4.1 (PR #650). `ChatProviderOrchestrator.css`'s `.chat-provider-loading` had a pre-existing `display: none` silently hiding its loading text; fixed as part of this restyle (CSS-only, no logic change).
 
 ### W4.5 Callout re-skin + fullpage + mobile sheet `[D6 default: ≤480 sheet]`
-- **Owns:** callout markup in `ChatWidget.jsx` + `ChatWidget.css`, fullpage-mode rules, mobile-sheet rules in `hairline-shell.css`. **Status:** TODO
+- **Owns:** callout markup in `ChatWidget.jsx` + `ChatWidget.css`, fullpage-mode rules, mobile-sheet rules in `hairline-shell.css`. **Status:** PR #669
 - **Done when:** callout doesn't clash with Hairline (launcher itself untouched); fullpage mode renders the new shell edge-to-edge; ≤480 full-screen sheet per spec (host-side breakpoint lands in W6.1).
 
 ### W4.6 Scheduling page `[D8]`
