@@ -206,7 +206,7 @@ aws dynamodb put-item \
   --item '{
     "pk": {"S": "SESSION#test-session-001"},
     "sk": {"S": "STEP#001"},
-    "tenant_hash": {"S": "fo85e6a06dcdf4"},
+    "tenant_hash": {"S": "my87674d777bf9"},
     "timestamp": {"S": "2025-12-26T10:00:00Z"},
     "event_type": {"S": "WIDGET_OPENED"},
     "ttl": {"N": "1742918400"}
@@ -224,14 +224,14 @@ aws dynamodb query \
   --table-name picasso-session-events \
   --index-name tenant-date-index \
   --key-condition-expression "tenant_hash = :th" \
-  --expression-attribute-values '{":th": {"S": "fo85e6a06dcdf4"}}' \
+  --expression-attribute-values '{":th": {"S": "my87674d777bf9"}}' \
   --profile ai-developer
 
 # Test manual write to picasso-session-summaries
 aws dynamodb put-item \
   --table-name picasso-session-summaries \
   --item '{
-    "pk": {"S": "TENANT#fo85e6a06dcdf4"},
+    "pk": {"S": "TENANT#my87674d777bf9"},
     "sk": {"S": "SESSION#2025-12-26T10:00:00Z#test-session-001"},
     "session_id": {"S": "test-session-001"},
     "started_at": {"S": "2025-12-26T10:00:00Z"},
@@ -245,7 +245,7 @@ aws dynamodb query \
   --table-name picasso-session-summaries \
   --key-condition-expression "pk = :pk AND sk BETWEEN :start AND :end" \
   --expression-attribute-values '{
-    ":pk": {"S": "TENANT#fo85e6a06dcdf4"},
+    ":pk": {"S": "TENANT#my87674d777bf9"},
     ":start": {"S": "SESSION#2025-12-01"},
     ":end": {"S": "SESSION#2025-12-31~"}
   }' \
@@ -260,7 +260,7 @@ aws dynamodb delete-item \
 
 aws dynamodb delete-item \
   --table-name picasso-session-summaries \
-  --key '{"pk": {"S": "TENANT#fo85e6a06dcdf4"}, "sk": {"S": "SESSION#2025-12-26T10:00:00Z#test-session-001"}}' \
+  --key '{"pk": {"S": "TENANT#my87674d777bf9"}, "sk": {"S": "SESSION#2025-12-26T10:00:00Z#test-session-001"}}' \
   --profile ai-developer
 ```
 

@@ -1,0 +1,207 @@
+/**
+ * hairline-showcase.css — Hairline redesign showcase card (W4.3).
+ *
+ * Unmocked surface (HAIRLINE_REDESIGN_MAPPING.md §0 case 2 / §4 item — the
+ * showcase card has no Turn 10 mock and no §4 numbered entry, but is
+ * explicitly named in §3's screen-by-screen table and W4.3's "keep or
+ * retire?" question). D2 (Chris, this session, 2026-07-02): KEEP + restyle,
+ * not retire. Per the fidelity rule, this is a FRESH Hairline treatment, not
+ * a restyle of the old `.showcase-card*` rules in theme.css (~L4665-4829,
+ * hover-lift transform + `--showcase-card-*` tenant vars) — those old rules
+ * are left in place (coexistence, HAIRLINE_WORKPLAN.md ground rule #8) but
+ * are now dead: `ShowcaseCard.jsx` renders exclusively under new
+ * `.hairline-showcase*` class names, so the old selectors have no matching
+ * elements left (same precedent as hairline-thread.css/hairline-forms.css).
+ *
+ * Vocabulary extrapolation — reuses the SAME hairline-card anatomy already
+ * established by the merged forms/completion card (hairline-forms.css
+ * `.hairline-form`/`.hairline-completion`): `--surface-raised` fill,
+ * `--hairline` border, `--radius-card` (10px), no shadow (menu/settings/
+ * form cards carry no shadow in the spec — only overlay/popover do).
+ * Showcase-specific extrapolations, each a judgment call flagged here for
+ * the design-review gate:
+ *   - Hero image bleeds to the card's top edge (root `overflow: hidden` +
+ *     matching top corner radius) — the closest spec precedent for an
+ *     image-topped card; no mock shows one, so height/crop are a design
+ *     choice, not a spec-literal value.
+ *   - Type badge + stats badge = small tinted pills (`--tenant-tint` fill,
+ *     `--tenant-accent-deep` text) — the same "emphasis" recipe the spec
+ *     uses for the primary suggestion row and the settings download-row
+ *     link, applied here to a badge form factor the spec doesn't mock.
+ *     `text-transform: capitalize` on the type badge is presentational only
+ *     (per the spec's sentence-case casing rule) — the underlying `type`
+ *     text node is unchanged (still e.g. "program"), so this does not alter
+ *     the data contract or existing text-match assertions.
+ *   - Tagline styled as a short accent-colored hook (`--tenant-accent-deep`,
+ *     600) to differentiate it from the plain-ink body description below it
+ *     — no direct spec precedent (the spec's "Body" style covers bot
+ *     messages/welcome copy generically); tagline reuses that same 12.5px
+ *     row-value scale rather than inventing a new size.
+ *   - Testimonial = a quiet left-rule blockquote (`--hairline-strong`
+ *     border, italic, `--ink-soft`) — the spec has no blockquote mock;
+ *     this is the minimal Hairline-consistent treatment for quoted text.
+ *   - Highlights keep the existing two-column grid layout (preserving the
+ *     current component's established presentation, not a new capability)
+ *     but re-expressed with a small `CheckCircle2` marker per item — the
+ *     same checklist idiom DESIGN_SPEC.md screen 6 (Privacy & compliance)
+ *     uses for its three checklist rows, applied here to a highlights list
+ *     that is semantically the same "short list of good things" pattern.
+ *   - CTA row layout (primary full-width, secondary wrapped row) is styled
+ *     here as a container only; `CTAButton.jsx` itself (its `.cta-button`/
+ *     `.cta-primary`/`.cta-secondary` classes) is W2.7's single-owner file.
+ *     W2.7 merged already, but its own header comment documents that it
+ *     deliberately left the plain `CTAButton` export (what ShowcaseCard.jsx
+ *     calls) on the old pill-button look, since Showcase was BLOCKED on D2
+ *     at that time — only `CTAButtonGroup`/`SuggestionRow` (the suggestion
+ *     card path) got the menu-row restyle. So the CTA buttons inside this
+ *     new hairline card still render the pre-Hairline pill look today —
+ *     expected coexistence, flagged as a follow-up, not a defect of this
+ *     item (`CTAButton.jsx` stays out of W4.3's file ownership).
+ *
+ * No hard-coded tenant colors — every color is a token reference from
+ * hairline-tokens.css (W1.2) fixed/type/spacing tokens + the per-tenant
+ * `--tenant-*` custom properties (W1.1/W1.3).
+ */
+
+/* ============================================================
+   1. CARD ROOT
+   Mounted as a sibling inside `.hairline-message-group` (bot column, full
+   thread width — see MessageBubble.jsx) alongside message text, response
+   actions, CTA groups, etc. `margin-top` separates it from whatever
+   sibling rendered above it in the same message.
+   ============================================================ */
+.hairline-showcase {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 10px;
+  background: var(--surface-raised);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+  font-family: var(--tenant-font-family, "Plus Jakarta Sans", system-ui, sans-serif);
+}
+
+/* ============================================================
+   2. HERO IMAGE — bleeds to the card's top edge
+   ============================================================ */
+.hairline-showcase-image {
+  display: block;
+  width: 100%;
+  height: 160px;
+  object-fit: cover;
+  background: var(--tenant-tint);
+}
+
+/* ============================================================
+   3. CONTENT
+   ============================================================ */
+.hairline-showcase-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+}
+
+/* Type badge — tinted pill, sentence-case display (text node unchanged) */
+.hairline-showcase-type {
+  align-self: flex-start;
+  display: inline-flex;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--tenant-tint);
+  color: var(--tenant-accent-deep);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: capitalize;
+}
+
+.hairline-showcase-title {
+  margin: 0;
+  font-size: var(--type-page-title-size);
+  font-weight: var(--type-page-title-weight);
+  line-height: 1.3;
+  color: var(--ink);
+}
+
+.hairline-showcase-tagline {
+  margin: 0;
+  font-size: var(--type-row-value-size);
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--tenant-accent-deep);
+}
+
+.hairline-showcase-description {
+  margin: 0;
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-line-height);
+  color: var(--ink-body);
+}
+
+/* Stats badge — same tinted-pill emphasis recipe as the type badge */
+.hairline-showcase-stats {
+  align-self: flex-start;
+  margin: 0;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--tenant-tint);
+  color: var(--tenant-accent-deep);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.hairline-showcase-testimonial {
+  margin: 0;
+  padding-left: 12px;
+  border-left: 2px solid var(--hairline-strong);
+  font-size: var(--type-menu-row-compact-size);
+  font-style: italic;
+  line-height: var(--type-menu-row-compact-line-height);
+  color: var(--ink-soft);
+}
+
+/* ============================================================
+   4. HIGHLIGHTS — two-column grid, checklist-icon rows
+   ============================================================ */
+.hairline-showcase-highlights {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hairline-showcase-highlight {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--ink-body);
+}
+
+.hairline-showcase-highlight-icon {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: var(--tenant-accent-deep);
+}
+
+/* ============================================================
+   5. ACTIONS — CTAButton container layout only (CTAButton.jsx = W2.7)
+   ============================================================ */
+.hairline-showcase-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.hairline-showcase-secondary-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}

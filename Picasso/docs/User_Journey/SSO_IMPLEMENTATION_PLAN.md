@@ -66,7 +66,7 @@ Bubble organization records MUST have the correct `tenant_hash` values:
 |-----------|---------------------|
 | MYR384719 | `my87674d777bf9` |
 | AUS123957 | `auc5b0ecb0adcb` |
-| FOS402334 | `fo85e6a06dcdf4` |
+| MYR384719 | `my87674d777bf9` |
 
 **Action:** Query Bubble database to confirm these values exist on Organization records.
 

@@ -16,7 +16,7 @@ https://chat.myrecruiter.ai/go/index.html?t=TENANT_HASH
 | Tenant | Hash | Fullpage URL |
 |--------|------|--------------|
 | Austin Angels | `auc5b0ecb0adcb` | [Link](https://chat.myrecruiter.ai/go/index.html?t=auc5b0ecb0adcb) |
-| Foster Village | `fo85e6a06dcdf4` | [Link](https://chat.myrecruiter.ai/go/index.html?t=fo85e6a06dcdf4) |
+| MyRecruiter | `my87674d777bf9` | [Link](https://chat.myrecruiter.ai/go/index.html?t=my87674d777bf9) |
 | MyRecruiter | `my87674d777bf9` | [Link](https://chat.myrecruiter.ai/go/index.html?t=my87674d777bf9) |
 
 **For other tenants**, find the hash in:

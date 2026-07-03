@@ -223,7 +223,7 @@ export const ALL_EVENT_TYPES = [
  *   eventType: FORM_STARTED,
  *   payload: { form_id: 'volunteer_app', field_count: 5, start_time: new Date().toISOString() },
  *   sessionId: 'sess_abc123',
- *   tenantHash: 'fo85e6a06dcdf4',
+ *   tenantHash: 'my87674d777bf9',
  *   stepNumber: 3,
  *   gaClientId: '123456789.1702900000'
  * });

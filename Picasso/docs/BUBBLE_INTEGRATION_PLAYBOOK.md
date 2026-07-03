@@ -60,7 +60,7 @@ Historical Reporting Flow:
 | Field Name | Field Type | Notes |
 |------------|-----------|-------|
 | `submission_id` | text | Unique identifier from Lambda |
-| `tenant_id` | text | Your tenant ID (e.g., FOS402334) |
+| `tenant_id` | text | Your tenant ID (e.g., MYR384719) |
 | `form_type` | text | Type of form (volunteer_apply, contact_us, etc.) |
 | `submitted_at` | date | When form was submitted |
 | `session_id` | text | Chat session ID |
@@ -460,7 +460,7 @@ Different clients can use completely different N8N workflows:
 | tenant_id | program_interest | endpoint_url |
 |-----------|-----------------|--------------|
 | ATL642715 | Love Box | http://...n8n.../webhook/atl-lovebox |
-| FOS402334 | Volunteer | http://...n8n.../webhook/fos-volunteer |
+| MYR384719 | Volunteer | http://...n8n.../webhook/myr-volunteer |
 
 Each webhook points to a different N8N workflow with client-specific destinations (their Google Sheets, their Salesforce, etc.)
 
@@ -770,7 +770,7 @@ In N8N interface:
 Create multiple N8N workflows:
 - `/webhook/atl-lovebox` → Atlanta Love Box workflow
 - `/webhook/atl-d2d` → Atlanta Dare to Dream workflow
-- `/webhook/fos-volunteer` → Foster Village workflow
+- `/webhook/myr-volunteer` → MyRecruiter workflow
 
 Each has its own Integration_Config record in Bubble.
 
@@ -1302,7 +1302,7 @@ aws lambda update-function-configuration \
 **Add to config:**
 ```json
 {
-  "tenant_id": "FOS402334",
+  "tenant_id": "MYR384719",
 
   "conversational_forms": {
     "enabled": true,
@@ -1333,7 +1333,7 @@ aws lambda update-function-configuration \
 
 **Upload to S3:**
 ```bash
-aws s3 cp FOS402334-config.json s3://picasso-tenant-configs/tenants/FOS402334/FOS402334-config.json
+aws s3 cp MYR384719-config.json s3://picasso-tenant-configs/tenants/MYR384719/MYR384719-config.json
 ```
 
 ---
@@ -1354,7 +1354,7 @@ aws s3 cp FOS402334-config.json s3://picasso-tenant-configs/tenants/FOS402334/FO
 ```json
 {
   "submission_id": "uuid-123",
-  "tenant_id": "FOS402334",
+  "tenant_id": "MYR384719",
   "form_type": "volunteer_apply",
   "timestamp": "2025-10-03T10:30:00Z",
   "session_id": "session_456",
@@ -1696,7 +1696,7 @@ curl -X POST https://your-app.bubbleapps.io/api/1.1/wf/form_submission \
   -H "Content-Type: application/json" \
   -d '{
     "submission_id": "test_123",
-    "tenant_id": "FOS402334",
+    "tenant_id": "MYR384719",
     "form_type": "test",
     "responses": "{\"email\":\"test@example.com\"}",
     "timestamp": "2025-01-15T10:00:00Z"

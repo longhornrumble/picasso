@@ -99,7 +99,7 @@ The extraction identifies:
 
 ### Real Examples from KB Analysis
 
-**Foster Village Card Inventory:**
+**MyRecruiter Card Inventory:**
 ```json
 {
   "tenant": "foster_village_austin",
@@ -211,7 +211,7 @@ const enhanceResponse = async (bedrockResponse, context) => {
             selectedCards.push(cardInventory.primary_cta);
         }
     } else if (cardInventory.card_strategy === "exploration_first") {
-        // Foster Village pattern: Show options first
+        // MyRecruiter pattern: Show options first
         if (mentionsHelp(bedrockResponse)) {
             selectedCards = cardInventory.program_cards.slice(0, 3);
         }
@@ -356,7 +356,7 @@ const ConversationalFormProvider = ({ formType, onSubmit }) => {
 
 ### Example Form Definitions
 
-**Foster Village Request Support Form:**
+**MyRecruiter Request Support Form:**
 ```json
 {
   "type": "request_support",
@@ -586,13 +586,13 @@ Actions:
 ### Test Scenarios
 
 1. **KB → Card Extraction Pipeline**
-   - Scrape test sites (Foster Village, Atlanta Angels)
+   - Scrape test sites (MyRecruiter, Atlanta Angels)
    - Verify card inventory generation
    - Confirm correct strategy selection
 
 2. **Card Display Logic**
    - Test qualification_first strategy (Atlanta Angels)
-   - Test exploration_first strategy (Foster Village)
+   - Test exploration_first strategy (MyRecruiter)
    - Verify readiness scoring triggers correct cards
 
 3. **Form Conversations**

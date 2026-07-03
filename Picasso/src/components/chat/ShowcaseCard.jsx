@@ -1,6 +1,7 @@
 // ShowcaseCard.jsx - Digital flyer showcase cards for Picasso chat widget
 import React from 'react';
 import PropTypes from 'prop-types';
+import { CheckCircle2 } from 'lucide-react';
 import CTAButton from './CTAButton';
 
 /**
@@ -14,7 +15,30 @@ import CTAButton from './CTAButton';
  * - onCTAClick: Function to handle CTA button clicks
  * - className: Optional additional CSS class
  *
- * CSS classes defined in theme.css (lines 4665-4829)
+ * Hairline redesign (W4.3): unmocked surface (HAIRLINE_REDESIGN_MAPPING.md §0
+ * case 2 / §4) — Turn 10 has no showcase mock, so this is a fresh Hairline
+ * treatment extrapolated from the merged hairline-card vocabulary (same
+ * anatomy as the forms/completion card in hairline-forms.css: `--surface-raised`
+ * fill, `--hairline` border, `--radius-card`, no shadow). D2 (Chris,
+ * 2026-07-02): keep + restyle, not retire.
+ *
+ * FROZEN: the `content_showcase` data shape (dual-read by widget + BSH per
+ * TENANT_CONFIG_PIPELINE.md), what fields render, the CTA dispatch via
+ * `onCTAClick`, and all ARIA semantics (roles, aria-labels, heading id).
+ * Only class names + presentation changed. CSS classes now defined in
+ * `src/styles/hairline-showcase.css` (was theme.css lines 4665-4829 — not
+ * ported, per the fidelity rule).
+ *
+ * Known gap (flagged, not fixed here): `CTAButton.jsx`'s default export
+ * (used below, unchanged) still renders the pre-Hairline `.cta-button`/
+ * `.cta-primary`/`.cta-secondary` pill look. W2.7 (merged) deliberately left
+ * that export untouched — its own header comment notes Showcase was
+ * BLOCKED on D2 at the time, so the suggestion-card menu-row restyle only
+ * reaches `CTAButtonGroup`/`SuggestionRow`, not the plain `CTAButton` this
+ * file calls directly. Now that D2 = keep+restyle, the showcase CTA rows
+ * are still old-pill-styled inside this new hairline card — expected
+ * coexistence, not a defect of this item (`CTAButton.jsx` is W2.7's file,
+ * out of W4.3's ownership). Flagged in the PR for a follow-up pass.
  */
 export default function ShowcaseCard({ showcaseCard, onCTAClick, className = '' }) {
   if (!showcaseCard) return null;
@@ -38,7 +62,7 @@ export default function ShowcaseCard({ showcaseCard, onCTAClick, className = '' 
 
   return (
     <article
-      className={`showcase-card ${className}`.trim()}
+      className={`hairline-showcase ${className}`.trim()}
       role="article"
       aria-labelledby={`showcase-${id}-title`}
       data-showcase-id={id}
@@ -49,7 +73,7 @@ export default function ShowcaseCard({ showcaseCard, onCTAClick, className = '' 
         <img
           src={image_url}
           alt={name}
-          className="showcase-card-image"
+          className="hairline-showcase-image"
           loading="lazy"
           onError={(e) => {
             // Hide image on error
@@ -60,10 +84,10 @@ export default function ShowcaseCard({ showcaseCard, onCTAClick, className = '' 
       )}
 
       {/* Content Section */}
-      <div className="showcase-card-content">
+      <div className="hairline-showcase-content">
         {/* Type Badge */}
         {type && (
-          <span className="showcase-card-type" aria-label={`Type: ${type}`}>
+          <span className="hairline-showcase-type" aria-label={`Type: ${type}`}>
             {type}
           </span>
         )}
@@ -72,7 +96,7 @@ export default function ShowcaseCard({ showcaseCard, onCTAClick, className = '' 
         {name && (
           <h3
             id={`showcase-${id}-title`}
-            className="showcase-card-title"
+            className="hairline-showcase-title"
           >
             {name}
           </h3>
@@ -80,28 +104,28 @@ export default function ShowcaseCard({ showcaseCard, onCTAClick, className = '' 
 
         {/* Tagline */}
         {tagline && (
-          <p className="showcase-card-tagline">
+          <p className="hairline-showcase-tagline">
             {tagline}
           </p>
         )}
 
         {/* Description */}
         {description && (
-          <p className="showcase-card-description">
+          <p className="hairline-showcase-description">
             {description}
           </p>
         )}
 
         {/* Stats Badge */}
         {stats && (
-          <p className="showcase-card-stats" aria-label="Statistics">
+          <p className="hairline-showcase-stats" aria-label="Statistics">
             {stats}
           </p>
         )}
 
         {/* Testimonial */}
         {testimonial && (
-          <blockquote className="showcase-card-testimonial" role="blockquote">
+          <blockquote className="hairline-showcase-testimonial" role="blockquote">
             {testimonial}
           </blockquote>
         )}
@@ -109,12 +133,18 @@ export default function ShowcaseCard({ showcaseCard, onCTAClick, className = '' 
         {/* Highlights - Two Column Grid */}
         {highlights && highlights.length > 0 && (
           <ul
-            className="showcase-card-highlights"
+            className="hairline-showcase-highlights"
             aria-label="Key highlights"
           >
             {highlights.map((highlight, index) => (
-              <li key={index} className="showcase-card-highlight">
-                {highlight}
+              <li key={index} className="hairline-showcase-highlight">
+                <CheckCircle2
+                  className="hairline-showcase-highlight-icon"
+                  size={13}
+                  strokeWidth={2}
+                  aria-hidden="true"
+                />
+                <span>{highlight}</span>
               </li>
             ))}
           </ul>
@@ -122,7 +152,7 @@ export default function ShowcaseCard({ showcaseCard, onCTAClick, className = '' 
 
         {/* CTA Actions */}
         {(primaryCTA || secondaryCTAs.length > 0) && (
-          <div className="showcase-card-actions" role="group" aria-label="Available actions">
+          <div className="hairline-showcase-actions" role="group" aria-label="Available actions">
             {/* Primary CTA - Full Width, Prominent */}
             {primaryCTA && (
               <CTAButton
@@ -137,7 +167,7 @@ export default function ShowcaseCard({ showcaseCard, onCTAClick, className = '' 
 
             {/* Secondary CTAs - Smaller, In a Row */}
             {secondaryCTAs.length > 0 && (
-              <div className="showcase-card-secondary-actions">
+              <div className="hairline-showcase-secondary-actions">
                 {secondaryCTAs.map((cta, index) => (
                   <CTAButton
                     key={cta.id || `secondary-${index}`}
