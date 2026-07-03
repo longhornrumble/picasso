@@ -1,13 +1,45 @@
-/* ChatProviderOrchestrator.css - Styles for chat provider orchestration */
+/* ChatProviderOrchestrator.css — Hairline redesign provider loading/error
+ * states (W4.4).
+ *
+ * Unmocked surface (HAIRLINE_REDESIGN_MAPPING.md §4 item 5 — provider
+ * loading states have no Turn 10 mock). Fresh Hairline treatment: quiet
+ * palette, ink type scale, tenant-accent spinner. Logic in
+ * ChatProviderOrchestrator.jsx (one-time HTTP/streaming provider selection)
+ * is unchanged — restyle only, no JSX edits.
+ *
+ * Reachability note: `.chat-provider-loading` and `.chat-provider-wrapper`
+ * are the two classnames actually rendered today (verified against the
+ * component — there is no error/fallback branch wired up to the remaining
+ * classnames below). `.chat-provider-loading` mounts for real while
+ * `useConfig()` is resolving the tenant config (a real network wait), but
+ * the *pre-existing* rule here hard-coded `display: none` — silently
+ * suppressing it regardless of the surrounding cascade, so the state has
+ * never actually been visible to a user. That hidden-by-default rule is
+ * fixed here (default `display: flex`, restyled) since making an
+ * already-rendered element visible is a presentational fix within this
+ * item's restyle scope, not a functional/behavioral one (no JSX, timing, or
+ * provider-selection logic changes). The remaining classnames
+ * (`.chat-provider-error`, `.chat-provider-fallback`,
+ * `.chat-provider-initializing`, `.chat-provider-spinner`,
+ * `.chat-provider-state`) are restyled too for one consistent quiet-palette
+ * vocabulary across the file, matching this item's other
+ * pre-existing-but-unused-styling situation (`.retry-button` in
+ * hairline-attachments.css) — no new elements added, no behavior changed.
+ */
 
-/* Loading state - hidden by default */
+/* Loading state */
 .chat-provider-loading {
-  display: none;
-  padding: var(--spacing-md, 1rem);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  width: 100%;
+  min-height: 120px;
+  padding: 24px;
   text-align: center;
-  color: var(--text-secondary, #666);
-  font-family: var(--font-family);
-  font-size: var(--font-size-base, 14px);
+  color: var(--ink-soft, #64748b);
+  font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+  font-size: var(--type-body-size, 13.5px);
 }
 
 /* Provider wrapper container */
@@ -15,7 +47,7 @@
   height: 100%;
   width: 100%;
   position: relative;
-  font-family: var(--font-family);
+  font-family: "Plus Jakarta Sans", system-ui, sans-serif;
 }
 
 /* Error state for provider */
@@ -25,14 +57,14 @@
   justify-content: center;
   height: 100%;
   width: 100%;
-  padding: var(--spacing-lg, 1.5rem);
+  padding: 24px;
   text-align: center;
 }
 
 .chat-provider-error-message {
-  color: var(--text-danger, #dc2626);
-  font-size: var(--font-size-base, 14px);
-  line-height: var(--line-height-base, 1.5);
+  color: var(--danger, #dc2626);
+  font-size: var(--type-body-size, 13.5px);
+  line-height: var(--type-body-line-height, 1.6);
   max-width: 400px;
 }
 
@@ -42,10 +74,10 @@
   top: 0;
   right: 0;
   padding: 4px 8px;
-  background-color: var(--bg-secondary, #f9fafb);
-  border-radius: var(--border-radius-small, 8px);
+  background-color: var(--tenant-tint, #f9f7f0);
+  border-radius: 8px;
   font-size: 11px;
-  color: var(--text-muted, #9ca3af);
+  color: var(--ink-faint, #94a3b8);
   z-index: 10;
   opacity: 0.8;
   display: none; /* Hidden by default, shown in development */
@@ -58,17 +90,17 @@
 
 /* Provider fallback container */
 .chat-provider-fallback {
-  padding: var(--spacing-md, 1rem);
-  background-color: var(--card-warning-bg, #fef3c7);
-  border: 1px solid var(--card-warning-border, #fbbf24);
-  border-radius: var(--border-radius, 12px);
-  margin: var(--spacing-sm, 0.5rem);
+  padding: 16px;
+  background-color: var(--tenant-tint, #f9f7f0);
+  border: 1px solid var(--hairline-strong, #e8e2ce);
+  border-radius: var(--radius-card, 10px);
+  margin: 8px;
 }
 
 .chat-provider-fallback-text {
-  color: var(--card-warning-text, #92400e);
-  font-size: var(--font-size-base, 14px);
-  line-height: var(--line-height-base, 1.5);
+  color: var(--ink-body, #475569);
+  font-size: var(--type-body-size, 13.5px);
+  line-height: var(--type-body-line-height, 1.6);
 }
 
 /* Provider initialization */
@@ -78,21 +110,21 @@
   justify-content: center;
   height: 100%;
   width: 100%;
-  color: var(--text-secondary, #666);
-  font-size: var(--font-size-base, 14px);
+  color: var(--ink-soft, #64748b);
+  font-size: var(--type-body-size, 13.5px);
 }
 
 .chat-provider-spinner {
   margin-right: 8px;
   width: 16px;
   height: 16px;
-  border: 2px solid var(--border-color);
-  border-top-color: var(--primary-color);
+  border: 2px solid var(--hairline-strong, #e8e2ce);
+  border-top-color: var(--tenant-accent, #a08a4a);
   border-radius: 50%;
-  animation: spin 1s linear infinite;
+  animation: hairline-provider-spin 1s linear infinite;
 }
 
-@keyframes spin {
+@keyframes hairline-provider-spin {
   from {
     transform: rotate(0deg);
   }
@@ -105,11 +137,18 @@
 @media (max-width: 640px) {
   .chat-provider-error-message {
     font-size: 13px;
-    padding: var(--spacing-md, 1rem);
+    padding: 16px;
   }
 
   .chat-provider-state {
     font-size: 10px;
     padding: 3px 6px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-provider-spinner {
+    animation: none;
+    border-top-color: var(--hairline-strong, #e8e2ce);
   }
 }

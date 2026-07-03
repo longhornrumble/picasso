@@ -1,0 +1,210 @@
+/**
+ * hairline-attachments.css — Hairline redesign unmocked surfaces (W4.4):
+ * in-thread sent-attachment previews, failed-message retry, and the
+ * iframe's pre-React loading/error placeholder.
+ *
+ * Source: design/hairline/DESIGN_SPEC.md has no Turn 10 mock for any of
+ * these three surfaces — HAIRLINE_REDESIGN_MAPPING.md §4 item 5 lists them
+ * together as "Sent attachments rendered in-thread ..., retry-failed
+ * state, error boundary, provider loading states, iframe loading
+ * placeholder." Per the fidelity rule (§0 case 2): the capability is
+ * frozen/unchanged, the appearance is designed fresh from the Hairline
+ * vocabulary (hairline-card border/radius, ink/tenant tokens, quiet
+ * palette) rather than porting the old theme.css look.
+ *
+ * Coexistence (HAIRLINE_WORKPLAN.md ground rule #8): old theme.css still
+ * defines `.image-preview`/`.video-preview`/`.pdf-preview`/
+ * `.file-preview-placeholder`/`.pdf-error-message` (~theme.css L255-330)
+ * and `.picasso-iframe-loading`/`.picasso-iframe-error` (~theme.css
+ * L33-60). FIlePreview.jsx and iframe-main.jsx now render exclusively
+ * under the new `.hairline-attachment-preview*`/`.hairline-iframe-*` names
+ * below, so those old theme.css rules simply have no matching elements
+ * left — same precedent as hairline-thread.css/hairline-showcase.css.
+ *
+ * `.retry-button` is a special case: it is rendered by MessageBubble.jsx
+ * (single-owner file, out of W4.4's file ownership per the workplan's
+ * guardrails) using its existing literal classname — no JSX in that file
+ * changes. hairline-thread.css's header comment records that `.retry-button`
+ * "has no mock and is W4.4's error/loading-states scope," so this sheet
+ * (owned by W4.4, imported after hairline-thread.css) supplies its rules
+ * from the outside rather than editing either off-limits file. It never had
+ * any styling before this (verified: no `.retry-button` rule existed
+ * anywhere in the codebase) — this is new styling for an existing plain
+ * classname, not a restyle of an old rule.
+ *
+ * No hard-coded tenant colors — every color is a token reference from
+ * hairline-tokens.css (W1.2) fixed tokens + the per-tenant `--tenant-*`
+ * custom properties (W1.1/W1.3). Fallback literals on `var()` are kept for
+ * the iframe-loading section specifically, since that markup can paint
+ * before the rest of the app's React tree mounts.
+ */
+
+/* ============================================================
+   1. IN-THREAD ATTACHMENT PREVIEW (image / video / PDF)
+   Rendered by FIlePreview.jsx inside MessageBubble.jsx's
+   `.file-attachments` wrapper (that wrapper itself is W2.2's file, not
+   restyled here — see FIlePreview.jsx's header comment for the full
+   scope boundary). Currently unreachable at runtime: both
+   StreamingChatProvider.addMessage and HTTPChatProvider.addMessage drop
+   `message.files` before sendMessage (flagged in the PR, not fixed here —
+   frozen functionality).
+   ============================================================ */
+.hairline-attachment-preview {
+  margin-top: 8px;
+}
+
+.hairline-attachment-preview-media {
+  width: 200px;
+  max-width: 100%;
+  height: 150px;
+  overflow: hidden;
+  position: relative;
+  background: var(--tenant-tint);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-card);
+}
+
+.hairline-attachment-preview-media--image img,
+.hairline-attachment-preview-media--video video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.hairline-attachment-preview-media--pdf iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+.hairline-attachment-preview-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 100%;
+  padding: 8px;
+  color: var(--ink-faint);
+  font-size: var(--type-row-value-size);
+  line-height: 1.4;
+  text-align: center;
+}
+
+.hairline-attachment-preview-placeholder-icon {
+  color: var(--tenant-accent-muted);
+}
+
+.hairline-attachment-preview-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 8px;
+  color: var(--ink-faint);
+  font-size: var(--type-row-value-size);
+  line-height: 1.4;
+  text-align: center;
+}
+
+/* ============================================================
+   2. RETRY BUTTON (failed-message retry)
+   No mock; a quiet danger-toned outline pill consistent with the spec's
+   restrained emphasis vocabulary (the `--danger` token is otherwise
+   reserved for the Settings "Clear all messages" destructive row).
+   ============================================================ */
+.retry-button {
+  margin-top: 8px;
+  padding: 6px 14px;
+  background: var(--surface-raised);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-composer-pill);
+  color: var(--danger);
+  font-family: inherit;
+  font-size: var(--type-row-label-size);
+  font-weight: var(--type-row-label-weight);
+  cursor: pointer;
+  transition: background-color var(--duration-fill) var(--ease-ui);
+}
+
+.retry-button:hover:not(:disabled) {
+  background: var(--tenant-tint);
+}
+
+.retry-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.retry-button:focus-visible {
+  outline: 2px solid var(--tenant-accent);
+  outline-offset: 2px;
+}
+
+/* ============================================================
+   3. IFRAME LOADING / ERROR PLACEHOLDER (pre-React mount)
+   Rendered synchronously via innerHTML in iframe-main.jsx before the React
+   root mounts, and (on init failure) in its place. Quiet palette, centered,
+   so the very first paint doesn't clash with the Hairline shell that
+   follows it a moment later. `var()` fallbacks are kept here (unlike the
+   sections above) since this specific markup can paint before the rest of
+   hairline-tokens.css's cascade is guaranteed settled.
+   ============================================================ */
+.hairline-iframe-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 100%;
+  min-height: 200px;
+  padding: 24px;
+  background: var(--surface, #fffefb);
+  color: var(--ink, #0f172a);
+  font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+  font-size: var(--type-body-size, 13.5px);
+  text-align: center;
+}
+
+.hairline-iframe-loading-subtitle {
+  color: var(--ink-faint, #94a3b8);
+  font-size: var(--type-row-value-size, 12.5px);
+}
+
+.hairline-iframe-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 200px;
+  padding: 24px;
+  background: var(--surface, #fffefb);
+  font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+  text-align: center;
+}
+
+.hairline-iframe-error h3 {
+  margin: 0 0 4px;
+  font-size: var(--type-page-title-size, 13px);
+  font-weight: var(--type-page-title-weight, 700);
+  color: var(--danger, #dc2626);
+}
+
+.hairline-iframe-error p {
+  margin: 0 0 4px;
+  font-size: var(--type-body-size, 13.5px);
+  color: var(--ink-body, #475569);
+}
+
+.hairline-iframe-error small {
+  font-size: var(--type-row-value-size, 12.5px);
+  color: var(--ink-faint, #94a3b8);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .retry-button {
+    transition: none;
+  }
+}
