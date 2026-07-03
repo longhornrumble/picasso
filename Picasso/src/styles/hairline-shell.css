@@ -159,9 +159,9 @@ body.keyboard-visible .hairline-shell {
    `padding-top: 0`). With the padding ≥ the band height, unscrolled
    content starts below the fade and the band only ever touches content
    that has actually scrolled up — "blur on scroll" with no scroll
-   listener. (The welcome view's own 20px top padding leaves at most the
-   band's near-transparent tail over its greeting — deliberate, verified
-   crisp.) */
+   listener. The welcome view carries the same 30px top clearance
+   (hairline-views.css) — its greeting's ascenders blurred inside the
+   band's tail at 20px. */
 body[data-iframe="true"] .chat-window {
   padding-top: 30px;
 }
