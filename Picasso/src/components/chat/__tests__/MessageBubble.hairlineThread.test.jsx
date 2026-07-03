@@ -180,5 +180,31 @@ describe('MessageBubble — Hairline thread (W2.2)', () => {
       expect(streamEl.querySelector('strong')).toHaveTextContent('world');
       expect(streamEl.querySelector('.streaming-formatted')).toBeInTheDocument();
     });
+
+    test('streaming placeholder shows NO sender label until the first text paints (W6.3 follow-up)', () => {
+      setConfig({ branding: { chat_title: 'Atlanta Angels' } });
+      const { container } = renderBubble({
+        role: 'assistant',
+        id: 'w63-label-gate',
+        isStreaming: true,
+        renderMode: 'streaming',
+      });
+
+      // Pre-first-chunk: the empty placeholder must carry no wordmark
+      // headline — the typing indicator's own label+dots is the sole
+      // "reply coming" cue (Chris's mobile report: an empty label above the
+      // indicator's label read as a double headline).
+      expect(container.querySelector('.hairline-sender-label--bot')).not.toBeInTheDocument();
+
+      act(() => {
+        streamingRegistry.startStream('w63-label-gate');
+        streamingRegistry.append('w63-label-gate', 'We connect mentors');
+      });
+
+      // First painted text -> the label appears (ChatWidget's
+      // hasStreamedContent gate hides the typing indicator at the same
+      // moment — a clean single-headline handoff).
+      expect(screen.getByText('Atlanta Angels')).toHaveClass('hairline-sender-label--bot');
+    });
   });
 });
