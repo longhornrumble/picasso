@@ -1,4 +1,5 @@
 import React from 'react';
+import { AlertTriangle } from 'lucide-react';
 import { errorLogger, performanceMonitor } from '../utils/errorHandling';
 import { config as environmentConfig } from '../config/environment';
 import './ErrorBoundary.css';
@@ -6,6 +7,13 @@ import './ErrorBoundary.css';
 /**
  * ErrorBoundary component for Picasso Widget
  * Catches React errors and provides recovery UI
+ *
+ * Hairline redesign (W4.4): fallback UI restyled to the quiet Hairline
+ * palette (see ErrorBoundary.css) — unmocked surface
+ * (HAIRLINE_REDESIGN_MAPPING.md §4 item 5), no Turn 10 mock. Error capture,
+ * reload handling, and the dev-only details panel are unchanged; only the
+ * icon (now a Lucide AlertTriangle per the spec's icon library) and the
+ * markup/classnames driving the visual treatment changed.
  */
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -117,16 +125,7 @@ class ErrorBoundary extends React.Component {
         <div className="error-boundary-container">
           <div className="error-boundary-panel">
             <div className="error-icon">
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-              >
-                <circle cx="12" cy="12" r="10" />
-                <line x1="12" y1="8" x2="12" y2="12" />
-                <line x1="12" y1="16" x2="12.01" y2="16" />
-              </svg>
+              <AlertTriangle size={40} strokeWidth={2} aria-hidden="true" />
             </div>
 
             <h2 className="error-heading">
