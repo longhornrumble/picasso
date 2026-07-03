@@ -55,6 +55,15 @@ import "./styles/hairline-forms.css";
 // exclusively under new `.hairline-showcase*` markup — old `.showcase-card*`
 // classes in theme.css are gone from that component.
 import "./styles/hairline-showcase.css";
+// Hairline redesign (W4.4): in-thread sent-attachment previews, the
+// failed-message retry button, and this file's own pre-React iframe
+// loading/error placeholder below — unmocked surfaces, fresh Hairline
+// treatment. FIlePreview.jsx's in-thread branches and this file's
+// innerHTML placeholders render exclusively under new
+// `.hairline-attachment-preview*`/`.hairline-iframe-*` markup — old
+// `.image-preview`/`.video-preview`/`.pdf-preview`/`.picasso-iframe-*`
+// classes in theme.css are gone from their call sites.
+import "./styles/hairline-attachments.css";
 
 // ============================================================================
 // ANALYTICS STATE (for User Journey Analytics)
@@ -695,7 +704,10 @@ function initializeWidget() {
     container.style.flexDirection = 'column';
     
     // Add a temporary loading indicator with CSS class
-    container.innerHTML = '<div class="picasso-iframe-loading"><div>🎨 Loading Picasso...</div><div class="picasso-iframe-loading-subtitle">Iframe mode detected</div></div>';
+    // Hairline redesign (W4.4): unmocked pre-React placeholder, restyled to
+    // the quiet Hairline palette (hairline-attachments.css) — no behavior
+    // change, classnames only.
+    container.innerHTML = '<div class="hairline-iframe-loading"><div>Loading Picasso…</div><div class="hairline-iframe-loading-subtitle">Iframe mode detected</div></div>';
     
     // Verify attributes were set
     const isIframe = document.body.getAttribute('data-iframe');
@@ -792,7 +804,10 @@ function initializeWidget() {
   } catch (error) {
     console.error("❌ Error initializing Picasso Widget:", error);
     // Show error in iframe with CSS class
-    container.innerHTML = `<div class="picasso-iframe-error">
+    // Hairline redesign (W4.4): unmocked pre-React placeholder, restyled to
+    // the quiet Hairline palette (hairline-attachments.css) — no behavior
+    // change, classnames only.
+    container.innerHTML = `<div class="hairline-iframe-error">
       <div>
         <h3>Picasso Widget Error</h3>
         <p>${error.message}</p>

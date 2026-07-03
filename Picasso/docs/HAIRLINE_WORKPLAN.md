@@ -160,8 +160,9 @@
 - **Done when:** re-expressed in Hairline (hairline-card anatomy shared with the merged forms/completion card: `--surface-raised` fill, `--hairline` border, `--radius-card`, no shadow; tinted type/stats badges; checklist-icon highlights; container-only CTA row styling — `CTAButton.jsx` itself stays W2.7's); `content_showcase` data shape, CTA dispatch, and ARIA semantics unchanged — only appearance changed.
 
 ### W4.4 In-thread attachments, retry, error/loading states
-- **Owns:** in-thread rendering in `FIlePreview.jsx` (coordinate with W2.5 if concurrent), `ErrorBoundary.jsx`/`.css`, `ChatProviderOrchestrator.css`, iframe loading placeholder in `iframe-main.jsx`. **Status:** TODO
+- **Owns:** in-thread rendering in `FIlePreview.jsx` (coordinate with W2.5 if concurrent), `ErrorBoundary.jsx`/`.css`, `ChatProviderOrchestrator.css`, iframe loading placeholder in `iframe-main.jsx`. **Status:** PR #662
 - **Done when:** sent image/video/PDF, retry button, error fallback, loading states all quiet-palette Hairline; reduced-motion respected.
+- **PR #662 note:** `ErrorBoundary.jsx`/`.css` actually live at `src/components/ErrorBoundary.jsx` (not `src/components/chat/`) — corrected path, same files. Provider `message.files` drop (StreamingChatProvider/HTTPChatProvider) means the in-thread attachment preview is unreachable at runtime — flagged, not fixed (frozen functionality, separate item). Reachable-but-ephemeral states (provider loading, iframe loading/error, error boundary, retry button) plus the unreachable attachment previews verified via a throwaway static-markup Playwright screenshot against the real built CSS (not committed) rather than a live catch-in-the-act screenshot — same precedent as W4.1 (PR #650). `ChatProviderOrchestrator.css`'s `.chat-provider-loading` had a pre-existing `display: none` silently hiding its loading text; fixed as part of this restyle (CSS-only, no logic change).
 
 ### W4.5 Callout re-skin + fullpage + mobile sheet `[D6 default: ≤480 sheet]`
 - **Owns:** callout markup in `ChatWidget.jsx` + `ChatWidget.css`, fullpage-mode rules, mobile-sheet rules in `hairline-shell.css`. **Status:** TODO
