@@ -23,13 +23,17 @@
 // W3.3 PR description for the full old-panel-function → new-home mapping,
 // including the additional (non-D5) drops flagged there for sign-off.
 //
-// History + Download rows REMOVED (Chris decision, 2026-07-03): History was
-// a dead read — nothing has ever written the `picasso_conversations` archive
-// it listed (storage is session-only, so cross-session history has no data
-// by design); Download exported metadata only (no message content) and was
-// silently blocked by the iframe sandbox anyway. If transcript export is
-// ever wanted, it's a deliberate new feature through the PII advisory gate,
-// not a resurrection of these rows. Clear-all still purges the vestigial
+// SLIMMED TO THE HONEST CORE (Chris decisions, 2026-07-03 — spec
+// amendments 5+6): History (dead read — nothing ever wrote the archive it
+// listed), Download (metadata-only export, sandbox-blocked), Current
+// session + Connection (trivia), and the Storage row (a disclosure a
+// key-value row can't explain) are all gone. What remains is the single
+// "Your data" group: Privacy & compliance + Clear all messages, with the
+// storage semantics told in plain English by the clear row's fine print
+// ("stays in this browser's memory until you close this tab"). Transcript
+// export, if ever wanted, is a new feature through the PII advisory gate.
+// The Spanish language toggle (approved i18n P1) becomes the first real
+// preference here when it ships. Clear-all still purges the vestigial
 // history key alongside the real current-conversation session key.
 import React, { useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Trash2, X } from "lucide-react";
@@ -73,7 +77,7 @@ function useFocusTrap(containerRef, enabled) {
 
 export default function SettingsView({ onBack, onClose, onOpenPrivacy }) {
   const chatContext = useChat();
-  const { clearMessages, messages = [] } = chatContext;
+  const { clearMessages } = chatContext;
 
   const rootRef = useRef(null);
   const backButtonRef = useRef(null);
@@ -81,10 +85,6 @@ export default function SettingsView({ onBack, onClose, onOpenPrivacy }) {
   const [isConfirmingClear, setIsConfirmingClear] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
   const [clearError, setClearError] = useState(null);
-
-  // Same read as the pre-Hairline panel: a direct, non-reactive
-  // navigator.onLine check (frozen — see file header).
-  const isOnline = typeof navigator !== "undefined" ? navigator.onLine : true;
 
   // A11y (HAIRLINE_WORKPLAN.md ground rule #7 + W3.3 guardrails): focus
   // moves into the takeover on mount; ESC returns to the thread.
@@ -147,9 +147,6 @@ export default function SettingsView({ onBack, onClose, onOpenPrivacy }) {
     onOpenPrivacy?.();
   };
 
-  const messageCount = messages.length;
-  const currentSessionValue = `${messageCount} ${messageCount === 1 ? "message" : "messages"}`;
-
   return (
     <div
       ref={rootRef}
@@ -178,40 +175,17 @@ export default function SettingsView({ onBack, onClose, onOpenPrivacy }) {
           </div>
 
           <div className="hairline-settings-content">
-            <h4 className="hairline-settings-group-label">{strings.settings.groups.conversation}</h4>
-            <div className="hairline-settings-card">
-              <div className="hairline-settings-row">
-                <span className="hairline-settings-row-label">{strings.settings.rows.currentSession}</span>
-                <span className="hairline-settings-row-value">{currentSessionValue}</span>
-              </div>
-              {/* History row removed (Chris, 2026-07-03) — see file header. */}
-            </div>
-
-            <h4 className="hairline-settings-group-label">{strings.settings.groups.preferences}</h4>
-            <div className="hairline-settings-card">
-              <div className="hairline-settings-row">
-                <span className="hairline-settings-row-label">{strings.settings.rows.connection}</span>
-                <span className="hairline-settings-row-value">
-                  <span
-                    className={`hairline-connection-dot ${isOnline ? "is-online" : "is-offline"}`}
-                    aria-hidden="true"
-                  />
-                  {isOnline ? strings.settings.rows.connectionOnline : strings.settings.rows.connectionOffline}
-                </span>
-              </div>
-              {/* D5 default (HAIRLINE_WORKPLAN.md W3.3): "Offline sync" row
-                  omitted — no offline-sync feature exists to back the toggle
-                  the mock shows. See the PR description. */}
-            </div>
-
+            {/* Spec amendment 6 (Chris, 2026-07-03): the mock's Conversation
+                (Current session / History) and Preferences (Connection /
+                Offline sync) groups are gone — every row was either trivia
+                or backed by no feature. Settings is the single "Your data"
+                group: Privacy & compliance + Clear all messages, with the
+                storage disclaimer folded into the clear row's fine print
+                (an unactionable Storage row couldn't explain it). The
+                Spanish language toggle (approved i18n P1) moves in as the
+                first real preference when it ships. */}
             <h4 className="hairline-settings-group-label">{strings.settings.groups.yourData}</h4>
             <div className="hairline-settings-card">
-              <div className="hairline-settings-row">
-                <span className="hairline-settings-row-label">{strings.settings.rows.storage}</span>
-                <span className="hairline-settings-row-value">{strings.settings.rows.storageValue}</span>
-              </div>
-              {/* Download-conversations row removed (Chris, 2026-07-03) —
-                  see file header. */}
               <button
                 type="button"
                 className="hairline-settings-row hairline-settings-row--button"

@@ -68,7 +68,7 @@ describe('PrivacyView — tenant policy link (NEW config read, D9)', () => {
     expect(link).toHaveAttribute('target', '_blank');
     expect(link).toHaveAttribute('rel', 'noopener noreferrer');
     expect(
-      screen.getByText(/Exports include conversation metadata and statistics only/)
+      screen.getByText(/Your conversation is stored only in this browser/)
     ).toBeInTheDocument();
   });
 
@@ -79,7 +79,7 @@ describe('PrivacyView — tenant policy link (NEW config read, D9)', () => {
 
     expect(screen.queryByRole('link', { name: 'privacy notice' })).not.toBeInTheDocument();
     expect(
-      screen.queryByText(/Exports include conversation metadata and statistics only/)
+      screen.queryByText(/Your conversation is stored only in this browser/)
     ).not.toBeInTheDocument();
     // The checklist still renders — the page stands on its own without the link.
     expect(screen.getByText('All data is encrypted in transit')).toBeInTheDocument();

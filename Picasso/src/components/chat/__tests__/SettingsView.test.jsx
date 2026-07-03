@@ -33,16 +33,8 @@ function baseChat(overrides = {}) {
   };
 }
 
-function setOnline(isOnline) {
-  Object.defineProperty(window.navigator, 'onLine', {
-    configurable: true,
-    value: isOnline,
-  });
-}
-
 beforeEach(() => {
   jest.useFakeTimers({ legacyFakeTimers: false });
-  setOnline(true);
   localStorage.clear();
 });
 
@@ -54,13 +46,13 @@ afterEach(() => {
 });
 
 describe('SettingsView — Hairline settings takeover (W3.3)', () => {
-  describe('grouped list — matches DESIGN_SPEC.md screen 5', () => {
-    test('renders the three group labels in order', () => {
+  describe('grouped list — screen 5 as amended (spec amendment 6)', () => {
+    test('renders the single "Your data" group — Conversation/Preferences groups are gone', () => {
       useChat.mockReturnValue(baseChat());
       render(<SettingsView onBack={jest.fn()} onClose={jest.fn()} />);
 
       const labels = screen.getAllByRole('heading', { level: 4 }).map((el) => el.textContent);
-      expect(labels).toEqual(['Conversation', 'Preferences', 'Your data']);
+      expect(labels).toEqual(['Your data']);
     });
 
     test('renders no tabs — StateManagementPanel\'s 3-tab nav is gone', () => {
@@ -102,57 +94,12 @@ describe('SettingsView — Hairline settings takeover (W3.3)', () => {
     });
   });
 
-  describe('current session — frozen stat computation, restyled pluralization', () => {
-    test('shows singular "1 message" for a single message', () => {
-      useChat.mockReturnValue(baseChat({ messages: [{ id: 'm1', role: 'user', content: 'hi' }] }));
-      render(<SettingsView onBack={jest.fn()} onClose={jest.fn()} />);
-      expect(screen.getByText('1 message')).toBeInTheDocument();
-    });
-
-    test('shows plural "N messages" for multiple messages', () => {
-      useChat.mockReturnValue(
-        baseChat({
-          messages: [
-            { id: 'm1', role: 'user', content: 'hi' },
-            { id: 'm2', role: 'assistant', content: 'hello' },
-            { id: 'm3', role: 'user', content: 'bye' },
-          ],
-        })
-      );
-      render(<SettingsView onBack={jest.fn()} onClose={jest.fn()} />);
-      expect(screen.getByText('3 messages')).toBeInTheDocument();
-    });
-
-    test('tolerates an old-shape chat context missing messages/conversationMetadata', () => {
-      useChat.mockReturnValue({ clearMessages: jest.fn() });
-      expect(() => render(<SettingsView onBack={jest.fn()} onClose={jest.fn()} />)).not.toThrow();
-      expect(screen.getByText('0 messages')).toBeInTheDocument();
-    });
-  });
-
-  describe('connection — frozen navigator.onLine read', () => {
-    test('shows "Online" with the online dot when navigator.onLine is true', () => {
-      setOnline(true);
-      useChat.mockReturnValue(baseChat());
-      const { container } = render(<SettingsView onBack={jest.fn()} onClose={jest.fn()} />);
-      expect(screen.getByText('Online')).toBeInTheDocument();
-      expect(container.querySelector('.hairline-connection-dot.is-online')).toBeInTheDocument();
-    });
-
-    test('shows "Offline" with the offline dot when navigator.onLine is false', () => {
-      setOnline(false);
-      useChat.mockReturnValue(baseChat());
-      const { container } = render(<SettingsView onBack={jest.fn()} onClose={jest.fn()} />);
-      expect(screen.getByText('Offline')).toBeInTheDocument();
-      expect(container.querySelector('.hairline-connection-dot.is-offline')).toBeInTheDocument();
-    });
-  });
-
-  describe('history + download rows removed (Chris decision, 2026-07-03)', () => {
-    // History was a dead read (nothing ever wrote the picasso_conversations
-    // archive; storage is session-only) and Download exported metadata only
-    // and was blocked by the iframe sandbox. Both rows removed — see
-    // SettingsView.jsx header.
+  describe('removed rows stay removed (Chris decisions, 2026-07-03 — spec amendments 5+6)', () => {
+    // History: dead read (nothing ever wrote the picasso_conversations
+    // archive; storage is session-only). Download: metadata-only export,
+    // blocked by the iframe sandbox. Current session + Connection: trivia.
+    // Storage: a disclosure a key-value row can't explain — its job moved
+    // to the clear row's fine print. See SettingsView.jsx header.
     test('renders no History row, even when the legacy storage key has data', () => {
       localStorage.setItem(
         HISTORY_KEY,
@@ -164,10 +111,29 @@ describe('SettingsView — Hairline settings takeover (W3.3)', () => {
       expect(screen.queryByText('None yet')).not.toBeInTheDocument();
     });
 
-    test('renders no Download conversations row', () => {
+    test('renders no Download, Current session, Connection, or Storage rows', () => {
       useChat.mockReturnValue(baseChat());
       render(<SettingsView onBack={jest.fn()} onClose={jest.fn()} />);
       expect(screen.queryByText('Download conversations')).not.toBeInTheDocument();
+      expect(screen.queryByText('Current session')).not.toBeInTheDocument();
+      expect(screen.queryByText('Connection')).not.toBeInTheDocument();
+      expect(screen.queryByText('Storage')).not.toBeInTheDocument();
+    });
+
+    test('tolerates an old-shape chat context missing messages/conversationMetadata', () => {
+      useChat.mockReturnValue({ clearMessages: jest.fn() });
+      expect(() => render(<SettingsView onBack={jest.fn()} onClose={jest.fn()} />)).not.toThrow();
+    });
+  });
+
+  describe('storage disclosure — folded into the clear row fine print (spec amendment 6)', () => {
+    test('renders the plain-English storage disclaimer under Clear all messages', () => {
+      useChat.mockReturnValue(baseChat());
+      render(<SettingsView onBack={jest.fn()} onClose={jest.fn()} />);
+      expect(
+        screen.getByText(/stays in this browser's memory until you close this tab/)
+      ).toBeInTheDocument();
+      expect(screen.getByText(/can't be undone and is recorded for compliance/)).toBeInTheDocument();
     });
   });
 

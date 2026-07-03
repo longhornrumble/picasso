@@ -79,30 +79,20 @@ export const strings = {
   settings: {
     pageTitle: 'Settings',
     groups: {
-      conversation: 'Conversation',
-      preferences: 'Preferences',
+      // Spec amendment 6 (Chris, 2026-07-03): Conversation + Preferences
+      // groups removed with their rows — see SettingsView.jsx header.
       yourData: 'Your data',
     },
     rows: {
-      currentSession: 'Current session',
-      // History + Download rows removed (Chris, 2026-07-03) — see
-      // SettingsView.jsx header; their strings went with them.
-      connection: 'Connection',
-      // The two fixed values the Connection row's status can show.
-      connectionOnline: 'Online',
-      connectionOffline: 'Offline',
-      offlineSync: 'Offline sync',
-      storage: 'Storage',
-      // Truthful sessionStorage semantics (Chris, 2026-07-03): the
-      // conversation survives closing/reopening the WIDGET (reload
-      // continuity) and clears when the browser TAB closes — the old
-      // "clears on close" read as widget-close, which is exactly when it
-      // does NOT clear.
-      storageValue: 'This tab · clears when the tab closes',
       privacyAndCompliance: 'Privacy & compliance',
     },
     clearAllMessages: 'Clear all messages',
-    clearAllMessagesFinePrint: "Logged for audit compliance · can't be undone",
+    // Does double duty (spec amendment 6): plain-English storage disclosure
+    // (sessionStorage = survives widget close/reopen, dies with the browser
+    // tab) + the clear action's consequences. Replaces the removed Storage
+    // row's five-word value, which couldn't explain any of this.
+    clearAllMessagesFinePrint:
+      "Your conversation stays in this browser's memory until you close this tab. Clearing deletes it right away — it can't be undone and is recorded for compliance.",
     // DESIGN_SPEC.md screen 5 says the destructive action "requires an
     // inline confirm (confirm/cancel pill pair replaces the row)" but
     // doesn't give literal copy for it, and the copy doesn't appear in the
@@ -137,8 +127,11 @@ export const strings = {
       auditLogging: 'Audit logging for compliance',
       retentionVaries: 'Retention varies by data type',
     },
+    // Rewritten with spec amendment 6 (Chris, 2026-07-03): the old copy
+    // described the removed Download/export feature. Now a plain-English
+    // storage disclosure matching the Settings clear-row fine print.
     finePrint:
-      'Exports include conversation metadata and statistics only — message content is never included. See the privacy notice for retention details.',
+      'Your conversation is stored only in this browser and is gone once you close this tab. See the privacy notice for retention details.',
     // The "privacy notice" substring within finePrint above is a link to
     // config.privacy_notice_url; kept separately so a consumer can splice
     // the fine print around the link.
