@@ -726,3 +726,306 @@
 }
 
 /* ==================== END W2.3 (markdown typography) ==================== */
+
+/* ============================================================
+   W4.2 IN-CHAT SCHEDULING — day strip / slot rows / confirm card / notice
+   Rendered by `SchedulingSlots.jsx` (slot rows, confirm card, notice) and
+   `SchedulingDayPicker.jsx` (day strip). UNMOCKED surface (the Turn 10
+   bundle has no scheduling screen) — per HAIRLINE_REDESIGN_MAPPING.md §0
+   case 2 / §4 item 2, the rules below are a fresh Hairline treatment
+   extrapolated from the vocabulary already established on OTHER unmocked
+   surfaces already merged in this program, not a restyle of the old
+   `.suggested-chip`/`.cta-button` look (theme.css still owns those classes;
+   these two components no longer reference them):
+
+     - Slot rows (SchedulingSlots) -> menu-row anatomy, mirroring the
+       already-merged W4.1 precedent in
+       src/components/forms/FormFieldPrompt.jsx's `.hairline-form-menu`/
+       `.hairline-form-menu-row`: bordered card, `--surface-raised` fill,
+       rows divided by a `--hairline-soft` top border, trailing Lucide
+       ChevronRight in `--tenant-accent-faint` — the DESIGN_SPEC.md Design
+       Tokens table's literal "Arrows on menu rows" assignment, followed
+       directly (unlike W2.7's suggestion-card row, there is no bundle mock
+       instance here to defer to instead).
+     - Day-picker strip (SchedulingDayPicker) -> hairline-chip anatomy: a
+       horizontally-scrolling row of discrete pill chips, not a menu-card
+       list, because the strip's own contract (§B16e: 7 items, swipeable at
+       <=375px) needs independently-bounded, non-wrapping items.
+     - Confirm button (SchedulingConfirmCard's "Yes, book it") -> pill-button
+       anatomy, mirroring hairline-views.css's `.hairline-pill-button--danger`
+       (the Settings "clear all messages" destructive confirm) as this
+       action's positive-commit twin: same pill shape/weight/motion,
+       `--tenant-accent` fill instead of `--danger` — this is the single
+       action that actually commits a calendar booking, warranting the
+       strongest existing commit affordance rather than a suggested-row tap.
+     - Notice (SchedulingNotice) -> quiet inline system-message card,
+       mirroring src/components/forms/FormFieldPrompt.jsx's
+       `.hairline-form-suspended-message` (bordered `--surface-raised` note
+       with a leading icon) — the nearest established "system message"
+       anatomy for an unmocked surface.
+
+   Selected/staged-slot display (`.scheduling-slot-selected`, used by both
+   SchedulingSlots' interim "you picked this" state and
+   SchedulingConfirmCard) is a small self-contained pill (no extra row
+   wrapper) so it renders identically whether it sits directly in the thread
+   or inside the confirm card.
+
+   Cross-cutting note: `SchedulingSlots`/`SchedulingConfirmCard`/
+   `SchedulingNotice` are ALSO reused, unmodified, by the standalone
+   scheduling page (`src/components/scheduling/SchedulingPage.jsx`,
+   `schedule-page.css`) — a surface explicitly EXCLUDED from this program
+   (HAIRLINE_REDESIGN_MAPPING.md §7 D8, "dropped from this program"). That
+   page's `.sched-page`-scoped CSS keys off the old `.suggested-chips`/
+   `.suggested-chip`/`.scheduling-confirm-button` class names this PR
+   removes from the shared component's rendered markup. Its selectors were
+   updated to the new class names in the SAME PR (mechanical rename only —
+   `.sched-page`'s own higher-specificity, `--sp-*`-token-based rules are
+   otherwise untouched) purely to avoid regressing that page's current look;
+   this is NOT a Hairline restyle of the scheduling page, which stays out of
+   scope per D8.
+
+   Local tokens declared below follow this file's own precedent (section 0's
+   `--ink-message-user`, the W2.7 preamble's `--space-suggestion-row-padding`,
+   W2.3's `--space-markdown-*`) for values with no existing fixed-token home.
+   ============================================================ */
+:root {
+  --radius-chip-pill: 16px; /* day-picker chip pill shape — matches the inline
+    style already fixed on the chip button by the P1-7 regression guard in
+    SchedulingDayPicker.jsx; declared here too so the *selected-day display*
+    (a plain div, not the same button) can match it without a magic number. */
+  --radius-confirm-pill: 999px; /* matches hairline-views.css's
+    .hairline-pill-button exactly — the confirm button is that pattern's
+    positive-commit twin. */
+}
+
+/* --- Shared spacing on the existing wrapper classes (JSX unchanged) ------- */
+.scheduling-slots {
+  margin-top: 16px; /* DESIGN_SPEC.md "Thread spacing: 16px between message
+    groups" — same rhythm as .hairline-suggestion-card (W2.7). Also covers
+    SchedulingConfirmCard, which reuses this class on its root. */
+}
+
+.scheduling-context-line {
+  margin-bottom: 8px;
+  font-size: var(--type-fine-print-sm-size);
+  line-height: var(--type-fine-print-sm-line-height);
+  color: var(--ink-soft);
+}
+
+.scheduling-microcopy-close {
+  margin: 8px 0 0;
+  font-size: var(--type-fine-print-sm-size);
+  line-height: var(--type-fine-print-sm-line-height);
+  color: var(--ink-faint);
+}
+
+/* --- Slot-row card (menu-row anatomy) ------------------------------------- */
+.hairline-scheduling-card {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+  background: var(--surface-raised);
+}
+
+.hairline-scheduling-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: var(--space-card-row-padding);
+  border: none;
+  border-top: 1px solid var(--hairline-soft);
+  background: transparent;
+  font-family: inherit;
+  font-size: var(--type-menu-row-compact-size);
+  font-weight: var(--type-menu-row-weight);
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--duration-fill) var(--ease-ui);
+}
+
+.hairline-scheduling-row:first-child {
+  border-top: none;
+}
+
+.hairline-scheduling-row:hover:not(:disabled) {
+  background: var(--tenant-tint);
+}
+
+.hairline-scheduling-row:focus-visible {
+  outline: 2px solid var(--tenant-accent);
+  outline-offset: -2px;
+}
+
+.hairline-scheduling-row:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.hairline-scheduling-row-label {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.hairline-scheduling-row-arrow {
+  flex: none;
+  color: var(--tenant-accent-faint);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hairline-scheduling-row {
+    transition: none;
+  }
+}
+
+/* --- Selected / staged slot pill (SchedulingSlots interim state AND the
+   confirm card's staged-slot line) ----------------------------------------- */
+.scheduling-slot-selected {
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  padding: 8px 14px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-chip-pill);
+  background: var(--tenant-tint-deep);
+  color: var(--tenant-accent-deep);
+  font-size: var(--type-menu-row-compact-size);
+  font-weight: 700;
+}
+
+/* --- Confirm card ---------------------------------------------------------- */
+.hairline-scheduling-confirm-row {
+  padding: var(--space-card-row-padding);
+  border-top: 1px solid var(--hairline-soft);
+}
+
+.hairline-scheduling-confirm-row:first-child {
+  border-top: none;
+}
+
+.scheduling-confirm-email {
+  font-size: var(--type-row-value-size);
+  color: var(--ink-soft);
+}
+
+.hairline-scheduling-confirm-button {
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+  box-sizing: border-box;
+  padding: 10px 0;
+  border: none;
+  border-radius: var(--radius-confirm-pill);
+  background: var(--tenant-accent);
+  color: #ffffff;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: filter var(--duration-fill) var(--ease-ui),
+    opacity var(--duration-fill) var(--ease-ui);
+}
+
+.hairline-scheduling-confirm-button:not(:disabled):hover {
+  filter: brightness(0.95);
+}
+
+.hairline-scheduling-confirm-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.hairline-scheduling-confirm-button:focus-visible {
+  outline: 2px solid var(--tenant-accent-deep);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hairline-scheduling-confirm-button {
+    transition: none;
+  }
+}
+
+/* --- Notice — quiet system-message card, mirrors
+   .hairline-form-suspended-message (src/styles/hairline-forms.css) --------- */
+.scheduling-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 16px;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  background: var(--surface-raised);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-card);
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-line-height);
+  color: var(--ink-body);
+}
+
+.scheduling-notice svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: var(--tenant-accent-deep);
+}
+
+/* --- Day-picker strip (hairline-chip anatomy) ------------------------------ */
+.hairline-day-strip {
+  margin-top: 16px;
+}
+
+.hairline-day-chip {
+  box-sizing: border-box;
+  padding: 8px 14px;
+  border: 1px solid var(--hairline);
+  background: var(--surface-raised);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: var(--type-menu-row-compact-size);
+  font-weight: var(--type-menu-row-weight);
+  cursor: pointer;
+  transition: background-color var(--duration-fill) var(--ease-ui),
+    color var(--duration-fill) var(--ease-ui);
+}
+
+.hairline-day-chip:hover:not(:disabled) {
+  background: var(--tenant-tint);
+}
+
+.hairline-day-chip:focus-visible {
+  outline: 2px solid var(--tenant-accent);
+  outline-offset: 2px;
+}
+
+.hairline-day-chip:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.hairline-day-selected {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 16px;
+  box-sizing: border-box;
+  padding: 8px 14px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-chip-pill);
+  background: var(--tenant-tint-deep);
+  color: var(--tenant-accent-deep);
+  font-size: var(--type-menu-row-compact-size);
+  font-weight: 700;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hairline-day-chip {
+    transition: none;
+  }
+}
+
+/* ==================== END W4.2 (in-chat scheduling) ==================== */
