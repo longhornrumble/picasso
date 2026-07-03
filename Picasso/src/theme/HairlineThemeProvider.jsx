@@ -6,14 +6,12 @@
  * 10 `--tenant-*` tokens + font stack via `tenantTheme()` (W1.1), and applies
  * them to `document.documentElement` at runtime.
  *
- * Coexistence (historical, HAIRLINE_WORKPLAN.md ground rule #8): this used to
- * run ALONGSIDE the old `useCSSVariables.js` / `CSSVariablesProvider` system
- * without reading from, modifying, or removing it — the two wrote disjoint
- * CSS custom-property namespaces (`--tenant-*`/`--hairline*`/
- * `--composer-border` here vs. `--primary-color`-era names there). The old
- * system was deleted in W6.2; this provider is now the only source of
- * tenant-scoped CSS tokens for the widget (the excluded scheduling page has
- * its own small replacement — see `useLegacySchedulePageBrandingVars.js`).
+ * Coexistence (HAIRLINE_WORKPLAN.md ground rule #8): this runs ALONGSIDE the
+ * old `useCSSVariables.js` / `CSSVariablesProvider` — it does not read from,
+ * modify, or remove that system. The two write disjoint CSS custom-property
+ * namespaces (`--tenant-*`/`--hairline*`/`--composer-border` here vs.
+ * `--primary-color`-era names there), so both can safely run every render.
+ * Removing the old system is W6.2, not this item.
  *
  * Verified config field paths (HAIRLINE_REDESIGN_MAPPING.md §2, confirmed
  * against `ConfigProvider.jsx`'s fallback-config shape and the config-builder

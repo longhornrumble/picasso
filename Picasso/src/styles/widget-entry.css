@@ -15,7 +15,7 @@
   position: fixed !important;
   z-index: 999999 !important;
   pointer-events: none !important;
-  font-family: var(--tenant-font-family, 'Inter, system-ui, sans-serif') !important;
+  font-family: var(--font-family, 'Inter, system-ui, sans-serif') !important;
 }
 
 #picasso-widget-root *,

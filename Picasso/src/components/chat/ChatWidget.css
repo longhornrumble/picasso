@@ -6,9 +6,9 @@
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: var(--ink-soft);
-  font-family: var(--tenant-font-family, "Plus Jakarta Sans", system-ui, sans-serif);
-  font-size: var(--type-body-size);
+  color: var(--text-secondary, #666);
+  font-family: var(--font-family);
+  font-size: var(--font-size-base, 14px);
 }
 
 /* Callout close button */
@@ -29,6 +29,15 @@
 
 .callout-close-button:active {
   transform: scale(0.95);
+}
+
+/* Widget container - already defined in theme.css but adding here for clarity */
+.chat-widget-container {
+  position: fixed;
+  bottom: var(--widget-bottom, 24px);
+  right: var(--widget-right, 24px);
+  z-index: 999999;
+  font-family: var(--font-family);
 }
 
 /* Ensure proper isolation */
