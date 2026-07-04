@@ -429,19 +429,9 @@
   color: var(--tenant-accent);
 }
 
-/* Emphasized row — DESIGN_SPEC.md: "primary suggestion row emphasized —
-   --tenant-tint fill, 700 weight, --tenant-accent-deep text; other rows
-   standard." Bundle confirms the arrow stays --tenant-accent (unchanged
-   from the standard row) rather than switching to accent-deep. */
-.hairline-suggestion-row--primary {
-  background: var(--tenant-tint);
-  font-weight: 700;
-  color: var(--tenant-accent-deep);
-}
-
-.hairline-suggestion-row--primary:hover:not(:disabled) {
-  background: var(--tenant-tint);
-}
+/* The mock's emphasized primary row (tint fill at rest) was RETIRED by spec
+   amendment 7 (Chris, 2026-07-04): a resting tint reads as a hover/selected
+   state. All rows rest identical; the tint appears only on :hover above. */
 
 @media (prefers-reduced-motion: reduce) {
   .hairline-suggestion-row {

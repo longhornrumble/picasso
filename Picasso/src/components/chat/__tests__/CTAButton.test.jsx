@@ -269,36 +269,22 @@ describe('CTAButtonGroup', () => {
       expect(card.querySelectorAll('.hairline-suggestion-row')).toHaveLength(3);
     });
 
-    test('primary row gets the emphasized class; other rows are standard', () => {
+    test('every row rests identical — no emphasized class even for _position primary (spec amendment 7)', () => {
+      // The mock's tint-filled primary row read as a hover/selected state
+      // (Chris, 2026-07-04) — retired. _position stays dispatch metadata only.
       const ctas = [
         { _position: 'primary', label: 'Primary CTA', action: 'start_form', id: 'cta1' },
         { _position: 'secondary', label: 'Secondary CTA', action: 'navigate', id: 'cta2' },
+        { label: 'No Position CTA', action: 'navigate', id: 'cta3' },
       ];
 
       render(<CTAButtonGroup ctas={ctas} />);
 
-      const primaryRow = screen.getByRole('button', { name: /primary cta/i });
-      const secondaryRow = screen.getByRole('button', { name: /secondary cta/i });
-
-      expect(primaryRow).toHaveClass('hairline-suggestion-row');
-      expect(primaryRow).toHaveClass('hairline-suggestion-row--primary');
-      expect(secondaryRow).toHaveClass('hairline-suggestion-row');
-      expect(secondaryRow).not.toHaveClass('hairline-suggestion-row--primary');
-    });
-
-    test('a cta without _position renders as a standard (non-emphasized) row', () => {
-      const ctas = [
-        { _position: 'primary', label: 'With Position', action: 'start_form', id: 'cta1' },
-        { label: 'Without Position', action: 'navigate', id: 'cta2' },
-      ];
-
-      render(<CTAButtonGroup ctas={ctas} />);
-
-      const withPosition = screen.getByRole('button', { name: /with position/i });
-      const withoutPosition = screen.getByRole('button', { name: /without position/i });
-
-      expect(withPosition).toHaveClass('hairline-suggestion-row--primary');
-      expect(withoutPosition).not.toHaveClass('hairline-suggestion-row--primary');
+      for (const name of [/primary cta/i, /secondary cta/i, /no position cta/i]) {
+        const row = screen.getByRole('button', { name });
+        expect(row).toHaveClass('hairline-suggestion-row');
+        expect(row.className).toBe('hairline-suggestion-row');
+      }
     });
 
     test('row renders a label span and an aria-hidden arrow span', () => {
