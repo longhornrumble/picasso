@@ -100,15 +100,18 @@ export default function CTAButton({ cta, onClick, disabled = false }) {
  * Anatomy per the mock (bundle `10a In-flight`, verified against the literal
  * markup — see hairline-thread.css's W2.7 section header comment for the
  * documented divergence from DESIGN_SPEC.md's Design Tokens table): label
- * left, arrow (`--tenant-accent`) right. The row whose `_position ===
- * 'primary'` is emphasized — tint fill, 700 weight, `--tenant-accent-deep`
- * text; every other row is standard (`--ink`, 600 weight, no fill).
+ * left, arrow (`--tenant-accent`) right. Every row renders IDENTICAL at
+ * rest — the mock's emphasized primary row (tint fill at rest) was retired
+ * by spec amendment 7 (Chris, 2026-07-04): a resting tint reads as a
+ * hover/selected state; the tint now appears only on actual :hover.
+ * `_position` remains dispatch metadata (frozen contract) — it just no
+ * longer drives a visual class here.
  *
  * Dispatch is byte-identical to the pre-Hairline pill button: same
  * `emitAnalyticsEvent(CTA_CLICKED, …)` payload, same `onClick(cta)` call
  * with the untouched cta object. Only the rendered markup/classes changed.
  */
-function SuggestionRow({ cta, onClick, disabled, isPrimary }) {
+function SuggestionRow({ cta, onClick, disabled }) {
   if (!cta) return null;
 
   const handleClick = () => {
@@ -132,7 +135,7 @@ function SuggestionRow({ cta, onClick, disabled, isPrimary }) {
   return (
     <button
       type="button"
-      className={`hairline-suggestion-row${isPrimary ? ' hairline-suggestion-row--primary' : ''}`}
+      className="hairline-suggestion-row"
       onClick={handleClick}
       disabled={disabled}
       data-action={cta.action}
@@ -185,7 +188,6 @@ export function CTAButtonGroup({ ctas = [], onCtaClick, disabled = false, clicke
         <SuggestionRow
           key={cta.id || `cta-${index}`}
           cta={cta}
-          isPrimary={cta._position === 'primary'}
           onClick={onCtaClick}
           disabled={disabled}
         />
