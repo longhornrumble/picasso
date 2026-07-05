@@ -1,6 +1,6 @@
 # V5 Single-Pass Conversational Turn — Build Plan
 
-**Status:** V5.1–V5.7 EXECUTED (lambda#388–#396, 2026-07-05): flag live on MYR384719 staging at `v5-turn.v3`; four soak rounds, two operator-directed tunes; verdict *"very close, if not on target"*. Remaining = gated promotions + the open nitpicks in §10's V5.7 record.
+**Status:** ✅ PLAN COMPLETE — V5.1–V5.7 executed (lambda#388–#396, 2026-07-05); **soak RETIRED by the operator 2026-07-05** with verdict *"very close, if not on target"*. V5 runs on MYR384719 staging at `v5-turn.v3`. Follow-on work (prod promotion chain, KB content refinement, tail-status alarm) is tracked in §10's closing record — it is post-plan, per §8 non-goals.
 **Owner:** Chris Miller
 **Repo:** `Lambdas/lambda` (BSH = `Bedrock_Streaming_Handler_Staging/`); this doc lives in the picasso repo
 **Supersedes:** the "session-state object + per-turn summarizer" branch of [`CONVERSATION_SESSION_STATE_DESIGN.md`](CONVERSATION_SESSION_STATE_DESIGN.md) §10 steps 2–4 (see §Relationship below)
@@ -218,7 +218,9 @@ Four `run_single_pass` lock scenarios at the real 14-CTA catalog scale with the 
 - *KB hygiene:* internal curriculum jargon ("Milestone 9") leaked into user prose — KB refinement item, not V5.
 - Two-message incident transcript never explicitly re-run live under V5 (eval lock `v5_incident_01` covers it; no bleed observed in any soak run).
 
-**Next stop points (all gated):** BSH prod dispatch (carries V5 + tunes + the staging-only stack since last promote); a designed tenant-config promotion mechanism (staging→prod copy — the born-in-staging model has no tooling for this yet); config-builder prod promote (if-match/etag CORS prereq); per-tenant rollout.
+**SOAK RETIRED (operator, 2026-07-05) — plan closed.** Post-soak addendum: a v4 role-declaration tune was attempted on the turn-3 nitpick and deliberately NOT shipped — a 200-sample A/B showed v3 already passes the shape 15/15 on fixture KB and 14/15 against the ACTUAL retrieved chunks (pulled live), i.e. the live miss was a ~1-in-15 stochastic tail that the question-budget backstop caught by design. Root cause of the tail: intent-flavored queries retrieve philosophy chunks with no next-step content → reclassified to **KB content refinement** (add/strengthen process chunks; also scrub "Milestone 9"-style internal jargon). The incident-shape transcript closes as covered by the `v5_incident_01` eval lock (green 3×; no cross-program bleed in any soak round) per the operator's soak-retirement call.
+
+**Follow-on (post-plan, all gated unless noted):** BSH prod dispatch (carries V5 + tunes + the staging-only stack since last promote; V5 arrives dormant — no prod config carries the flag); a designed tenant-config promotion mechanism (staging→prod — the born-in-staging model has no tooling yet); config-builder prod promote (if-match/etag CORS prereq); per-tenant rollout; KB content refinement (not gated — content pipeline); `V5_TAIL_STATUS.malformed` metric-filter + alarm before prod traffic (staging side not gated); groundedness-judge conversation-context extension (eval infra). Parked by operator: dual-attach on explicit apply-asks; dynamic chips (shrink-the-catalog hybrid agreed as direction).
 
 ### Tech-lead adversarial review of V5.4–V5.7 (2026-07-05, Chris-requested)
 
