@@ -66,8 +66,9 @@ resource "aws_s3_bucket_public_access_block" "tenant_config" {
 # the source-account replication role. Role ARN is deterministic — bucket
 # policies don't validate principal existence, so this can land before the
 # prod role is created.
-# Defense-in-depth: deny s3:Put* from any principal in the staging account
-# (only the prod replication role writes here).
+# Defense-in-depth: deny s3:Put* from any staging-account principal except the
+# sanctioned config authors (config_writer_role_arns). Prod replication is
+# allowed for mappings/* only — tenants/* is staging-authored (2026-07-05).
 data "aws_iam_policy_document" "tenant_config" {
   # Cross-account replication role from prod (614056832592) writes
   # replicated objects here. Scoped to object-level Replicate* actions
@@ -86,12 +87,20 @@ data "aws_iam_policy_document" "tenant_config" {
       "s3:ReplicateDelete",
       "s3:ReplicateTags",
     ]
-    resources = ["${aws_s3_bucket.tenant_config.arn}/*"]
+    # mappings/* ONLY (2026-07-05, operator-directed): tenant configs are born
+    # in STAGING (config-builder staging flow) and promoted to prod — prod-side
+    # edits must never clobber the newer staging copy of tenants/*. The prod
+    # bucket still carries a replicate-tenants rule (hand-managed; removing it
+    # is a gated prod cleanup) — this staging-side scope severs it regardless:
+    # tenants/* replication attempts are denied here. This reverses the
+    # 2026-06-11 "prod is the authoring surface, staging is a read-only
+    # replica" design.
+    resources = ["${aws_s3_bucket.tenant_config.arn}/mappings/*"]
   }
 
-  # Defense-in-depth: any principal in the staging account is denied
-  # write/delete/tagging on the replicated tenant configs. Only the
-  # prod-account replication role above writes here.
+  # Defense-in-depth: any staging-account principal is denied write/delete/
+  # tagging on tenant configs EXCEPT the sanctioned authors in
+  # config_writer_role_arns (the config-builder Lambda + the dashboard API).
   statement {
     sid    = "DenyMutationsFromStagingAccount"
     effect = "Deny"
