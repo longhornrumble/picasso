@@ -1,6 +1,6 @@
 # V5 Single-Pass Conversational Turn — Build Plan
 
-**Status:** V5.1–V5.6 EXECUTED and merged (lambda#388–#394, 2026-07-05; GO granted on the V5.3 gate) — **stopped at V5.7, the operator flag-flip + soak** (see §10)
+**Status:** V5.1–V5.7 EXECUTED (lambda#388–#396, 2026-07-05): flag live on MYR384719 staging at `v5-turn.v3`; four soak rounds, two operator-directed tunes; verdict *"very close, if not on target"*. Remaining = gated promotions + the open nitpicks in §10's V5.7 record.
 **Owner:** Chris Miller
 **Repo:** `Lambdas/lambda` (BSH = `Bedrock_Streaming_Handler_Staging/`); this doc lives in the picasso repo
 **Supersedes:** the "session-state object + per-turn summarizer" branch of [`CONVERSATION_SESSION_STATE_DESIGN.md`](CONVERSATION_SESSION_STATE_DESIGN.md) §10 steps 2–4 (see §Relationship below)
@@ -202,7 +202,23 @@ Notes for the GO/NO-GO reviewer:
 
 Four `run_single_pass` lock scenarios at the real 14-CTA catalog scale with the hard-KB fixture (configs embed `evals/evidence/v5/myr_catalog_fixture.json`; KB/history lifted verbatim from `run_evidence.js`): restraint (thank-you → valid empty tail), commitment (first interest → none of the 9 APPLY/VISIT-class ids), funnel-advance (explicit get-started turn 4 → discovery OR application via new `ctas_include_any`), incident cross-program (mentoring-anchored, no Love Box buttons). Two runner assertion types added: `ctas_include_any` (OR-inclusion) and `tail_status` (the format lock — `ctas_empty` alone cannot distinguish `<<<ACTIONS []>>>` restraint from a malformed tail; fails loudly outside `run_single_pass`). Stability: **all four scenarios 3/3 consecutive live runs at `--retries 0`** before baselining. Baseline re-captured deliberately: 23/23 pass, all entries stamped with the four version constants; post-capture comparison all-`ok`; CI `chat-eval-net` green on the PR. Full suite 38/38, 1240/0. The ~12% soft-turn intake-loop residual remains the V5.7 tuning target (the funnel lock pins the explicit-commit case; tuning for the soft case must add its own scenario before bumping the version).
 
-**Current stop point: V5.7 (operator).** Everything through V5.6 is merged and auto-deployed to staging 525 with `V5_SINGLE_PASS` off everywhere — the wired code is dormant. The flip on MYR384719 (`s3://myrecruiter-picasso-staging/tenants/MYR384719/MYR384719-config.json`), the two-transcript eyeball, the latency spot-check, and the V5_TAIL_STATUS watch are Chris's per §5 V5.7 (mind the 5-minute BSH config cache).
+### V5.7 — EXECUTED (2026-07-05): flip + four soak rounds + two operator-directed tunes
+
+**Flip:** Chris enabled `V5_SINGLE_PASS` on MYR384719 via the staging Config Builder (the flag was exposed in the builder same-day, config-builder#76; staging↔prod config isolation was verified and hardened first — staging builder writes the staging bucket, prod→staging tenant replication severed, picasso#707 + prod-side rule removal).
+
+**Soak round 1 (v5-turn.v1):** 7-turn funnel — 7/7 valid tails, 0 malformed/trailing/fail-soft, `single_pass` stamped, buttons with stream end (no second call). Restraint held; APPLY only at explicit "Yes". Verdict: *"overall I really like this process"* — but **APPLY should come 1–2 turns earlier** → **tune v2 (lambda#395)**: `SUSTAINED INTEREST → ADVANCE` rule + coherence strengthened ("ready to proceed?" prose attaches the step action, not a learn chip). Live A/B 120 samples: soft sustained-interest 9/15→15/15, the live-soak turn 4/15→15/15, guards 30/30, format 0/120.
+
+**Soak round 2 (v2) — REGRESSION FOUND:** the bot *manufactured* an intake loop (taxonomy question every turn; terse user answers "Life skills"/"Understanding money"); v2 discounted answers-to-its-own-questions — 5 turns, no advance, last 2 turns zero actions (log-verified on v2). **Fixture lesson recorded: A/B shapes must include bot-driven menu-loops with terse answers, not just user-volunteered statements.** → **tune v3 (lambda#396)**, iterated live on the exact transcript: rules-only turn budget REFUTED (0–1/15 — the model cannot count its own questions); model-counted check partial (buttons 12–15/15, prose 2–6/15); **server-counted, engagement-conditioned TURN CHECK** (`countAssistantQuestions` ≥ 2 → high-recency block naming the count; reply must END inviting the concrete step) → **15/15 + 15/15**, and the new-mechanism guard caught + fixed a goodbye-overshoot (APPLY pushed 10/10 on a sign-off → 0/10 after conditioning). Baseline 25/25 @v3; six `v5_*` scenarios ×3 stable at retries 0. Design ruling (Chris challenged "intent or turn count?"): the counter measures the BOT's behavior (question etiquette), never the user's intent; it exists because the judgment-only version measurably failed; discipline recorded — deterministic mechanisms must be bot-facts, empirically forced, and deletable.
+
+**Soak rounds 3–4 (v3) — VERDICT: *"just about perfect… very close, if not on target."*** Rich-statement run: advance arrived turn 5 via the backstop; turn-3 "I had one, and I'd like to be one" was an intent miss (open nitpick below). Explicit runs: "How do I apply?" → immediate process answer + discovery CTA (restraint on the preference turn); "i'm ready" → proposal + discovery CTA, full coherence. Tail health across all soak windows: 100% valid, 0 malformed, 0 fail-soft.
+
+**Open items out of the soak (identified, deliberately NOT executed):**
+- *v4 lever (Chris: "might be a nitpick"):* broaden explicit-commitment recognition to first-person volunteering phrasing ("I'd like to be one") so intent advances at the moment it's voiced, not via the backstop. Scenario-first loop ready.
+- *Dual-attach question:* on an explicit "how do I apply", consider locking discovery + application both attached (the V5.3 dual-action coherence nuance).
+- *KB hygiene:* internal curriculum jargon ("Milestone 9") leaked into user prose — KB refinement item, not V5.
+- Two-message incident transcript never explicitly re-run live under V5 (eval lock `v5_incident_01` covers it; no bleed observed in any soak run).
+
+**Next stop points (all gated):** BSH prod dispatch (carries V5 + tunes + the staging-only stack since last promote); a designed tenant-config promotion mechanism (staging→prod copy — the born-in-staging model has no tooling for this yet); config-builder prod promote (if-match/etag CORS prereq); per-tenant rollout.
 
 ### Tech-lead adversarial review of V5.4–V5.7 (2026-07-05, Chris-requested)
 
