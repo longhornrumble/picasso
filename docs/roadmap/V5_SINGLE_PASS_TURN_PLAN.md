@@ -185,3 +185,20 @@ Verdict: **direction sound, not executable as written** — 4 blockers, 4 majors
 4. The eval staleness gate is comparator logic (`ranSinglePass` + fourth branch in `compareToBaseline`), not a map edit — and (verified) existing baselines do NOT go stale from the new key.
 
 Majors: eval_gate CI filter lacks prompt_v5.js; buffered handler has ~zero CTA-chain coverage (module-scope `global.awslambda` pins every index.test to the streaming handler); harness must not use the production fallback ladder; `firstTokenTime` stamps pre-parser. Key claims spot-verified against `evals/run.js:285-308` and `pr-checks.yml:104-107` before folding in.
+
+### Retrospective adversarial review of V5.1–V5.3 (2026-07-05, Chris-requested) — and the corrections it forced
+
+Verdict on the executed work: **one shipped-code defect, and the recorded evidence was weaker than its framing.** Both corrected same-day:
+
+**Code fix (lambda#390, merged):** the V5.1 parser's last-VALID-wins semantics meant a valid sentinel followed by a malformed second attempt served the stale first capture while reporting `status:'actions'` — a failure class structurally invisible to the exact fail-soft counter V5.5/V5.7 depend on. **New semantics: the LAST marker attempt decides** (valid→malformed = `malformed`, fallback fires; malformed→valid = the correction is served). Also added `trailingAfterClose` to `end()` so out-of-spec prose after a valid close (deliberately forwarded, previously invisible to `status`) is separately countable.
+
+**Evidence re-run (lambda#391, committed to `evals/evidence/v5/` — reproducible from the repo):** hard KB fixture (discovery session NOT framed as "the first step"), strict sentence-level proposal judge, real 14-CTA catalog scale, n=150 format samples, word-count tracking, exact Clopper-Pearson bounds. **The table below SUPERSEDES the V5.3 table above** (whose fixtures were too easy to discriminate and whose n couldn't certify its bars):
+
+| Gate | V5 | 95% CP lower | V4.0 | Verdict |
+|---|---|---|---|---|
+| Format (bar ≥98%) | **150/150** | **98.0%** | n/a | ✅ bar *certified*, not just consistent-with |
+| Restraint, thank-you, **14-CTA scale** | **25/25** | 89% | **7/10** | ✅ V5 discriminates — V4.0 pads buttons at catalog scale |
+| First-interest no-APPLY/VISIT, 14-CTA scale | **25/25** | 89% | 10/10 | ✅ parity |
+| Funnel-advance, **hard KB**, strict judge | **20/25 (80%)** | 62% | **9/15 (60%)** | ⚠️ bar met at point estimate only; V5 +20pts over V4.0 |
+
+Funnel hand-review (all 25 transcripts, recorded in the pack's README): 2 of 5 strict-judge failures are judge false-negatives (coherent `query_process` advance with matching prose → 22/25 = 88% hand-count); 3 of 25 (~12%) are true intake-loop non-advances — the exact defect class V5.7 prompt tuning targets, now with a committed fixture to tune against. Word-limit compliance unaffected by the tail instruction (medians within 1 word of V4.0 on every shape — closes major #6 of the forward review). The earlier V5.3 notes stand: the 4-turn conversation is still a reconstruction (operator confirm/replace at GO/NO-GO), and the soft-commitment dual-action nuance remains a deliberate judgment call.
