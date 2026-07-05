@@ -124,3 +124,40 @@ No agent loop, no multi-step tool execution, no DDB session store, no cross-sess
 - [`CONVERSATION_SESSION_STATE_DESIGN.md`](CONVERSATION_SESSION_STATE_DESIGN.md): steps 0/1a/1b shipped and stand (they fix V4.1 tenants and taught the mechanics); the gated steps 2–4 (store + summarizer + stage machine) are **superseded by this plan** — V5 makes the model's own read of the full conversation the session state. The store remains a future option only for long-tail memory with production evidence.
 - [`CHAT_EXPERIENCE_OPTIMIZATION.md`](CHAT_EXPERIENCE_OPTIMIZATION.md): Phase-2 naturalness lanes fold into the V5 prompt work; Phase-5 "general agent" remains deferred and is NOT this.
 - Known open follow-ups that V5 dissolves for V5 tenants: ambiguous-topic tag poisoning, shown-CTA dedup (1c — feed shown CTAs into the turn context instead), tag reachability lint (still worth doing for V4.1 tenants if any remain long-term). Groundedness-judge conversation-context extension is still wanted (eval infra, path-independent).
+
+## 10. Execution evidence log (2026-07-05)
+
+### V5.1 — DONE (lambda#388, merged `32cb210`)
+
+`streamTail.js` chunk-feed state machine + 41-test suite (100/100/100/100 coverage, ratcheted); unwired (contract test pins `index.js` not importing it). Amendments vs the sketch, both additive:
+- `end()` returns a third field `status` (`actions` / `no_sentinel` / `malformed`) so the V5.5 fail-soft ladder can count failure modes separately.
+- An early draft's block-size cap was **removed**: it made the parser's output chunking-dependent, and newline-divergence + end-of-stream already bound every real swallow case. The parser is chunking-invariant by construction (test sweeps every chunk size 1..n per corpus, incl. surrogate-pair splits).
+- Sentinel spec (single source of truth in the module): `<<<ACTIONS ["id",...]>>>`, single line; `[]` = deliberate restraint. Holdback bound: 9 chars.
+
+### V5.2 — DONE, HARD GATE PASSED (lambda#389, merged `ae37cec`)
+
+`prompt_v5.js`: `buildV5TurnPrompt` **reuses** `buildV4ConversationPrompt` (contract-tested splice on the `━━━ USER MESSAGE ━━━` marker) + action catalog (`id — label [INTENT]`, ai_available) + transferred V4.0 selector rules + a new COHERENCE rule + machine-read ACTION TAIL instruction (placed last, recency bias). `V5_TURN_PROMPT_VERSION = 'v5-turn.v1'`.
+
+**Format gate (≥98%): 30/30 = 100%** — live Haiku 4.5, temp 0.35, real staging MYR384719 catalog (14 ai_available CTAs), 5 shapes × 6 (cold start / 2-msg incident / 4-turn funnel / thank-you-no-KB / comprehensive+generous-emoji+links adversarial). Zero sentinel leaks, zero max_tokens truncations, zero unknown ids, zero trailing-prose-after-tail.
+
+Empirical corrections found en route:
+- Haiku 4.5 **rejects `temperature`+`top_p` together** (live ValidationException). Production only ever sends `temperature`+`max_tokens`; `V4_STEP2_INFERENCE_PARAMS`' top_p/top_k are documentation-only. `V5_TURN_INFERENCE_PARAMS = {temperature: 0.35, max_tokens: 700}` — +100 headroom so a cap-stop can't truncate the sentinel (§7 risk, now mitigated + measured 0/30).
+
+### V5.3 — MEASURED, ALL BARS MET — awaiting operator GO/NO-GO
+
+Same live harness; V4.0 baselines measured on the SAME fixtures (V4 arm = real `buildV4ConversationPrompt` response + real `selectActionsV4`, as production runs them).
+
+| Gate | Fixture | V5 | V4.0 baseline | Bar | Verdict |
+|---|---|---|---|---|---|
+| (a) restraint | cta_04's exact eval fixture (thank-you) | **10/10 `[]`** | 6/6 | ≥ V4.0 | ✅ parity |
+| (b) commitment | cta_01's exact eval fixture (first interest) | **10/10 no-APPLY** | 6/6 | ≥ V4.0 | ✅ parity |
+| (c) funnel-advance | 4-turn reconstruction, turn 4 ("I just want to get started") | **10/10** proposal+button | 6/6 | ≥80% | ✅ |
+| (c-soft) funnel-advance | softer turn 4 ("I think I'd really be good at this") | **10/10** | 5/6 | (addendum) | ✅ |
+
+Notes for the GO/NO-GO reviewer:
+- **The 4-turn transcript is a reconstruction** — the verbatim original was not preserved in docs/memory; shapes rebuilt from its documented characterization (retiree, "life's wisdom to share", bot asked a 5th intake question). Confirm or supply the real transcript; the harness re-runs in minutes.
+- **Turn 3 does not advance** (0/10 both arms): at turn 3 the user is sharing motivation, not asking to proceed; V5's turn-3 prose stays warm + on-program and keeps exploring. Advance lands at turn 4 in 20/20 V5 runs (hard + soft). Reading of "by turn 3–4": met.
+- **Deliberate nuance:** on soft sustained interest, 3/10 V5 runs offered the APPLY link *alongside* discovery — with prose explicitly proposing both ("attend a session first, or jump straight into the application?"). This deviates from V4.0's strict commitment gate exactly when the model's own prose proposes the step — i.e. the coherence-by-construction behavior working. Flagging rather than suppressing; if unwanted, one rule line reverts it.
+- The focused KB fixture ("first step is attending a discovery session") helps both arms; the real-retrieval discrimination happens at V5.7 soak on staging.
+
+**Stop point:** V5.4+ does not start until the operator's GO/NO-GO on this table.
