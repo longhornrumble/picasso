@@ -76,12 +76,23 @@ Scope: `run_single_pass` scenario flag in `evals/run.js` — invoke the merged p
 Deliverables: runner change + jest (happy, malformed-tail→fallback semantics, dual-flag error).
 DONE: runner suite green; no bundle impact (evals unreachable from index.js).
 *Adversarial focus: the staleness gate actually fires for the new constant (demonstrate stale_baseline locally).*
+*Amendments (tech-lead adversarial review 2026-07-05 — verified against code):*
+- *The staleness change is **comparator logic, not a map edit**: `compareToBaseline` (`evals/run.js:285-308`) hardcodes three name-gated checks; adding a key to `CURRENT_PROMPT_VERSIONS` alone is a no-op. V5.4 must add `ranSinglePass` to `runScenario`'s result and a fourth branch `r.ranSinglePass && bv.single_pass !== currentVersions.single_pass` in the stale condition. (Good news, verified: name-gating means existing baselines do NOT go stale from the new key — no forced full re-capture in V5.4.)*
+- ***No fallback rescue inside the harness:** `run_single_pass` scenarios score strictly on the parser's own output (`ctas = actionIds ?? []`). Routing malformed tails through a `selectActionsV4` fallback in the harness would mask exactly the format regressions V5.6's scenarios exist to catch; the fail-soft ladder is production-only.*
+- ***CI:** add `Bedrock_Streaming_Handler_Staging/prompt_v5.js` to the `eval_gate` paths filter in `pr-checks.yml` (it's absent — V5.7's "tuning rides the eval gate" is not mechanically true until this lands). Note V5.4's `evals/**` change itself triggers live `chat-eval-net` (keeps `environment: staging`).*
 
 **V5.5 — Wire it, flag-gated, BOTH handler blocks.**
 Scope: when `feature_flags.V5_SINGLE_PASS`: build merged prompt, route the stream through the parser (holdback), emit validated `cta_buttons` (reuse selectActionsV4's id-validation), skip the post-stream selector section; fail-soft ladder (no/bad tail → one `selectActionsV4` call → else no buttons; structured log counter for tail-failure rate). Version constant bumped/introduced.
 Deliverables: index.js changes in BOTH blocks + contract test pinning both call sites (the 1a source-pin pattern); flag-off byte-identity test (prompt and behavior identical to pre-V5 when flag absent); full jest.
 DONE: full BSH suite green; flag-off identity asserted; form-mode + scheduling bypasses demonstrably untouched (existing tests still green).
 *Adversarial focus: the two-blocks trap; SSE ordering (cta_buttons still before [DONE]); no sentinel text ever reaches the client (integration-style test through the mock stream).*
+*Amendments (tech-lead adversarial review 2026-07-05 — verified against code; all are same-PR checklist items, not new phases):*
+- ***The flag gates the prompt-swap AND the stream-loop parser unconditionally of which downstream branch owns CTAs.** The Bedrock call + text-forwarding loop (`index.js:814-848`, `:1295-1316`) run before the post-stream CTA chain; a scheduling-handled or click-routed turn on a V5 tenant would otherwise stream the literal sentinel to the widget. Test: V5 flag on + `action_chip_triggered`/scheduling-handled → SSE text contains no `<<<ACTIONS`.*
+- ***`responseBuffer` must hold parser-forwarded (stripped) text, not raw deltas.** Five downstream consumers read it — `QA_COMPLETE` logging (`:862`), `runSchedulingTurn` (`:935`) and `runNewBookingEntry` (`:946`) which splice it into OTHER Bedrock prompts, `enhanceResponse` (`:960`), and the fail-soft `selectActionsV4` call itself. Test: none of the five ever sees the sentinel substring when V5 is on.*
+- ***Insert the V5 branch BEFORE `V4_ACTION_SELECTOR`** (`:981`/`:1425`) in both chains — MYR384719 carries `V4_ACTION_SELECTOR: true`, so an appended-after branch makes the V5.7 flip a no-op. Regression test: config with BOTH flags true → V5 path wins.*
+- ***The buffered handler has ~zero CTA-chain test coverage today** — `index.test.js` sets `global.awslambda` at module scope so every test drives only the streaming handler. V5.5 adds a `describe` block using the `cf_origin_wiring.test.js` pattern (unset `global.awslambda` + `jest.resetModules()`) driving `bufferedHandler` through V5 flag-on/flag-off. Without it "both call sites pinned" is aspirational.*
+- ***`firstTokenTime` fires on first non-empty parser-forwarded text**, not raw delta arrival (holdback can make the first feed return `''`; the value feeds `response_time_ms` in session summaries `:914`).*
+- ***Tail-failure counter schema defined here:** structured JSON log, e.g. `{type:'V5_TAIL_STATUS', status:'actions'|'no_sentinel'|'malformed', tenant_hash, session_id}` — V5.7's "counter ~0" DONE line is uncheckable without a greppable shape.*
 
 **V5.6 — Scenarios + baseline.**
 Scope: new eval scenarios — 4-turn funnel-advance lock (from Chris's transcript), restraint lock (conversational turn → `[]`), commitment lock (first interest → no APPLY/VISIT), incident cross-program locks re-expressed for V5; re-capture baseline under the new version constant.
@@ -92,6 +103,9 @@ DONE: new scenarios ≥3× stable live at `--retries 0`; full net green with re-
 Scope: flip `V5_SINGLE_PASS` on MYR384719 in `s3://myrecruiter-picasso-staging/...` (Config Builder staging flow; operator-visible). Chris eyeballs the two canonical transcripts (two-message incident; 4-turn funnel). Prompt tuning iterations ride the eval gate (bump → re-capture) — never tune without a scenario locking the improvement.
 DONE: Chris's verdict on both transcripts; tail-failure counter ~0 in staging logs; latency spot-check (buttons ≤ V4.0).
 *Prod promote is a separate, gated decision — explicitly NOT part of this plan.*
+*Amendments (tech-lead adversarial review 2026-07-05):*
+- *BSH's 5-minute in-memory config cache means a transcript test within 5 min of the S3 flag flip can show stale pre-V5 behavior — wait out the TTL (or use the nocache path) before judging the flip "not working".*
+- *Latency spot-check measures time-to-`cta_buttons`-event minus time-to-last-text-event (that's where the ~700–900ms win lives). TTFT is unaffected; the holdback delays the final ≤9 chars of prose by milliseconds only.*
 
 **V5.0b (optional, parallel, only if a demo needs it before V5.5) — V4.0 funnel-advance tune:** CLOSING rule + selector sustained-interest guidance; the text transfers into the V5.2 prompt. Skip if V5 is landing fast enough.
 
@@ -161,3 +175,13 @@ Notes for the GO/NO-GO reviewer:
 - The focused KB fixture ("first step is attending a discovery session") helps both arms; the real-retrieval discrimination happens at V5.7 soak on staging.
 
 **Stop point:** V5.4+ does not start until the operator's GO/NO-GO on this table.
+
+### Tech-lead adversarial review of V5.4–V5.7 (2026-07-05, Chris-requested)
+
+Verdict: **direction sound, not executable as written** — 4 blockers, 4 majors, 3 minors, all same-PR amendments (no redesign, no new phases). All amendments are folded into the V5.4/V5.5/V5.7 bullets above (§5). Blockers, one line each:
+1. The sentinel-strip/prompt-swap gate must be flag-only at the stream loop, not "in the CTA chain" — else scheduling/click-routed turns on a V5 tenant leak the sentinel to the widget.
+2. `responseBuffer` must hold stripped text — five consumers (QA logging, two scheduling Bedrock prompts, enhanceResponse, the fallback selector) would otherwise ingest raw sentinel.
+3. V5 branch inserts BEFORE `V4_ACTION_SELECTOR` — MYR has that flag true; appended-after = the V5.7 flip does nothing.
+4. The eval staleness gate is comparator logic (`ranSinglePass` + fourth branch in `compareToBaseline`), not a map edit — and (verified) existing baselines do NOT go stale from the new key.
+
+Majors: eval_gate CI filter lacks prompt_v5.js; buffered handler has ~zero CTA-chain coverage (module-scope `global.awslambda` pins every index.test to the streaming handler); harness must not use the production fallback ladder; `firstTokenTime` stamps pre-parser. Key claims spot-verified against `evals/run.js:285-308` and `pr-checks.yml:104-107` before folding in.
