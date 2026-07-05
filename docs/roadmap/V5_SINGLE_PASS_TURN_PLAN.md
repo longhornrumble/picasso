@@ -1,6 +1,6 @@
 # V5 Single-Pass Conversational Turn — Build Plan
 
-**Status:** Approved direction, not yet started (Chris go-ahead 2026-07-05)
+**Status:** V5.1–V5.6 EXECUTED and merged (lambda#388–#394, 2026-07-05; GO granted on the V5.3 gate) — **stopped at V5.7, the operator flag-flip + soak** (see §10)
 **Owner:** Chris Miller
 **Repo:** `Lambdas/lambda` (BSH = `Bedrock_Streaming_Handler_Staging/`); this doc lives in the picasso repo
 **Supersedes:** the "session-state object + per-turn summarizer" branch of [`CONVERSATION_SESSION_STATE_DESIGN.md`](CONVERSATION_SESSION_STATE_DESIGN.md) §10 steps 2–4 (see §Relationship below)
@@ -177,6 +177,32 @@ Notes for the GO/NO-GO reviewer:
 - The focused KB fixture ("first step is attending a discovery session") helps both arms; the real-retrieval discrimination happens at V5.7 soak on staging.
 
 **Stop point:** V5.4+ does not start until the operator's GO/NO-GO on this table.
+
+### V5.4 — DONE (lambda#392, merged `8c59336`)
+
+`run_single_pass` scenario support in the eval harness, per the amendments:
+- Staleness gate implemented as **comparator logic**: `ranSinglePass` on the run result + a fourth name-gated branch in `compareToBaseline` (`bv.single_pass !== currentVersions.single_pass`); `CURRENT_PROMPT_VERSIONS` gains `single_pass: V5_TURN_PROMPT_VERSION`. Test-pinned: pre-V5.4 baselines (no `single_pass` key) do NOT stale for classic scenarios — and the PR's own live `chat-eval-net` run confirmed the 19-scenario baseline stayed green with no re-capture.
+- **Strict scoring, no fallback rescue in the harness**: `ctas = tail.actionIds ?? []`; a malformed tail is a VISIBLE failure (test-pinned: zero selector calls on the malformed path). Scored `responseText` is the stripped prose.
+- `eval_gate` CI filter gains `prompt_v5.js` **and** `streamTail.js` (the amendment named prompt_v5.js; streamTail.js added under the filter's stated purpose — a parser-semantics change like lambda#390 changes single-pass eval outcomes). `chat-eval-net` keeps `environment: staging`.
+- `stale_baseline` demonstrated **end-to-end through the real CLI** (live Bedrock): one-scenario `--update-baseline` capture stamped `v5-turn.v1` (exit 0) → baseline stamp rewound to `v5-turn.v0` → rerun reported `stale_baseline`, exit 1.
+
+### V5.5 — DONE (lambda#393, merged `7632cf2`)
+
+`V5_SINGLE_PASS` wired into BOTH `index.js` handler blocks; flag off ⇒ byte-identical (test-asserted: sentinel-shaped prose passes through unstripped, V4 prompt + params, no V5 logs, no `single_pass` QA stamp). All four review blockers + majors landed as test-pinned behavior (`__tests__/v5_wiring.test.js`, 15 handler-level tests through scripted Bedrock streams):
+- Flag-only gating of prompt-swap + stream-loop parser — scheduling-handled and click-routed turns on a V5 tenant leak no sentinel (asserted).
+- `responseBuffer` = parser-forwarded text — QA_COMPLETE, `runSchedulingTurn`, `enhanceResponse`, and the fail-soft `selectActionsV4` prompt each asserted sentinel-free.
+- V5 branch BEFORE `V4_ACTION_SELECTOR` in both chains; both-flags-true tests prove V5 wins (zero second-model-calls). Source pins: `buildV5TurnPrompt` call sites ×2, `createTailParser()` ×2, ordering ×2 (the V5.1/V5.2 unwired-contract tests flipped to wired pins).
+- Buffered handler gained real CTA-chain coverage (cf_origin_wiring pattern: unset `global.awslambda` + `jest.resetModules()` + fresh SDK mock).
+- `firstTokenTime` on first NON-EMPTY forward; no empty text frames; end-flush NO-SWALLOW (a stream ending in a live sentinel prefix forwards the held prose — both blocks).
+- Empty catalog skips the ladder AND the counter (major #8); `QA_COMPLETE` stamps `single_pass` on V5 turns (major #9); `V5_TAIL_STATUS` log shape `{status, trailing_after_close, tenant_hash, session_id}`.
+- Fail-soft ladder: valid tail → shared `validateActionIds` (selectActionsV4's known-ids + cap-4, one implementation exported from prompt_v5.js); `[]` = restraint, no fallback; no/bad tail → ONE `selectActionsV4` call. `cta_buttons` before `[DONE]` in both blocks.
+- No prompt-text change ⇒ `V5_TURN_PROMPT_VERSION` stays `v5-turn.v1`. Full BSH suite 38/38 suites, 1237/0. (One `chat-eval-net` flake on the PR: `context_01` judge UNGROUNDED ×3 on the pure-V4 path — versions identical to baseline, evals unreachable from index.js, same net green an hour earlier; rerun green.)
+
+### V5.6 — DONE (lambda#394)
+
+Four `run_single_pass` lock scenarios at the real 14-CTA catalog scale with the hard-KB fixture (configs embed `evals/evidence/v5/myr_catalog_fixture.json`; KB/history lifted verbatim from `run_evidence.js`): restraint (thank-you → valid empty tail), commitment (first interest → none of the 9 APPLY/VISIT-class ids), funnel-advance (explicit get-started turn 4 → discovery OR application via new `ctas_include_any`), incident cross-program (mentoring-anchored, no Love Box buttons). Two runner assertion types added: `ctas_include_any` (OR-inclusion) and `tail_status` (the format lock — `ctas_empty` alone cannot distinguish `<<<ACTIONS []>>>` restraint from a malformed tail; fails loudly outside `run_single_pass`). Stability: **all four scenarios 3/3 consecutive live runs at `--retries 0`** before baselining. Baseline re-captured deliberately: 23/23 pass, all entries stamped with the four version constants; post-capture comparison all-`ok`; CI `chat-eval-net` green on the PR. Full suite 38/38, 1240/0. The ~12% soft-turn intake-loop residual remains the V5.7 tuning target (the funnel lock pins the explicit-commit case; tuning for the soft case must add its own scenario before bumping the version).
+
+**Current stop point: V5.7 (operator).** Everything through V5.6 is merged and auto-deployed to staging 525 with `V5_SINGLE_PASS` off everywhere — the wired code is dormant. The flip on MYR384719 (`s3://myrecruiter-picasso-staging/tenants/MYR384719/MYR384719-config.json`), the two-transcript eyeball, the latency spot-check, and the V5_TAIL_STATUS watch are Chris's per §5 V5.7 (mind the 5-minute BSH config cache).
 
 ### Tech-lead adversarial review of V5.4–V5.7 (2026-07-05, Chris-requested)
 
