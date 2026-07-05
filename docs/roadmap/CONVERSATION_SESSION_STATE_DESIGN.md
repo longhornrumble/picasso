@@ -1,6 +1,6 @@
 # Conversation Session-State — Design Doc (DRAFT)
 
-**Status:** Draft v3 — architecture only; Step 0 shipped (lambda#385) and validated live
+**Status:** v4 — Steps 0/1a/1b SHIPPED and validated live (lambda#385/#386/#387). **The gated build (steps 2–4: DDB store + summarizer + stage machine) is SUPERSEDED by [`V5_SINGLE_PASS_TURN_PLAN.md`](V5_SINGLE_PASS_TURN_PLAN.md)** (decision 2026-07-05, after the architectural review: one model call per turn producing reply + actions together — the model's read of the full conversation becomes the session state; the store remains a future option only for long-tail memory with production evidence).
 **Date:** 2026-07-04
 **Owner:** Chris Miller
 **Origin:** Came out of a live staging debugging session (Atlanta Angels replica, MYR384719) that surfaced topic drift, CTA program-bleed, and weak session memory. This doc reframes the "Chat Experience Optimization" program ([`CHAT_EXPERIENCE_OPTIMIZATION.md`](CHAT_EXPERIENCE_OPTIMIZATION.md)) around the real lever.
