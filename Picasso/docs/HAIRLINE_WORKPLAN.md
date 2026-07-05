@@ -85,7 +85,7 @@
 - **Guardrail:** the sanitizer pipeline, streaming imperative writer, retry logic, and all dispatch handlers are functionality — do not alter. `MessageBubble.jsx` is single-owner: W2.3/W2.7 queue behind this item.
 
 ### W2.3 Markdown typography
-- **Status:** PR #660
+- **Status:** DONE (a335bfd)
 - **Objective:** style rendered markdown (lists, links, bold, code, tables) inside bot plain-text at the 13.5px/1.6 `--ink-body` scale; links `--tenant-accent-deep` underline 2px offset.
 - **Owns:** markdown rules in `hairline-thread.css` (`.message-text`, `.streaming-formatted` descendants); NO js changes.
 - **Done when:** `test-dynamic.html` conversation with lists/links/bold renders cleanly in both streaming and finalized paths; no headers styling needed (backend bans them) but h-tags degrade gracefully if present.
@@ -116,17 +116,26 @@
 - **Done when:** V4 tenant on staging shows spec-fidelity suggestion cards; click dispatch table untouched (all action types verified via `ctaActionContract.test.jsx` + manual `start_form`/`send_query`/`external_link`/`show_info` clicks); "disappear once used" replaces disabled-after-click styling; CTAButton jest rewritten.
 - **Guardrail:** `_position` contract and `handleCtaClick` semantics frozen.
 
+### W2.7b Plain CTAButton export restyle (follow-up to W2.7)
+- **Status:** DONE (30d3141)
+- **Objective:** W2.7 restyled `CTAButtonGroup`/`SuggestionRow` (MessageBubble's suggestion-card path) but deliberately left the PLAIN default `CTAButton` export on the old `.cta-button`/`.cta-primary`/`.cta-secondary` pill look, because that export's only live consumer (`ShowcaseCard.jsx`) was BLOCKED on decision D2 at the time. D2 is now resolved (W4.3, keep + restyle), so this item brings the plain export into the Hairline vocabulary.
+- **Owns:** `src/components/chat/CTAButton.jsx` (plain default export ONLY — `CTAButtonGroup`/`SuggestionRow` untouched), a new W2.7b section appended to the end of `hairline-thread.css`.
+- **Treatment chosen**: Turn 10 has no standalone CTA-button mock. ShowcaseCard renders exactly one primary CTA (full-width, prominent) and zero or more secondary CTAs (compact, wrapped in a row) — the same "one decisive full-width action + lighter secondary actions" shape as the conversational-forms submit/cancel pair (`hairline-forms.css` `.hairline-form-submit`/`.hairline-form-cancel`, W4.1). Reused verbatim: new classes `.hairline-cta`/`.hairline-cta--primary` (solid `--tenant-accent` fill)/`.hairline-cta--secondary` (transparent, `--hairline`-bordered) rather than inventing a third button recipe. Flagged for the design-review gate, same as W4.1/W4.3's judgment calls.
+- **Done when:** the plain CTAButton no longer renders the old pill look in either of its render contexts (ShowcaseCard's primary/secondary CTA row; MessageBubble only reaches this export indirectly via ShowcaseCard — confirmed by grep, no other direct `<CTAButton` usage in the codebase); `ctaActionContract.test.jsx` untouched and green; CTAButton jest updated for the restyled classNames (behavioral assertions — onClick dispatch, disabled state, data-attributes, null-render — kept intact); `npm test` green (46 suites / 909 tests); `npm run build:staging` succeeds.
+- **Verification note:** live dev harness (`test-dynamic.html?t=my87674d777bf9`) was not used directly — the sandbox's esbuild dev server port (8000) was occupied by a concurrent agent session (see "Stay out of" note in this item's task brief), and the shared Playwright MCP browser instance was found to be live-in-use by another concurrent session (unrelated `chat.myrecruiter.ai` console traffic observed) — further live-browser navigation was avoided to not disrupt that session. Verified instead via a throwaway static-markup Playwright screenshot (not committed) that mounts the ACTUAL `CTAButton.jsx`/`ShowcaseCard.jsx` components (unmodified imports) against the real compiled `dist/staging/iframe-main.css` bundle — same precedent as W4.1 (PR #650) and W4.4 (PR #662). Confirmed: filled full-width primary button, outlined secondary buttons in a row, disabled state, no old pill classNames present.
+- **Guardrail:** `_position` contract and `handleCtaClick`/dispatch semantics frozen — only `CTAButton.jsx`'s plain-export rendering changed.
+
 ## Phase 3 — Views
 
 ### W3.1 Welcome view + menu card
-- **Status:** PR #659
+- **Status:** DONE (78aaacf)
 - **Objective:** DESIGN_SPEC screen 1: distinct welcome state (greeting `[D7 default: fixed copy]`, `welcome_message` paragraph, menu card from `action_chips.default_chips` + appended "Common questions" row) replacing the current welcome-bubble+chips presentation; thread begins on first send.
 - **Owns:** view-state logic in `ChatWidget.jsx`, new `src/components/chat/WelcomeView.jsx`, new `src/styles/hairline-views.css`; **welcome-seeding touchpoints in the three providers** (`StreamingChatProvider`, `HTTPChatProvider`, `ChatProvider`) — hoist or adjust all three consistently (pipeline-audit watch item).
 - **Done when:** first open shows welcome per mock; menu rows dispatch exactly like today's chips (same metadata to backend); returning mid-conversation shows thread not welcome; "Clear all messages" returns to welcome; works on BOTH streaming and HTTP providers; provider tests updated.
 - **Guardrail:** chip dispatch payloads (`action_chip_triggered`, `target_branch`…) byte-identical to current.
 
 ### W3.2 Common questions overlay
-- **Status:** PR #663
+- **Status:** DONE (55a06b8)
 - **Objective:** DESIGN_SPEC screen 2: dimmed/blurred underlay, overlay card, rows from `quick_help.prompts`; select → close + send as user message. Replaces FollowUpPromptBar.
 - **Owns:** new `src/components/chat/QuestionsOverlay.jsx` (+ rules in `hairline-views.css`); deletion of `FollowUpPromptBar.jsx` usage.
 - **Done when:** overlay matches mock (inset 18/58, shadow, hover states); ✕/outside/ESC dismiss; selecting sends the prompt exactly as FollowUpPromptBar did; `quick_help.enabled=false` hides the menu row.
@@ -136,9 +145,11 @@
 - **Objective:** DESIGN_SPEC screen 5: single grouped list (Conversation / Preferences / Your data), slide-in 240ms, back-preserves-scroll; wire to EXISTING StateManagementPanel functionality (session stats, history, connection, export→"Download conversations", clear + inline confirm + audit event).
 - **Owns:** new `src/components/chat/SettingsView.jsx` (+ rules in `hairline-views.css`); retirement of `StateManagementPanel.jsx` rendering (logic/helpers may be reused as imports).
 - **Done when:** every function reachable in the old 3-tab panel is reachable in the new list (or explicitly listed in the PR as intentionally dropped for Chris's sign-off); inline destructive confirm per spec; toast pattern replaced by spec-conformant inline confirms.
+- **Amended (Chris, 2026-07-03 — spec amendment 5):** History + Download rows REMOVED post-audit. History was a dead read (nothing ever wrote `picasso_conversations`; storage is session-only) and Download exported metadata only AND was silently blocked by the iframe sandbox (no `allow-downloads` token) while reporting "Downloaded". Rows, sub-view, helpers, strings, and CSS deleted; clear-all still purges the vestigial key. Transcript export = possible future feature via the PII advisory gate, NOT a resurrection of these rows.
+- **Amended again (Chris, 2026-07-03 — spec amendment 6):** Settings reduced to the single "Your data" group. Current session + Connection rows (trivia) and the Storage row (a disclosure a key-value row can't explain — three copy iterations proved it) removed; Conversation + Preferences group labels gone with them. The storage semantics now live in plain English in the clear row's fine print ("stays in this browser's memory until you close this tab") and in the Privacy page fine print (whose old copy described the removed export). Settings = Privacy & compliance + Clear all messages until the Spanish language toggle (i18n P1) moves in as the first real preference.
 
 ### W3.4 Privacy & compliance page
-- **Status:** TODO — after W3.3
+- **Status:** DONE (f7383e0)
 - **Objective:** DESIGN_SPEC screen 6: checklist card + fine print; "privacy notice" links `config.privacy_notice_url`, **row/link hidden when field absent** (tolerant read).
 - **Owns:** new `src/components/chat/PrivacyView.jsx` (+ rules in `hairline-views.css`).
 - **Done when:** matches mock; absent-field fixture renders without the link and without errors; copy from `strings.js`.
@@ -151,7 +162,7 @@
 - **PR #650 note:** `test-composite-fields.html` does not exist in the repo (checked via `git log` — missing, not this item's regression). Live-tenant e2e also blocked in the build sandbox (no egress to the config Lambda). Substituted with the full Jest suite against the real components (51 tests across all 3 files) + a throwaway static-markup Playwright screenshot proof of the shipped CSS for all 8 states (not committed). Design-review gate + staging verification against a real form tenant still needed before merge.
 
 ### W4.2 In-chat scheduling `[D2]`
-- **Owns:** `src/components/chat/SchedulingSlots.jsx`, `SchedulingDayPicker.jsx`, their rules in `hairline-thread.css`. **Status:** PR #664
+- **Owns:** `src/components/chat/SchedulingSlots.jsx`, `SchedulingDayPicker.jsx`, their rules in `hairline-thread.css`. **Status:** DONE (25e20cf)
 - **Done when:** day strip, slot rows, confirm card, notice re-expressed (suggestion-card anatomy); `scheduling_action` payloads unchanged; snapshots regenerated deliberately.
 
 ### W4.3 Showcase card `[D2 — includes keep-or-retire call]`
@@ -160,12 +171,12 @@
 - **Done when:** re-expressed in Hairline (hairline-card anatomy shared with the merged forms/completion card: `--surface-raised` fill, `--hairline` border, `--radius-card`, no shadow; tinted type/stats badges; checklist-icon highlights; container-only CTA row styling — `CTAButton.jsx` itself stays W2.7's); `content_showcase` data shape, CTA dispatch, and ARIA semantics unchanged — only appearance changed.
 
 ### W4.4 In-thread attachments, retry, error/loading states
-- **Owns:** in-thread rendering in `FIlePreview.jsx` (coordinate with W2.5 if concurrent), `ErrorBoundary.jsx`/`.css`, `ChatProviderOrchestrator.css`, iframe loading placeholder in `iframe-main.jsx`. **Status:** PR #662
+- **Owns:** in-thread rendering in `FIlePreview.jsx` (coordinate with W2.5 if concurrent), `ErrorBoundary.jsx`/`.css`, `ChatProviderOrchestrator.css`, iframe loading placeholder in `iframe-main.jsx`. **Status:** DONE (ccc454f)
 - **Done when:** sent image/video/PDF, retry button, error fallback, loading states all quiet-palette Hairline; reduced-motion respected.
 - **PR #662 note:** `ErrorBoundary.jsx`/`.css` actually live at `src/components/ErrorBoundary.jsx` (not `src/components/chat/`) — corrected path, same files. Provider `message.files` drop (StreamingChatProvider/HTTPChatProvider) means the in-thread attachment preview is unreachable at runtime — flagged, not fixed (frozen functionality, separate item). Reachable-but-ephemeral states (provider loading, iframe loading/error, error boundary, retry button) plus the unreachable attachment previews verified via a throwaway static-markup Playwright screenshot against the real built CSS (not committed) rather than a live catch-in-the-act screenshot — same precedent as W4.1 (PR #650). `ChatProviderOrchestrator.css`'s `.chat-provider-loading` had a pre-existing `display: none` silently hiding its loading text; fixed as part of this restyle (CSS-only, no logic change).
 
 ### W4.5 Callout re-skin + fullpage + mobile sheet `[D6 default: ≤480 sheet]`
-- **Owns:** callout markup in `ChatWidget.jsx` + `ChatWidget.css`, fullpage-mode rules, mobile-sheet rules in `hairline-shell.css`. **Status:** TODO
+- **Owns:** callout markup in `ChatWidget.jsx` + `ChatWidget.css`, fullpage-mode rules, mobile-sheet rules in `hairline-shell.css`. **Status:** DONE (5f5d8b7)
 - **Done when:** callout doesn't clash with Hairline (launcher itself untouched); fullpage mode renders the new shell edge-to-edge; ≤480 full-screen sheet per spec (host-side breakpoint lands in W6.1).
 
 ### W4.6 Scheduling page `[D8]`
@@ -173,22 +184,31 @@
 
 ## Phase 5 — Net-new features (each its own mini-project; gated on decisions)
 
-- **W5.1 Thumbs feedback backend + wiring** `[D3]` — feedback endpoint (backend repo), widget POST with message id, PII/AI-governance advisory pass FIRST. **Status:** DEFERRED (D3, Chris 2026-07-02 — thumbs are a post-flip fast-follow; copy shipped in W2.6, thumbs render inert)
+- **W5.1 Thumbs feedback backend + wiring** `[D3]` — feedback endpoint (backend repo), widget POST with message id, PII/AI-governance advisory pass FIRST. **Status:** DEFERRED (D3, Chris 2026-07-02 — thumbs are a post-flip fast-follow; copy shipped in W2.6, thumbs render inert). **Design agreed (Chris, 2026-07-03)** — Anthropic-style feedback capture, Picasso-shaped:
+  - **Thumbs-up records silently** — no modal; at most a brief inline "Thanks for the feedback" confirm mirroring the W2.6 "Copied" pattern.
+  - **Thumbs-down opens a small optional sheet** — category dropdown (optional) + free-text (optional), Cancel/Submit; dismissing without input still records the bare thumbs-down.
+  - **Categories map to Picasso failure modes, not Anthropic's** — actionable by a tenant admin, e.g. *Answer was wrong* / *Didn't answer my question* / *Couldn't find what I was looking for* / *Something looked broken* (final copy at build time). Each points at a fix class: KB gap, CTA coverage, config, or UI bug.
+  - **Data minimization (the load-bearing decision):** the POST carries ONLY the rated exchange — the user question + the rated reply — plus message id, category, and free-text. NEVER the whole conversation (transcripts can contain names/phones/family/foster-care details; this is squarely in CLAUDE.md's PII review triggers).
+  - **Explicit disclosure microcopy in the sheet** (what is sent, to whom), modeled on Anthropic's "submitting this report will send…" line but scoped to the rated exchange.
+  - **Per-tenant feedback store** (tenant separation; retention set during the advisory pass). Mobile renders the sheet within the ≤480 full-screen tier.
+  - **Consumption scope:** analytics/triage (per-tenant thumbs-down rate, per-topic slices, human triage queue) + regression eval sets (downvoted exchanges replayed on prompt/model/KB changes). NO model training — Bedrock models are frozen; the loop tunes KB/config/prompts.
+  - This design is the **input to** the PII/AI-governance advisory gate, not a substitute for it — the gate still runs first and may amend it.
 - **W5.2 Voice recording** `[D4]` — capture UI per spec + transcription backend. **Status:** BLOCKED (D4; default = mic hidden at flip)
 - **W5.3 Offline sync** `[D5]` — **Status:** BLOCKED (D5; default = row omitted)
 
 ## Phase 6 — Flip (sequential)
 
 ### W6.1 Host layer dims + breakpoint
-- **Owns:** `src/widget-host.js` (expandedWidth 380, expandedHeight min(640,100vh−48px), mobile sheet ≤480 `[D6]`, edge-mode removal `[D1 default]`). **Status:** TODO — after P2–P4 complete
+- **Owns:** `src/widget-host.js` (expandedWidth 380, expandedHeight min(640,100vh−48px), mobile sheet ≤480 `[D6]`, edge-mode removal `[D1 default]`). **Status:** DONE (3c5c96e)
 - **Done when:** open/close/resize verified on staging across desktop/mobile viewports; postMessage protocol unchanged except retired SET_EDGE_MODE `[D1]`.
+- **D1 + D6 defaults applied**: edge/adaptive-height mode fully retired (`isActive`/`activateSession`/`deactivateSession`/`activeHeight`/all `SET_EDGE_MODE` sends removed — grep-confirmed clean in `widget-host.js`); old 768/1024 mobile/tablet tiers retired in favor of a single ≤480 full-screen-sheet breakpoint (viewports in the old 768–1024 "tablet" range now render at the desktop 380px panel). Verified on the dev harness (desktop + ≤480 mobile via live Playwright resize against `test-dynamic.html?t=my87674d777bf9`) — staging verification pending merge. `iframe-main.jsx`'s `SET_EDGE_MODE` case handler and `theme.css`'s `.edge-mode` rules are now unreachable dead code (no sender remains); left in place — W6.1 owns only `widget-host.js` — flagged for W6.2/W6.6 cleanup.
 
 ### W6.2 Old-system deletion
-- **Owns:** delete `theme.css`, `useCSSVariables.js`, CSSVariablesProvider path, avatar pipeline, feature-display var machinery, Montserrat/Poppins leftovers; retire legacy `--*` names. **Status:** TODO — after W6.1
+- **Owns:** delete `theme.css`, `useCSSVariables.js`, CSSVariablesProvider path, avatar pipeline, feature-display var machinery, Montserrat/Poppins leftovers; retire legacy `--*` names. **Status:** REVERTED — first attempt (#672, 38fd567) was reverted. It deleted theme.css/useCSSVariables assuming full migration, but the widget still depended on theme.css for base layout/padding, the launcher (`.chat-toggle-button`, out-of-scope/reused), the footer (`.chat-footer*`), sender-label positioning, and the orphaned `chat-header-spacer`/`conversation-header`/`input-container`/`message-count`/`state-panel-header` — all broke on staging. **Redo prerequisite:** first migrate EVERY theme.css-dependent surface to Hairline sheets (audit all class + element + descendant + pseudo + @media rules, not just class selectors), gate on a real per-screen visual comparison vs the Turn 10 mocks, THEN delete. NB: deleting theme.css is cleanup, NOT a flip prerequisite — coexistence already delivers the Hairline design.
 - **Done when:** grep proves zero references to deleted vars/files; bundle size drop recorded; full jest green; every screen re-verified on staging post-deletion (the deletion PR is its own regression gate).
 
 ### W6.3 Per-tenant verification matrix
-- **Owns:** one-off Playwright script under `Sandbox/` (screenshot: tenant × {welcome, thread+CTAs, form, scheduling, settings, privacy, composer states} on staging). **Status:** TODO — after W6.2
+- **Owns:** one-off Playwright script under `Sandbox/` (screenshot: tenant × {welcome, thread+CTAs, form, scheduling, settings, privacy, composer states} on staging). **Status:** FIDELITY AUDIT DONE (2026-07-03) + fixes PR'd — property-level audit of every Turn 10 mock screen + unmocked surfaces against a same-origin local build (Atlanta Angels reference config via the dev `PICASSO_CONFIG_PATH` override) + live staging E2E. Core verdict: token ramp, type scale, spacing, and per-screen anatomy are spec-exact (settings type included — the "looks small" impression was the 340px mock canvas's ~2× display scaling; measured 13/12.5/11/10px per spec). 7 defects found + fixed (audit-fixes PR): F1 launcher toggle overlaid the open panel and INTERCEPTED Send clicks; F2 footer never restyled (old white band/blue border/S3-hotlinked logo) → spec powered-by + bundled mark; F3 desktop shell chrome (border/radius/shadow/inset) permanently zeroed because the ≤480 media query matched the 380px iframe — replaced with host-driven `iframe-mobile` gating; F4 empty menu card rendered a bare border box; F5 wordmark/sender-label ignored top-level `chat_title`; F6 fullpage mode rendered blank (isOpen init); F7 "Cancel Form" casing. Non-defects (documented): row-arrow full-accent color = bundle-prevails resolution; privacy fine-print hidden without `privacy_notice_url` = W3.4 decision. Remaining for sign-off: Chris eyeball pass on staging post-merge; per-REAL-tenant matrix still applies at the flip window (chip emoji/Title-Case labels confirmed live on the staging config = W6.4 content-pass item).
 - **Done when:** every real tenant config renders every screen without visual defects; Chris eyeball sign-off on the screenshot set.
 
 ### W6.4 Flip-window config passes

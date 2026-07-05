@@ -145,6 +145,33 @@
   color: var(--ink-message-user);
 }
 
+/* The LIVE-send path wraps user text in the same `.streaming-formatted`
+   markdown wrapper bot replies use
+   (`<div class="streaming-formatted"><p>…</p></div>`), so the card's inner
+   <p> picks up paragraph margins the card's spec padding (10px 13px)
+   doesn't budget for — a one-line user bubble rendered ~75px tall instead
+   of ~42px (W6.3 follow-up, Chris's mobile report 2026-07-03; the audit's
+   session-restore seeding stored plain text, which is why it slipped
+   past). The bot side already pins its own paragraph rhythm
+   (`.hairline-message--bot .streaming-formatted p` below); this is the
+   user-card counterpart: flush margins so the card hugs its content, with
+   a modest gap kept between paragraphs if a user ever sends multiple.
+
+   Coexistence override (documented `!important` exception, same rationale
+   and selector shape as the bot-side one below): theme.css's
+   showcase-exclusion group — `.streaming-formatted p:not(×3)` /
+   `.message-text p:not(×3)` at (0,4,1) and `div.streaming-formatted
+   p:not(×3)` at (0,4,2), all `margin: 16px !important` — outranks any
+   plain-specificity rule, so this must be ≥(0,5,1) + !important (verified
+   live by enumerating every matching margin rule). Dies with theme.css. */
+.hairline-message.hairline-message--user .hairline-message-group .hairline-message-card .streaming-formatted p {
+  margin: 0 !important;
+}
+
+.hairline-message.hairline-message--user .hairline-message-group .hairline-message-card .streaming-formatted p + p {
+  margin-top: var(--space-markdown-block-gap) !important;
+}
+
 /* ============================================================
    4. BOT MESSAGE — plain body text, no bubble/card, no avatar
    Source: DESIGN_SPEC.md screen 3 "plain body text 13.5px/1.6 --ink-body".
@@ -402,19 +429,9 @@
   color: var(--tenant-accent);
 }
 
-/* Emphasized row — DESIGN_SPEC.md: "primary suggestion row emphasized —
-   --tenant-tint fill, 700 weight, --tenant-accent-deep text; other rows
-   standard." Bundle confirms the arrow stays --tenant-accent (unchanged
-   from the standard row) rather than switching to accent-deep. */
-.hairline-suggestion-row--primary {
-  background: var(--tenant-tint);
-  font-weight: 700;
-  color: var(--tenant-accent-deep);
-}
-
-.hairline-suggestion-row--primary:hover:not(:disabled) {
-  background: var(--tenant-tint);
-}
+/* The mock's emphasized primary row (tint fill at rest) was RETIRED by spec
+   amendment 7 (Chris, 2026-07-04): a resting tint reads as a hover/selected
+   state. All rows rest identical; the tint appears only on :hover above. */
 
 @media (prefers-reduced-motion: reduce) {
   .hairline-suggestion-row {
@@ -1029,3 +1046,112 @@
 }
 
 /* ==================== END W4.2 (in-chat scheduling) ==================== */
+
+/* ============================================================
+   W2.7b PLAIN CTA BUTTON — restyle of CTAButton.jsx's default export
+   Follow-up to W2.7 (merged): W2.7 restyled `CTAButtonGroup`/`SuggestionRow`
+   (MessageBubble's suggestion-card path) but deliberately left the PLAIN
+   default `CTAButton` export on the old `.cta-button`/`.cta-primary`/
+   `.cta-secondary` pill look, because that export's only live consumer,
+   ShowcaseCard.jsx, was still BLOCKED on decision D2 at the time. D2 is now
+   resolved (W4.3, keep + restyle), so this closes that gap.
+
+   Vocabulary: Turn 10 has no standalone CTA-button mock — ShowcaseCard is
+   itself an unmocked surface (HAIRLINE_REDESIGN_MAPPING.md §0 case 2 / §4).
+   ShowcaseCard renders exactly one primary CTA (full-width, prominent) and
+   zero or more secondary CTAs (compact, wrapped in a row) — see
+   hairline-showcase.css's `.hairline-showcase-actions`/
+   `.hairline-showcase-secondary-actions` container rules (W4.3, unchanged
+   here). That "one decisive full-width action + lighter secondary actions"
+   shape is identical to the conversational-forms submit/cancel pair
+   (hairline-forms.css `.hairline-form-submit`/`.hairline-form-cancel`,
+   W4.1) — reused verbatim (solid `--tenant-accent` fill for primary,
+   transparent `--hairline`-bordered button for secondary) rather than
+   inventing a third button recipe. Flagged for the design-review gate, same
+   as W4.1/W4.3's judgment calls.
+
+   New exclusive class names (`.hairline-cta*`) rather than restyling
+   `.cta-button`/`.cta-primary`/`.cta-secondary` in place — same precedent as
+   every other Hairline file in this codebase (hairline-shell.css,
+   hairline-forms.css, this file's own W2.2/W2.7 sections): CTAButton.jsx
+   now renders exclusively under `.hairline-cta*`, so theme.css's
+   `.cta-button` rules simply have no matching elements left here — no
+   `!important` fights, no coexistence risk with old pill styling.
+
+   FROZEN: dispatch (`onClick(cta)`, `emitAnalyticsEvent`) and the
+   `_position`/action-fallback contract live in CTAButton.jsx, untouched by
+   this file — see that component's header comment.
+   ============================================================ */
+.hairline-cta {
+  box-sizing: border-box;
+  font-family: inherit;
+  font-size: var(--type-menu-row-size);
+  font-weight: var(--type-menu-row-weight);
+  cursor: pointer;
+  transition:
+    background-color var(--duration-fill) var(--ease-ui),
+    border-color var(--duration-fill) var(--ease-ui),
+    color var(--duration-fill) var(--ease-ui);
+}
+
+.hairline-cta:focus-visible {
+  outline: 2px solid var(--tenant-accent);
+  outline-offset: 2px;
+}
+
+.hairline-cta:disabled {
+  cursor: not-allowed;
+}
+
+/* Primary — same recipe as .hairline-form-submit (W4.1): solid fill,
+   full-width (ShowcaseCard mounts this as the sole child of a flex-column
+   container, so 100% reproduces the mock's "full-width, prominent" call
+   out in ShowcaseCard.jsx's header comment). */
+.hairline-cta--primary {
+  width: 100%;
+  padding: 11px 16px;
+  background: var(--tenant-accent);
+  color: var(--surface-raised);
+  border: none;
+  border-radius: var(--radius-card);
+}
+
+.hairline-cta--primary:hover:not(:disabled) {
+  background: var(--tenant-accent-deep);
+}
+
+.hairline-cta--primary:disabled {
+  background: var(--hairline);
+  color: var(--ink-faint);
+}
+
+/* Secondary — same recipe as .hairline-form-cancel (W4.1): transparent,
+   outlined, auto-width (ShowcaseCard wraps these in a flex-row container,
+   matching "smaller, in a row" from ShowcaseCard.jsx's header comment). */
+.hairline-cta--secondary {
+  padding: 8px 16px;
+  background: transparent;
+  color: var(--ink-soft);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-card);
+}
+
+.hairline-cta--secondary:hover:not(:disabled) {
+  background: var(--tenant-tint);
+  border-color: var(--hairline-strong);
+  color: var(--ink);
+}
+
+.hairline-cta--secondary:disabled {
+  color: var(--ink-faint);
+  border-color: var(--hairline);
+  background: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hairline-cta {
+    transition: none;
+  }
+}
+
+/* ==================== END W2.7b (plain CTA button) ==================== */

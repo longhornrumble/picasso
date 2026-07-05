@@ -91,3 +91,6 @@ test-*.html
 !public/test-staging.html
 # In-source assets (icons, powered-by mark)
 !src/assets/**
+# Bundled MyRecruiter powered-by mark (Hairline footer, W6.3 F2) — served
+# from the dist root alongside fonts; esbuild copies it at build time
+!public/myrecruiter-mark.png

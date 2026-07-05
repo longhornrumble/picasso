@@ -14,6 +14,7 @@ import AttachmentMenu from "./AttachmentMenu";
 import MessageBubble from "./MessageBubble";
 import TypingIndicator from "./TypingIndicator";
 import SettingsView from "./SettingsView";
+import PrivacyView from "./PrivacyView";
 import WelcomeView from "./WelcomeView";
 import QuestionsOverlay from "./QuestionsOverlay";
 import FormFieldPrompt from "../forms/FormFieldPrompt";
@@ -23,7 +24,7 @@ import { sanitizeHTML } from "../../utils/security";
 import { _storeGet, _storeSet, _storeRemove } from "../../context/shared/messageHelpers";
 
 function ChatWidget() {
-  const { messages, isTyping, renderMode, recordFormCompletion } = useChat();
+  const { messages, isTyping, hasStreamedContent, renderMode, recordFormCompletion } = useChat();
   const { config } = useConfig();
   const { isFormMode, isSuspended, cancelForm, isFormComplete, completedFormData, completedFormConfig, currentFormId, clearCompletionState } = useFormMode();
 
@@ -109,7 +110,17 @@ function ChatWidget() {
   // Chat state with sessionStorage persistence (matches conversation persistence)
   const [isOpen, setIsOpen] = useState(() => {
     const widgetConfig = widgetBehavior;
-    
+
+    // Fullpage/schedule standalone pages always render open (W6.3 audit fix
+    // F6): iframe-main.jsx adds body.fullpage-mode + chat-open at boot, but
+    // the chat-open body-class sync effect below strips it again when this
+    // state initializes closed — and fullpage CSS hides the launcher, so
+    // the page rendered blank (regression vs the pre-Hairline fullpage,
+    // whose always-in-DOM .chat-container was shown by fullpage CSS alone).
+    if (typeof document !== "undefined" && document.body.classList.contains("fullpage-mode")) {
+      return true;
+    }
+
     if (!widgetConfig.remember_state) {
       return widgetConfig.start_open || false;
     }
@@ -140,6 +151,10 @@ function ChatWidget() {
   const [calloutDismissed, setCalloutDismissed] = useState(false);
   const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
   const [showStateManagement, setShowStateManagement] = useState(false);
+  // W3.4: whether Settings' "Privacy & compliance" row has drilled into
+  // PrivacyView. Scoped inside `showStateManagement` (only meaningful while
+  // Settings is open) — see the render block below for how the two combine.
+  const [showPrivacy, setShowPrivacy] = useState(false);
   
   // Track last read message and user interaction
   const [lastReadMessageIndex, setLastReadMessageIndex] = useState(() => {
@@ -615,20 +630,35 @@ function ChatWidget() {
             {isOpen ? <X size={24} /> : <MessagesSquare size={24} />}
           </button>
           
-          {/* Notification badge */}
+          {/* Notification badge — Hairline redesign (W4.5): re-skinned via a
+              new `.hairline-badge` className (styles in ChatWidget.css) so
+              old theme.css's `.chat-notification-badge` rules (still
+              coexisting, several `!important`) simply no longer match —
+              same class-swap strategy hairline-shell.css used for the
+              shell/header. State/logic above is unchanged. */}
           {!isOpen && unreadCount > 0 && (
-            <div className="chat-notification-badge">
+            <div className="hairline-badge">
               {unreadCount}
             </div>
           )}
-          
-          {/* 🔧 FIXED: Callout with proper state management and text override */}
+
+          {/* Callout teaser — Hairline redesign (W4.5): re-skinned via new
+              `.hairline-callout`/`.hairline-callout-text` classNames (styles
+              in ChatWidget.css), same class-swap rationale as the badge
+              above. The launcher button itself (`.chat-toggle-button`
+              above) is explicitly OUT OF SCOPE this phase
+              (HAIRLINE_WORKPLAN.md W4.5) — untouched. All
+              state/handlers/dismiss semantics below are UNCHANGED (frozen —
+              HAIRLINE_WORKPLAN.md ground rule #2); only the markup/classNames
+              changed (the old `.chat-callout-header` wrapper div, which only
+              ever held these same two children, is folded away since
+              `.hairline-callout` is the flex row directly). */}
           {showCallout && (
             <div
-              className={`chat-callout clickable ${showCallout ? 'visible' : ''}`}
+              className="hairline-callout"
               onClick={(e) => {
                 // If clicking the close button, don't open the widget
-                if (e.target.closest('.chat-callout-close')) {
+                if (e.target.closest('.hairline-callout-dismiss')) {
                   return;
                 }
                 // Open the widget when clicking anywhere else on the callout
@@ -637,12 +667,15 @@ function ChatWidget() {
                 }
               }}
             >
-              <div className="chat-callout-header">
-                <div className="chat-callout-text" dangerouslySetInnerHTML={{ __html: sanitizeHTML(calloutText) }}/>
-                <button onClick={handleCalloutClose} className="chat-callout-close">
-                  <X size={14} />
-                </button>
-              </div>
+              <div className="hairline-callout-text" dangerouslySetInnerHTML={{ __html: sanitizeHTML(calloutText) }}/>
+              <button
+                type="button"
+                onClick={handleCalloutClose}
+                className="hairline-icon-button hairline-callout-dismiss"
+                aria-label="Dismiss"
+              >
+                <X size={13} strokeWidth={2} aria-hidden="true" />
+              </button>
             </div>
           )}
         </div>
@@ -733,43 +766,85 @@ function ChatWidget() {
                   />
                 </div>
               )}
-              {isTyping && !isFormMode && <TypingIndicator />}
+              {/* Typing indicator = the PRE-reply state only (DESIGN_SPEC.md
+                  "Loading": dots pulse under the wordmark label while
+                  waiting). Once the reply's first chunk paints, the
+                  streaming message group above carries the wordmark label —
+                  keeping the indicator mounted showed a SECOND label + dots
+                  under the answer for the whole stream (Chris's mobile
+                  report 2026-07-03). `hasStreamedContent` comes from
+                  StreamingChatProvider (first-chunk latch, reset per send);
+                  the HTTP fallback provider doesn't define it (undefined →
+                  indicator behaves as before, correct for non-streamed
+                  replies that arrive whole). */}
+              {isTyping && !isFormMode && !hasStreamedContent && <TypingIndicator />}
             </div>
           )}
 
-          <div className="chat-footer-container">
+          {/* Hairline redesign (W6.3 audit fix F2): class-swapped from the old
+              `chat-footer-container` so theme.css's white band + blue-tinted
+              border-top + bottom-radius rules stop matching (same class-swap
+              strategy as the shell/header/badge/callout). Styles live in
+              hairline-composer.css; the inner `.input-container` keeps its
+              theme.css 6px 12px padding (load-bearing for composer position,
+              unchanged). */}
+          <div className="hairline-footer-container">
             <div className="input-container">
               <InputBar input={input} setInput={setInput} onPlusClick={() => setShowAttachmentMenu(true)} />
             </div>
-            
-            <ChatFooter brandText={config?.branding?.brandText || "AI"} />
+
+            <ChatFooter />
             {showAttachmentMenu && config?.features?.photo_uploads !== undefined && (
               <AttachmentMenu onClose={() => setShowAttachmentMenu(false)} />
             )}
           </div>
 
-          {/* Hairline redesign (W3.3): Settings full-widget takeover.
-              Rendered only while open (not always-mounted), so it plays its
-              own entrance animation each time; the header/chat-window/
-              footer above stay mounted underneath the whole time — that's
-              what makes "back preserves scroll" free, since nothing above
-              ever unmounts while Settings is showing. Replaces
+          {/* Hairline redesign (W3.3/W3.4): Settings full-widget takeover,
+              plus its own nested Privacy & compliance page (W3.4). Rendered
+              only while open (not always-mounted), so it plays its own
+              entrance animation each time; the header/chat-window/footer
+              above stay mounted underneath the whole time — that's what
+              makes "back preserves scroll" free, since nothing above ever
+              unmounts while Settings/Privacy is showing. Replaces
               StateManagementPanel's old modal render as the settings icon's
               destination (StateManagementPanel.jsx itself is left on disk,
-              unreferenced, for W6.2 to delete). */}
-          {showStateManagement && (
-            <SettingsView
-              onBack={() => setShowStateManagement(false)}
-              onClose={() => {
-                // Settings' ✕ closes the whole widget, same as the main
-                // header's ✕ (DESIGN_SPEC.md Interactions: "✕ in header
-                // closes"). Also reset showStateManagement so reopening the
-                // widget lands back on the thread, not mid-settings.
-                setShowStateManagement(false);
-                handleToggle();
-              }}
-            />
-          )}
+              unreferenced, for W6.2 to delete).
+
+              Settings and Privacy are mutually exclusive AT RENDER TIME
+              (`showPrivacy` nested inside the `showStateManagement` gate):
+              opening Privacy from Settings' "Privacy & compliance" row
+              unmounts SettingsView and mounts PrivacyView in its place, at
+              the same z-index tier — not stacked on top of it. That keeps
+              each view's own ESC listener independent (only one is ever
+              mounted at a time), so a single ESC press pops exactly one
+              level (Privacy -> Settings -> thread), matching
+              DESIGN_SPEC.md's "back returns to settings" for this page. */}
+          {showStateManagement &&
+            (showPrivacy ? (
+              <PrivacyView
+                onBack={() => setShowPrivacy(false)}
+                onClose={() => {
+                  // Same "close the whole widget" contract as Settings' own
+                  // ✕ below.
+                  setShowPrivacy(false);
+                  setShowStateManagement(false);
+                  handleToggle();
+                }}
+              />
+            ) : (
+              <SettingsView
+                onBack={() => setShowStateManagement(false)}
+                onOpenPrivacy={() => setShowPrivacy(true)}
+                onClose={() => {
+                  // Settings' ✕ closes the whole widget, same as the main
+                  // header's ✕ (DESIGN_SPEC.md Interactions: "✕ in header
+                  // closes"). Also reset showStateManagement so reopening the
+                  // widget lands back on the thread, not mid-settings.
+                  setShowStateManagement(false);
+                  handleToggle();
+                }}
+              />
+            ))}
 
           {/* Hairline redesign (W3.2): Common questions overlay. Rendered
               only while open, same covers-the-whole-shell approach as

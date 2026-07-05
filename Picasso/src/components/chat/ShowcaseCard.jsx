@@ -29,16 +29,15 @@ import CTAButton from './CTAButton';
  * `src/styles/hairline-showcase.css` (was theme.css lines 4665-4829 — not
  * ported, per the fidelity rule).
  *
- * Known gap (flagged, not fixed here): `CTAButton.jsx`'s default export
- * (used below, unchanged) still renders the pre-Hairline `.cta-button`/
- * `.cta-primary`/`.cta-secondary` pill look. W2.7 (merged) deliberately left
- * that export untouched — its own header comment notes Showcase was
- * BLOCKED on D2 at the time, so the suggestion-card menu-row restyle only
- * reaches `CTAButtonGroup`/`SuggestionRow`, not the plain `CTAButton` this
- * file calls directly. Now that D2 = keep+restyle, the showcase CTA rows
- * are still old-pill-styled inside this new hairline card — expected
- * coexistence, not a defect of this item (`CTAButton.jsx` is W2.7's file,
- * out of W4.3's ownership). Flagged in the PR for a follow-up pass.
+ * Gap closed (W2.7b, follow-up to this item): `CTAButton.jsx`'s default
+ * export (used below, unchanged call site) previously still rendered the
+ * pre-Hairline `.cta-button`/`.cta-primary`/`.cta-secondary` pill look —
+ * W2.7 (merged) deliberately left that export untouched because Showcase
+ * was BLOCKED on D2 at the time. Now that D2 = keep+restyle, W2.7b restyled
+ * the plain `CTAButton` export to `.hairline-cta`/`.hairline-cta--primary`/
+ * `.hairline-cta--secondary` (forms submit/cancel vocabulary) so the CTA
+ * row below matches this card's Hairline treatment. Dispatch/`_position`
+ * contract unchanged.
  */
 export default function ShowcaseCard({ showcaseCard, onCTAClick, className = '' }) {
   if (!showcaseCard) return null;

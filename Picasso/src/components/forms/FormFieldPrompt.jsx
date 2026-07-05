@@ -464,14 +464,15 @@ export default function FormFieldPrompt({ onCancel }) {
         )}
       </div>
 
-      {/* Cancel button */}
+      {/* Cancel button — sentence case per DESIGN_SPEC.md's casing rule
+          (W6.3 audit fix F7) */}
       <div className="hairline-form-actions">
         <button
           className="hairline-form-cancel"
           onClick={handleCancel}
           type="button"
         >
-          Cancel Form
+          Cancel form
         </button>
       </div>
     </div>

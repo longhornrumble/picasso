@@ -17,16 +17,34 @@ function emitAnalyticsEvent(eventType, payload) {
  * CTAButton Component
  * Renders context-aware CTA buttons injected by the backend response_enhancer
  * Supports different action types: form_trigger, external_link, info_request
- * Styles are defined in theme.css
  *
- * NOTE (Hairline W2.7): this pill-button renderer is used directly (outside
- * CTAButtonGroup) by ShowcaseCard.jsx — the Showcase card is separate
- * HAIRLINE_WORKPLAN.md scope (W4.3, BLOCKED on decision D2, not yet
- * design-reviewed against the Hairline mocks). Its rendering is left
- * UNCHANGED here on purpose so the W2.7 suggestion-card restyle below does
- * not leak into that out-of-scope surface. The new Hairline menu-card row
- * treatment lives only in `CTAButtonGroup` (via the `SuggestionRow` renderer
- * below), which is MessageBubble's suggestion-card path exclusively.
+ * Hairline redesign (W2.7b): this is the PLAIN default export — its only
+ * live consumer is `ShowcaseCard.jsx` (primary CTA full-width/prominent,
+ * secondary CTAs smaller/in-a-row — see ShowcaseCard's `.hairline-showcase-
+ * actions`/`.hairline-showcase-secondary-actions` container rules in
+ * hairline-showcase.css). W2.7 (merged) restyled `CTAButtonGroup`/
+ * `SuggestionRow` below (MessageBubble's suggestion-card path) but
+ * deliberately left THIS export on the old `.cta-button`/`.cta-primary`/
+ * `.cta-secondary` pill look because Showcase was still BLOCKED on D2 at
+ * the time. D2 is now resolved (keep + restyle, W4.3 done), so this export
+ * follows.
+ *
+ * Vocabulary choice: Turn 10 has no standalone CTA-button mock (the
+ * showcase card itself is an unmocked surface, HAIRLINE_REDESIGN_MAPPING.md
+ * §0 case 2 / §4). The closest established Hairline precedent for a
+ * "primary/secondary pair of decisive-action buttons" is the conversational
+ * forms submit/cancel pair (hairline-forms.css `.hairline-form-submit`/
+ * `.hairline-form-cancel`, W4.1) — a solid `--tenant-accent` fill for the
+ * primary action, a transparent/outlined `--hairline`-bordered button for
+ * the secondary action — which also matches how ShowcaseCard already lays
+ * out this button (primary full-width, secondary compact-in-a-row). Reused
+ * verbatim rather than inventing a third button recipe. Flagged for the
+ * design-review gate, same as W4.1/W4.3's judgment calls.
+ *
+ * FROZEN: click dispatch (`emitAnalyticsEvent`, `onClick(cta)`), the
+ * `_position` styling contract, and the action-based fallback. Only the
+ * rendered classNames/markup changed — see `ctaActionContract.test.jsx`
+ * (untouched, still green) for the dispatch-contract guard.
  */
 export default function CTAButton({ cta, onClick, disabled = false }) {
   if (!cta) return null;
@@ -48,19 +66,21 @@ export default function CTAButton({ cta, onClick, disabled = false }) {
 
   // Determine button style class based on position metadata
   // Backend provides _position metadata: 'primary' or 'secondary'
-  // Primary CTAs get brand color (cta-primary)
-  // Secondary CTAs get outlined style (cta-secondary)
+  // Primary CTAs get the filled treatment (hairline-cta--primary)
+  // Secondary CTAs get the outlined treatment (hairline-cta--secondary)
   // Fallback to action-based styling for backward compatibility
-  const styleClass = cta._position === 'primary' ? 'cta-primary' :
-                    cta._position === 'secondary' ? 'cta-secondary' :
-                    cta.action === 'form_trigger' || cta.action === 'start_form' ? 'cta-primary' :
-                    'cta-secondary';
+  const isPrimary = cta._position === 'primary' ? true :
+                    cta._position === 'secondary' ? false :
+                    cta.action === 'form_trigger' || cta.action === 'start_form' ? true :
+                    false;
+  const styleClass = isPrimary ? 'hairline-cta--primary' : 'hairline-cta--secondary';
 
   const buttonLabel = cta.label || cta.text;
 
   return (
     <button
-      className={`cta-button ${styleClass}`}
+      type="button"
+      className={`hairline-cta ${styleClass}`}
       onClick={handleClick}
       disabled={disabled}
       data-action={cta.action}
@@ -80,15 +100,18 @@ export default function CTAButton({ cta, onClick, disabled = false }) {
  * Anatomy per the mock (bundle `10a In-flight`, verified against the literal
  * markup — see hairline-thread.css's W2.7 section header comment for the
  * documented divergence from DESIGN_SPEC.md's Design Tokens table): label
- * left, arrow (`--tenant-accent`) right. The row whose `_position ===
- * 'primary'` is emphasized — tint fill, 700 weight, `--tenant-accent-deep`
- * text; every other row is standard (`--ink`, 600 weight, no fill).
+ * left, arrow (`--tenant-accent`) right. Every row renders IDENTICAL at
+ * rest — the mock's emphasized primary row (tint fill at rest) was retired
+ * by spec amendment 7 (Chris, 2026-07-04): a resting tint reads as a
+ * hover/selected state; the tint now appears only on actual :hover.
+ * `_position` remains dispatch metadata (frozen contract) — it just no
+ * longer drives a visual class here.
  *
  * Dispatch is byte-identical to the pre-Hairline pill button: same
  * `emitAnalyticsEvent(CTA_CLICKED, …)` payload, same `onClick(cta)` call
  * with the untouched cta object. Only the rendered markup/classes changed.
  */
-function SuggestionRow({ cta, onClick, disabled, isPrimary }) {
+function SuggestionRow({ cta, onClick, disabled }) {
   if (!cta) return null;
 
   const handleClick = () => {
@@ -112,7 +135,7 @@ function SuggestionRow({ cta, onClick, disabled, isPrimary }) {
   return (
     <button
       type="button"
-      className={`hairline-suggestion-row${isPrimary ? ' hairline-suggestion-row--primary' : ''}`}
+      className="hairline-suggestion-row"
       onClick={handleClick}
       disabled={disabled}
       data-action={cta.action}
@@ -165,7 +188,6 @@ export function CTAButtonGroup({ ctas = [], onCtaClick, disabled = false, clicke
         <SuggestionRow
           key={cta.id || `cta-${index}`}
           cta={cta}
-          isPrimary={cta._position === 'primary'}
           onClick={onCtaClick}
           disabled={disabled}
         />

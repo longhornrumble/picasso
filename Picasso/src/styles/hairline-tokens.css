@@ -1,13 +1,12 @@
 /**
  * hairline-tokens.css — Hairline redesign fixed token sheet (W1.2).
  *
- * Definitions only. A single `:root` block — no component/class selectors,
- * no `@media`, no consumer of these tokens yet. Nothing in the live widget
- * reads these custom properties today, so this file has ZERO visual effect
- * on its own; old `theme.css` continues to drive everything until each
- * surface migrates in Phase 2+ (coexistence rule, HAIRLINE_WORKPLAN.md
- * ground rule #8 — this new `--tenant-*`/`--ink-*`/etc. namespace must not,
- * and does not, collide with old `--primary-color`-era names).
+ * Definitions only: the base `:root` block plus the MOBILE READING SCALE
+ * override blocks at the end of the file (product amendment 4 — the one
+ * place this sheet re-declares token VALUES for a context; still no
+ * component styling here). The `--tenant-*`/`--ink-*`/etc. namespace must
+ * not, and does not, collide with old `--primary-color`-era theme.css names
+ * (coexistence rule, HAIRLINE_WORKPLAN.md ground rule #8).
  *
  * Sources (every value below traces to one of these):
  *   - design/hairline/DESIGN_SPEC.md — "Widget Shell", "Design Tokens"
@@ -58,7 +57,16 @@
 
   /* ==========================================================
      2. TYPE SCALE
-     Source: DESIGN_SPEC.md § "Design Tokens" > "Typography" table.
+     Source: DESIGN_SPEC.md § "Design Tokens" > "Typography" table, AS
+     AMENDED by product amendment (4) (Chris, 2026-07-03 — researched
+     norms pass; see the amendment block in DESIGN_SPEC.md): desktop
+     reading roles sit +0.5px over the mock values (body 14 — embedded
+     desktop messengers run ~14-15px; the mock's 13.5 was drawn/reviewed
+     at desktop distance on a 340px canvas), and the MOBILE full-screen
+     sheet gets its own reading scale (override block at the end of this
+     file) — body 16px per Apple HIG (17pt body) / Material 3 (16sp
+     body-large), which also puts the composer input at the 16px minimum
+     below which iOS auto-zooms the page on focus.
      Sizes / weights / letter-spacing / line-heights only — per-style TEXT
      COLOR is a component concern (apply the ink/tenant tokens above; note
      the Typography table's "Menu row / message (user)" row names `--ink`
@@ -74,7 +82,7 @@
   --type-wordmark-tracking: 0.14em;
 
   /* Page title — "Settings", "Privacy & compliance" */
-  --type-page-title-size: 13px;
+  --type-page-title-size: 13.5px;
   --type-page-title-weight: 700;
 
   /* Greeting — "Hi there 👋" */
@@ -87,7 +95,7 @@
      scale"). The bundle's welcome-screen paragraph specifically renders at
      1.65 (bundle-only detail) — a documented per-instance variance, not a
      second token. */
-  --type-body-size: 13.5px;
+  --type-body-size: 14px;
   --type-body-weight: 400;
   --type-body-line-height: 1.6;
 
@@ -95,9 +103,9 @@
      parenthetical, resolved against the bundle: welcome-screen menu-card
      rows render at 13.5px (default); suggestion-card rows and the
      user-message card both render at the 13px "in cards" variant. */
-  --type-menu-row-size: 13.5px;
+  --type-menu-row-size: 14px;
   --type-menu-row-weight: 600;
-  --type-menu-row-compact-size: 13px;
+  --type-menu-row-compact-size: 13.5px;
   --type-menu-row-compact-line-height: 1.5; /* user-message card body text (bundle-only detail) */
 
   /* Sender label — bot wordmark label above replies, "YOU" above user
@@ -107,11 +115,11 @@
   --type-sender-label-tracking: 0.12em;
 
   /* Row label — Settings rows ("Current session", "Connection", …) */
-  --type-row-label-size: 13px;
+  --type-row-label-size: 13.5px;
   --type-row-label-weight: 600;
 
   /* Row value — Settings row values ("1 message", "Online", …) */
-  --type-row-value-size: 12.5px;
+  --type-row-value-size: 13px;
   --type-row-value-weight: 400;
 
   /* Group label — "Conversation" / "Preferences" / "Your data" */
@@ -157,7 +165,12 @@
      ========================================================== */
   --space-page-margin: 24px;
   --space-page-margin-compact: 20px; /* overlay/thread contexts */
-  --space-header-padding: 18px 24px 0; /* welcome header */
+  --space-header-padding: 18px 24px 14px; /* header; 14px bottom is a product
+     amendment (Chris, 2026-07-03 — mirror the Claude app's header breathing
+     room; DESIGN_SPEC.md provenance block) over the spec's `18px 24px 0`.
+     The welcome view and the thread both carry 30px top clearance
+     (hairline-views.css / hairline-shell.css) so content at rest sits
+     below the header's 28px roll-under fade band. */
   --space-header-padding-takeover-bottom: 14px; /* takeover pages; hairline divider added by the component */
 
   --radius-card: 10px; /* menu/settings card, message cards */
@@ -227,4 +240,68 @@
   --hairline-soft: #f1ede0;
   --hairline-strong: #e7e1cf;
   --composer-border: #e3dbc6;
+}
+
+/* ============================================================
+   MOBILE READING SCALE — product amendment (4) (Chris, 2026-07-03)
+
+   The Turn 10 type scale was designed and reviewed at desktop viewing
+   distance; on a phone-in-hand it sits ~20% under what every mobile
+   chat surface uses (Apple HIG body 17pt; Material 3 body-large 16sp,
+   14sp stated minimum; iMessage/WhatsApp/Claude ~16-17px). The mobile
+   full-screen sheet therefore carries its own reading scale. Two
+   ADDITIONAL effects of body=16px here: the composer textarea (which
+   consumes --type-body-size) reaches the 16px minimum below which iOS
+   auto-zooms the page when an input is focused, and the unitless
+   line-height tokens rescale automatically.
+
+   Two selectors, same values, different delivery paths:
+   - `.iframe-mobile` — the embedded widget; the class is the HOST's
+     ≤480px verdict via SIZE_CHANGE (in-iframe media queries can't see
+     the host viewport — the desktop iframe is 380px wide).
+   - `body.fullpage-mode` under a ≤480px media query — the standalone
+     fullpage page has no widget-host to send SIZE_CHANGE, and ITS
+     document viewport IS the real device viewport, so the media query
+     is the correct primitive there.
+   Keep the two blocks identical when tuning.
+
+   Micro-chrome deliberately NOT rescaled: attach-popover rows, chip
+   metadata, "Copied" confirm, overlay/confirm titles, showcase card
+   internals — secondary chrome, still ≥10.5px.
+   ============================================================ */
+
+body[data-iframe="true"].iframe-mobile {
+  --type-body-size: 16px;
+  --type-menu-row-size: 15px;
+  --type-menu-row-compact-size: 15px;
+  --type-row-label-size: 15px;
+  --type-row-value-size: 14px;
+  --type-page-title-size: 15px;
+  --type-greeting-size: 22px;
+  --type-sender-label-size: 10px;
+  --type-group-label-size: 12px;
+  --type-wordmark-size: 12px;
+  --type-fine-print-size: 13px;
+  --type-fine-print-sm-size: 11px;
+  --type-poweredby-size: 10.5px;
+  --type-poweredby-mark-size: 11px;
+}
+
+@media (max-width: 480px) {
+  body.fullpage-mode {
+    --type-body-size: 16px;
+    --type-menu-row-size: 15px;
+    --type-menu-row-compact-size: 15px;
+    --type-row-label-size: 15px;
+    --type-row-value-size: 14px;
+    --type-page-title-size: 15px;
+    --type-greeting-size: 22px;
+    --type-sender-label-size: 10px;
+    --type-group-label-size: 12px;
+    --type-wordmark-size: 12px;
+    --type-fine-print-size: 13px;
+    --type-fine-print-sm-size: 11px;
+    --type-poweredby-size: 10.5px;
+    --type-poweredby-mark-size: 11px;
+  }
 }

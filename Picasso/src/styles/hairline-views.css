@@ -192,23 +192,8 @@ button.hairline-settings-row--button:focus-visible {
   color: var(--tenant-accent-faint);
 }
 
-.hairline-connection-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  flex: none;
-}
-
-.hairline-connection-dot.is-online {
-  background: var(--online);
-}
-
-/* DESIGN_SPEC.md Interactions: "Offline: Connection row shows gray dot" —
-   no fixed token is named for this exact dot in the Design Tokens table;
-   --ink-faint is the closest fixed "gray" ink token. */
-.hairline-connection-dot.is-offline {
-  background: var(--ink-faint);
-}
+/* Connection-dot rules removed with the Connection row (spec amendment 6,
+   Chris 2026-07-03) — see SettingsView.jsx header. */
 
 /* ==========================================================
    5. CLEAR ALL MESSAGES — default row + fine print
@@ -224,7 +209,9 @@ button.hairline-settings-row--button:focus-visible {
   border: none;
   background: transparent;
   font-family: inherit;
-  font-size: 12.5px;
+  /* Rides the row-value role so the mobile scale reaches it
+     (product amendment 4). */
+  font-size: var(--type-row-value-size);
   font-weight: 600;
   color: var(--danger);
   cursor: pointer;
@@ -327,77 +314,8 @@ button.hairline-settings-row--button:focus-visible {
   outline-offset: 2px;
 }
 
-/* ==========================================================
-   7. HISTORY DRILL-IN SUB-VIEW — unmocked capability (fidelity rule §0.2):
-   the Turn 10 bundle mocks the top-level Settings list only, not the
-   "History" row's drill-in target. Designed fresh from the same hairline
-   card/row vocabulary as section 4 above.
-   ========================================================== */
-
-.hairline-settings-history-loading,
-.hairline-settings-empty-state {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 32px 12px;
-  color: var(--ink-faint);
-  font-size: 12.5px;
-  text-align: center;
-}
-
-.hairline-settings-empty-state {
-  flex-direction: column;
-}
-
-.hairline-spin {
-  animation: hairline-settings-spin 1s linear infinite;
-}
-
-@keyframes hairline-settings-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.hairline-settings-history-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-card);
-  overflow: hidden;
-}
-
-.hairline-settings-history-item {
-  padding: var(--space-card-row-padding-settings);
-  border-bottom: 1px solid var(--hairline-soft);
-}
-
-.hairline-settings-history-list > .hairline-settings-history-item:last-child {
-  border-bottom: none;
-}
-
-.hairline-settings-history-item-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: var(--type-row-label-size);
-  font-weight: var(--type-row-label-weight);
-  color: var(--ink);
-}
-
-.hairline-settings-history-item-duration {
-  margin-top: 2px;
-  font-size: 11.5px;
-  color: var(--ink-faint);
-}
-
-.hairline-settings-history-item-summary {
-  margin-top: 4px;
-  font-size: 11.5px;
-  color: var(--ink-soft);
-}
+/* Section 7 (history drill-in sub-view) removed with the Settings History
+   row (Chris, 2026-07-03) — see SettingsView.jsx header. */
 
 /* ==========================================================
    8. REDUCED MOTION
@@ -405,10 +323,6 @@ button.hairline-settings-row--button:focus-visible {
 
 @media (prefers-reduced-motion: reduce) {
   .hairline-settings-view {
-    animation: none;
-  }
-
-  .hairline-spin {
     animation: none;
   }
 
@@ -454,7 +368,14 @@ button.hairline-settings-row--button:focus-visible {
   min-height: 0;
   overflow-y: auto;
   box-sizing: border-box;
-  padding: 34px var(--space-page-margin) 20px;
+  /* 30px top = the same clearance the thread's .chat-window carries (see
+     hairline-shell.css): the header's 28px roll-under fade band is STATIC,
+     and at 20px the greeting's ascenders sat inside its tail — the "H" in
+     "Hi there" rendered visibly blurred at rest (Chris, 2026-07-03),
+     especially at the mobile 22px greeting size. The mock's 34px
+     header->greeting rhythm becomes 44px (header 14 + view 30) — the
+     roll-under amendment's accepted cost. */
+  padding: 30px var(--space-page-margin) 20px;
 }
 
 .hairline-welcome-greeting {
@@ -629,7 +550,9 @@ button.hairline-settings-row--button:focus-visible {
   background: transparent;
   font-family: inherit;
   text-align: left;
-  font-size: 13px;
+  /* Rides the compact reading role so the mobile scale reaches it
+     (product amendment 4). */
+  font-size: var(--type-menu-row-compact-size);
   color: var(--ink-body);
   cursor: pointer;
   transition:
@@ -664,3 +587,128 @@ button.hairline-settings-row--button:focus-visible {
 }
 
 /* ==================== END W3.2 (common questions overlay) — W3.4 append below ==================== */
+
+/* ==================== W3.4: PRIVACY & COMPLIANCE PAGE ==================== */
+
+/**
+ * Source: design/hairline/DESIGN_SPEC.md "6. Privacy & compliance
+ * (`10a Privacy`)"; cross-checked against the canonical bundle
+ * (design/hairline/bundle/Chat Widget Redesigns.dc.html, Turn 10,
+ * `data-screen-label="10a Privacy"`) for the exact px values DESIGN_SPEC.md's
+ * prose leaves implicit (content padding 20px 24px, checklist row padding
+ * 12px 14px, card margin-bottom 16px). Per the fidelity rule (mapping doc
+ * §0) the bundle prevails on these specifics.
+ *
+ * Reuses `.hairline-takeover-header` / `.hairline-takeover-header-left` /
+ * `.hairline-page-title` (W3.3 section above) and `.hairline-icon-button`
+ * (hairline-shell.css) — already the shared "takeover page header" pattern
+ * (SettingsView.jsx's own HistoryListSubView reuses the same classes for its
+ * History sub-page), so this section doesn't redefine header styling.
+ *
+ * Rendered by PrivacyView.jsx as a REPLACEMENT for SettingsView within
+ * ChatWidget.jsx's `showStateManagement` gate (see that file's render
+ * comment) — Settings and Privacy are mutually exclusive at render time,
+ * same z-index tier, same reasoning `.hairline-questions-overlay`'s comment
+ * above gives for sharing that tier with `.hairline-settings-view`.
+ */
+
+.hairline-privacy-view {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  overflow: hidden;
+  font-family: var(--tenant-font-family, "Plus Jakarta Sans", system-ui, sans-serif);
+  color: var(--ink);
+  animation: hairline-privacy-slide-in var(--duration-settings-slide, 240ms) var(--ease-reveal);
+}
+
+@keyframes hairline-privacy-slide-in {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+/* Table-vs-prose divergence (same class of issue hairline-tokens.css's own
+   header comment flags, and hairline-thread.css's `--ink-message-user`
+   resolves for screen 3): DESIGN_SPEC.md's Typography table names checklist
+   row text as `--ink`, but screen 6's own prose (and the bundle) give the
+   literal hex `#334155` instead. This is that resolution for THIS screen —
+   declared locally (not reusing hairline-thread.css's `--ink-message-user`,
+   which is out of this item's file ownership) even though the value is
+   identical, per the same "declare as a token, not inlined" rule
+   hairline-tokens.css's `--poweredby-mark-ink` and hairline-thread.css's
+   local token both follow. */
+:root {
+  --ink-privacy-checklist: #334155;
+}
+
+.hairline-privacy-content {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 20px var(--space-page-margin);
+}
+
+.hairline-privacy-checklist {
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
+.hairline-privacy-checklist-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--hairline-soft);
+}
+
+.hairline-privacy-checklist-row:last-child {
+  border-bottom: none;
+}
+
+.hairline-privacy-checklist-icon {
+  flex: none;
+  color: var(--tenant-accent);
+}
+
+.hairline-privacy-checklist-text {
+  /* Rides the compact reading role so the mobile scale reaches it
+     (product amendment 4). */
+  font-size: var(--type-menu-row-compact-size);
+  color: var(--ink-privacy-checklist);
+}
+
+.hairline-privacy-fine-print {
+  margin: 0;
+  font-size: var(--type-fine-print-size);
+  font-weight: var(--type-fine-print-weight);
+  line-height: var(--type-fine-print-line-height);
+  color: var(--ink-soft);
+}
+
+.hairline-privacy-link {
+  color: var(--tenant-accent-deep);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.hairline-privacy-link:focus-visible {
+  outline: 2px solid var(--tenant-accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hairline-privacy-view {
+    animation: none;
+  }
+}
+
+/* ==================== END W3.4 (privacy & compliance page) ==================== */

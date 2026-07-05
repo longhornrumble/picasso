@@ -193,8 +193,8 @@ if (fs.existsSync(widgetFramePath)) {
 // widget.js is now built from src/widget-standalone.js with proper environment variables
 // No need to copy current-widget.js anymore
 
-// Copy test files and service worker from public directory
-const testFiles = ['test-staging.html', 'form-ui-examples.html', 'sw.js'];
+// Copy test files, service worker, and standalone assets from public directory
+const testFiles = ['test-staging.html', 'form-ui-examples.html', 'sw.js', 'myrecruiter-mark.png'];
 testFiles.forEach(file => {
   const sourcePath = path.join('public', file);
   if (fs.existsSync(sourcePath)) {

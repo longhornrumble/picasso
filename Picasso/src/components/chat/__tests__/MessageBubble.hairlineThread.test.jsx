@@ -90,6 +90,14 @@ describe('MessageBubble — Hairline thread (W2.2)', () => {
     expect(textEl.innerHTML).toContain('Hello there');
   });
 
+  test('bot sender label tolerates a top-level chat_title (no branding block) — W6.3 F5', () => {
+    // Same tolerant read as ChatHeader.jsx's wordmark (kept in lockstep):
+    // branding.chat_title first, then the mapping doc §2's top-level field.
+    setConfig({ chat_title: 'Atlanta Angels' });
+    renderBubble({ role: 'assistant', content: '<p>Hi</p>', renderMode: 'static' });
+    expect(screen.getByText('Atlanta Angels')).toHaveClass('hairline-sender-label--bot');
+  });
+
   test('bot sender label falls back to "Chat" on an old-shape config (no chat_title)', () => {
     setConfig({});
     renderBubble({ role: 'assistant', content: 'hi', renderMode: 'static' });
@@ -171,6 +179,32 @@ describe('MessageBubble — Hairline thread (W2.2)', () => {
       expect(streamEl.textContent).toContain('Hello');
       expect(streamEl.querySelector('strong')).toHaveTextContent('world');
       expect(streamEl.querySelector('.streaming-formatted')).toBeInTheDocument();
+    });
+
+    test('streaming placeholder shows NO sender label until the first text paints (W6.3 follow-up)', () => {
+      setConfig({ branding: { chat_title: 'Atlanta Angels' } });
+      const { container } = renderBubble({
+        role: 'assistant',
+        id: 'w63-label-gate',
+        isStreaming: true,
+        renderMode: 'streaming',
+      });
+
+      // Pre-first-chunk: the empty placeholder must carry no wordmark
+      // headline — the typing indicator's own label+dots is the sole
+      // "reply coming" cue (Chris's mobile report: an empty label above the
+      // indicator's label read as a double headline).
+      expect(container.querySelector('.hairline-sender-label--bot')).not.toBeInTheDocument();
+
+      act(() => {
+        streamingRegistry.startStream('w63-label-gate');
+        streamingRegistry.append('w63-label-gate', 'We connect mentors');
+      });
+
+      // First painted text -> the label appears (ChatWidget's
+      // hasStreamedContent gate hides the typing indicator at the same
+      // moment — a clean single-headline handoff).
+      expect(screen.getByText('Atlanta Angels')).toHaveClass('hairline-sender-label--bot');
     });
   });
 });

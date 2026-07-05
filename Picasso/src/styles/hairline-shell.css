@@ -80,13 +80,6 @@
   will-change: opacity, transform;
 }
 
-/* Mobile: full-screen sheet gets no rounded corners (existing iframe-mobile
-   contract; the Hairline mobile-sheet treatment itself is W4.5 — this only
-   preserves the radius-removal behavior the old .chat-container had). */
-body[data-iframe="true"].iframe-mobile .hairline-shell {
-  border-radius: 0;
-}
-
 /* iOS Safari safe-area + dynamic-viewport keyboard handling — functional
    mobile-compat fixes ported from theme.css's .chat-container rules
    (src/utils/mobileCompatibility.js toggles these classes/vars; unrelated
@@ -126,7 +119,51 @@ body.keyboard-visible .hairline-shell {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: var(--space-header-padding); /* 18px 24px 0 */
+  padding: var(--space-header-padding); /* 18px 24px 14px — see token comment */
+  /* Anchor + stacking context for the ::after roll-under zone below, so it
+     paints above the sibling scroll area's content. Kept well under the
+     footer container (z 15) and the takeover/overlay views. */
+  position: relative;
+  z-index: 3;
+}
+
+/* Scroll roll-under zone (product amendment — Chris, 2026-07-03, mirroring
+   the Claude app): content scrolling up toward the header fades and blurs
+   out instead of clipping hard at the scroll viewport's top edge. The zone
+   hangs BELOW the header, over the top of the sibling scroll area
+   (thread/welcome); it is pure paint (pointer-events none). The mask fades
+   both the surface tint and the backdrop blur toward the bottom, so the
+   effect tapers to nothing. The gradient's transparent stop is --surface
+   (#fffefb, a FIXED all-tenant token) at zero alpha — `transparent` would
+   gray-band mid-gradient in some engines. Firefox <103 has no
+   backdrop-filter: the fade still works, only the blur is absent. */
+.hairline-header::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  height: 28px;
+  pointer-events: none;
+  background: linear-gradient(to bottom, var(--surface) 0%, rgba(255, 254, 251, 0) 100%);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  mask-image: linear-gradient(to bottom, black 0%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, black 0%, transparent 100%);
+}
+
+/* The zone above is a STATIC band over the top of the scroll viewport, so
+   the thread needs matching top padding or its FIRST message sits inside
+   the band before any scrolling happens (Chris's report: the "YOU" label
+   rendered blurred at scrollTop 0 — theme.css gives .chat-window
+   `padding-top: 0`). With the padding ≥ the band height, unscrolled
+   content starts below the fade and the band only ever touches content
+   that has actually scrolled up — "blur on scroll" with no scroll
+   listener. The welcome view carries the same 30px top clearance
+   (hairline-views.css) — its greeting's ascenders blurred inside the
+   band's tail at 20px. */
+body[data-iframe="true"] .chat-window {
+  padding-top: 30px;
 }
 
 .hairline-wordmark {
@@ -179,4 +216,100 @@ body.keyboard-visible .hairline-shell {
   .hairline-icon-button {
     transition: none;
   }
+}
+
+/* ============================================================
+   W4.5 — FULLPAGE MODE
+   docs/HAIRLINE_WORKPLAN.md W4.5. Re-establishes the fullpage-mode edge-
+   to-edge treatment that lived in src/styles/widget-entry.css against the
+   panel's OLD `.chat-container` className — W2.1 (this file) renamed that
+   className to `.hairline-shell`, which orphaned those rules (they stopped
+   matching anything, silently breaking `?mode=fullpage` — see
+   iframe-main.jsx's `isFullpageMode` branch, which sets `body.fullpage-mode`
+   + `chat-open`). Moved here (not duplicated) so fullpage-mode CSS for the
+   shell lives beside the shell it styles; widget-entry.css now has a
+   pointer comment in its place. Not to be confused with the
+   `.fullpage-chat-container`/`.fullpage-header`/etc. family in theme.css,
+   which targets a different, already-dead legacy fullpage DOM structure —
+   unrelated, left untouched.
+
+   No `!important` needed (unlike the rule this replaces): these selectors
+   are strictly more specific than the plain `.hairline-shell` rule above,
+   so ordinary cascade specificity wins outright (HAIRLINE_WORKPLAN.md
+   ground rule #8 — avoid `!important` unless unavoidable).
+   ========================================================== */
+
+body.fullpage-mode .hairline-shell,
+body[data-iframe="true"].fullpage-mode .hairline-shell,
+body[data-iframe="true"].fullpage-mode.chat-open .hairline-shell,
+html body.fullpage-mode .hairline-shell {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  margin: 0;
+  /* `border: none` clears the shell's normal 1px hairline-strong border on
+     every side; `border-top` immediately after re-adds JUST the 2px
+     tenant-accent brand signature edge-to-edge (fullpage isn't mocked by
+     Turn 10 — HAIRLINE_REDESIGN_MAPPING.md §4 item 6 — but every OTHER
+     Hairline surface keeps this top border, so fullpage does too). */
+  border: none;
+  border-top: var(--shell-border-width-accent) solid var(--tenant-accent);
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* ============================================================
+   W4.5/W6.3 — MOBILE SHEET (D6: ≤480px HOST viewport = full-screen sheet,
+   per DESIGN_SPEC.md "Widget Shell" + HAIRLINE_REDESIGN_MAPPING.md §7 D6).
+
+   W6.3 audit fix (F3): W4.5 originally gated this on
+   `@media (max-width: 480px)` — but that query evaluates against the
+   IFRAME's own viewport, and W6.1's host grants the desktop panel exactly
+   380px, so 380 ≤ 480 matched ALWAYS and the sheet rules permanently
+   zeroed the desktop shell's 1px hairline border, 12px radius, shadow,
+   and 3px shadow-bleed inset. The correct primitive is the HOST's own
+   mobile decision (`window.innerWidth <= 480` in widget-host.js's
+   expand()/resize observer — the only place the real host viewport is
+   knowable), delivered as the `iframe-mobile` body class via the
+   pre-existing `SIZE_CHANGE` PICASSO_COMMAND (iframe-main.jsx already
+   consumed it; widget-host.js now actually sends it). Default (no class)
+   = desktop panel styling, which is the right fallback for a host that
+   never reports.
+
+   No new motion is introduced by this state — nothing here needs a
+   `prefers-reduced-motion` override.
+   ========================================================== */
+
+body[data-iframe="true"].iframe-mobile .hairline-shell {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  margin: 0;
+  border: none;
+  border-top: var(--shell-border-width-accent) solid var(--tenant-accent);
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* ============================================================
+   W6.3 audit fix (F1) — hide the launcher while the panel is open.
+   The open panel fills the ENTIRE host iframe (W6.1: 380 ×
+   min(640px, 100vh−48px), or the full-screen sheet on mobile), so
+   theme.css's `.chat-open .chat-toggle-wrapper` rule — which floats the
+   toggle at fixed bottom-right/z-99999, correct for the OLD panel that
+   left room beneath itself — now overlays the Hairline composer and
+   INTERCEPTS clicks on the send button (Playwright-verified: clicking
+   Send times out with "chat-toggle-button intercepts pointer events").
+   The header ✕ is the design's close affordance (DESIGN_SPEC.md
+   "Interactions & Behavior"); the launcher only exists while closed.
+   `!important` is required to beat theme.css's `display: block
+   !important` at equal specificity during coexistence.
+   ========================================================== */
+
+body[data-iframe="true"].chat-open .chat-toggle-wrapper {
+  display: none !important;
 }

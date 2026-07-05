@@ -70,42 +70,29 @@ export const strings = {
   // DESIGN_SPEC.md "4. Feedback given (`10a Feedback given`)"
   responseActions: {
     copied: 'Copied',
+    copy: 'Copy',
+    goodResponse: 'Give positive feedback',
+    badResponse: 'Give negative feedback',
   },
 
   // DESIGN_SPEC.md "5. Settings (`10a Settings`)"
   settings: {
     pageTitle: 'Settings',
     groups: {
-      conversation: 'Conversation',
-      preferences: 'Preferences',
+      // Spec amendment 6 (Chris, 2026-07-03): Conversation + Preferences
+      // groups removed with their rows — see SettingsView.jsx header.
       yourData: 'Your data',
     },
     rows: {
-      currentSession: 'Current session',
-      history: 'History',
-      // Empty-state value shown when no past conversations exist.
-      historyEmpty: 'None yet',
-      connection: 'Connection',
-      // The two fixed values the Connection row's status can show.
-      connectionOnline: 'Online',
-      connectionOffline: 'Offline',
-      offlineSync: 'Offline sync',
-      storage: 'Storage',
-      storageValue: 'Session · clears on close',
-      downloadConversations: 'Download conversations',
       privacyAndCompliance: 'Privacy & compliance',
     },
     clearAllMessages: 'Clear all messages',
-    clearAllMessagesFinePrint: "Logged for audit compliance · can't be undone",
-    // Transient label the "Download conversations" row swaps to after a
-    // successful/failed export (~2s, mirrors responseActions.copied's
-    // inline-confirm convention above) — replaces the old panel's
-    // page-level toast notification (HAIRLINE_WORKPLAN.md W3.3: "toast
-    // pattern replaced by spec-conformant inline confirms"). Invented for
-    // W3.3 — no Turn 10 mock shows export feedback at all. Flagged in the
-    // PR alongside clearConfirm below.
-    downloaded: 'Downloaded',
-    downloadFailed: 'Download failed',
+    // Does double duty (spec amendment 6): plain-English storage disclosure
+    // (sessionStorage = survives widget close/reopen, dies with the browser
+    // tab) + the clear action's consequences. Replaces the removed Storage
+    // row's five-word value, which couldn't explain any of this.
+    clearAllMessagesFinePrint:
+      "Your conversation stays in this browser's memory until you close this tab. Clearing deletes it right away — it can't be undone and is recorded for compliance.",
     // DESIGN_SPEC.md screen 5 says the destructive action "requires an
     // inline confirm (confirm/cancel pill pair replaces the row)" but
     // doesn't give literal copy for it, and the copy doesn't appear in the
@@ -140,8 +127,14 @@ export const strings = {
       auditLogging: 'Audit logging for compliance',
       retentionVaries: 'Retention varies by data type',
     },
-    finePrint:
-      'Exports include conversation metadata and statistics only — message content is never included. See the privacy notice for retention details.',
+    // Rewritten with spec amendment 6 (Chris, 2026-07-03): the old copy
+    // described the removed Download/export feature. Split in two so the
+    // storage disclosure ALWAYS renders — only the notice sentence (whose
+    // link needs config.privacy_notice_url) is conditional. Before the
+    // split, tenants without the URL showed no explanation at all.
+    storageDisclosure:
+      'Your conversation is stored only in this browser and is gone once you close this tab.',
+    noticeSentence: 'See the privacy notice for retention details.',
     // The "privacy notice" substring within finePrint above is a link to
     // config.privacy_notice_url; kept separately so a consumer can splice
     // the fine print around the link.

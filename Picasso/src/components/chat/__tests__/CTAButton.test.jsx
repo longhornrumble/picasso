@@ -1,6 +1,16 @@
 /**
  * CTAButton Component Tests
  * Tests for Context-Based CTA Styling (_position metadata)
+ *
+ * Hairline W2.7b: the plain default `CTAButton` export was restyled from
+ * the old `.cta-button`/`.cta-primary`/`.cta-secondary` pill classes to
+ * `.hairline-cta`/`.hairline-cta--primary`/`.hairline-cta--secondary`
+ * (forms submit/cancel vocabulary — see CTAButton.jsx's header comment).
+ * These tests assert the restyled classNames; the click-dispatch contract
+ * (onClick called with the untouched cta object, `_position`/action-based
+ * styling selection) is unchanged and re-verified below alongside the
+ * restyle. `CTAButtonGroup` assertions further down are untouched (W2.7,
+ * separate ownership).
  */
 
 import React from 'react';
@@ -9,7 +19,7 @@ import CTAButton, { CTAButtonGroup } from '../CTAButton';
 
 describe('CTAButton - Context-Based CTA Styling', () => {
   describe('Position Metadata Styling', () => {
-    test('renders with cta-primary class when _position is "primary"', () => {
+    test('renders with hairline-cta--primary class when _position is "primary"', () => {
       const cta = {
         _position: 'primary',
         label: 'Apply Now',
@@ -19,12 +29,12 @@ describe('CTAButton - Context-Based CTA Styling', () => {
       render(<CTAButton cta={cta} />);
       const button = screen.getByRole('button', { name: /apply now/i });
 
-      expect(button).toHaveClass('cta-button');
-      expect(button).toHaveClass('cta-primary');
-      expect(button).not.toHaveClass('cta-secondary');
+      expect(button).toHaveClass('hairline-cta');
+      expect(button).toHaveClass('hairline-cta--primary');
+      expect(button).not.toHaveClass('hairline-cta--secondary');
     });
 
-    test('renders with cta-secondary class when _position is "secondary"', () => {
+    test('renders with hairline-cta--secondary class when _position is "secondary"', () => {
       const cta = {
         _position: 'secondary',
         label: 'Learn More',
@@ -34,9 +44,9 @@ describe('CTAButton - Context-Based CTA Styling', () => {
       render(<CTAButton cta={cta} />);
       const button = screen.getByRole('button', { name: /learn more/i });
 
-      expect(button).toHaveClass('cta-button');
-      expect(button).toHaveClass('cta-secondary');
-      expect(button).not.toHaveClass('cta-primary');
+      expect(button).toHaveClass('hairline-cta');
+      expect(button).toHaveClass('hairline-cta--secondary');
+      expect(button).not.toHaveClass('hairline-cta--primary');
     });
 
     test('does NOT use legacy style field when _position is present', () => {
@@ -51,8 +61,8 @@ describe('CTAButton - Context-Based CTA Styling', () => {
       const button = screen.getByRole('button', { name: /test button/i });
 
       // Should use _position (secondary), not style (primary)
-      expect(button).toHaveClass('cta-secondary');
-      expect(button).not.toHaveClass('cta-primary');
+      expect(button).toHaveClass('hairline-cta--secondary');
+      expect(button).not.toHaveClass('hairline-cta--primary');
     });
   });
 
@@ -67,10 +77,10 @@ describe('CTAButton - Context-Based CTA Styling', () => {
       const button = screen.getByRole('button', { name: /submit form/i });
 
       // Should fallback to primary for form actions
-      expect(button).toHaveClass('cta-primary');
+      expect(button).toHaveClass('hairline-cta--primary');
     });
 
-    test('uses cta-secondary for navigate actions without _position', () => {
+    test('uses hairline-cta--secondary for navigate actions without _position', () => {
       const navCta = {
         label: 'Read More',
         action: 'navigate',
@@ -79,10 +89,10 @@ describe('CTAButton - Context-Based CTA Styling', () => {
       render(<CTAButton cta={navCta} />);
       const button = screen.getByRole('button', { name: /read more/i });
 
-      expect(button).toHaveClass('cta-secondary');
+      expect(button).toHaveClass('hairline-cta--secondary');
     });
 
-    test('defaults to cta-secondary for unknown actions', () => {
+    test('defaults to hairline-cta--secondary for unknown actions', () => {
       const unknownCta = {
         label: 'Unknown Action',
         action: 'custom_action',
@@ -91,7 +101,7 @@ describe('CTAButton - Context-Based CTA Styling', () => {
       render(<CTAButton cta={unknownCta} />);
       const button = screen.getByRole('button', { name: /unknown action/i });
 
-      expect(button).toHaveClass('cta-secondary');
+      expect(button).toHaveClass('hairline-cta--secondary');
     });
   });
 
@@ -202,7 +212,7 @@ describe('CTAButton - Context-Based CTA Styling', () => {
       render(<CTAButton cta={cta} />);
       const button = screen.getByRole('button', { name: /apply to volunteer/i });
 
-      expect(button).toHaveClass('cta-primary');
+      expect(button).toHaveClass('hairline-cta--primary');
     });
 
     test('secondary position with navigate action', () => {
@@ -216,7 +226,7 @@ describe('CTAButton - Context-Based CTA Styling', () => {
       render(<CTAButton cta={cta} />);
       const button = screen.getByRole('button', { name: /read faq/i });
 
-      expect(button).toHaveClass('cta-secondary');
+      expect(button).toHaveClass('hairline-cta--secondary');
     });
 
     test('primary position overrides action-based styling', () => {
@@ -230,8 +240,8 @@ describe('CTAButton - Context-Based CTA Styling', () => {
       const button = screen.getByRole('button', { name: /important link/i });
 
       // Position takes precedence over action
-      expect(button).toHaveClass('cta-primary');
-      expect(button).not.toHaveClass('cta-secondary');
+      expect(button).toHaveClass('hairline-cta--primary');
+      expect(button).not.toHaveClass('hairline-cta--secondary');
     });
   });
 });
@@ -259,36 +269,22 @@ describe('CTAButtonGroup', () => {
       expect(card.querySelectorAll('.hairline-suggestion-row')).toHaveLength(3);
     });
 
-    test('primary row gets the emphasized class; other rows are standard', () => {
+    test('every row rests identical — no emphasized class even for _position primary (spec amendment 7)', () => {
+      // The mock's tint-filled primary row read as a hover/selected state
+      // (Chris, 2026-07-04) — retired. _position stays dispatch metadata only.
       const ctas = [
         { _position: 'primary', label: 'Primary CTA', action: 'start_form', id: 'cta1' },
         { _position: 'secondary', label: 'Secondary CTA', action: 'navigate', id: 'cta2' },
+        { label: 'No Position CTA', action: 'navigate', id: 'cta3' },
       ];
 
       render(<CTAButtonGroup ctas={ctas} />);
 
-      const primaryRow = screen.getByRole('button', { name: /primary cta/i });
-      const secondaryRow = screen.getByRole('button', { name: /secondary cta/i });
-
-      expect(primaryRow).toHaveClass('hairline-suggestion-row');
-      expect(primaryRow).toHaveClass('hairline-suggestion-row--primary');
-      expect(secondaryRow).toHaveClass('hairline-suggestion-row');
-      expect(secondaryRow).not.toHaveClass('hairline-suggestion-row--primary');
-    });
-
-    test('a cta without _position renders as a standard (non-emphasized) row', () => {
-      const ctas = [
-        { _position: 'primary', label: 'With Position', action: 'start_form', id: 'cta1' },
-        { label: 'Without Position', action: 'navigate', id: 'cta2' },
-      ];
-
-      render(<CTAButtonGroup ctas={ctas} />);
-
-      const withPosition = screen.getByRole('button', { name: /with position/i });
-      const withoutPosition = screen.getByRole('button', { name: /without position/i });
-
-      expect(withPosition).toHaveClass('hairline-suggestion-row--primary');
-      expect(withoutPosition).not.toHaveClass('hairline-suggestion-row--primary');
+      for (const name of [/primary cta/i, /secondary cta/i, /no position cta/i]) {
+        const row = screen.getByRole('button', { name });
+        expect(row).toHaveClass('hairline-suggestion-row');
+        expect(row.className).toBe('hairline-suggestion-row');
+      }
     });
 
     test('row renders a label span and an aria-hidden arrow span', () => {

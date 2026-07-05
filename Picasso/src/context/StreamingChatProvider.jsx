@@ -401,6 +401,15 @@ export default function StreamingChatProvider({ children }) {
   // Core state
   const [messages, setMessages] = useState([]);
   const [isTyping, setIsTyping] = useState(false);
+  // True from the first streamed chunk of the current turn until the next
+  // send. `isTyping` alone can't tell "waiting for the reply" apart from
+  // "the reply is already painting" — chunks go to the DOM via
+  // streamingRegistry, not through message state — so the typing indicator
+  // (its own wordmark label + dots) stayed mounted UNDER the streaming
+  // reply, showing a double sender headline for the whole stream (Chris's
+  // mobile report, 2026-07-03). ChatWidget hides the indicator once this
+  // flips.
+  const [hasStreamedContent, setHasStreamedContent] = useState(false);
   const [error, setError] = useState(null);
   const [isInitializing, setIsInitializing] = useState(true);
 
@@ -692,6 +701,7 @@ export default function StreamingChatProvider({ children }) {
     }
 
     setIsTyping(true);
+    setHasStreamedContent(false);
     setError(null);
 
     // Create placeholder for streaming
@@ -831,6 +841,9 @@ export default function StreamingChatProvider({ children }) {
           if (firstChunkTime === null) {
             firstChunkTime = Date.now() - startTime;
             logger.info(`First chunk received in ${firstChunkTime}ms`);
+            // The reply is painting from here on — retire the typing
+            // indicator for this turn (see hasStreamedContent above).
+            setHasStreamedContent(true);
           }
           // Update via StreamingRegistry for DOM updates
           streamingRegistry.appendChunk(streamingMessageId, delta, total);
@@ -1761,6 +1774,7 @@ export default function StreamingChatProvider({ children }) {
       // Core state
       messages,
       isTyping,
+      hasStreamedContent,
       sessionId: sessionIdRef.current,
       sessionContext,
 
@@ -1807,7 +1821,7 @@ export default function StreamingChatProvider({ children }) {
       isMobileSafari: /iPad|iPhone|iPod/.test(navigator.userAgent) && /^((?!chrome|android).)*safari/i.test(navigator.userAgent)
     }
   };
-  }, [messages, isTyping, isInitializing, error, tenantConfig, sessionContext, sendMessage, addMessage, clearMessages, retryMessage, updateMessage, recordFormCompletion]);
+  }, [messages, isTyping, hasStreamedContent, isInitializing, error, tenantConfig, sessionContext, sendMessage, addMessage, clearMessages, retryMessage, updateMessage, recordFormCompletion]);
 
   
   return (

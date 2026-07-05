@@ -49,9 +49,19 @@ jest.mock('../MessageBubble', () => ({
 jest.mock('../TypingIndicator', () => ({ __esModule: true, default: () => <div data-testid="typing-indicator" /> }));
 jest.mock('../SettingsView', () => ({
   __esModule: true,
-  default: ({ onBack }) => (
+  default: ({ onBack, onOpenPrivacy }) => (
     <div data-testid="settings-view">
       <button onClick={onBack}>back</button>
+      <button onClick={onOpenPrivacy}>open-privacy</button>
+    </div>
+  ),
+}));
+jest.mock('../PrivacyView', () => ({
+  __esModule: true,
+  default: ({ onBack, onClose }) => (
+    <div data-testid="privacy-view">
+      <button onClick={onBack}>back-to-settings</button>
+      <button onClick={onClose}>close-privacy</button>
     </div>
   ),
 }));
@@ -106,6 +116,59 @@ beforeEach(() => {
   useFormMode.mockReset();
   setFormMode();
   useConfig.mockReturnValue({ config: OPEN_CONFIG });
+});
+
+describe('ChatWidget — fullpage mode renders open (W6.3 audit fix F6)', () => {
+  afterEach(() => {
+    document.body.classList.remove('fullpage-mode');
+  });
+
+  it('initializes open when body has fullpage-mode, without start_open', () => {
+    // iframe-main.jsx adds body.fullpage-mode + chat-open at boot for
+    // ?mode=fullpage; the isOpen init must honor it or the chat-open sync
+    // effect strips the class and the standalone page renders blank
+    // (fullpage CSS hides the launcher — the W6.3 audit's F6 regression).
+    document.body.classList.add('fullpage-mode');
+    useConfig.mockReturnValue({ config: { widget_behavior: {} } });
+    setChat([{ id: 'welcome', role: 'assistant', content: 'Hi!' }]);
+    render(<ChatWidget />);
+
+    expect(screen.getByTestId('welcome-view')).toBeInTheDocument();
+    expect(document.body.classList.contains('chat-open')).toBe(true);
+  });
+
+  it('without fullpage-mode and without start_open, stays closed', () => {
+    useConfig.mockReturnValue({ config: { widget_behavior: {} } });
+    setChat([{ id: 'welcome', role: 'assistant', content: 'Hi!' }]);
+    render(<ChatWidget />);
+
+    expect(screen.queryByTestId('welcome-view')).not.toBeInTheDocument();
+  });
+});
+
+describe('ChatWidget — typing indicator yields to the streaming reply (W6.3 follow-up)', () => {
+  const THREAD = [
+    { id: 'user_1', role: 'user', content: 'Hi' },
+    { id: 'bot_1', role: 'assistant', content: '', isStreaming: true },
+  ];
+
+  it('shows the indicator while typing and no chunk has painted yet', () => {
+    setChat(THREAD, { isTyping: true, hasStreamedContent: false });
+    render(<ChatWidget />);
+    expect(screen.getByTestId('typing-indicator')).toBeInTheDocument();
+  });
+
+  it('hides the indicator once the reply is streaming (first chunk painted) — no double sender label', () => {
+    setChat(THREAD, { isTyping: true, hasStreamedContent: true });
+    render(<ChatWidget />);
+    expect(screen.queryByTestId('typing-indicator')).not.toBeInTheDocument();
+  });
+
+  it('tolerates providers that do not define hasStreamedContent (HTTP fallback) — indicator behaves as before', () => {
+    setChat(THREAD, { isTyping: true });
+    render(<ChatWidget />);
+    expect(screen.getByTestId('typing-indicator')).toBeInTheDocument();
+  });
 });
 
 describe('ChatWidget — welcome vs. thread view derivation', () => {
@@ -197,6 +260,62 @@ describe('ChatWidget — Settings takeover is independent of welcome/thread', ()
     expect(screen.getByTestId('settings-view')).toBeInTheDocument();
     // The header/composer stay mounted underneath (W3.3's "back preserves
     // scroll" contract) regardless of which content view is active.
+    expect(screen.getByTestId('chat-header')).toBeInTheDocument();
+    expect(screen.getByTestId('input-bar')).toBeInTheDocument();
+  });
+});
+
+describe('ChatWidget — Privacy takeover wiring (W3.4)', () => {
+  it('is closed by default, and opens (replacing SettingsView) when its "Privacy & compliance" row fires onOpenPrivacy', () => {
+    setChat([{ id: 'welcome', role: 'assistant', content: 'Hi!' }]);
+    render(<ChatWidget />);
+
+    fireEvent.click(screen.getByText('open-settings'));
+    expect(screen.getByTestId('settings-view')).toBeInTheDocument();
+    expect(screen.queryByTestId('privacy-view')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('open-privacy'));
+
+    expect(screen.getByTestId('privacy-view')).toBeInTheDocument();
+    // Mutually exclusive at render time (ChatWidget.jsx's render comment) —
+    // SettingsView unmounts while PrivacyView is showing.
+    expect(screen.queryByTestId('settings-view')).not.toBeInTheDocument();
+  });
+
+  it('back from Privacy returns to Settings, not the thread', () => {
+    setChat([{ id: 'welcome', role: 'assistant', content: 'Hi!' }]);
+    render(<ChatWidget />);
+
+    fireEvent.click(screen.getByText('open-settings'));
+    fireEvent.click(screen.getByText('open-privacy'));
+    expect(screen.getByTestId('privacy-view')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('back-to-settings'));
+
+    expect(screen.queryByTestId('privacy-view')).not.toBeInTheDocument();
+    expect(screen.getByTestId('settings-view')).toBeInTheDocument();
+  });
+
+  it('Privacy\'s close (X) closes the whole takeover, same as Settings\' own close', () => {
+    setChat([{ id: 'welcome', role: 'assistant', content: 'Hi!' }]);
+    render(<ChatWidget />);
+
+    fireEvent.click(screen.getByText('open-settings'));
+    fireEvent.click(screen.getByText('open-privacy'));
+
+    fireEvent.click(screen.getByText('close-privacy'));
+
+    expect(screen.queryByTestId('privacy-view')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('settings-view')).not.toBeInTheDocument();
+  });
+
+  it('the header/composer stay mounted underneath Privacy', () => {
+    setChat([{ id: 'welcome', role: 'assistant', content: 'Hi!' }]);
+    render(<ChatWidget />);
+
+    fireEvent.click(screen.getByText('open-settings'));
+    fireEvent.click(screen.getByText('open-privacy'));
+
     expect(screen.getByTestId('chat-header')).toBeInTheDocument();
     expect(screen.getByTestId('input-bar')).toBeInTheDocument();
   });

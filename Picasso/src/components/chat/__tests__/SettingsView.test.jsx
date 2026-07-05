@@ -7,13 +7,13 @@
  * to the SAME `clearMessages()` from useChat() — which is where the
  * SESSION_CLEARED audit/analytics event actually lives (StreamingChatProvider.jsx /
  * HTTPChatProvider.jsx), so asserting this component calls it is the
- * correct "same audit event" contract for a component-level test — export
- * builds the same payload shape and triggers a download, history renders
- * from localStorage. Markup/class assertions are new (restyle + tabs→list
- * restructure, per ground rule #6).
+ * correct "same audit event" contract for a component-level test. Markup/
+ * class assertions are new (restyle + tabs→list restructure, per ground
+ * rule #6). History + Download rows removed 2026-07-03 (Chris decision) —
+ * their absence is regression-asserted below.
  */
 import React from 'react';
-import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import SettingsView from '../SettingsView';
 import { useChat } from '../../../hooks/useChat';
@@ -33,28 +33,8 @@ function baseChat(overrides = {}) {
   };
 }
 
-function setOnline(isOnline) {
-  Object.defineProperty(window.navigator, 'onLine', {
-    configurable: true,
-    value: isOnline,
-  });
-}
-
-beforeAll(() => {
-  if (!global.URL.createObjectURL) {
-    global.URL.createObjectURL = jest.fn();
-  }
-  if (!global.URL.revokeObjectURL) {
-    global.URL.revokeObjectURL = jest.fn();
-  }
-});
-
 beforeEach(() => {
   jest.useFakeTimers({ legacyFakeTimers: false });
-  jest.spyOn(global.URL, 'createObjectURL').mockReturnValue('blob:mock-url');
-  jest.spyOn(global.URL, 'revokeObjectURL').mockImplementation(() => {});
-  jest.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
-  setOnline(true);
   localStorage.clear();
 });
 
@@ -66,13 +46,13 @@ afterEach(() => {
 });
 
 describe('SettingsView — Hairline settings takeover (W3.3)', () => {
-  describe('grouped list — matches DESIGN_SPEC.md screen 5', () => {
-    test('renders the three group labels in order', () => {
+  describe('grouped list — screen 5 as amended (spec amendment 6)', () => {
+    test('renders the single "Your data" group — Conversation/Preferences groups are gone', () => {
       useChat.mockReturnValue(baseChat());
       render(<SettingsView onBack={jest.fn()} onClose={jest.fn()} />);
 
       const labels = screen.getAllByRole('heading', { level: 4 }).map((el) => el.textContent);
-      expect(labels).toEqual(['Conversation', 'Preferences', 'Your data']);
+      expect(labels).toEqual(['Your data']);
     });
 
     test('renders no tabs — StateManagementPanel\'s 3-tab nav is gone', () => {
@@ -94,161 +74,66 @@ describe('SettingsView — Hairline settings takeover (W3.3)', () => {
       expect(screen.queryByText('Offline sync')).not.toBeInTheDocument();
     });
 
-    test('renders the "Privacy & compliance" row (inert pending W3.4)', () => {
+    test('clicking the "Privacy & compliance" row calls onOpenPrivacy (W3.4)', () => {
+      const onOpenPrivacy = jest.fn();
+      useChat.mockReturnValue(baseChat());
+      render(<SettingsView onBack={jest.fn()} onClose={jest.fn()} onOpenPrivacy={onOpenPrivacy} />);
+      const row = screen.getByText('Privacy & compliance').closest('button');
+      expect(row).toBeInTheDocument();
+
+      fireEvent.click(row);
+
+      expect(onOpenPrivacy).toHaveBeenCalledTimes(1);
+    });
+
+    test('clicking the "Privacy & compliance" row without onOpenPrivacy does not throw (tolerant of the prop being omitted)', () => {
       useChat.mockReturnValue(baseChat());
       render(<SettingsView onBack={jest.fn()} onClose={jest.fn()} />);
       const row = screen.getByText('Privacy & compliance').closest('button');
-      expect(row).toBeInTheDocument();
-      // No destination view exists yet (W3.4) — clicking must not throw.
       expect(() => fireEvent.click(row)).not.toThrow();
     });
   });
 
-  describe('current session — frozen stat computation, restyled pluralization', () => {
-    test('shows singular "1 message" for a single message', () => {
-      useChat.mockReturnValue(baseChat({ messages: [{ id: 'm1', role: 'user', content: 'hi' }] }));
-      render(<SettingsView onBack={jest.fn()} onClose={jest.fn()} />);
-      expect(screen.getByText('1 message')).toBeInTheDocument();
-    });
-
-    test('shows plural "N messages" for multiple messages', () => {
-      useChat.mockReturnValue(
-        baseChat({
-          messages: [
-            { id: 'm1', role: 'user', content: 'hi' },
-            { id: 'm2', role: 'assistant', content: 'hello' },
-            { id: 'm3', role: 'user', content: 'bye' },
-          ],
-        })
-      );
-      render(<SettingsView onBack={jest.fn()} onClose={jest.fn()} />);
-      expect(screen.getByText('3 messages')).toBeInTheDocument();
-    });
-
-    test('tolerates an old-shape chat context missing messages/conversationMetadata', () => {
-      useChat.mockReturnValue({ clearMessages: jest.fn() });
-      expect(() => render(<SettingsView onBack={jest.fn()} onClose={jest.fn()} />)).not.toThrow();
-      expect(screen.getByText('0 messages')).toBeInTheDocument();
-    });
-  });
-
-  describe('connection — frozen navigator.onLine read', () => {
-    test('shows "Online" with the online dot when navigator.onLine is true', () => {
-      setOnline(true);
-      useChat.mockReturnValue(baseChat());
-      const { container } = render(<SettingsView onBack={jest.fn()} onClose={jest.fn()} />);
-      expect(screen.getByText('Online')).toBeInTheDocument();
-      expect(container.querySelector('.hairline-connection-dot.is-online')).toBeInTheDocument();
-    });
-
-    test('shows "Offline" with the offline dot when navigator.onLine is false', () => {
-      setOnline(false);
-      useChat.mockReturnValue(baseChat());
-      const { container } = render(<SettingsView onBack={jest.fn()} onClose={jest.fn()} />);
-      expect(screen.getByText('Offline')).toBeInTheDocument();
-      expect(container.querySelector('.hairline-connection-dot.is-offline')).toBeInTheDocument();
-    });
-  });
-
-  describe('history — old panel\'s History tab, reachable via drill-in row', () => {
-    test('History row shows "None yet" when no stored history exists', () => {
-      useChat.mockReturnValue(baseChat());
-      render(<SettingsView onBack={jest.fn()} onClose={jest.fn()} />);
-      expect(screen.getByText('None yet')).toBeInTheDocument();
-    });
-
-    test('History row shows a pluralized count when history exists', () => {
+  describe('removed rows stay removed (Chris decisions, 2026-07-03 — spec amendments 5+6)', () => {
+    // History: dead read (nothing ever wrote the picasso_conversations
+    // archive; storage is session-only). Download: metadata-only export,
+    // blocked by the iframe sandbox. Current session + Connection: trivia.
+    // Storage: a disclosure a key-value row can't explain — its job moved
+    // to the clear row's fine print. See SettingsView.jsx header.
+    test('renders no History row, even when the legacy storage key has data', () => {
       localStorage.setItem(
         HISTORY_KEY,
         JSON.stringify([{ conversationId: 'c1', metadata: { created: '2026-01-01T00:00:00.000Z' }, messages: [] }])
       );
       useChat.mockReturnValue(baseChat());
       render(<SettingsView onBack={jest.fn()} onClose={jest.fn()} />);
-      expect(screen.getByText('1 conversation')).toBeInTheDocument();
+      expect(screen.queryByText('History')).not.toBeInTheDocument();
+      expect(screen.queryByText('None yet')).not.toBeInTheDocument();
     });
 
-    test('clicking History drills into the history list, showing stored conversations', async () => {
-      localStorage.setItem(
-        HISTORY_KEY,
-        JSON.stringify([
-          {
-            conversationId: 'c1',
-            metadata: { created: '2026-01-01T00:00:00.000Z', lastSummary: 'Talked about volunteering' },
-            messages: [
-              { timestamp: '2026-01-01T00:00:00.000Z' },
-              { timestamp: '2026-01-01T00:05:00.000Z' },
-            ],
-          },
-        ])
-      );
+    test('renders no Download, Current session, Connection, or Storage rows', () => {
       useChat.mockReturnValue(baseChat());
       render(<SettingsView onBack={jest.fn()} onClose={jest.fn()} />);
-
-      fireEvent.click(screen.getByText('History').closest('button'));
-
-      expect(await screen.findByText('Talked about volunteering', { exact: false })).toBeInTheDocument();
-      expect(screen.getByText('5 min')).toBeInTheDocument();
+      expect(screen.queryByText('Download conversations')).not.toBeInTheDocument();
+      expect(screen.queryByText('Current session')).not.toBeInTheDocument();
+      expect(screen.queryByText('Connection')).not.toBeInTheDocument();
+      expect(screen.queryByText('Storage')).not.toBeInTheDocument();
     });
 
-    test('history sub-view shows the empty state when there is no history', () => {
-      useChat.mockReturnValue(baseChat());
-      render(<SettingsView onBack={jest.fn()} onClose={jest.fn()} />);
-      fireEvent.click(screen.getByText('History').closest('button'));
-      expect(screen.getByText('No conversation history found')).toBeInTheDocument();
-    });
-
-    test('history sub-view\'s back button returns to the grouped list', () => {
-      useChat.mockReturnValue(baseChat());
-      render(<SettingsView onBack={jest.fn()} onClose={jest.fn()} />);
-      fireEvent.click(screen.getByText('History').closest('button'));
-      fireEvent.click(screen.getByRole('button', { name: /back to settings/i }));
-      expect(screen.getByText('Conversation')).toBeInTheDocument();
-      expect(screen.getByText('Current session')).toBeInTheDocument();
+    test('tolerates an old-shape chat context missing messages/conversationMetadata', () => {
+      useChat.mockReturnValue({ clearMessages: jest.fn() });
+      expect(() => render(<SettingsView onBack={jest.fn()} onClose={jest.fn()} />)).not.toThrow();
     });
   });
 
-  describe('download conversations — export, frozen payload shape (no message content)', () => {
-    test('clicking triggers a JSON download built from messages + history', () => {
+  describe('storage disclosure — folded into the clear row fine print (spec amendment 6)', () => {
+    test('renders the plain-English storage disclaimer under Clear all messages', () => {
       useChat.mockReturnValue(baseChat());
       render(<SettingsView onBack={jest.fn()} onClose={jest.fn()} />);
-
-      fireEvent.click(screen.getByText('Download conversations').closest('button'));
-
-      expect(global.URL.createObjectURL).toHaveBeenCalledTimes(1);
-      const blob = global.URL.createObjectURL.mock.calls[0][0];
-      expect(blob.type).toBe('application/json');
-      expect(HTMLAnchorElement.prototype.click).toHaveBeenCalledTimes(1);
-    });
-
-    test('shows a transient "Downloaded" confirmation, then reverts', () => {
-      useChat.mockReturnValue(baseChat());
-      render(<SettingsView onBack={jest.fn()} onClose={jest.fn()} />);
-
-      fireEvent.click(screen.getByText('Download conversations').closest('button'));
-      expect(screen.getByText('Downloaded')).toBeInTheDocument();
-
-      act(() => {
-        jest.advanceTimersByTime(2000);
-      });
-      expect(screen.getByText('Download conversations')).toBeInTheDocument();
-    });
-
-    test('shows an inline "Download failed" (not a toast) if the export throws, then reverts', () => {
-      useChat.mockReturnValue(baseChat());
-      global.URL.createObjectURL.mockImplementation(() => {
-        throw new Error('blob boom');
-      });
-      render(<SettingsView onBack={jest.fn()} onClose={jest.fn()} />);
-
-      fireEvent.click(screen.getByText('Download conversations').closest('button'));
-
-      expect(screen.getByText('Download failed')).toBeInTheDocument();
-      expect(document.querySelector('.state-notification')).not.toBeInTheDocument();
-
-      act(() => {
-        jest.advanceTimersByTime(2000);
-      });
-      expect(screen.getByText('Download conversations')).toBeInTheDocument();
+      expect(
+        screen.getByText(/stays in this browser's memory until you close this tab/)
+      ).toBeInTheDocument();
+      expect(screen.getByText(/can't be undone and is recorded for compliance/)).toBeInTheDocument();
     });
   });
 

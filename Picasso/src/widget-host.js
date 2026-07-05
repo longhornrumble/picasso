@@ -9,7 +9,19 @@ import { getBindingSessionId } from './utils/bindingSession.js';
 
 (function() {
   'use strict';
-  
+
+  // Dynamic-viewport height where the browser supports it (Safari 15.4+,
+  // Chrome 108+, FF 101+). On iOS Safari, `100vh` is the LARGEST viewport
+  // (address bar collapsed) — so a 100vh mobile sheet's composer/footer sat
+  // hidden under the EXPANDED browser chrome (Chris's iPhone 12 Pro Max
+  // report, 2026-07-03). `100dvh` tracks the real visible viewport as the
+  // bar expands/collapses: full-bleed when collapsed, no dead space, no
+  // hidden composer. Older browsers keep the 100vh behavior they had.
+  const VIEWPORT_H =
+    (typeof CSS !== 'undefined' && CSS.supports && CSS.supports('height', '100dvh'))
+      ? '100dvh'
+      : '100vh';
+
   const PicassoWidget = {
     iframe: null,
     container: null,
@@ -19,12 +31,16 @@ import { getBindingSessionId } from './utils/bindingSession.js';
       // Default configuration - will be overridden by tenant config
       position: 'bottom-right',
       minimizedSize: '56px',
-      expandedWidth: '360px',
-      expandedHeight: '640px',
-      activeHeight: '100vh', // Full viewport height after first user message (desktop only)
+      // Hairline shell dims (HAIRLINE_WORKPLAN.md W6.1): fixed 380 × min(640px,
+      // viewport-48px) panel. No more edge/adaptive-height growth (D1 default —
+      // see docs/HAIRLINE_REDESIGN_MAPPING.md §7) — the panel no longer resizes
+      // itself after the first message, so there is no separate "active" height.
+      // Dynamic-viewport unit so the bottom-anchored panel also stays fully
+      // visible on tablets with collapsing browser chrome.
+      expandedWidth: '380px',
+      expandedHeight: `min(640px, calc(${VIEWPORT_H} - 48px))`,
       zIndex: 10000
     },
-    isActive: false, // True after first user message — controls expanded height on desktop
     attribution: null, // Captured on init for analytics
 
     // ========================================================================
@@ -381,13 +397,14 @@ import { getBindingSessionId } from './utils/bindingSession.js';
           break;
 
         case 'MESSAGE_SENT':
+          // Edge/adaptive-height mode retired (D1 default) — the shell no
+          // longer grows after the first message. No-op kept so this event
+          // doesn't fall through to the "Unknown PICASSO_EVENT" log below.
           console.log('💬 Message sent event received');
-          this.activateSession();
           break;
 
         case 'SESSION_CLEARED':
-          console.log('🔄 Session cleared — resetting adaptive height');
-          this.deactivateSession();
+          console.log('🔄 Session cleared event received');
           break;
 
         case 'RESIZE_REQUEST':
@@ -666,64 +683,69 @@ import { getBindingSessionId } from './utils/bindingSession.js';
     // Expand widget to chat interface
     expand() {
       if (this.isOpen) return;
-      
+
       this.isOpen = true;
-      
-      // Enhanced mobile detection and responsive sizing per PRD
-      const isMobile = window.innerWidth <= 768;
-      const isTablet = window.innerWidth > 768 && window.innerWidth <= 1024;
-      
+
+      // Hairline shell breakpoint (D6 default): full-screen sheet at ≤480px
+      // viewport width; fixed 380×min(640px, 100vh-48px) panel otherwise.
+      // The old 768/1024 mobile/tablet tiers and the edge/adaptive-height
+      // growth behavior (D1 default) are retired — see
+      // docs/HAIRLINE_REDESIGN_MAPPING.md §7 D1/D6.
+      const isMobile = window.innerWidth <= 480;
+
       if (isMobile) {
-        // Near-fullscreen overlay with safe margins per PRD
+        // Full-screen sheet — edge-to-edge, no margins, no radius.
+        // Height uses the dynamic viewport unit (VIEWPORT_H) so the sheet's
+        // composer/footer track the visible viewport instead of hiding
+        // under mobile browser chrome.
         Object.assign(this.container.style, {
           position: 'fixed',
-          top: '10px',
-          left: '10px',
-          bottom: '10px', 
-          right: '10px',
-          width: 'calc(100vw - 20px)',
-          height: 'calc(100vh - 20px)',
-          zIndex: this.config.zIndex + 1000
-        });
-      } else if (isTablet) {
-        // Tablet: Larger but not fullscreen
-        Object.assign(this.container.style, {
-          width: '480px',
-          height: 'calc(100vh - 40px)',
-          bottom: '20px',
-          right: '20px'
-        });
-      } else if (this.isActive) {
-        // Desktop active: full height, flush right edge, rounded left corners only
-        Object.assign(this.container.style, {
-          width: this.config.expandedWidth,
-          height: 'auto',
           top: '0',
+          left: '0',
           bottom: '0',
           right: '0',
-          left: 'auto'
+          width: '100vw',
+          height: VIEWPORT_H,
+          zIndex: this.config.zIndex + 1000
         });
       } else {
-        // Desktop default: standard dimensions from config
+        // Desktop: fixed shell panel — dimensions from config
         Object.assign(this.container.style, {
           width: this.config.expandedWidth,
           height: this.config.expandedHeight,
           top: 'auto',
           bottom: '20px',
-          right: '20px'
+          right: '20px',
+          left: 'auto'
         });
       }
 
-      // Border radius and edge mode: left-only when active desktop
-      const activeDesktop = !isMobile && !isTablet && this.isActive;
-      Object.assign(this.iframe.style, {
-        borderRadius: activeDesktop ? '12px 0 0 12px' : '12px'
-      });
-      if (activeDesktop) {
-        this.sendCommand('SET_EDGE_MODE', { enabled: true });
-      }
+      this.iframe.style.borderRadius = isMobile ? '0' : '12px';
+      // Shell shadow (DESIGN_SPEC.md "Widget Shell": 0 2px 24px
+      // rgba(15,23,42,0.08)) lives on the host iframe — a fixed, non-tenant
+      // value. The shell's own box-shadow can't bleed past the iframe edge,
+      // so the desktop panel needs it here (W6.3 audit fix F3). The sheet
+      // and the closed launcher/callout states carry no panel shadow.
+      this.iframe.style.boxShadow = isMobile ? 'none' : '0 2px 24px rgba(15, 23, 42, 0.08)';
+      this.notifyViewportTier(isMobile);
 
-      console.log(`📈 Widget expanded - ${isMobile ? 'mobile' : isTablet ? 'tablet' : 'desktop'} mode`);
+      console.log(`📈 Widget expanded - ${isMobile ? 'mobile' : 'desktop'} mode`);
+    },
+
+    // Tell the iframe which viewport tier the HOST is in (W6.3 audit fix
+    // F3): inside the iframe, media queries see only the iframe's own
+    // ~380px viewport, so the ≤480 mobile-sheet decision (D6) must come
+    // from out here. iframe-main.jsx's pre-existing SIZE_CHANGE command
+    // handler maps this onto the `iframe-mobile`/`iframe-desktop` body
+    // classes that hairline-shell.css gates the sheet styling on.
+    notifyViewportTier(isMobile) {
+      if (this.iframe && this.iframe.contentWindow) {
+        this.iframe.contentWindow.postMessage({
+          type: 'PICASSO_COMMAND',
+          action: 'SIZE_CHANGE',
+          payload: { size: isMobile ? 'mobile' : 'desktop', isMobile }
+        }, '*');
+      }
     },
     
     // Minimize widget to button
@@ -743,53 +765,11 @@ import { getBindingSessionId } from './utils/bindingSession.js';
       });
 
       Object.assign(this.iframe.style, {
-        borderRadius: '50%'
+        borderRadius: '50%',
+        boxShadow: 'none'
       });
 
       console.log('📉 Widget minimized');
-    },
-
-    // Activate session — expand to full height on desktop after first user message
-    activateSession() {
-      if (this.isActive) return;
-      this.isActive = true;
-
-      // If already expanded on desktop, smoothly resize to full height
-      const isMobile = window.innerWidth <= 768;
-      const isTablet = window.innerWidth > 768 && window.innerWidth <= 1024;
-      if (this.isOpen && !isMobile && !isTablet) {
-        Object.assign(this.container.style, {
-          height: 'auto',
-          top: '0',
-          bottom: '0',
-          right: '0',
-          left: 'auto'
-        });
-        this.iframe.style.borderRadius = '12px 0 0 12px';
-        this.sendCommand('SET_EDGE_MODE', { enabled: true });
-        console.log('📐 Session activated — full height, pinned right');
-      }
-    },
-
-    // Deactivate session — return to default height on next open
-    deactivateSession() {
-      this.isActive = false;
-
-      // If currently expanded on desktop, resize back to default
-      const isMobile = window.innerWidth <= 768;
-      const isTablet = window.innerWidth > 768 && window.innerWidth <= 1024;
-      if (this.isOpen && !isMobile && !isTablet) {
-        Object.assign(this.container.style, {
-          height: this.config.expandedHeight,
-          top: 'auto',
-          bottom: '20px',
-          right: '20px',
-          left: 'auto'
-        });
-        this.iframe.style.borderRadius = '12px';
-        this.sendCommand('SET_EDGE_MODE', { enabled: false });
-        console.log('📐 Session deactivated — default height restored');
-      }
     },
 
     // Toggle widget state
@@ -830,7 +810,9 @@ import { getBindingSessionId } from './utils/bindingSession.js';
       // Keep circular border radius only if dimensions are square
       const isSquare = Math.abs(dimensions.width - dimensions.height) < 10;
       Object.assign(this.iframe.style, {
-        borderRadius: isSquare ? '50%' : '12px'
+        borderRadius: isSquare ? '50%' : '12px',
+        // Closed-state dims (launcher / launcher+callout) — no panel shadow.
+        boxShadow: 'none'
       });
 
       console.log(`📏 Applied dimensions: ${dimensions.width}x${dimensions.height}px at bottom-right corner`);
@@ -841,24 +823,16 @@ import { getBindingSessionId } from './utils/bindingSession.js';
       if (window.ResizeObserver) {
         const resizeObserver = new ResizeObserver(() => {
           if (this.isOpen) {
-            // Re-apply mobile/desktop sizing
-            const isMobile = window.innerWidth <= 768;
+            // Re-apply mobile/desktop sizing — mirrors expand()'s ≤480 breakpoint
+            const isMobile = window.innerWidth <= 480;
             if (isMobile) {
               Object.assign(this.container.style, {
-                width: 'calc(100vw - 20px)',
-                height: 'calc(100vh - 40px)',
-                bottom: '10px',
-                right: '10px',
-                top: 'auto'
-              });
-            } else if (this.isActive) {
-              Object.assign(this.container.style, {
-                width: this.config.expandedWidth,
-                height: 'auto',
                 top: '0',
+                left: '0',
                 bottom: '0',
                 right: '0',
-                left: 'auto'
+                width: '100vw',
+                height: VIEWPORT_H
               });
             } else {
               Object.assign(this.container.style, {
@@ -866,12 +840,16 @@ import { getBindingSessionId } from './utils/bindingSession.js';
                 height: this.config.expandedHeight,
                 bottom: '20px',
                 right: '20px',
-                top: 'auto'
+                top: 'auto',
+                left: 'auto'
               });
             }
+            this.iframe.style.borderRadius = isMobile ? '0' : '12px';
+            this.iframe.style.boxShadow = isMobile ? 'none' : '0 2px 24px rgba(15, 23, 42, 0.08)';
+            this.notifyViewportTier(isMobile);
           }
         });
-        
+
         resizeObserver.observe(document.body);
       }
     },
