@@ -1,9 +1,11 @@
 # Conversation Session-State — Design Doc (DRAFT)
 
-**Status:** Draft v2 for review — architecture only, no code yet
+**Status:** Draft v3 — architecture only; Step 0 shipped (lambda#385) and validated live
 **Date:** 2026-07-04
 **Owner:** Chris Miller
 **Origin:** Came out of a live staging debugging session (Atlanta Angels replica, MYR384719) that surfaced topic drift, CTA program-bleed, and weak session memory. This doc reframes the "Chat Experience Optimization" program ([`CHAT_EXPERIENCE_OPTIMIZATION.md`](CHAT_EXPERIENCE_OPTIMIZATION.md)) around the real lever.
+
+**v3 changelog (independent foundation audit, 2026-07-05 — three code investigations + a live pipeline repro of the incident).** Three v2 claims corrected: (a) **the CTA-bleed root cause was mis-attributed** — the bleed CTAs are *tightly* tagged; the real mechanism is the classified **topic** (`volunteer_general`) carrying tags that span both programs, plus no session-level program preference in pool selection (empirical: real `classifyTopic` + `selectCTAsFromPool` on the exact incident conversation reproduced the production CTAs verbatim, and the core-learning redundancy filter *removed* the one Dare-to-Dream CTA, worsening the tilt). "Tighten CTA tags" would NOT have fixed the incident — §2, §10 Step 1 rescoped. (b) **the `recently_shown_ctas` dedup does not exist** — it lives only in JSDoc comments (`prompt_v4.js:17,630`), never read in code (§3c). (c) **the HTTP path's "richer memory" is illusory** — the summary read always returns empty (no writer; usually no row) AND its consumer discards the result via an `Item`-key shape mismatch (`lambda_function.py:1330`); both paths run on body-carried history only, dissolving the §11 "unify the paths" question (§3e). New finding: **`session_context` is already sent on every streaming request** (`StreamingChatProvider.jsx:772`) and the body is in scope at the prompt call — enabling a server-only "session-state lite" (§10 Step 1, rescoped) with the go/no-go gate moved after it.
 
 **v2 changelog (tech-lead review incorporated, 2026-07-04).** Two v1 claims were wrong and are corrected here: (a) the `conversation-summaries` table's summary field is **dead code** — nothing writes real content on *either* path (`conversationManager.js:1138` calls `saveConversationDelta` with only 2 args), so the running-summary writer is a **from-scratch build**, not "wire up what Python does"; (b) retrieval passes **no metadata filter** today (`shared/bedrock-core.js:295`) and the main recruitment KB is **one all-programs document** (no per-chunk `program` tag), so program-scoped retrieval needs **KB re-segmentation + re-ingestion**, not a freebie. Also hardened per review: program-scoping is a **soft boost + zero-result-retry-unfiltered**, not a hard filter (§5); a **go/no-go gate** sits before the session-state build (§10); the model-written summary routes through **PII advisory** before implementation (§8); store-unavailable **failure contract** added (§8); step-5 dual-path unification **cut** from the committed plan (§10).
 
@@ -28,7 +30,7 @@ Both reduce to one thing: a **single running "understanding of the session"** th
 
 **Root causes found (none are prompt "naturalness"):**
 - **Retrieval got a polluted query.** `index.js:755–773` rewrites the KB query on follow-ups to `"<input> — details beyond: <the previous answer, HTML and all>"`. "Learn about…" matched the trigger, so "volunteer process" was retrieved as *"volunteer process + the prior mentoring answer"* → mentoring-flavored passages → drift. (Proof: same prompt + the *clean* query grounds correctly; the enriched query is the only difference.)
-- **CTA tags don't discern programs.** `query_process` ("Learn about the volunteer process") is tagged `topic_tags: ["dare_to_dream","love_box","volunteer"]` — it spans both programs, so the pool bleeds Love Box CTAs into a mentoring thread.
+- **CTA selection has no session program preference** *(v3 correction — empirically reproduced)*. A program-unspecified turn ("Tell me about the volunteer process") classifies as `volunteer_general`, whose **topic tags span both programs** (`[dare_to_dream, love_box, volunteer]`). Pool eligibility is any-single-tag overlap (`prompt_v4.js:675-680`), so both programs' CTAs enter the pool; the core-learning redundancy filter then *removed* the one Dare-to-Dream CTA ("AI just answered dare_to_dream", `prompt_v4.js:713-720`), and the final selection was exactly the production bleed: `[query_discoverysession, query_process, love_box_learn, lovebox_contents]`. The bleed CTAs themselves are tightly tagged (`[love_box]`) — tightening CTA tags would not fix this, and tightening `volunteer_general`'s tags would break the legitimate cold-start case (a user with no program context *should* see both). The turn's classification is arguably correct in isolation; what's missing is the **session's** program context biasing the choice.
 - **Memory is a thin sliding window** (see §3), with no shared "what this conversation is about."
 
 **Not the cause:** the Step-2 response prompt, the KB content, or the 2.5 CTA-restraint change (that tenant doesn't even run the V4.0 selector; the polluting doc has been in the KB since April).
@@ -51,16 +53,16 @@ Three consumers each form their *own* view of the conversation, from *different*
 
 ### 3c. Next steps (CTAs / menus)
 - **V4.0 Action Selector** (`selectActionsV4`) — a post-response Haiku call over the `ai_available` vocabulary (this is what 2.5 tuned). Reads response + history; **no program scoping**.
-- **V4.1 Pool Selection** (`selectCTAsFromPool` + `topic_definitions`) — the path Atlanta Angels actually uses. Classifies a topic, filters CTAs by `selection_metadata.topic_tags`, dedups against `session_context.recently_shown_ctas`. **Tags are loose** → program bleed.
+- **V4.1 Pool Selection** (`selectCTAsFromPool` + `topic_definitions`) — the path Atlanta Angels actually uses. Classifies a topic (Haiku call seeing the current message + last 2 *user* messages, `prompt_v4.js:433-471`), then pools CTAs by **any-single-tag overlap** between the topic's `tags` and each CTA's `selection_metadata.topic_tags` (`prompt_v4.js:675-680`). *(v3 correction)*: the documented `recently_shown_ctas` dedup **does not exist** — it appears only in JSDoc (`prompt_v4.js:17,630`), never in code; the only real dedup is `completed_forms`. Program bleed comes from program-spanning **topic** tags (§2), not loose CTA tags.
 
 ### 3d. The one piece of shared state that exists (and is underused)
 `session_context` (client-held, `StreamingChatProvider.jsx:1060–1082`): `accumulated_topics` (≤15), `detected_role` (sticky), `last_classified_topic`, `recently_shown_ctas` (≤8), `turns_since_click`, `completed_forms`.
-- It's used for **CTA routing + retrieval-continuation detection** — but **never injected into the response prompt**, and it's coarse (a topic list + a role), not a real understanding.
+- *(v3, verified)* It is **already sent on every streaming request** (`StreamingChatProvider.jsx:772`) and the parsed body is in scope at the prompt-build call (`index.js:770/1262`) — but the server only parses it *after* the response has streamed (`index.js:921/1384`), for the post-stream CTA path: `last_classified_topic` feeds topic-classification continuation, and `completed_forms`/`suspended_forms`/`program_interest` feed CTA/enhancement logic. It is **never injected into the response prompt**, and it's coarse (a topic list + a role), not a real understanding.
 
-### 3e. The other path has *more* memory (inconsistently)
-The **HTTP fallback (Master_Function, ~20%)** reads a **conversation summary + recent messages** from DynamoDB (`conversation-summaries`, `recent-messages` tables; `conversation_handler.py:619–830`). So the two paths have **different memory models** — the primary path is the weaker one.
+### 3e. The other path's "extra" memory is illusory *(v3 correction)*
+The **HTTP fallback (Master_Function, ~20%)** has read/write scaffolding for a conversation summary + recent messages (`conversation_handler.py:610–790`), but it is dead end-to-end: the summary is never written (the delta keys that would carry it are never sent — the sole client call site `conversationManager.js:1138` passes 2 args, so usually **no summaries row is written at all**), and even the empty read is discarded by its consumer (`lambda_function.py:1330` checks `result.get('Item')` on a flat dict → always `None`). **Both paths run on body-carried history only.** There are no "two memory models" to unify — which removes that open question from §11.
 
-**Summary of the problem:** response reads a trimmed transcript; retrieval reads a hacked keyword query; CTAs read loose tags. Three views, no shared truth, nothing keeping them coherent.
+**Summary of the problem:** response reads a trimmed transcript; retrieval reads a hacked keyword query (fixed in Step 0); CTAs read program-spanning topic tags with no session preference. Three views, no shared truth, nothing keeping them coherent.
 
 ---
 
@@ -93,7 +95,7 @@ Design rules (simplicity guardrails):
 
 | Consumer | Today | With session state |
 |---|---|---|
-| **Retrieval** | single query string; enrichment hack; no scoping | Query the **clean current input**; drop the `index.js:755` enrichment. **Soft-boost/rerank toward `active_program`** (NOT a hard filter — see §5a) with a **zero-result retry unfiltered**. For true ellipsis ("tell me more") do a clean **query-rewrite** using the summary, not raw-answer concatenation. → *less drift, less cross-program pull, without silently excluding the right passage.* |
+| **Retrieval** | clean current query (enrichment removed in Step 0 ✅); no scoping | **Soft-boost/rerank toward `active_program`** (NOT a hard filter — see §5a) with a **zero-result retry unfiltered** — gated, needs KB re-segmentation (§6). For true ellipsis ("tell me more") a clean **query-rewrite** using the summary, not raw-answer concatenation. → *less cross-program pull, without silently excluding the right passage.* |
 | **Response** | trimmed transcript only | Inject **`running_summary` + `active_program` + `user_role`** into the prompt, alongside a short recent window. → *answers in context, recalls the session, stays on program.* |
 | **Next steps (CTA/menu)** | loose tags (bleed) or unscoped selector | Select **scoped to `active_program`** and **gated by `stage`** (restraint while exploring — the 2.5 behavior — surface APPLY when `ready_to_act`). → *in-context next steps; no Love Box in a mentoring thread; conversation-first, menus when they help.* |
 
@@ -116,11 +118,12 @@ So v1 scopes retrieval as a **soft boost / rerank** (prefer on-program chunks, d
 - KB doc **`document_type`** metadata (`knowledge_base` vs `program_manual`) → already present → lets us at least keep mentor-curriculum docs out of recruitment retrieval.
 - **2.5 CTA restraint** (already shipped) → becomes the `stage=exploring` behavior, now *scoped* rather than standalone.
 
-**Must be built (NOT free, contrary to v1):**
-- **The running-summary writer is dead code.** The `conversation-summaries`/`recent-messages` tables exist and are read-safe, but the summary field is never populated (`saveConversationDelta` is only ever called with 2 args, `conversationManager.js:1138`; `factsUpdate`/`summaryUpdate` are always null). So the summarizer is a from-scratch build on **both** paths — not a wiring task.
-- **Per-program KB tagging + a retrieval filter do not exist.** `retrieveKB` passes no `filter` (`shared/bedrock-core.js:295`), and the main recruitment KB is a single all-programs document whose metadata lists every program in one `topics` string — there is no per-chunk `program` attribute to scope on. Program-scoped retrieval therefore requires **KB re-segmentation + metadata regeneration + re-ingestion** plus filter plumbing. Verify the exact gap against a live multi-program tenant's ingested metadata before scoping Step 1.
+**Must be built (NOT free; all items below re-verified 2026-07-05):**
+- **The running-summary writer is dead code** — stronger than v2 stated: `saveConversationDelta` is a client-side POST builder whose sole call site passes 2 args (`conversationManager.js:1138`), so the server's summaries-table `PutItem` block (gated on `summary_update`/`facts_update`/`pending_action`, `conversation_handler.py:711`) is never entered — usually **no summaries row exists at all**. A summarizer is a from-scratch build on **both** paths.
+- **The `recently_shown_ctas` dedup is dead code** *(v3, new)* — documented in `prompt_v4.js` JSDoc, never read. Real across-turn CTA suppression must be built (this is also the sibling roadmap's 2.5b).
+- **Per-program KB scoping does not exist — verified live.** `retrieveKB` passes no `filter` and discards chunk metadata (`shared/bedrock-core.js:291-307`; note it also caches by `(query, kb)` only — a scoping dimension would need a cache-key change). The MYR384719/Atlanta KB has exactly 2 docs: the main recruitment doc is **one 63KB all-programs file** whose metadata carries a single `topics` string (no program attribute); the Dare to Dream Jr manual **does** carry `program` + `document_type: program_manual`. So: a `document_type` filter (keep curriculum manuals out of recruitment retrieval) is available **today**; per-program scoping of the main content requires **re-segmentation + metadata regeneration + re-ingestion**.
 
-So the build is **wiring + one new per-turn summarizer + a KB re-ingestion pass**, not pure wiring.
+So the full build is **wiring + one new per-turn summarizer + a KB re-ingestion pass** — but see §10: a "session-state lite" using the already-on-the-wire `session_context` defers most of it.
 
 ---
 
@@ -157,33 +160,39 @@ The Phase-1 eval net scores the **prompt given a KB** — it never exercises ret
 
 ## 10. Rough phasing (sketch, not a commitment)
 
-Ordered by *impact per unit risk*, each independently shippable and eval-gated.
+Ordered by *impact per unit risk*, each independently shippable and eval-gated. *(v3: Step 1 rescoped — the v2 "tighten CTA tags" fix is refuted by the empirical repro in §2; the gate moved after the lite build.)*
 
-**Cheap wins (approve now):**
+0. ✅ **Kill the retrieval drift** — SHIPPED (lambda#385, 2026-07-05) and validated by operator repro on staging: the mentoring → "volunteer process" turn now answers from the correct KB passage. Multi-turn eval scenario `context_01` locks it.
 
-0. **Kill the retrieval drift.** Narrow/remove the `index.js:755` enrichment; retrieve on the clean query. Add a multi-turn retrieval eval. *(18 isolated lines; can only make the query cleaner; likely fixes the "volunteer process" drift by itself. Ship as its own PR.)*
-1. **Program-scoping (soft) + CTA de-bleed.** Tighten CTA `topic_tags` so program-specific CTAs don't cross programs *(fixes the Love Box bleed — config work)*, and add a **soft on-program boost + zero-result-unfiltered retry** to retrieval (§5a). **Prerequisite:** confirm/repair per-program KB metadata (see §6 "must be built") — this likely needs a re-ingestion pass and is the real cost of Step 1.
+1. **Session-state lite** (server-only BSH change; no new store, no summarizer). `session_context` is already in every streaming request body and in scope at the prompt call (§3d), so:
+   - **1a. Inject session context into the response prompt** — a short block (active topics, detected role) in `buildV4ConversationPrompt`. Kills the context-blind clarifying question ("Love Box or mentoring?" asked right after a mentoring exchange). No client change, no WAF impact, trust model unchanged (the prompt already trusts client-carried history).
+   - **1b. Program-aware CTA ordering** — when the classified topic is program-ambiguous (e.g. `volunteer_general`), use the session's program signal (accumulated topics / last classified topic) to *prefer* on-program CTAs in pool ordering — soft bias, never exclusion (§5a logic applied to CTAs). Kills the Love Box bleed without breaking the cold-start case.
+   - **1c. Implement the shown-CTA dedup** (`recently_shown_ctas` — currently dead, §6; = sibling roadmap 2.5b).
+   - Eval-gated (extend the harness to drive `classifyTopic`/`selectCTAsFromPool` with `session_context` — §9), flag-gated, MyRecruiter tenant first. ⚠️ `index.js` has **two near-identical handler blocks** (streaming ~360–1050, buffered ~1140–1490) — every change lands in both.
 
-**↓↓↓ GO/NO-GO GATE ↓↓↓** — ship + soak 0–1, re-run the volunteer-process / Love-Box repro and the new multi-turn eval. **Only fund the session-state object below if drift / bleed / memory complaints persist.** (Same discipline the sibling roadmap applies to Phase-4 agentic forms: measure before the expensive bet.)
+1½. *(optional, cheap)* **`document_type` retrieval filter** — exclude `program_manual` docs from recruitment retrieval using metadata that already exists (§6). No re-ingestion needed.
 
-**The session-state build (gated):**
+**↓↓↓ GO/NO-GO GATE ↓↓↓** — ship + soak 0–1, re-run the volunteer-process / Love-Box repro and the multi-turn evals. **Only fund the full session-state build below if drift / bleed / context complaints persist.** What the expensive build adds over lite: own-answer recall beyond 2 turns, memory past the 20-user-turn window, server-authoritative state — tail value when typical conversations are 2–3 turns (§7).
+
+**The full session-state build (gated):**
 
 2. **Session-state object + per-turn summarizer** (server-side store, running summary — built from scratch, §6). *PII-advisor sign-off is a prerequisite (§8).*
-3. **Wire response generation to read the summary + program + role.** *(The memory win.)*
+3. **Wire response generation to read the summary + program + role.** *(The long-conversation memory win.)*
 4. **Stage-gate CTAs** (fold 2.5 restraint in as `stage=exploring`).
+5. **KB re-segmentation + program-boosted retrieval** (§5a, §6) — only if the gate shows retrieval still pulls cross-program after 0–1.
 
-**Deferred (own mini-design, NOT in this committed plan):** unifying the Node (streaming) and Python (HTTP) paths onto one shared state store. The doc's §11 lists this as an open architectural question ("where does the shared logic live?"); with the summarizer non-existent on both paths today, this is a separate decision to make only after 2–4 are validated in prod.
+**Deferred:** unifying the Node (streaming) and Python (HTTP) paths. *(v3: mostly dissolved — §3e shows both paths already run on body-carried history only, so there are no divergent memory models to reconcile. If the gated store ships (steps 2–4), giving the HTTP path the same state read is a small follow-up, not a mini-design.)*
 
 ---
 
 ## 11. Open questions / risks (poke holes here)
 
-- **⭐ Biggest risk — `active_program` misclassification blast radius.** One classifier output now steers retrieval + response + CTAs at once (vs. one wrong button today). Primary mitigation: **soft-boost not hard-filter + zero-result retry** (§5a). Residual: stickiness is double-edged (prevents flapping, but can lock onto a wrong program after a legit pivot) → an explicit pivot must override immediately. Still needs a concrete confidence threshold + low-confidence-turn behavior (unresolved).
-- **KB re-ingestion prerequisite** (new in v2) — per-program retrieval scoping isn't possible until the recruitment KB is re-segmented/re-tagged with a `program` attribute (§6). This is a real, unbudgeted dependency for Step 1; verify against a live multi-program tenant first.
+- **⭐ Biggest risk — program-signal misclassification blast radius.** One inferred program signal steers response framing + CTAs (and, post-gate, retrieval) at once. This applies to **session-state lite too** (§10 Step 1): the mitigation everywhere is **soft bias, never exclusion** — a wrong program signal degrades ranking/framing, never hides a fact or a CTA the user asked for. Stickiness is double-edged (prevents flapping, can lock a wrong program past a legit pivot) → an explicit user pivot must override immediately. Concrete confidence threshold + low-confidence behavior still unresolved.
+- **Client-held state is client-controlled** *(v3, new)* — lite reads `session_context` from the request body, which a hostile client can forge. Same trust class as `conversation_history`, which the prompt already consumes; forging it only degrades that client's own session. Acceptable for lite; the gated server-side store removes even that.
+- **KB re-ingestion prerequisite — verified live 2026-07-05** (§6): per-program scoping of the main recruitment doc requires re-segmentation; only the `document_type` filter is free today. Deferred behind the gate (§10 step 5).
 - **Summary drift** — a model-written running summary can hallucinate/compound. Mitigations: facts-only, bounded length, periodic regenerate-from-window, never treated as KB, **deterministic PII guard** (§8), PII-advisor sign-off.
-- **Deciding `active_program`** — reuse the existing `classifyTopic()` call or a new one? (Determines the per-turn latency cost, §7.) Plus the "unspecified/general" topic-12 case must bypass scoping.
-- **Measurement beyond evals** — steps 2–5 are the expensive part; they need a concrete production metric (e.g., CTA-tag precision by program, retrieval program-match rate, unprompted-topic-switch counter), not just the demo-verdict vibe check.
-- **Deferred: HTTP vs streaming unification** — real Python/Node duplication; own mini-design later (moved out of §10).
+- **Deciding `active_program`** — for lite, derive it deterministically from `topic_definitions` tags (topics → program) with `general_inquiry`/`volunteer_general` treated as no-signal; for the gated build, decide whether `classifyTopic()` is reused or extended (per-turn latency, §7).
+- **Measurement beyond evals** — steps 2–5 are the expensive part; they need a concrete production metric (e.g., CTA program-match rate, unprompted-topic-switch counter), not just the demo-verdict vibe check.
 - **Rollout** — flag-gated, MyRecruiter test tenant first.
 - **Scope creep** — resist turning this into a general agent/memory platform. Keep it: small state, three consumers, one update step.
 
@@ -200,4 +209,4 @@ Ordered by *impact per unit risk*, each independently shippable and eval-gated.
 
 ## 13. Relationship to the existing program
 
-This **reprioritizes** [`CHAT_EXPERIENCE_OPTIMIZATION.md`](CHAT_EXPERIENCE_OPTIMIZATION.md): the Phase-1 eval net stands (and needs the multi-turn extension in §9); the Phase-2 naturalness sub-phases (closings, tone, 2.5) are **secondary polish** and should wait behind §10 steps 0–4. The session-state layer is the actual lever for both of Chris's goals.
+This **reprioritizes** [`CHAT_EXPERIENCE_OPTIMIZATION.md`](CHAT_EXPERIENCE_OPTIMIZATION.md): the Phase-1 eval net stands (and needs the multi-turn extension in §9); the Phase-2 naturalness sub-phases (closings, tone) are **secondary polish** and should wait behind §10 steps 0–1 + the gate. Sub-phase 2.5b (shown-CTA memory) is absorbed into §10 step 1c. The session context/state layer is the actual lever for both of Chris's goals.
