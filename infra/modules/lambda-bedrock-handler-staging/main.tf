@@ -842,6 +842,61 @@ resource "aws_cloudwatch_metric_alarm" "form_handler_ddb_write_error" {
   }
 }
 
+# ─────────────────────────────────────────────────────────────────────────────
+# V5 single-pass turn — action-tail malformed detector.
+#
+# The V5 turn logs `{"type":"V5_TAIL_STATUS","status":"malformed",...}` when the
+# model's machine-read action tail (`<<<ACTIONS [...]>>>`) can't be parsed.
+# Production auto-recovers each one via the selectActionsV4 fail-soft ladder, so
+# a LONE malformed tail is user-invisible; a CLUSTER means the tail format has
+# regressed (a prompt/model change that breaks the sentinel at scale). Baseline
+# at add-time: 0 malformed across every V5.7 soak window (v5-turn.v3). Landed on
+# the staging side before prod V5 traffic per the V5 plan §10 follow-on list.
+#
+# Quoted terms = literal-substring AND match. A JSON-selector pattern ($.status)
+# does NOT work here: the Node runtime prefixes each line with
+# `TIMESTAMP RequestId INFO`, so the log line isn't pure JSON — same reason the
+# sibling form-handler filter above uses a quoted substring. Pattern validated
+# via `aws logs test-metric-filter` (matches status:malformed, ignores
+# actions/no_sentinel).
+# ─────────────────────────────────────────────────────────────────────────────
+resource "aws_cloudwatch_log_metric_filter" "v5_tail_malformed" {
+  count          = var.pii_subject_index_alarm_sns_topic_arn != "" ? 1 : 0
+  name           = "${var.function_name}-v5-tail-malformed"
+  log_group_name = aws_cloudwatch_log_group.lambda.name
+  pattern        = "\"V5_TAIL_STATUS\" \"malformed\""
+
+  metric_transformation {
+    name          = "V5TailMalformed"
+    namespace     = "Picasso/BSH/V5Turn"
+    value         = "1"
+    default_value = "0"
+    unit          = "Count"
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "v5_tail_malformed" {
+  count             = var.pii_subject_index_alarm_sns_topic_arn != "" ? 1 : 0
+  alarm_name        = "${var.function_name}-v5-tail-malformed"
+  alarm_description = "V5 single-pass action tail failed to parse (status:malformed in a V5_TAIL_STATUS log). Production auto-recovers each one via the selectActionsV4 fail-soft ladder, so a lone occurrence is NOT user-facing — this is a REGRESSION detector for the `<<<ACTIONS [...]>>>` tail format. Investigate via CW Logs Insights on /aws/lambda/Bedrock_Streaming_Handler: filter @message like 'V5_TAIL_STATUS' | stats count() by status — a rising malformed share vs actions/no_sentinel is the signal. Baseline at add-time: 0 malformed across all v5-turn.v3 soak windows."
+
+  namespace           = "Picasso/BSH/V5Turn"
+  metric_name         = "V5TailMalformed"
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = 0
+  comparison_operator = "GreaterThanThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [var.pii_subject_index_alarm_sns_topic_arn]
+
+  tags = {
+    Project = "chat-experience"
+    Owner   = "chris@myrecruiter.ai"
+    Source  = "V5 single-pass turn — tail-status alarm"
+  }
+}
+
 output "function_arn" {
   value = aws_lambda_function.this.arn
 }
