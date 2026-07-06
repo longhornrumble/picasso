@@ -314,13 +314,20 @@ resource "aws_iam_role" "renewer_scheduler" {
         StringEquals = {
           "aws:SourceAccount" = data.aws_caller_identity.current.account_id
         }
-        # G13: also bind to THIS schedule's ARN (confused-deputy) so no other
-        # scheduler in the account can assume the role. The ARN is built from data
-        # sources + the known schedule name to avoid a circular dependency with
-        # aws_scheduler_schedule.renewer.
-        ArnEquals = {
-          "aws:SourceArn" = "arn:${data.aws_partition.current.partition}:scheduler:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:schedule/default/picasso-calendar-watch-renewer-staging"
-        }
+        # FIX (2026-07-06): the aws:SourceArn condition (former "G13" confused-deputy
+        # bind to this schedule's ARN) was REMOVED. EventBridge Scheduler's assume-role
+        # validation does NOT satisfy an aws:SourceArn condition — NOT even for a
+        # DEFAULT-group schedule. The 2026-06-11 reminder-scheduler fix established this
+        # for non-default groups but ASSUMED the default group "behaved differently"; it
+        # does not. With the condition present, scheduler.amazonaws.com could never
+        # assume this role, so every 6h fire failed silently (AWS/Scheduler
+        # TargetErrorCount=1/6h, 0 Lambda invocations) from this role's creation on
+        # 2026-05-29 — the calendar-watch channels only survived via manual re-mints,
+        # and the outage surfaced only when the re-mints stopped (channels expired
+        # 2026-07-02). aws:SourceAccount (cross-account confused-deputy protection) is
+        # retained; residual intra-account scoping comes from this role's single-target
+        # invoke policy (lambda:InvokeFunction on Calendar_Watch_Renewer + sqs:SendMessage
+        # on its DLQ only). Mirrors lambda-reminder-scheduler-staging.
       }
     }]
   })
