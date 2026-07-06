@@ -149,6 +149,15 @@ module "promote_tenant_config_role_prod" {
   source = "./modules/promote-tenant-config-role-prod"
 }
 
+# Tenant-config promotion READ role (staging-only). Assumed by the same promote
+# workflow to fetch the staging-authored config before validating + copying it to
+# prod. Read-only; count = staging, so it auto-applies on merge to main.
+# See docs/roadmap/TENANT_CONFIG_PROMOTION_MECHANISM.md §11 step 3b.
+module "promote_tenant_config_read_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/promote-tenant-config-read-staging"
+}
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Phase 2 Tier 4 (production-only): the prod chat CloudFront distribution
 # E3G0LSWB1AQ9LP (alias chat.myrecruiter.ai). Adopts the live, hand-managed
