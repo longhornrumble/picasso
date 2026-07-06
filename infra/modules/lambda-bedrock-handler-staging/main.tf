@@ -878,7 +878,7 @@ resource "aws_cloudwatch_log_metric_filter" "v5_tail_malformed" {
 resource "aws_cloudwatch_metric_alarm" "v5_tail_malformed" {
   count             = var.pii_subject_index_alarm_sns_topic_arn != "" ? 1 : 0
   alarm_name        = "${var.function_name}-v5-tail-malformed"
-  alarm_description = "V5 single-pass action tail failed to parse (status:malformed in a V5_TAIL_STATUS log). Production auto-recovers each one via the selectActionsV4 fail-soft ladder, so a lone occurrence is NOT user-facing — this is a REGRESSION detector for the `<<<ACTIONS [...]>>>` tail format. Investigate via CW Logs Insights on /aws/lambda/Bedrock_Streaming_Handler: filter @message like 'V5_TAIL_STATUS' | stats count() by status — a rising malformed share vs actions/no_sentinel is the signal. Baseline at add-time: 0 malformed across all v5-turn.v3 soak windows."
+  alarm_description = "V5 single-pass action tail failed to parse (status:malformed in a V5_TAIL_STATUS log). Production auto-recovers each one via the selectActionsV4 fail-soft ladder, so a lone occurrence is NOT user-facing - this is a REGRESSION detector for the <<<ACTIONS [...]>>> tail format. Investigate via CW Logs Insights on /aws/lambda/Bedrock_Streaming_Handler: filter @message like 'V5_TAIL_STATUS' | stats count() by status - a rising malformed share vs actions/no_sentinel is the signal. Baseline at add-time: 0 malformed across all v5-turn.v3 soak windows."
 
   namespace           = "Picasso/BSH/V5Turn"
   metric_name         = "V5TailMalformed"
@@ -893,7 +893,7 @@ resource "aws_cloudwatch_metric_alarm" "v5_tail_malformed" {
   tags = {
     Project = "chat-experience"
     Owner   = "chris@myrecruiter.ai"
-    Source  = "V5 single-pass turn — tail-status alarm"
+    Source  = "V5 single-pass turn - tail-status alarm"
   }
 }
 
