@@ -81,6 +81,13 @@ variable "messenger_verify_token" {
   }
 }
 
+variable "github_promote_token" {
+  description = "Fine-grained GitHub PAT for the config-manager Promote-to-Production button (dispatches the promote-tenant-config workflow). CI supplies it via TF_VAR_github_promote_token from the GitHub secret CONFIG_PROMOTE_TOKEN. Optional (no validation): empty leaves the promote endpoint returning 503 rather than blocking the apply."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
 # Meta Messenger project — public OAuth callback URL registered in the Meta App
 # Dashboard. Empty on the FIRST staging apply (the Meta_OAuth_Handler Function
 # URL doesn't exist yet, and a Lambda cannot reference its own Function URL

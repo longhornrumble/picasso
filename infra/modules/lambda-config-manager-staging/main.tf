@@ -40,6 +40,13 @@ variable "log_retention_days" {
   default     = 90
 }
 
+variable "github_promote_token" {
+  description = "Fine-grained GitHub PAT (Actions:write on longhornrumble/picasso) the config manager uses to dispatch the promote-tenant-config workflow (the Promote-to-Production button). Supplied via TF_VAR_github_promote_token from the GitHub secret CONFIG_PROMOTE_TOKEN. Optional: empty = the /config/:id/promote endpoint returns 503 (feature inert), never a broken apply."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
 # ------------------------------------------------------------------
 # Data sources
 # ------------------------------------------------------------------
@@ -183,9 +190,10 @@ resource "aws_lambda_function" "config_manager" {
 
   environment {
     variables = {
-      ENVIRONMENT    = "staging"
-      S3_BUCKET      = var.config_bucket_name
-      CLERK_JWKS_URL = var.clerk_jwks_url
+      ENVIRONMENT          = "staging"
+      S3_BUCKET            = var.config_bucket_name
+      CLERK_JWKS_URL       = var.clerk_jwks_url
+      GITHUB_PROMOTE_TOKEN = var.github_promote_token
     }
   }
 
