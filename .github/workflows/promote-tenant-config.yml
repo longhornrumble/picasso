@@ -1,0 +1,295 @@
+name: Promote Tenant Config (staging → prod)
+
+# Gated, on-demand promotion of ONE tenant's config from the staging config
+# bucket (myrecruiter-picasso-staging, acct 525) to the prod config bucket
+# (myrecruiter-picasso, acct 614).
+#
+# Born-in-staging model (project_config_builder_internal_solo_operator): staging
+# is the sole authoring surface; this workflow is the ONLY path a config reaches
+# prod. Neither account holds a standing cross-account role — the runner assumes
+# a staging READ role to fetch, then a prod WRITE role to land the config.
+#
+# Design: docs/roadmap/TENANT_CONFIG_PROMOTION_MECHANISM.md (Option C, §5/§11).
+# §10 hardening honored:
+#   10.1 single-config validate (not the all-configs job)
+#   10.2 cache-aware verify (BSH caches configs ~5 min — S3-readback ≠ live-chat)
+#   10.3 cross-dispatch ETag re-assert (fail if prod moved since the dry-run)
+#   10.5 raw verbatim bytes (no re-merge/stamp — promote staging's exact bytes)
+#   10.6 rollback = native S3 version-restore
+#   10.7 tenant-scoped concurrency
+#
+# TWO-PHASE USE (both phases hold at the `production` approval gate — see the
+# promote job for why even the read-only phase must):
+#   1. dispatch dry_run=true → approve → fetch + validate the staging config,
+#      render the diff vs the current prod config, and print prod's current ETag.
+#      NO prod writes.
+#   2. dispatch dry_run=false expected_etag=<etag-from-step-1> → approve → it
+#      re-asserts the ETag (aborts if prod moved since your review), archives the
+#      current prod config, writes the promoted one, and verifies the readback.
+#
+# v1 SCOPE = EXISTING-tenant config only. New-tenant promotion (copy
+# mappings/<hash>.json + PutItem the prod Tenant Registry row) is a documented
+# follow-up: the prod write-role intentionally lacks dynamodb:PutItem
+# (infra/modules/promote-tenant-config-role-prod/main.tf, lines 18-21). A promote
+# of a tenant with no existing prod config aborts with a clear message.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tenant_id:
+        description: "Tenant ID to promote (e.g. MYR384719). Copies its staging tenants/<id>/<id>-config.json to prod."
+        required: true
+        type: string
+      dry_run:
+        description: "true = read-only preview (fetch + validate + diff; NO prod write). false = execute the promotion. Both hold at the production approval gate."
+        required: true
+        type: boolean
+        default: true
+      expected_etag:
+        description: "REQUIRED when dry_run=false. Paste the ETag the dry_run printed. The execute run aborts if prod's current ETag no longer matches (prod moved since your review)."
+        required: false
+        type: string
+
+# OIDC only — no static keys. Both roles trust the workflow's
+# environment:production OIDC claim (same shape as GitHubActionsDeployRole).
+permissions:
+  id-token: write
+  contents: read
+
+# Tenant-scoped (§10.7): same-tenant promotes serialize; unrelated tenants never
+# block each other. Never cancel an in-flight promote.
+concurrency:
+  group: promote-tenant-config-${{ github.event.inputs.tenant_id }}
+  cancel-in-progress: false
+
+env:
+  STAGING_READ_ROLE_ARN: arn:aws:iam::525409062831:role/GitHubActionsPromoteConfigReadRole
+  PROD_WRITE_ROLE_ARN: arn:aws:iam::614056832592:role/GitHubActionsPromoteConfigRole
+  STAGING_BUCKET: myrecruiter-picasso-staging
+  PROD_BUCKET: myrecruiter-picasso
+  AWS_REGION: us-east-1
+
+jobs:
+  # Fires the moment an execute run is dispatched, in parallel with the promote
+  # job holding at its `production` gate — so an agent-staged promote gets a
+  # phone-tap approval instead of sitting unnoticed (mirrors infra-deploy-prod).
+  notify-approval:
+    name: Notify — approval ready
+    if: ${{ github.event.inputs.dry_run == 'false' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Slack ping
+        continue-on-error: true # courtesy ping; never fail a promote on it
+        uses: slackapi/slack-github-action@fcfb566f8b0aab22203f066d80ca1d7e4b5d05b3 # v1
+        with:
+          payload: |
+            {
+              "text": ${{ toJSON(format('🟡 PROD config promote awaiting approval — tenant {0}', github.event.inputs.tenant_id)) }},
+              "blocks": [
+                { "type": "section", "text": { "type": "mrkdwn", "text": ${{ toJSON(format('*🟡 Prod tenant-config promote awaiting your approval* — tenant `{0}`', github.event.inputs.tenant_id)) }} } },
+                { "type": "section", "text": { "type": "mrkdwn", "text": "<https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|Review the diff, then approve / reject>" } }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+
+  promote:
+    name: Promote ${{ github.event.inputs.tenant_id }} (dry_run=${{ github.event.inputs.dry_run }})
+    runs-on: ubuntu-latest
+    # `production` gate on BOTH phases — REQUIRED, not just ceremony: both roles
+    # trust ONLY the `:environment:production` OIDC sub (same shape as
+    # GitHubActionsDeployRole; see infra-deploy-prod.yml). A job with no
+    # environment carries a `:ref:` sub the roles reject, so even the read-only
+    # dry-run (which reads prod for the diff + ETag) must run here to assume them.
+    # Consequence: dry-run also needs an approval click in v1 — mild, uniform, and
+    # exactly what the planned frictionless `config-promotion` env later lightens
+    # (TENANT_CONFIG_PROMOTION_MECHANISM.md §11 / handoff Q1). Writes stay gated on
+    # dry_run=='false' below, so a dry-run never mutates prod even once approved.
+    environment: production
+    steps:
+      # Validator lives in the config-builder repo. Dedicated checkout at main
+      # (public repo, GITHUB_TOKEN suffices) — NOT the superrepo submodule, whose
+      # committed pointer is stale and lacks validateSingleConfig. main also gives
+      # the CURRENT schema, which is what a prod candidate should validate against.
+      - name: Checkout config-builder (validator source)
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          repository: longhornrumble/picasso-config-builder
+          ref: main
+          path: config-builder
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+
+      - name: Install config-builder deps (validator CLI)
+        working-directory: config-builder
+        run: npm ci
+
+      # ── Phase 1: fetch from STAGING (read-role, acct 525) ──────────────────
+      - name: Configure AWS creds — staging read-role (525)
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
+        with:
+          role-to-assume: ${{ env.STAGING_READ_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: promote-fetch-${{ github.run_id }}
+
+      - name: Fetch staging config
+        run: |
+          set -euo pipefail
+          KEY="tenants/${TENANT_ID}/${TENANT_ID}-config.json"
+          echo "Fetching s3://${STAGING_BUCKET}/${KEY}"
+          aws s3api get-object --bucket "$STAGING_BUCKET" --key "$KEY" staging-config.json >/dev/null
+          echo "Fetched $(wc -c < staging-config.json) bytes"
+        env:
+          TENANT_ID: ${{ github.event.inputs.tenant_id }}
+
+      # ── Validate the fetched blob against the live schema (no AWS) ──────────
+      - name: Validate staging config against tenantConfigSchema
+        working-directory: config-builder
+        run: npx tsx scripts/validate-single-config.ts ../staging-config.json
+
+      # ── Phase 2: inspect (+ execute: write) PROD (write-role, acct 614) ────
+      - name: Configure AWS creds — prod write-role (614)
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
+        with:
+          role-to-assume: ${{ env.PROD_WRITE_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: promote-write-${{ github.run_id }}
+
+      - name: Inspect prod state (exists / ETag / version) + render diff
+        id: prod
+        run: |
+          set -euo pipefail
+          KEY="tenants/${TENANT_ID}/${TENANT_ID}-config.json"
+          if aws s3api head-object --bucket "$PROD_BUCKET" --key "$KEY" > head.json 2>/dev/null; then
+            EXISTS=true
+            ETAG=$(jq -r '.ETag' head.json | tr -d '"')
+            VERSION=$(jq -r '.VersionId // "null"' head.json)
+            aws s3api get-object --bucket "$PROD_BUCKET" --key "$KEY" prod-current.json >/dev/null
+          else
+            EXISTS=false
+            ETAG=""
+            VERSION=""
+            echo '{}' > prod-current.json
+          fi
+          {
+            echo "exists=$EXISTS"
+            echo "etag=$ETAG"
+            echo "version=$VERSION"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo "## Promote preview — \`${TENANT_ID}\`"
+            echo ""
+            echo "- Prod config exists: **$EXISTS**"
+            if [ "$EXISTS" = "true" ]; then
+              echo "- Prod current ETag: \`$ETAG\`"
+              echo "- Prod current VersionId (rollback target): \`$VERSION\`"
+            else
+              echo "- ⚠️ **No prod config for this tenant.** This would be a NEW-TENANT promote, which v1 does NOT support (it also needs mappings/<hash>.json + a prod Tenant Registry row; the write-role lacks dynamodb:PutItem). Aborting below."
+            fi
+            echo ""
+            echo "### Diff (prod current → staging candidate, keys sorted)"
+            echo '```diff'
+            jq -S . prod-current.json > .a.json 2>/dev/null || cp prod-current.json .a.json
+            jq -S . staging-config.json > .b.json 2>/dev/null || cp staging-config.json .b.json
+            diff -u .a.json .b.json || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+        env:
+          TENANT_ID: ${{ github.event.inputs.tenant_id }}
+
+      - name: Guard — new-tenant promote unsupported in v1
+        if: ${{ steps.prod.outputs.exists == 'false' }}
+        run: |
+          echo "::error::Tenant ${TENANT_ID} has no prod config. New-tenant promotion (S3 mapping + prod Tenant Registry row) is a documented v1 follow-up — the prod write-role intentionally lacks dynamodb:PutItem. Aborting."
+          exit 1
+        env:
+          TENANT_ID: ${{ github.event.inputs.tenant_id }}
+
+      - name: Dry-run summary (no prod write)
+        if: ${{ github.event.inputs.dry_run == 'true' }}
+        run: |
+          {
+            echo ""
+            echo "### DRY RUN — no prod write performed"
+            echo "To execute: re-dispatch with **dry_run=false** and **expected_etag = \`${ETAG}\`**, then approve the \`production\` gate."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "Dry run complete. expected_etag for execute = ${ETAG}"
+        env:
+          ETAG: ${{ steps.prod.outputs.etag }}
+
+      # ── Execute (dry_run=false): ETag re-assert → archive → write → verify ─
+      - name: Re-assert ETag (abort if prod moved since your dry-run)
+        if: ${{ github.event.inputs.dry_run == 'false' }}
+        run: |
+          set -euo pipefail
+          EXPECTED="${EXPECTED_ETAG:-}"
+          EXPECTED="${EXPECTED//\"/}" # tolerate pasted quotes
+          CURRENT="${CURRENT_ETAG:-}"
+          if [ -z "$EXPECTED" ]; then
+            echo "::error::expected_etag is required for an execute run. Run dry_run=true first, then paste the ETag it prints."
+            exit 1
+          fi
+          if [ "$EXPECTED" != "$CURRENT" ]; then
+            echo "::error::Prod moved since your dry-run (expected_etag=$EXPECTED, prod now=$CURRENT). Re-run dry_run=true, review the new diff, and retry."
+            exit 1
+          fi
+          echo "ETag re-assert OK: $CURRENT"
+        env:
+          EXPECTED_ETAG: ${{ github.event.inputs.expected_etag }}
+          CURRENT_ETAG: ${{ steps.prod.outputs.etag }}
+
+      - name: Archive current prod config (backup before overwrite)
+        if: ${{ github.event.inputs.dry_run == 'false' }}
+        run: |
+          set -euo pipefail
+          TS=$(date -u +%Y-%m-%dT%H-%M-%S-%3NZ)
+          BACKUP_KEY="tenants/${TENANT_ID}/${TENANT_ID}-${TS}.json"
+          aws s3api put-object --bucket "$PROD_BUCKET" --key "$BACKUP_KEY" \
+            --body prod-current.json --content-type application/json >/dev/null
+          echo "Archived prod config → s3://${PROD_BUCKET}/${BACKUP_KEY}"
+          echo "BACKUP_KEY=$BACKUP_KEY" >> "$GITHUB_ENV"
+        env:
+          TENANT_ID: ${{ github.event.inputs.tenant_id }}
+
+      - name: Write promoted config to prod (verbatim staging bytes)
+        if: ${{ github.event.inputs.dry_run == 'false' }}
+        run: |
+          set -euo pipefail
+          KEY="tenants/${TENANT_ID}/${TENANT_ID}-config.json"
+          aws s3api put-object --bucket "$PROD_BUCKET" --key "$KEY" \
+            --body staging-config.json --content-type application/json >/dev/null
+          echo "Wrote s3://${PROD_BUCKET}/${KEY}"
+        env:
+          TENANT_ID: ${{ github.event.inputs.tenant_id }}
+
+      - name: Verify readback + rollback command + cache caveat
+        if: ${{ github.event.inputs.dry_run == 'false' }}
+        run: |
+          set -euo pipefail
+          KEY="tenants/${TENANT_ID}/${TENANT_ID}-config.json"
+          aws s3api get-object --bucket "$PROD_BUCKET" --key "$KEY" prod-after.json >/dev/null
+          if cmp -s prod-after.json staging-config.json; then
+            echo "Verify OK: prod object byte-matches the promoted config."
+          else
+            echo "::error::Verify FAILED: prod readback ≠ promoted config. Roll back with the version-restore command in the job summary."
+            exit 1
+          fi
+          {
+            echo ""
+            echo "### ✅ Promoted \`${TENANT_ID}\` to prod"
+            echo "- Backup: \`s3://${PROD_BUCKET}/${BACKUP_KEY}\`"
+            echo "- **Rollback (S3 version-restore to pre-promote state):**"
+            echo "  \`\`\`"
+            echo "  aws s3api copy-object --bucket ${PROD_BUCKET} --key ${KEY} \\"
+            echo "    --copy-source \"${PROD_BUCKET}/${KEY}?versionId=${PREV_VERSION}\" --profile myrecruiter-prod"
+            echo "  \`\`\`"
+            echo "- ⏳ **Cache caveat (§10.2):** prod BSH caches tenant configs in-memory for ~5 min. The config is live in S3 now, but warm BSH containers may serve the prior config for up to ~5 more minutes. Verify live-chat behaviour after the cache TTL, not instantly."
+          } >> "$GITHUB_STEP_SUMMARY"
+        env:
+          TENANT_ID: ${{ github.event.inputs.tenant_id }}
+          PREV_VERSION: ${{ steps.prod.outputs.version }}
