@@ -46,7 +46,18 @@ resource "aws_iam_role" "this" {
         Action    = "sts:AssumeRoleWithWebIdentity"
         Condition = {
           StringEquals = { "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com" }
-          StringLike   = { "token.actions.githubusercontent.com:sub" = "repo:longhornrumble/picasso:environment:production" }
+          # Trust BOTH the `production` env (original) AND the new frictionless
+          # `config-promotion` env (no required reviewer — the Config Builder's
+          # own confirm dialog becomes the gate; solo-operator model). Both listed
+          # for a zero-downtime cutover: the promote workflow can move from
+          # `production` -> `config-promotion` without a broken window. Narrow to
+          # config-promotion-only once the flip is proven.
+          StringLike = {
+            "token.actions.githubusercontent.com:sub" = [
+              "repo:longhornrumble/picasso:environment:production",
+              "repo:longhornrumble/picasso:environment:config-promotion",
+            ]
+          }
         }
       }
     ]

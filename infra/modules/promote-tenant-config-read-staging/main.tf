@@ -9,11 +9,11 @@
 # the CI actor reads staging with a staging role and writes prod with a prod
 # role; neither account holds a standing cross-account grant.
 #
-# Trust: :environment:production (v1 — the promote workflow runs in the existing
-# `production` environment, matching promote-tenant-config-role-prod). A later
-# refinement moves BOTH roles + the workflow to a dedicated, frictionless
-# `config-promotion` environment (no second-party approval — the Config Builder
-# is a solo-operator internal tool; the UI confirm is the deliberate gate).
+# Trust: BOTH :environment:production AND the new frictionless :environment:
+# config-promotion (no required reviewer — the Config Builder's own confirm
+# dialog becomes the gate; solo-operator internal tool). Listed together for a
+# zero-downtime cutover of the promote workflow from `production` ->
+# `config-promotion`; narrow to config-promotion-only once the flip is proven.
 #
 # Gated at the module block (count = var.env == "staging" ? 1 : 0) in main.tf —
 # exists only in the staging account (525); auto-applies on merge to main.
@@ -41,7 +41,16 @@ resource "aws_iam_role" "this" {
         Action    = "sts:AssumeRoleWithWebIdentity"
         Condition = {
           StringEquals = { "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com" }
-          StringLike   = { "token.actions.githubusercontent.com:sub" = "repo:longhornrumble/picasso:environment:production" }
+          # Trust BOTH the `production` env (original) AND the new frictionless
+          # `config-promotion` env — see promote-tenant-config-role-prod for the
+          # zero-downtime-cutover rationale. Narrow to config-promotion-only once
+          # the promote workflow's env flip is proven.
+          StringLike = {
+            "token.actions.githubusercontent.com:sub" = [
+              "repo:longhornrumble/picasso:environment:production",
+              "repo:longhornrumble/picasso:environment:config-promotion",
+            ]
+          }
         }
       }
     ]
