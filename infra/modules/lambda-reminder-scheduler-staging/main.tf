@@ -137,9 +137,11 @@ resource "aws_iam_role" "scheduler_exec" {
         # below). aws:SourceAccount (cross-account confused-deputy protection) is retained; the
         # residual intra-account scoping is provided by (a) this role's invoke policy being
         # single-target (lambda:InvokeFunction on Scheduled_Message_Sender ONLY) and (b) only BCH
-        # holding scheduler:CreateSchedule + iam:PassRole (scoped to this exact role ARN). The
-        # renewer keeps aws:SourceArn only because it lives in the DEFAULT group, where the
-        # validation behaves differently.
+        # holding scheduler:CreateSchedule + iam:PassRole (scoped to this exact role ARN).
+        # UPDATE (2026-07-06): the renewer scheduler role ALSO dropped aws:SourceArn — the
+        # earlier assumption that the DEFAULT group "behaves differently" was WRONG; its
+        # aws:SourceArn condition silently blocked every Scheduler assume (TargetErrorCount,
+        # 0 invocations) from 2026-05-29 until fixed. See lambda-calendar-watch-renewer-staging.
       }
     }]
   })
