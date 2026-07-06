@@ -18,14 +18,14 @@ name: Promote Tenant Config (staging → prod)
 #   10.6 rollback = native S3 version-restore
 #   10.7 tenant-scoped concurrency
 #
-# TWO-PHASE USE (both phases hold at the `production` approval gate — see the
-# promote job for why even the read-only phase must):
-#   1. dispatch dry_run=true → approve → fetch + validate the staging config,
-#      render the diff vs the current prod config, and print prod's current ETag.
-#      NO prod writes.
-#   2. dispatch dry_run=false expected_etag=<etag-from-step-1> → approve → it
-#      re-asserts the ETag (aborts if prod moved since your review), archives the
-#      current prod config, writes the promoted one, and verifies the readback.
+# USE (runs in the frictionless `config-promotion` env — no required reviewer):
+#   - Config Builder button (single dispatch): dispatch dry_run=false with NO
+#     expected_etag → validate → archive → write → verify, in one run. The UI
+#     confirm dialog is the gate; safe under Fork-A + tenant-scoped concurrency.
+#   - Manual two-phase (careful): dispatch dry_run=true → review the diff + prod
+#     ETag, then dispatch dry_run=false expected_etag=<that ETag> → it re-asserts
+#     the ETag (aborts if prod moved since your review) before writing.
+#   A dry_run never writes prod. Writes are gated on dry_run=='false'.
 #
 # v1 SCOPE = EXISTING-tenant config only. New-tenant promotion (copy
 # mappings/<hash>.json + PutItem the prod Tenant Registry row) is a documented
@@ -46,7 +46,7 @@ on:
         type: boolean
         default: true
       expected_etag:
-        description: "REQUIRED when dry_run=false. Paste the ETag the dry_run printed. The execute run aborts if prod's current ETag no longer matches (prod moved since your review)."
+        description: "OPTIONAL. If provided (manual two-phase), the execute aborts if prod's current ETag no longer matches (prod moved since your review). Omit for a single-dispatch promote (the Config Builder button) — safe under Fork-A (no direct prod edits) + tenant-scoped concurrency."
         required: false
         type: string
 
@@ -97,16 +97,14 @@ jobs:
   promote:
     name: Promote ${{ github.event.inputs.tenant_id }} (dry_run=${{ github.event.inputs.dry_run }})
     runs-on: ubuntu-latest
-    # `production` gate on BOTH phases — REQUIRED, not just ceremony: both roles
-    # trust ONLY the `:environment:production` OIDC sub (same shape as
-    # GitHubActionsDeployRole; see infra-deploy-prod.yml). A job with no
-    # environment carries a `:ref:` sub the roles reject, so even the read-only
-    # dry-run (which reads prod for the diff + ETag) must run here to assume them.
-    # Consequence: dry-run also needs an approval click in v1 — mild, uniform, and
-    # exactly what the planned frictionless `config-promotion` env later lightens
-    # (TENANT_CONFIG_PROMOTION_MECHANISM.md §11 / handoff Q1). Writes stay gated on
-    # dry_run=='false' below, so a dry-run never mutates prod even once approved.
-    environment: production
+    # Runs in the frictionless `config-promotion` environment (NO required
+    # reviewer) — both promotion roles trust its `:environment:config-promotion`
+    # OIDC sub (a job with no environment carries a `:ref:` sub the roles reject).
+    # The deliberate gate is the Config Builder's confirm dialog (and, for a
+    # manual dispatch, choosing dry_run=false yourself) — a solo-operator internal
+    # tool needs no GitHub self-approval. Writes stay gated on dry_run=='false'
+    # below, so a dry-run never mutates prod.
+    environment: config-promotion
     steps:
       # Validator lives in the config-builder repo. Dedicated checkout at main
       # (public repo, GITHUB_TOKEN suffices) — NOT the superrepo submodule, whose
@@ -216,14 +214,14 @@ jobs:
           {
             echo ""
             echo "### DRY RUN — no prod write performed"
-            echo "To execute: re-dispatch with **dry_run=false** and **expected_etag = \`${ETAG}\`**, then approve the \`production\` gate."
+            echo "To execute: re-dispatch with **dry_run=false** (optionally **expected_etag = \`${ETAG}\`** to re-assert prod hasn't moved since this preview)."
           } >> "$GITHUB_STEP_SUMMARY"
           echo "Dry run complete. expected_etag for execute = ${ETAG}"
         env:
           ETAG: ${{ steps.prod.outputs.etag }}
 
       # ── Execute (dry_run=false): ETag re-assert → archive → write → verify ─
-      - name: Re-assert ETag (abort if prod moved since your dry-run)
+      - name: ETag guard (enforced only when expected_etag is provided)
         if: ${{ github.event.inputs.dry_run == 'false' }}
         run: |
           set -euo pipefail
@@ -231,14 +229,14 @@ jobs:
           EXPECTED="${EXPECTED//\"/}" # tolerate pasted quotes
           CURRENT="${CURRENT_ETAG:-}"
           if [ -z "$EXPECTED" ]; then
-            echo "::error::expected_etag is required for an execute run. Run dry_run=true first, then paste the ETag it prints."
-            exit 1
+            echo "Single-dispatch execute (no expected_etag) — the Config Builder button path. Safe under born-in-staging Fork-A (no direct prod edits) + tenant-scoped concurrency: prod can't move between the operator's confirm and this write. Prod ETag at inspect: $CURRENT"
+          else
+            if [ "$EXPECTED" != "$CURRENT" ]; then
+              echo "::error::Prod moved since your dry-run (expected_etag=$EXPECTED, prod now=$CURRENT). Re-run dry_run=true, review the new diff, and retry."
+              exit 1
+            fi
+            echo "Cross-dispatch ETag re-assert OK: $CURRENT"
           fi
-          if [ "$EXPECTED" != "$CURRENT" ]; then
-            echo "::error::Prod moved since your dry-run (expected_etag=$EXPECTED, prod now=$CURRENT). Re-run dry_run=true, review the new diff, and retry."
-            exit 1
-          fi
-          echo "ETag re-assert OK: $CURRENT"
         env:
           EXPECTED_ETAG: ${{ github.event.inputs.expected_etag }}
           CURRENT_ETAG: ${{ steps.prod.outputs.etag }}

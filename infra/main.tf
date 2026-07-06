@@ -2155,6 +2155,10 @@ module "lambda_config_manager_staging" {
   # clerk_jwks_url defaults to the prod Clerk instance (shared operator identity).
 
   ops_alerts_topic_arn = module.ops_alarms_master_function_staging[0].topic_arn
+
+  # PAT for the Promote-to-Production button (dispatches promote-tenant-config).
+  # CI supplies it from the CONFIG_PROMOTE_TOKEN GitHub secret; empty = 503.
+  github_promote_token = var.github_promote_token
 }
 
 # staging.config.myrecruiter.ai -- HTTPS edge for the config-builder staging UI
