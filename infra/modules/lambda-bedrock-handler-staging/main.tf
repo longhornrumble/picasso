@@ -848,10 +848,15 @@ resource "aws_cloudwatch_metric_alarm" "form_handler_ddb_write_error" {
 # The V5 turn logs `{"type":"V5_TAIL_STATUS","status":"malformed",...}` when the
 # model's machine-read action tail (`<<<ACTIONS [...]>>>`) can't be parsed.
 # Production auto-recovers each one via the selectActionsV4 fail-soft ladder, so
-# a LONE malformed tail is user-invisible; a CLUSTER means the tail format has
-# regressed (a prompt/model change that breaks the sentinel at scale). Baseline
-# at add-time: 0 malformed across every V5.7 soak window (v5-turn.v3). Landed on
-# the staging side before prod V5 traffic per the V5 plan §10 follow-on list.
+# no single malformed tail is user-visible; what matters is a CLUSTER (the tail
+# format regressed — a prompt/model change that breaks the sentinel at scale).
+# This STAGING alarm deliberately fires on the FIRST malformed tail (threshold 0):
+# an early-warning while the baseline is 0 and V5 is pre-prod. It does NOT
+# distinguish lone-from-cluster — the prod copy MUST switch to a count/rate
+# threshold (see alarm_description) so fail-soft-handled stochastic tails at prod
+# scale don't page every time. Baseline at add-time: 0 malformed across every
+# V5.7 soak window (v5-turn.v3). Landed on the staging side before prod V5
+# traffic per the V5 plan §10 follow-on list.
 #
 # Quoted terms = literal-substring AND match. A JSON-selector pattern ($.status)
 # does NOT work here: the Node runtime prefixes each line with
@@ -878,7 +883,7 @@ resource "aws_cloudwatch_log_metric_filter" "v5_tail_malformed" {
 resource "aws_cloudwatch_metric_alarm" "v5_tail_malformed" {
   count             = var.pii_subject_index_alarm_sns_topic_arn != "" ? 1 : 0
   alarm_name        = "${var.function_name}-v5-tail-malformed"
-  alarm_description = "V5 single-pass action tail failed to parse (status:malformed in a V5_TAIL_STATUS log). Production auto-recovers each one via the selectActionsV4 fail-soft ladder, so a lone occurrence is NOT user-facing - this is a REGRESSION detector for the <<<ACTIONS [...]>>> tail format. Investigate via CW Logs Insights on /aws/lambda/Bedrock_Streaming_Handler: filter @message like 'V5_TAIL_STATUS' | stats count() by status - a rising malformed share vs actions/no_sentinel is the signal. Baseline at add-time: 0 malformed across all v5-turn.v3 soak windows."
+  alarm_description = "V5 single-pass action tail failed to parse (status:malformed in a V5_TAIL_STATUS log). Production auto-recovers each one via the selectActionsV4 fail-soft ladder, so no single malformed tail is user-facing. This STAGING alarm fires on ANY malformed tail (threshold 0) as a sensitive early-warning while the baseline is 0 and V5 is pre-prod - it does NOT distinguish a lone tail from a cluster. BEFORE copying this to prod, switch to a count/rate threshold (e.g. sum >= N over a wider window) so fail-soft-handled stochastic malformed tails at prod scale do not page on every occurrence. Investigate via CW Logs Insights on /aws/lambda/Bedrock_Streaming_Handler: filter @message like 'V5_TAIL_STATUS' | stats count() by status. Baseline at add-time: 0 malformed across all v5-turn.v3 soak windows."
 
   namespace           = "Picasso/BSH/V5Turn"
   metric_name         = "V5TailMalformed"
