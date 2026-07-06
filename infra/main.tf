@@ -139,6 +139,16 @@ module "ci_drift_plan_role_prod" {
   source = "./modules/ci-drift-plan-role-prod"
 }
 
+# Tenant-config promotion write role (production-only). Assumed by the gated
+# promote-tenant-config workflow to write staging-validated configs to the prod
+# tenant-config bucket. Narrow (S3 config objects only). Applied via a -target'd
+# infra-deploy-prod dispatch, gated by the production environment reviewer.
+# See docs/roadmap/TENANT_CONFIG_PROMOTION_MECHANISM.md §11.
+module "promote_tenant_config_role_prod" {
+  count  = var.env == "production" ? 1 : 0
+  source = "./modules/promote-tenant-config-role-prod"
+}
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Phase 2 Tier 4 (production-only): the prod chat CloudFront distribution
 # E3G0LSWB1AQ9LP (alias chat.myrecruiter.ai). Adopts the live, hand-managed
