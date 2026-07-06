@@ -1,6 +1,6 @@
 # Tenant Config Promotion Mechanism — Design
 
-**Status:** DESIGN ONLY — no implementation. Gated on operator approval of the recommended option **and** the Fork A/B decision (§7). The prod IAM write-role prerequisite (§5) is a gated Phase-2 prod change.
+**Status:** ✅ **APPROVED 2026-07-06** — operator approved **Option C** + **Fork A** (prod Config Builder read-only), confirmed the alarm's fire-on-first (separate #6), and **greenlit** the prod OIDC write-role prerequisite + the `AllowOrigins` scoping. Build sequence in **§11**. (Consequence of Fork A: follow-on **#3's If-Match CORS change is dropped** — a read-only prod Config Builder never sends `If-Match`.)
 
 **Author:** session 2026-07-05 (follow-on item #2 from `V5_SINGLE_PASS_TURN_PLAN.md` §10).
 
@@ -109,7 +109,25 @@ An independent tech-lead review (live AWS + code verification) sharpened this de
 
 ---
 
-## Appendix A — Follow-on #3: prepared prod CORS change (GATED, not yet run)
+## 11. Approved build sequence (2026-07-06)
+
+Operator decisions: **Option C ✅** · **Fork A ✅** (prod Config Builder read-only) · alarm **fire-on-first ✅** (separate #6, already live) · prod OIDC write-role + `AllowOrigins` scoping **greenlit ✅**.
+
+Build order — staging-first; every prod-touching apply is a deliberate, plan-reviewed, gated step (greenlit ≠ un-reviewed):
+
+1. **Single-config validator** (config-builder, §10.1) — new `validateSingleConfig(config)` reusing `tenantConfigSchema` (`src/lib/schemas/tenant.schema.ts`), the schema **library**, NOT the all-configs `runProdConfigsValidation` job. Pure code + tests. *[safe / staging-first]*
+2. **Prod OIDC write-role** (`infra/modules/promote-tenant-config-role-prod`, mirrors `ci-drift-plan-role-prod`): trust scoped to the workflow's `environment:production` OIDC claim; policy = `s3:GetObject`/`PutObject` on `myrecruiter-picasso/tenants/*` + `mappings/*` and `dynamodb:PutItem` on the prod Tenant Registry (§10.4). *[prod IAM — GATED apply, plan-reviewed]*. Staging **read**-role: reuse an existing OIDC role covering `s3:GetObject` on the staging bucket if one exists, else a small staging module.
+3. **`promote-tenant-config` workflow** (picasso `.github/workflows/`): dispatch(`tenant_id`, `dry_run`, `include_mapping`) → `environment:production` gate → fetch staging config → validate (calls #1) → diff + archive + **capture prod ETag** → write with **ETag re-assert** (§10.3) + registry row if new tenant (§10.4) → verify (cache-aware, §10.2) → rollback = S3 version-restore (§10.6). Tenant-scoped concurrency (§10.7). *[CI; first real run gated on #2]*
+4. **Fork A — prod Config Builder read-only** (config-builder): disable the write/deploy path in the prod-served bundle (Save/Deploy hidden or hard-disabled; reads unaffected). *[staging-first]*
+5. **`AllowOrigins` scoping** on the prod `Picasso_Config_Manager` Function URL → `https://config.myrecruiter.ai` (+ local-dev). Hand-managed prod CORS. *[prod — GATED apply, greenlit]*. #3's If-Match CORS is **dropped** (Fork A).
+
+First real end-to-end promote (the V5-flag-to-prod path, §6) runs after #1–#3 land and the prod role is applied — and per §6 ordering, **after** the BSH prod dispatch (follow-on #1) so prod BSH carries the V5 code.
+
+---
+
+## Appendix A — Follow-on #3: prepared prod CORS change (SUPERSEDED by Fork A — retained for reference)
+
+> **Fork A dropped this.** A read-only prod Config Builder never sends `If-Match`, so the If-Match/ExposeHeaders change below is no longer needed. Retained only as the read-verified record of prod's CORS state and as the basis for the separate `AllowOrigins`-scoping follow-up (§11 step 5).
 
 The prod `Picasso_Config_Manager` Function URL is **hand-managed** (not IaC). Its CORS currently lacks the `If-Match`/`ETag` support the new Config Builder client (cb#74) sends on save + deploy. Staging was fixed in picasso#658; prod is the identical gap.
 
