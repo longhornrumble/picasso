@@ -438,3 +438,19 @@ describe('MessageBubble - Accessibility', () => {
     expect(showcaseCardElement).toHaveAttribute('aria-labelledby', 'showcase-a11y_test-title');
   });
 });
+
+describe('MessageBubble - H2: sanitizes finalized content at the innerHTML sink', () => {
+  it('routes non-streamed string content through DOMPurify before dangerouslySetInnerHTML', () => {
+    // DOMPurify is mocked as a pass-through (see top of file); assert the sink
+    // now CALLS it, proving finalized content is no longer injected raw.
+    const DOMPurify = require('dompurify').default;
+    DOMPurify.sanitize.mockClear();
+
+    const content = '<p>hello</p><img src="http://evil.example/x" onerror="alert(1)">';
+    renderWithProviders(
+      <MessageBubble role="assistant" content={content} renderMode="static" />
+    );
+
+    expect(DOMPurify.sanitize).toHaveBeenCalledWith(content, expect.any(Object));
+  });
+});

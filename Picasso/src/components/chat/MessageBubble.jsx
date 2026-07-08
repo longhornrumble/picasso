@@ -39,28 +39,34 @@ marked.setOptions({
 });
 
 // Simple markdown processor for streaming
+// Shared DOMPurify config for message HTML rendered via innerHTML /
+// dangerouslySetInnerHTML — one allowlist for both the streaming-markdown path
+// and the finalized (H2) render path, so a message is sanitized identically
+// however it reaches the DOM. (RESCHEDULE_WIDGET_REMEDIATION_2026-07-08 §H2.)
+const MESSAGE_HTML_SANITIZE_CONFIG = {
+  ALLOWED_TAGS: [
+    'p', 'br', 'strong', 'b', 'em', 'i', 'u', 'strike', 'del', 's',
+    'ul', 'ol', 'li', 'blockquote', 'code', 'pre', 'hr',
+    'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+    'a', 'img', 'table', 'thead', 'tbody', 'tr', 'th', 'td'
+  ],
+  ALLOWED_ATTR: [
+    'href', 'title', 'target', 'rel', 'alt', 'src',
+    'width', 'height', 'class', 'start'
+  ],
+  ADD_ATTR: ['target', 'rel'],
+  ALLOW_DATA_ATTR: false
+};
+
 const processStreamingMarkdown = (text) => {
   if (!text) return '';
-  
+
   try {
     // Convert markdown to HTML
     const html = marked.parse(text);
-    
+
     // Sanitize the HTML
-    const safeHtml = DOMPurify.sanitize(html, {
-      ALLOWED_TAGS: [
-        'p', 'br', 'strong', 'b', 'em', 'i', 'u', 'strike', 'del', 's',
-        'ul', 'ol', 'li', 'blockquote', 'code', 'pre', 'hr',
-        'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-        'a', 'img', 'table', 'thead', 'tbody', 'tr', 'th', 'td'
-      ],
-      ALLOWED_ATTR: [
-        'href', 'title', 'target', 'rel', 'alt', 'src',
-        'width', 'height', 'class', 'start'
-      ],
-      ADD_ATTR: ['target', 'rel'],
-      ALLOW_DATA_ATTR: false
-    });
+    const safeHtml = DOMPurify.sanitize(html, MESSAGE_HTML_SANITIZE_CONFIG);
     
     // Use target="_top" to make links break out of iframe and open in parent page
     return safeHtml.replace(
@@ -948,10 +954,13 @@ export default function MessageBubble({
       role="article"
       suppressHydrationWarning
       // For messages that were streamed, content is managed imperatively
-      // For non-streamed messages, use React's dangerouslySetInnerHTML
+      // For non-streamed messages, use React's dangerouslySetInnerHTML.
+      // H2: sanitize at the sink — `content` is NOT guaranteed pre-sanitized
+      // (the ChatProvider sanitizer that the prop contract assumed is dead code),
+      // so a stored-XSS payload in assistant content would otherwise execute here.
       dangerouslySetInnerHTML={
         (!streamingFlag) && typeof content === 'string' && content.length
-          ? { __html: content }
+          ? { __html: DOMPurify.sanitize(content, MESSAGE_HTML_SANITIZE_CONFIG) }
           : undefined
       }
       // Analytics: Track link clicks via event delegation.
