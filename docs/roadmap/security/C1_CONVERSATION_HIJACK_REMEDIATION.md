@@ -1,6 +1,6 @@
 # C1 — Cross-Tenant Conversation Hijack: Remediation Brief
 
-> **Status: P1 SHIPPED (server, compat-open) — lambda#401, 2026-07-08. P2–P4 queued (sequenced below).** P1 does NOT close C1 on its own — the raw-`session_id` resume path stays open until P3. Written 2026-07-03 alongside the C3 fix (lambda#372). Source finding: [`docs/audits/SECURITY_REVIEW_2026-07-02.md`](../../audits/SECURITY_REVIEW_2026-07-02.md) §C1 (confirmed-live critical). Code anchors below were current as of 2026-07-03 (P1 landed at drifted lines — see the PR).
+> **Status: P1 SHIPPED (server, compat-open) — lambda#401, 2026-07-08. P2 SHIPPED (widget presents token on resume) — picasso#734, 2026-07-08. P3 prerequisite SHIPPED (client state-token cache decoupled from `CACHE_DURATION` → 24h to match the server) — this PR, 2026-07-08. P3 server-tighten + P4 queued (both gated — sequenced below).** P1+P2 do NOT close C1 on their own — the raw-`session_id` resume path stays open until P3. Written 2026-07-03 alongside the C3 fix (lambda#372). Source finding: [`docs/audits/SECURITY_REVIEW_2026-07-02.md`](../../audits/SECURITY_REVIEW_2026-07-02.md) §C1 (confirmed-live critical). Code anchors below were current as of 2026-07-03 (P1 landed at drifted lines — see the PR).
 
 ## The bug (confirmed live, no auth)
 
@@ -29,7 +29,8 @@ Table tenant-keying remains worth doing as **defense-in-depth** (P4), but it is 
 - Persistence/rotation plumbing already exists — the change is localized to those two functions. Ship, soak in staging, then to prod widget.
 
 ### P3 — Server tighten (lambda repo)
-- After the widget rollout is confirmed live (P1's counter of raw-`session_id` resumes trends to ~0), **drop the raw-`session_id` resume acceptance** — resume now requires the token. This is the step that actually closes C1.
+- **Prerequisite — SHIPPED (this PR, picasso).** The client state-token cache TTL was decoupled from `CACHE_DURATION` (15 min, which governs the session-storage message buffer) into `STATE_TOKEN_TTL` = 24h in `conversationManager.js`, matching the server's `STATE_TOKEN_EXPIRY_HOURS` (24h) and the `recent-messages` TTL (24h). Without this, a visitor returning after >15 min idle had already dropped the token client-side and fell to the raw path — so `C1_COMPAT_RAW_SESSION_RESUME` had a permanent floor > 0 (it could never trend to ~0) **and** flipping P3 anyway would have regressed >15-min-idle same-tab resumes to a fresh session. With the 24h TTL, the counter now reflects only genuinely un-migrated widgets + true >24h-idle returns (where the transcript has also expired, so a fresh session is correct).
+- After the widget rollout is confirmed live (P1's counter of raw-`session_id` resumes trends to ~0 **on prod** — staging has too little returning-visitor traffic to be a meaningful signal), **drop the raw-`session_id` resume acceptance** — resume now requires the token. This is the step that actually closes C1.
 
 ### P4 — Defense-in-depth: tenant-scope the tables (per-account migration, gated)
 - New key shape mirroring `picasso-session-summaries` (`infra/modules/ddb-session-summaries`): `pk=TENANT#{tenant_hash}`, `sk=SESSION#{sessionId}` for summaries; messages add a `#MSG#{messageTimestamp}` sort segment. Reuse `session_utils.generate_tenant_prefixed_key()` (73-91) / `analytics_writer.py` (232-244) as the format templates.
