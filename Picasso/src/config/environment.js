@@ -13,6 +13,14 @@
 // Import centralized streaming configuration
 import { isStreamingEnabled as checkStreamingEnabled } from './streaming-config';
 
+// SR-7 (RESCHEDULE_WIDGET_REMEDIATION_2026-07-08): on a PRODUCTION build the
+// `?picasso-env=` URL override must NOT be honored — otherwise appending
+// `&picasso-env=staging` to a prod link repoints the widget at a different
+// account's backend. `__ENVIRONMENT__` is the esbuild build-time env string
+// (undefined in unit tests → treated as non-prod so the dev/QA override still works).
+const IS_PRODUCTION_BUILD =
+  typeof __ENVIRONMENT__ !== 'undefined' && __ENVIRONMENT__ === 'production';
+
 // Validation utilities
 const isValidUrl = (url) => {
   try {
@@ -113,7 +121,8 @@ const getEnvironment = () => {
       
       const urlParams = new URLSearchParams(window.location.search);
       const envOverride = urlParams.get('picasso-env');
-      if (envOverride && ['development', 'staging', 'production'].includes(envOverride)) {
+      // SR-7: ignored on production builds (see IS_PRODUCTION_BUILD).
+      if (!IS_PRODUCTION_BUILD && envOverride && ['development', 'staging', 'production'].includes(envOverride)) {
         console.log(`🔧 Environment override via URL param: ${envOverride}`);
         return envOverride;
       }
@@ -282,7 +291,9 @@ if (typeof window !== 'undefined') {
   try {
     const urlParams = new URLSearchParams(window.location.search);
     const envOverride = urlParams.get('picasso-env');
-    if (envOverride && ['development', 'staging', 'production'].includes(envOverride)) {
+    // SR-7: ignored on production builds (see IS_PRODUCTION_BUILD) so a query
+    // param cannot repoint a prod widget at a different account's backend.
+    if (!IS_PRODUCTION_BUILD && envOverride && ['development', 'staging', 'production'].includes(envOverride)) {
       runtimeOverrideEnv = envOverride;
       console.log(`🎯 RUNTIME OVERRIDE: Environment forced to ${envOverride} via URL parameter`);
     }
