@@ -1,6 +1,6 @@
 # C1 — Cross-Tenant Conversation Hijack: Remediation Brief
 
-> **Status: designed, queued — no code shipped.** Written 2026-07-03 alongside the C3 fix (lambda#372). Source finding: [`docs/audits/SECURITY_REVIEW_2026-07-02.md`](../../audits/SECURITY_REVIEW_2026-07-02.md) §C1 (confirmed-live critical). This brief exists so a dedicated follow-up session picks the work up cold — all code anchors are current as of 2026-07-03.
+> **Status: P1 SHIPPED (server, compat-open) — lambda#401, 2026-07-08. P2–P4 queued (sequenced below).** P1 does NOT close C1 on its own — the raw-`session_id` resume path stays open until P3. Written 2026-07-03 alongside the C3 fix (lambda#372). Source finding: [`docs/audits/SECURITY_REVIEW_2026-07-02.md`](../../audits/SECURITY_REVIEW_2026-07-02.md) §C1 (confirmed-live critical). Code anchors below were current as of 2026-07-03 (P1 landed at drifted lines — see the PR).
 
 ## The bug (confirmed live, no auth)
 
@@ -18,10 +18,11 @@ Table tenant-keying remains worth doing as **defense-in-depth** (P4), but it is 
 
 ## Phased plan (auth-contract-closes-both-sides: server opens compatibly → widget rolls out → server tightens)
 
-### P1 — Server, compat-open (lambda repo, Master_Function)
-- `handle_init_session` (`lambda_function.py:1294`): branch **new vs resume**. Resume (client presents a valid prior signed token, via `Authorization: Bearer` or body) → verify the token, reuse/rotate it, return the conversation. Genuinely-new session (no token) → mint as today. **During the window, still accept a raw `session_id`** so un-updated widgets keep working (log-and-count these to measure rollout).
-- Cross-check the JWT `tenantId` claim against the query param `t` on **every** conversation call — `handle_get/save/clear_conversation` (`conversation_handler.py:132/187/301`) and `_validate_state_token` (`:363`). Today `t` is extracted (`:110`) but never compared. Reject on mismatch (401).
-- Tests: extend `test_conversation_handler_text_en.py` (capture-harness style) + `test_jwt_iss_phase2.py` (token hardening precedent). Add the new-vs-resume branch cases and the `tenantId`≠`t` rejection.
+### P1 — Server, compat-open (lambda repo, Master_Function) — ✅ SHIPPED lambda#401 (2026-07-08)
+- `handle_init_session`: authenticated-resume branch — when a prior signed token is presented (`Authorization: Bearer` **or** body `state_token`), verify sig/`iss`/`exp`, **bind the token `tenantId` to the request tenant hash**, rotate, return the conversation. No token → legacy raw-`session_id` path, **still accepted** during the window and instrumented with a greppable `C1_COMPAT_RAW_SESSION_RESUME` log line (gates P3). Invalid/expired presented token → 401 (client re-inits new).
+- Cross-check the token `tenantId` claim against the query param `t` — implemented as a **single chokepoint in `_validate_state_token`** (covers `handle_get/save/clear_conversation` at once, since all three call it) → 401 `TENANT_MISMATCH`; `t` absent → no comparison.
+- Tests: `Master_Function_Staging/test_c1_p1_resume_ownership.py` (14) — new/legacy/authenticated branches, wrong-tenant/expired/garbage/wrong-key/no-`sessionId` 401s, DB-read-failure non-fatal, `_validate_state_token` cross-check (match/mismatch/absent). Full MFS suite 319 passed.
+- Deliberately deferred: blacklist check in the resume path (nothing in MFS ever blacklists state tokens → unreachable); expired-token UX (P2 decides re-mint vs prompt).
 
 ### P2 — Widget (picasso repo)
 - `conversationManager.js` `initializeWithServer()`/`initializeConversation()` (476-493 / 79-117): on resume, present the stored `picasso_conversation_token` to `init_session`; keep minting for genuinely-new sessions (no stored/expired token). Handle the expired-token fallback explicitly (today `loadStateToken` silently drops an expired token, 1205-1208 — define: re-mint vs prompt).
@@ -41,6 +42,7 @@ Table tenant-keying remains worth doing as **defense-in-depth** (P4), but it is 
 ## Key facts for the follow-up (so they aren't re-derived)
 - Keying alone doesn't close C1 (public hash) — P1+P3 are load-bearing, P4 is depth.
 - Widget already round-trips the token everywhere *except* `init_session`.
-- `generate_stream_token` (`lambda_function.py:1515`) has the same raw-`session_id` mint pattern; the widget's `getStreamTokenUrl` helper is **dead** (no callers) — streaming authorizes via the state token in the request body, so P1/P3 should cover `generate_stream_token` too but there's no separate stream-token exchange to migrate.
+- **`generate_stream_token` is NOT a C1 vector — RESOLVED as dead code 2026-07-08** (server: lambda#402; widget `getStreamTokenUrl`: picasso removal PR). Re-verified: it minted from a raw `session_id` but produced a `purpose:'stream'` token with **no `turn` claim**, and `_validate_state_token` requires `turn`, so the conversation gate (get/save/clear) **already rejected** stream tokens — it could never mint a C1 state token. It was also fully dead: `getStreamTokenUrl` (its only widget builder) had zero callers, and **`Bedrock_Streaming_Handler` requires no JWT** (`jsonwebtoken` isn't a dependency), so the stream token was never consumed. (Corrects the earlier "streaming authorizes via the state token in the request body" note — BSH validates no JWT; it authorizes at the transport layer: CloudFront Lambda@Edge SigV4 + AWS_IAM Function URL, Remedy A #435.)
+- **Bedrock_Streaming_Handler (BSH) is OUT of C1 scope (verified 2026-07-08).** BSH reads conversation context from the **request body** (`body.conversation_history`), not the stored `sessionId`-keyed tables → no read-hijack; and it writes only `picasso-session-summaries` (analytics) + redacted logs, **not** the `picasso-conversation-summaries`/`picasso-recent-messages` transcript → no inject/delete. The C1 transcript primitives live entirely in MFS `handle_conversation_action`. (Secondary, non-C1: BSH has no per-session ownership proof, so a request could spoof analytics rows / burn inference for a *known* session — rate-limited by the streaming WAF; tracked separately, not part of C1.)
 - Prod Master_Function + its conversation tables are state-imported/unmanaged in Terraform — treat P4 prod as a manual gated op under the repo's dry-run-before-destroy rules.
 - Rollout ordering is the whole game: server-open (P1) must land and soak before the widget (P2), and the widget must be confirmed live before server-tighten (P3). Skipping the window breaks resume for in-flight users.
