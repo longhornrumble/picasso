@@ -472,26 +472,52 @@ export class ConversationManager {
       const initSessionEndpoint = this.getInitSessionEndpoint();
       logger.debug('🔑 Calling init_session endpoint:', initSessionEndpoint);
       
+      // C1 P2 (SECURITY_REVIEW_2026-07-02 §C1): on resume, PROVE ownership of the
+      // session by presenting the previously-issued signed state token — the server
+      // (C1 P1) authenticates the resume off it instead of trusting a raw session_id.
+      // loadStateToken() already dropped any client-expired token, so a token here is
+      // the live one for this session. Sent in BOTH the Authorization header and the
+      // body (CloudFront may not forward Authorization to init_session; the server
+      // accepts either). Genuinely-new sessions have no token → mint as before.
+      const resumeToken = (this.stateToken && this.stateToken !== 'undefined' && this.stateToken !== 'null')
+        ? this.stateToken
+        : null;
+
       // Include existing conversation_id if available for conversation recall
       const initRequestBody = {
         tenant_hash: this.tenantHash,
         session_id: this.sessionId
       };
-      
+      if (resumeToken) {
+        initRequestBody.state_token = resumeToken;
+      }
+
       // Add conversation_id if it's different from session_id (indicates existing conversation)
       if (this.conversationId && this.conversationId !== this.sessionId) {
         initRequestBody.conversation_id = this.conversationId;
         logger.debug('📤 Including existing conversation_id in init_session:', this.conversationId);
       }
-      
-      const initResponse = await fetch(initSessionEndpoint, {
+
+      const postInitSession = (body, token) => fetch(initSessionEndpoint, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(initRequestBody)
+        headers: token
+          ? { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
+          : { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
       });
-      
+
+      let initResponse = await postInitSession(initRequestBody, resumeToken);
+
+      // C1 P2 fallback: if the server rejects the presented token (401 — e.g. the
+      // token outlived the server's exp, or a tenant mismatch), drop it and re-mint
+      // a fresh session rather than failing init. New/valid-token paths never hit this.
+      if (initResponse.status === 401 && resumeToken) {
+        logger.debug('🔁 init_session rejected the stored token (401) — re-minting a new session');
+        this.clearStateToken();
+        delete initRequestBody.state_token;
+        initResponse = await postInitSession(initRequestBody, null);
+      }
+
       logger.debug('📡 init_session response status:', initResponse.status);
       
       if (!initResponse.ok) {
