@@ -194,7 +194,7 @@ if (fs.existsSync(widgetFramePath)) {
 // No need to copy current-widget.js anymore
 
 // Copy test files, service worker, and standalone assets from public directory
-const testFiles = ['test-staging.html', 'form-ui-examples.html', 'sw.js', 'myrecruiter-mark.png'];
+const testFiles = ['test-staging.html', 'test-staging-loader.js', 'form-ui-examples.html', 'sw.js', 'myrecruiter-mark.png'];
 testFiles.forEach(file => {
   const sourcePath = path.join('public', file);
   if (fs.existsSync(sourcePath)) {
