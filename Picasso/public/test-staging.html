@@ -26,15 +26,7 @@
         <p><em>If all 5 pass, the iframe sandbox + sessionStorage migration is solid.</em></p>
     </div>
 
-    <script>
-        const urlParams = new URLSearchParams(window.location.search);
-        const tenantHash = urlParams.get('t') || 'my87674d777bf9';
-        document.getElementById('tenantHash').textContent = tenantHash;
-
-        const script = document.createElement('script');
-        script.src = 'https://staging.chat.myrecruiter.ai/widget.js';
-        script.setAttribute('data-tenant', tenantHash);
-        document.body.appendChild(script);
-    </script>
+    <!-- Externalized to test-staging-loader.js so the page works under a strict CSP. -->
+    <script src="./test-staging-loader.js"></script>
 </body>
 </html>
