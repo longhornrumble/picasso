@@ -232,6 +232,25 @@ describe('Environment Configuration', () => {
     expect(config.ENVIRONMENT).toBe('staging');
   });
 
+  it('SR-7: ignores ?picasso-env override on a production build', async () => {
+    // __ENVIRONMENT__ is the esbuild build-time env string (a bare global here).
+    // On a production build the override must be inert so a query param cannot
+    // repoint a prod widget at a different account's backend.
+    global.__ENVIRONMENT__ = 'production';
+    try {
+      Object.defineProperty(window, 'location', { value: { hostname: 'chat.myrecruiter.ai', search: '?picasso-env=staging', port: '' }, writable: true, configurable: true });
+      jest.resetModules();
+
+      const { config: freshConfig } = await import('../environment');
+      config = freshConfig;
+
+      // Despite ?picasso-env=staging, the prod build pins ENVIRONMENT to production.
+      expect(config.ENVIRONMENT).toBe('production');
+    } finally {
+      delete global.__ENVIRONMENT__;
+    }
+  });
+
   it('should respect log levels', async () => {
     const { config: freshConfig } = await import('../environment');
     config = freshConfig;

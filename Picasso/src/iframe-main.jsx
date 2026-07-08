@@ -14,6 +14,7 @@ import ErrorBoundary from './components/ErrorBoundary.jsx';
 import { config as environmentConfig } from './config/environment.js';
 import { _storeGet, _storeSet, getFromSession, saveToSession } from './context/shared/messageHelpers.js';
 import { setHostViewportWidth } from './utils/resolveWidgetBehavior.js';
+import { resolveParentTargetOrigin, getAllowedParentOrigins } from './utils/parentOrigin.js';
 import { setupGlobalErrorHandling, performanceMonitor } from './utils/errorHandling.js';
 import { performanceTracker } from './utils/performanceTracking.js';
 import { SCHEMA_VERSION, ALL_EVENT_TYPES } from './analytics/eventConstants.js';
@@ -137,37 +138,13 @@ window.PicassoPerformance = performanceTracker;
 // Setup global error handling immediately
 setupGlobalErrorHandling();
 
-// Security: Get allowed parent origins
+// Security: Get allowed parent origins (SR-2: logic lives in the unit-tested
+// utils/parentOrigin.js; embed-anywhere referrer echo is retained there).
 function getAllowedOrigins() {
-  const origins = [];
-  
-  // Always allow the parent origin if we're in an iframe
-  if (window.parent !== window && document.referrer) {
-    try {
-      const referrerUrl = new URL(document.referrer);
-      origins.push(referrerUrl.origin);
-    } catch (e) {
-      console.warn('Could not parse referrer URL:', e);
-    }
-  }
-  
-  // In development, allow localhost origins - use import.meta.env for build-time evaluation
-  if (import.meta.env.DEV) {
-    origins.push('http://localhost:5173');
-    origins.push('http://localhost:3000');
-    origins.push('http://localhost:8000'); // Add esbuild dev server port
-    origins.push('http://127.0.0.1:5173');
-    origins.push('http://127.0.0.1:3000');
-    origins.push('http://127.0.0.1:8000'); // Add esbuild dev server port
-    origins.push('null'); // Allow file:// protocol for local testing
-  }
-  
-  // In production, only allow specific domains
-  origins.push('https://myrecruiter.ai');
-  origins.push('https://www.myrecruiter.ai');
-  origins.push('https://app.myrecruiter.ai');
-  
-  return origins;
+  return getAllowedParentOrigins({
+    isDev: import.meta.env.DEV,
+    referrer: window.parent !== window ? document.referrer : '',
+  });
 }
 
 // Security: Validate message origin
@@ -190,16 +167,22 @@ function notifyParentReady() {
   console.log(`⚡ Iframe loaded in ${loadTime.toFixed(2)}ms ${loadTime < 500 ? '✅' : '⚠️ (PRD target: <500ms)'}`);
   
   if (window.parent && window.parent !== window) {
-    // Get parent origin from referrer or use wildcard for initial handshake only
-    const targetOrigin = document.referrer ? new URL(document.referrer).origin : '*';
-    window.parent.postMessage({
-      type: 'PICASSO_IFRAME_READY',
-      performance: {
-        loadTime,
-        configLoadTime: performanceMetrics.configEndTime ? 
-          performanceMetrics.configEndTime - performanceMetrics.configStartTime : null
-      }
-    }, targetOrigin);
+    // SR-1: resolve a concrete parent origin (never '*'); fail closed if none.
+    const targetOrigin = resolveParentTargetOrigin({
+      mode: new URLSearchParams(window.location.search).get('mode'),
+      referrer: document.referrer,
+      locationOrigin: window.location.origin,
+    });
+    if (targetOrigin) {
+      window.parent.postMessage({
+        type: 'PICASSO_IFRAME_READY',
+        performance: {
+          loadTime,
+          configLoadTime: performanceMetrics.configEndTime ?
+            performanceMetrics.configEndTime - performanceMetrics.configStartTime : null
+        }
+      }, targetOrigin);
+    }
   }
 }
 
@@ -272,13 +255,20 @@ function notifyParentEvent(eventType, payload = {}) {
 
   if (isEmbedded) {
     // EMBEDDED MODE: Send to parent via postMessage
-    const targetOrigin = document.referrer ? new URL(document.referrer).origin : '*';
-    window.parent.postMessage({
-      type: 'PICASSO_EVENT',
-      event: eventType,
-      payload: payload,
-      analytics: analyticsEvent
-    }, targetOrigin);
+    // SR-1: concrete parent origin (never '*'); drop the event if none resolvable.
+    const targetOrigin = resolveParentTargetOrigin({
+      mode,
+      referrer: document.referrer,
+      locationOrigin: window.location.origin,
+    });
+    if (targetOrigin) {
+      window.parent.postMessage({
+        type: 'PICASSO_EVENT',
+        event: eventType,
+        payload: payload,
+        analytics: analyticsEvent
+      }, targetOrigin);
+    }
   } else {
     // FULL-PAGE MODE: Queue events and send directly to backend
     // Initialize event queue if not exists
@@ -500,8 +490,15 @@ function setupCommandListener() {
       };
       
       // Send health response back to parent
-      const targetOrigin = document.referrer ? new URL(document.referrer).origin : '*';
-      window.parent.postMessage(healthStatus, targetOrigin);
+      // SR-1: concrete parent origin (never '*'); skip if none resolvable.
+      const targetOrigin = resolveParentTargetOrigin({
+        mode: new URLSearchParams(window.location.search).get('mode'),
+        referrer: document.referrer,
+        locationOrigin: window.location.origin,
+      });
+      if (targetOrigin) {
+        window.parent.postMessage(healthStatus, targetOrigin);
+      }
     }
   });
 }
@@ -761,7 +758,12 @@ function initializeWidget() {
 
     // Send initial size state
     if (window.parent && window.parent !== window) {
-      const targetOrigin = document.referrer ? new URL(document.referrer).origin : '*';
+      // SR-1: concrete parent origin (never '*'); skip the initial size post if none.
+      const targetOrigin = resolveParentTargetOrigin({
+        mode: new URLSearchParams(window.location.search).get('mode'),
+        referrer: document.referrer,
+        locationOrigin: window.location.origin,
+      });
       const initialIsOpen = document.body.classList.contains('chat-open');
 
       // Calculate initial closed dimensions (will be updated by ChatWidget once it mounts)
@@ -769,13 +771,15 @@ function initializeWidget() {
         ? { width: 380, height: 660 }
         : { width: 100, height: 100 }; // Placeholder - ChatWidget will send real dimensions
 
-      window.parent.postMessage({
-        type: 'PICASSO_SIZE_CHANGE',
-        isOpen: initialIsOpen,
-        dimensions: initialDimensions,
-        initial: true
-      }, targetOrigin);
-      console.log(`📐 Sent initial SIZE_CHANGE to parent: ${initialIsOpen ? 'OPEN' : 'CLOSED'}`);
+      if (targetOrigin) {
+        window.parent.postMessage({
+          type: 'PICASSO_SIZE_CHANGE',
+          isOpen: initialIsOpen,
+          dimensions: initialDimensions,
+          initial: true
+        }, targetOrigin);
+        console.log(`📐 Sent initial SIZE_CHANGE to parent: ${initialIsOpen ? 'OPEN' : 'CLOSED'}`);
+      }
     }
 
     // Listen for commands from host (PRD-compliant)
