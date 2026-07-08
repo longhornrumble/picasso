@@ -8,6 +8,38 @@
 import DOMPurify from 'dompurify';
 
 /**
+ * Allowlists for general chat-content HTML sanitization — the single source of
+ * truth for this module (SR-5). Exported so other in-widget sanitizers can
+ * converge on these instead of maintaining near-identical inline configs.
+ *
+ * `<img>` (and the `src` attribute) are DELIBERATELY OMITTED: assistant / chat /
+ * callout content rendered through `sanitizeHTML` has no legitimate image use
+ * case, and an `<img src>` emitted from a compromised KB/CTA source is a
+ * tracking-pixel-style info leak (SR-5, RESCHEDULE_WIDGET_REMEDIATION_2026-07-08).
+ * Re-add only behind a concrete, reviewed use case.
+ *
+ * Follow-up (out of this change's scope): the streaming-path sanitizers in
+ * MessageBubble.jsx / context/shared/messageHelpers.js / utils/markdownProcessor.js
+ * still define their own inline allowlists; converging them on these constants
+ * is tracked with the widget-hardening backlog (H2 render-path work).
+ */
+export const CHAT_CONTENT_ALLOWED_TAGS = [
+  'p', 'br', 'strong', 'em', 'u', 's', 'mark', 'del', 'ins',
+  'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+  'ul', 'ol', 'li', 'dl', 'dt', 'dd',
+  'blockquote', 'pre', 'code', 'kbd', 'samp', 'var',
+  'a', 'table', 'thead', 'tbody', 'tr', 'th', 'td',
+  'div', 'span', 'section', 'article', 'aside', 'header', 'footer',
+  'nav', 'main', 'figure', 'figcaption', 'cite', 'q', 'abbr', 'acronym',
+  'time', 'data', 'address', 'sub', 'sup', 'small', 'big', 'b', 'i'
+];
+
+export const CHAT_CONTENT_ALLOWED_ATTR = [
+  'href', 'alt', 'title', 'width', 'height', 'class', 'id',
+  'target', 'rel', 'download', 'type', 'cite', 'datetime', 'lang'
+];
+
+/**
  * Sanitize HTML content with strict security settings
  * @param {string} html - HTML content to sanitize
  * @param {Object} options - DOMPurify options
@@ -19,20 +51,8 @@ export const sanitizeHTML = (html, options = {}) => {
   }
 
   const defaultOptions = {
-    ALLOWED_TAGS: [
-      'p', 'br', 'strong', 'em', 'u', 's', 'mark', 'del', 'ins',
-      'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-      'ul', 'ol', 'li', 'dl', 'dt', 'dd',
-      'blockquote', 'pre', 'code', 'kbd', 'samp', 'var',
-      'a', 'img', 'table', 'thead', 'tbody', 'tr', 'th', 'td',
-      'div', 'span', 'section', 'article', 'aside', 'header', 'footer',
-      'nav', 'main', 'figure', 'figcaption', 'cite', 'q', 'abbr', 'acronym',
-      'time', 'data', 'address', 'sub', 'sup', 'small', 'big', 'b', 'i'
-    ],
-    ALLOWED_ATTR: [
-      'href', 'src', 'alt', 'title', 'width', 'height', 'class', 'id',
-      'target', 'rel', 'download', 'type', 'cite', 'datetime', 'lang'
-    ],
+    ALLOWED_TAGS: CHAT_CONTENT_ALLOWED_TAGS,
+    ALLOWED_ATTR: CHAT_CONTENT_ALLOWED_ATTR,
     ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp):|[^a-z]|[a-z+.-]+(?:[^a-z+.-:]|$))/i,
     FORBID_TAGS: ['script', 'style', 'iframe', 'object', 'embed', 'form', 'input', 'button', 'select', 'textarea'],
     FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'onfocus', 'onblur', 'onchange', 'onsubmit', 'onreset', 'onselect', 'onunload', 'onresize', 'onabort', 'onbeforeunload', 'onerror', 'onhashchange', 'onmessage', 'onoffline', 'ononline', 'onpagehide', 'onpageshow', 'onpopstate', 'onstorage', 'oncontextmenu', 'onkeydown', 'onkeypress', 'onkeyup', 'onmousedown', 'onmousemove', 'onmouseout', 'onmouseup', 'onwheel', 'oncopy', 'oncut', 'onpaste', 'onselectstart', 'onselectionchange'],

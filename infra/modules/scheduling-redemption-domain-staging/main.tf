@@ -39,11 +39,16 @@
 # There is no prod-CNAME-uniqueness conflict here (the host is greenfield), so
 # the flag exists purely for the cert-ISSUED ordering, not a cutover dance.
 #
-# WAF is OUT OF SCOPE — tracked in docs/roadmap/P22_CLOUDFRONT_WAF_PLAN.md.
-# No `web_acl_id` is attached here.
+# WAF [M17, RESCHEDULE_WIDGET_REMEDIATION_2026-07-08]: a CLOUDFRONT-scope
+# WAFv2 web ACL (rate-limit + AWS managed baseline) is now attached via the
+# distribution's `web_acl_id` below — see `aws_wafv2_web_acl.redemption`. This
+# closes the M17 finding (the concurrency-5 handler was cheaply DoS-able through
+# the six redemption slugs); the P22 plan had deferred it. The concurrency cap
+# stays as the Lambda-spend bound.
 #
-# Provider: ACM certs attached to CloudFront MUST be us-east-1. The root
-# default provider is us-east-1 (var.aws_region default) — no alias needed.
+# Provider: ACM certs attached to CloudFront MUST be us-east-1, and WAFv2
+# CLOUDFRONT scope MUST also be us-east-1. The root default provider is
+# us-east-1 (var.aws_region default) — no alias needed.
 
 # ── ACM certificate (PENDING_VALIDATION until the GoDaddy CNAME is added) ──
 resource "aws_acm_certificate" "redemption" {
@@ -114,6 +119,135 @@ resource "aws_cloudfront_response_headers_policy" "oauth_status_cors" {
   }
 }
 
+# ── WAF [M17] — CLOUDFRONT-scope web ACL on the public redemption edge ─────
+# RESCHEDULE_WIDGET_REMEDIATION_2026-07-08 §M17. The six redemption slugs
+# (/cancel, /reschedule, /resume, /attended/*) are the sole entry that redeems
+# every reschedule/cancel link, and the handler is capped at
+# reserved_concurrent_executions = 5 — so a cheap ~6-concurrent garbage-token
+# flood could throttle the pool and 429 a real customer's email link. This ACL
+# adds the rate + reputation controls the P22 plan deferred (prevention; the
+# existing Errors/Throttles alarms were detection-only).
+#
+# Rule shape mirrors waf-streaming-staging, MINUS: (a) the BlockNonStagingChatHost
+# rule (that ACL's host is staging.chat; this edge serves staging.schedule — a
+# host-block here would 403 every redemption), and (b) the /schedule-api path
+# rule (a different distribution). Observability is via visibility_config
+# (CloudWatch metrics + sampled requests) — NOT a full WAF log sink, deliberately:
+# WAF request logs would capture the one-time token in the request URI, duplicating
+# the token-in-URL PII surface the CF access-log group already KMS-guards above.
+# CLOUDFRONT scope MUST be us-east-1 (root default provider).
+resource "aws_wafv2_web_acl" "redemption" {
+  name = "picasso-scheduling-redemption-waf-staging"
+  # WAFv2 description regex forbids parentheses — plain ASCII, no parens.
+  description = "M17 rate + reputation controls on the public scheduling-redemption edge"
+  scope       = "CLOUDFRONT"
+
+  default_action {
+    allow {}
+  }
+
+  # Per-IP flood control — the direct M17 fix. 300/IP/5min matches the widget
+  # WAF's global RateLimitPerIP; redemption is one-tap-per-email-link, so this
+  # never trips a real user (incl. a shared NAT) while blunting a single-source
+  # token-scan flood. Can tighten later if legitimate volume proves far lower.
+  rule {
+    name     = "RateLimitPerIP"
+    priority = 1
+
+    action {
+      block {}
+    }
+
+    statement {
+      rate_based_statement {
+        limit                 = 300
+        evaluation_window_sec = 300
+        aggregate_key_type    = "IP"
+      }
+    }
+
+    visibility_config {
+      sampled_requests_enabled   = true
+      cloudwatch_metrics_enabled = true
+      metric_name                = "PicassoRedemptionRateLimitPerIP"
+    }
+  }
+
+  # AWS baseline managed groups — cheap defense-in-depth against scanner/bot
+  # traffic (the "slow-drip scan" half of the M17 threat).
+  rule {
+    name     = "AWSManagedRulesCommonRuleSet"
+    priority = 2
+
+    override_action {
+      none {}
+    }
+
+    statement {
+      managed_rule_group_statement {
+        vendor_name = "AWS"
+        name        = "AWSManagedRulesCommonRuleSet"
+      }
+    }
+
+    visibility_config {
+      sampled_requests_enabled   = true
+      cloudwatch_metrics_enabled = true
+      metric_name                = "PicassoRedemptionCommonRuleSet"
+    }
+  }
+
+  rule {
+    name     = "AWSManagedRulesKnownBadInputsRuleSet"
+    priority = 3
+
+    override_action {
+      none {}
+    }
+
+    statement {
+      managed_rule_group_statement {
+        vendor_name = "AWS"
+        name        = "AWSManagedRulesKnownBadInputsRuleSet"
+      }
+    }
+
+    visibility_config {
+      sampled_requests_enabled   = true
+      cloudwatch_metrics_enabled = true
+      metric_name                = "PicassoRedemptionBadInputsRuleSet"
+    }
+  }
+
+  rule {
+    name     = "AWSManagedRulesAmazonIpReputationList"
+    priority = 4
+
+    override_action {
+      none {}
+    }
+
+    statement {
+      managed_rule_group_statement {
+        vendor_name = "AWS"
+        name        = "AWSManagedRulesAmazonIpReputationList"
+      }
+    }
+
+    visibility_config {
+      sampled_requests_enabled   = true
+      cloudwatch_metrics_enabled = true
+      metric_name                = "PicassoRedemptionIPReputationList"
+    }
+  }
+
+  visibility_config {
+    sampled_requests_enabled   = true
+    cloudwatch_metrics_enabled = true
+    metric_name                = "PicassoRedemptionWAF"
+  }
+}
+
 resource "aws_cloudfront_distribution" "redemption" {
   enabled         = true
   comment         = "Staging - Scheduling token redemption (${var.redemption_host})"
@@ -121,6 +255,7 @@ resource "aws_cloudfront_distribution" "redemption" {
   price_class     = "PriceClass_100"
   http_version    = "http2"
   is_ipv6_enabled = true
+  web_acl_id      = aws_wafv2_web_acl.redemption.arn # M17 — see aws_wafv2_web_acl.redemption below
 
   # Single custom origin: the WS-D4 redemption Lambda Function URL. Passed in
   # as a host string (no scheme, no path) — placeholder until D4 exists so

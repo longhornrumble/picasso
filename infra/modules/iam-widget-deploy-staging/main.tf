@@ -13,13 +13,20 @@
 # (broad) and trusts `environment:staging`. This role is widget-deploy ONLY:
 # Put/Get/Delete/List on the one bucket + CreateInvalidation on the one dist.
 #
-# OIDC TRUST [P0.6]: `build-and-deploy-staging` has NO `environment:` stanza
-# and runs on push→main, so its GitHub OIDC subject is
-# `repo:longhornrumble/picasso:ref:refs/heads/main` — NOT environment:staging.
-# The trust admits exactly that sub. (Adding `environment: staging` to the job
-# was the rejected alternative — larger blast radius on a prod-affecting
-# workflow.) The OIDC provider itself is out-of-band (not TF-managed here,
-# pre-existing per P0.4) — referenced by its conventional ARN.
+# OIDC TRUST [P0.6]: the widget deploy-staging job has NO `environment:` stanza,
+# so its GitHub OIDC subject is `repo:longhornrumble/picasso:ref:refs/heads/<branch>`
+# (ref-based, NOT environment:staging — adding `environment: staging` to the job
+# was the rejected alternative: larger blast radius on a prod-affecting workflow).
+# The trust admits two refs:
+#   - refs/heads/main    — the normal prod-deploy pipeline's staging pre-step
+#     (deploy-production.yml dispatched from main).
+#   - refs/heads/staging — soaking staging-branch widget changes before promote,
+#     via deploy-production.yml dispatched with `--ref staging` (staging leg only;
+#     the prod leg stays behind its approval gate). Added 2026-07-08 to unblock the
+#     reschedule/widget security remediation soak. Blast radius is unchanged: this
+#     role only writes the picasso-widget-staging bucket + invalidates its one CF dist.
+# The OIDC provider itself is out-of-band (not TF-managed here, pre-existing per
+# P0.4) — referenced by its conventional ARN.
 #
 # Provider: root default (us-east-1) — no alias.
 
@@ -27,7 +34,7 @@ data "aws_caller_identity" "current" {}
 
 data "aws_iam_policy_document" "assume" {
   statement {
-    sid     = "GitHubOIDCMainBranch"
+    sid     = "GitHubOIDCMainOrStagingBranch"
     effect  = "Allow"
     actions = ["sts:AssumeRoleWithWebIdentity"]
     principals {
@@ -42,7 +49,10 @@ data "aws_iam_policy_document" "assume" {
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:longhornrumble/picasso:ref:refs/heads/main"]
+      values = [
+        "repo:longhornrumble/picasso:ref:refs/heads/main",
+        "repo:longhornrumble/picasso:ref:refs/heads/staging",
+      ]
     }
   }
 }
