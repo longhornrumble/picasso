@@ -21,7 +21,15 @@ const CONVERSATION_CONFIG = {
   PERSISTENCE_DELAY: 2000,   // 2 seconds delay before persisting
   
   // Cache settings
-  CACHE_DURATION: 15 * 60 * 1000, // 15 minutes
+  CACHE_DURATION: 15 * 60 * 1000, // 15 minutes — freshness window for the local session-storage message buffer only
+  // State-token cache lifetime. Decoupled from CACHE_DURATION: the token must survive
+  // as long as the server will accept it so an idle-returning visitor can present it and
+  // resume (authenticated) instead of falling back to a fresh session. Matches the server's
+  // STATE_TOKEN_EXPIRY_HOURS (24h) and the recent-messages TTL (24h) in conversation_handler.py —
+  // past 24h both the token and the resumable transcript expire server-side, so a new session is correct.
+  // (C1 P3 prerequisite: without this, >15-min-idle resumes drop to the raw-session_id path, keeping
+  // C1_COMPAT_RAW_SESSION_RESUME above zero and preventing the raw path from being retired.)
+  STATE_TOKEN_TTL: 24 * 60 * 60 * 1000, // 24 hours
   SESSION_STORAGE_KEY: 'picasso_current_conversation',
   TOKEN_STORAGE_KEY: 'picasso_conversation_token',
   
@@ -1248,7 +1256,7 @@ export class ConversationManager {
       const tokenData = {
         token: this.stateToken,
         created: new Date().toISOString(),
-        expires: new Date(Date.now() + CONVERSATION_CONFIG.CACHE_DURATION).toISOString()
+        expires: new Date(Date.now() + CONVERSATION_CONFIG.STATE_TOKEN_TTL).toISOString()
       };
       
       _storeSet(
