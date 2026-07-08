@@ -159,6 +159,56 @@ resource "aws_cloudfront_origin_request_policy" "picasso_origin_request" {
   }
 }
 
+# ── CSP [SR-3] — Content-Security-Policy-Report-Only on the widget documents ──
+# RESCHEDULE_WIDGET_REMEDIATION_2026-07-08 §SR-3. iframe.html and
+# schedule/index.html (both served from the S3 widget origin via the DEFAULT
+# behavior) ship with no CSP at any layer — zero defense-in-depth against an
+# injected-script class bug (e.g. SR-5). This adds a CSP as a REPORT-ONLY header
+# FIRST so it cannot break the embed-anywhere widget or the reschedule page;
+# violations surface in the browser console during staging soak. Flip to the
+# enforcing `Content-Security-Policy` header in a follow-up once the soak is clean.
+#
+# Emitted via custom_headers_config, NOT security_headers_config.content_security_policy:
+# the managed block only sets the ENFORCING header, so Report-Only must be a
+# custom header. (frame-ancestors also only works from an HTTP header, never a
+# <meta> tag — which is why the absent meta-CSP couldn't have carried it anyway.)
+#
+# Policy rationale:
+#   - frame-ancestors *  — the widget iframe.html embeds on ARBITRARY client
+#     domains, so we must NOT restrict who may frame it. (The reschedule page is a
+#     top-level navigation, where frame-ancestors is moot.)
+#   - style-src 'unsafe-inline'  — React inline styles + dynamic CSS-variable
+#     theming set inline on elements.
+#   - img-src data: https:  — tenant logos + data-URI assets.
+#   - connect-src 'self' https:  — same-origin API calls via CloudFront; https:
+#     kept broad in the report-only baseline, to be tightened from soak reports
+#     before enforcing.
+# No report-uri/report-to: there is no collector endpoint yet, so soak = manual
+# browser-console review on staging.chat + the reschedule page. A collector +
+# enforcement is the tracked follow-up.
+resource "aws_cloudfront_response_headers_policy" "widget_csp" {
+  name = "picasso-widget-csp-report-only-staging"
+
+  custom_headers_config {
+    items {
+      header   = "Content-Security-Policy-Report-Only"
+      override = true
+      value = join(" ", [
+        "default-src 'self';",
+        "script-src 'self';",
+        "style-src 'self' 'unsafe-inline';",
+        "img-src 'self' data: https:;",
+        "font-src 'self';",
+        "connect-src 'self' https:;",
+        "frame-ancestors *;",
+        "base-uri 'self';",
+        "object-src 'none';",
+        "form-action 'self';",
+      ])
+    }
+  }
+}
+
 resource "aws_cloudfront_distribution" "widget" {
   enabled             = true
   comment             = "Staging - Picasso Widget"
@@ -258,7 +308,10 @@ resource "aws_cloudfront_distribution" "widget" {
     allowed_methods        = local.read_methods
     cached_methods         = local.cached_methods
     cache_policy_id        = local.cache_optimized_id
-    compress               = true
+    # SR-3: CSP (Report-Only) on the widget documents (iframe.html,
+    # schedule/index.html, index.html) served from the S3 widget origin.
+    response_headers_policy_id = aws_cloudfront_response_headers_policy.widget_csp.id
+    compress                   = true
   }
 
   ordered_cache_behavior {
