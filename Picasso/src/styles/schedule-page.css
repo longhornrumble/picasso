@@ -1,176 +1,492 @@
-/* schedule-page.css — the branded full-page scheduling surface (M1a).
+/* schedule-page.css — the visitor-facing "Hairline" reschedule/cancel surface.
  *
- * Scoped under .sched-page. Driven by the tenant branding CSS custom properties that
- * useCSSVariables.js already sets on :root (--primary-color, --font-family, …) with
- * graceful fallbacks, so the page reads obviously per-tenant without a new theme system.
- * Also restyles the reused §B18 components (.scheduling-slots / .hairline-scheduling-row / …)
- * into full-width rows WITHIN this scope only — the in-chat widget is untouched.
+ * Scoped under .sched-page. Consumes the Hairline tenant ramp tokens
+ * (--tenant-accent / --tenant-tint / --hairline* / --composer-border / --surface,
+ * plus the fixed --ink-* and --poweredby-mark-ink) that HairlineThemeProvider already
+ * applies to :root for this page (iframe-main mounts SchedulingPage INSIDE that
+ * provider). A tenant is themed by its one accent color; the whole ramp is derived
+ * (src/theme/tenantTheme.js) — every gold below is a per-tenant token, never a
+ * constant. Reference theme: Atlanta Angels (#a08a4a).
  *
- * Hairline W4.2 compat note: SchedulingSlots.jsx/SchedulingConfirmCard were
- * restyled for the in-chat widget (see hairline-thread.css's "W4.2 IN-CHAT
- * SCHEDULING" section) and no longer emit `.suggested-chips`/`.suggested-chip`/
- * `.scheduling-confirm-button`. The selectors below were mechanically renamed
- * to the new class names so this page's own `--sp-*`-token look (unchanged
- * values) keeps working — this page itself stays out of the Hairline redesign
- * per HAIRLINE_REDESIGN_MAPPING.md §7 D8 ("dropped from this program").
+ * This brings the scheduling page INTO the Hairline design language (it was
+ * previously excluded — old --sp-* look off the legacy --primary-color). It also
+ * restyles the reused §B18 companion-chat components (.scheduling-slots /
+ * .hairline-scheduling-row / …) into full-width rows WITHIN this scope only — the
+ * in-chat widget is untouched.
  */
 
 .sched-page {
-  /* derive local tokens from the tenant branding vars (fallbacks = neutral emerald) */
-  --sp-brand: var(--primary-color, #1f9d6b);
-  --sp-ink: var(--font-color, #16241f);
-  --sp-muted: #6b7d77;
-  --sp-line: var(--border-color, #e6ece9);
-  --sp-bg: var(--background-color, #f5f7f6);
-  --sp-card: #ffffff;
-  --sp-radius: var(--border-radius, 16px);
-  --sp-font: var(--font-family, 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif);
-  --sp-shadow: 0 1px 2px rgba(16, 40, 34, 0.04), 0 10px 30px rgba(16, 40, 34, 0.06);
+  --sched-ink-strong: #334155; /* fixed ink: slot/user text, subline bold (spec) */
+  --sched-cta-disabled-ink: #a99e7e; /* fixed: disabled CTA label (spec) */
+  --sched-cal-disabled-ink: #c9c2ab; /* fixed: past/unavailable calendar days (spec) */
 
   position: absolute;
   inset: 0;
   overflow-y: auto;
-  font-family: var(--sp-font);
-  color: var(--sp-ink);
-  background:
-    radial-gradient(1100px 460px at 100% -12%, color-mix(in srgb, var(--sp-brand) 14%, transparent) 0%, transparent 58%),
-    var(--sp-bg);
+  font-family: var(--tenant-font-family, 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif);
+  color: var(--ink-body);
+  background: var(--tenant-tint-deep);
   -webkit-font-smoothing: antialiased;
 }
 
-/* ── header ── */
+/* ── org header (full-width bar) ── */
 .sched-brand {
   display: flex;
   align-items: center;
-  gap: 13px;
-  padding: 16px 24px;
-  background: var(--sp-card);
-  border-bottom: 1px solid var(--sp-line);
+  gap: 14px;
+  padding: 16px 32px;
+  background: var(--surface);
+  border-top: 2px solid var(--tenant-accent); /* the Hairline brand signature */
+  border-bottom: 1px solid var(--hairline-strong);
 }
-.sched-logo,
-.sched-logo-img {
-  width: 40px;
-  height: 40px;
-  border-radius: 11px;
-  flex: none;
+/* wordmark-as-logo: no logo image, no avatar */
+.sched-org {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--tenant-accent-deep);
 }
-.sched-logo {
-  display: grid;
-  place-items: center;
-  color: #fff;
-  font-weight: 800;
-  font-size: 16px;
-  background: linear-gradient(135deg, var(--sp-brand), color-mix(in srgb, var(--sp-brand) 70%, #000));
+.sched-tag {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--ink-soft);
+  padding-left: 14px;
+  border-left: 1px solid var(--hairline-strong);
+  align-self: stretch;
+  display: flex;
+  align-items: center;
 }
-.sched-logo-img { object-fit: contain; background: #fff; }
-.sched-org { font-weight: 800; font-size: 17px; }
-.sched-tag { color: var(--sp-muted); font-size: 12.5px; margin-top: 1px; }
-.sched-secure { margin-left: auto; color: var(--sp-muted); font-size: 12px; }
 
 /* ── layout ── */
-.sched-wrap { max-width: 680px; margin: 28px auto; padding: 0 18px 60px; }
+.sched-wrap {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 40px 20px 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
 .sched-panel {
-  background: var(--sp-card);
-  border: 1px solid var(--sp-line);
-  border-radius: var(--sp-radius);
-  box-shadow: var(--sp-shadow);
+  background: var(--surface);
+  border: 1px solid var(--hairline-strong);
+  border-radius: 12px;
+  box-shadow: 0 2px 24px rgba(15, 23, 42, 0.06);
 }
 
-/* ── hero picker ── */
-.sched-picker { padding: 30px 32px 32px; }
+/* cards fade-up on load — no bounce/overshoot (motion rules) */
+@keyframes schedFadeUp {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+.sched-picker { animation: schedFadeUp 0.35s ease both; }
+.sched-companion { animation: schedFadeUp 0.45s ease both; }
+
+/* ── reschedule card ── */
+.sched-picker { padding: 32px; }
 .sched-pill {
-  display: inline-block;
-  font-size: 11.5px;
-  font-weight: 800;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-  color: color-mix(in srgb, var(--sp-brand) 80%, #000);
-  background: color-mix(in srgb, var(--sp-brand) 14%, #fff);
-  padding: 5px 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--tenant-tint-deep);
+  color: var(--tenant-accent-deep);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 5px 12px;
   border-radius: 999px;
 }
-.sched-title { font-size: 30px; line-height: 1.15; margin: 14px 0 8px; letter-spacing: -0.5px; }
-.sched-current { color: var(--sp-muted); font-size: 15px; margin: 0 0 4px; }
-.sched-current b { color: var(--sp-ink); }
-.sched-metarow { color: var(--sp-muted); font-size: 13px; margin-top: 10px; }
-.sched-prompt {
-  background: color-mix(in srgb, var(--sp-brand) 6%, #f4f6f5);
-  border-radius: 14px;
-  padding: 13px 16px;
-  font-size: 15px;
-  margin: 22px 0 16px;
+.sched-title {
+  margin: 14px 0 10px;
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--ink);
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+}
+.sched-current {
+  margin: 0 0 24px;
+  font-size: 14px;
+  color: var(--ink-soft);
+}
+.sched-current b {
+  color: var(--sched-ink-strong);
+  font-weight: 600;
 }
 
-/* daypart quick-pick chips */
-.sched-chips { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 8px; }
-.sched-chip {
-  border: 1.5px solid var(--sp-line);
-  background: #fff;
-  color: var(--sp-ink);
-  font: inherit;
-  font-weight: 600;
-  font-size: 14px;
-  padding: 11px 18px;
-  border-radius: 999px;
-  cursor: pointer;
-  transition: 0.12s;
+/* group labels ("Choose a day" / "Available times · <day>") */
+.sched-section-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--tenant-accent-muted);
+  margin: 0 0 10px;
 }
-.sched-chip:hover:not(:disabled) { border-color: color-mix(in srgb, var(--sp-brand) 50%, var(--sp-line)); }
-.sched-chip.on { border-color: var(--sp-brand); background: color-mix(in srgb, var(--sp-brand) 12%, #fff); color: color-mix(in srgb, var(--sp-brand) 80%, #000); }
+
+/* day quick-pick chips */
+.sched-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+.sched-chip {
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 9px 18px;
+  border-radius: 999px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all 0.15s var(--ease-ui, cubic-bezier(0.4, 0, 0.2, 1));
+  background: var(--surface);
+  color: var(--ink-body);
+  border: 1.5px solid var(--composer-border);
+}
+.sched-chip:hover:not(:disabled) {
+  border-color: var(--tenant-accent);
+  background: var(--tenant-tint);
+}
+.sched-chip.on {
+  background: var(--tenant-tint);
+  color: var(--tenant-accent-deep);
+  border-color: var(--tenant-accent);
+}
 .sched-chip:disabled { opacity: 0.55; cursor: default; }
 
-.sched-results { margin-top: 18px; }
-.sched-empty, .sched-typing { color: var(--sp-muted); font-size: 14px; margin-top: 8px; }
+/* ── month calendar ── */
+.sched-cal {
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  padding: 18px;
+  margin-bottom: 24px;
+  background: var(--surface);
+}
+.sched-cal-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+.sched-cal-month { font-size: 14px; font-weight: 700; color: var(--ink); }
+.sched-cal-nav { display: flex; gap: 6px; }
+.sched-cal-nav button {
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  background: var(--surface-raised);
+  border: 1px solid var(--composer-border);
+  color: var(--tenant-accent-faint);
+  cursor: pointer;
+  transition: all 0.15s var(--ease-ui, cubic-bezier(0.4, 0, 0.2, 1));
+}
+.sched-cal-nav button:hover:not(:disabled) {
+  border-color: var(--tenant-accent);
+  color: var(--tenant-accent-deep);
+}
+.sched-cal-nav button:disabled {
+  border-color: var(--hairline);
+  color: var(--composer-border);
+  cursor: default;
+}
+.sched-cal-dows {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  margin-bottom: 6px;
+}
+.sched-cal-dows div {
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--tenant-accent-muted);
+}
+.sched-cal-days {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+.sched-cal-day {
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--sched-ink-strong);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s var(--ease-ui, cubic-bezier(0.4, 0, 0.2, 1));
+}
+.sched-cal-day:hover:not(:disabled) {
+  background: var(--tenant-tint);
+  color: var(--tenant-accent-deep);
+}
+.sched-cal-day.sel {
+  background: var(--tenant-accent);
+  color: #fff;
+  font-weight: 700;
+}
+.sched-cal-day.sel:hover { background: var(--tenant-accent-deep); }
+.sched-cal-day:disabled {
+  color: var(--sched-cal-disabled-ink);
+  background: transparent;
+  cursor: default;
+}
+.sched-cal-empty { display: block; }
 
-/* section labels (Choose a Day / Available Times · <day>) */
-.sched-section-label { font-weight: 700; font-size: 14px; margin: 22px 0 10px; }
-.sched-times-label { margin-top: 24px; }
-
-/* deterministic time rows (the picker; NOT the chat §B18 slots) */
-.sched-timelist { display: flex; flex-direction: column; gap: 10px; }
+/* ── time slots ── */
+.sched-timelist {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
 .sched-time {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   width: 100%;
   text-align: left;
-  border: 1.5px solid var(--sp-line);
-  background: #fff;
-  color: var(--sp-ink);
-  font: inherit;
-  font-size: 15px;
+  font-family: inherit;
+  font-size: 14px;
   font-weight: 600;
+  padding: 14px 18px;
   border-radius: 12px;
-  padding: 15px 18px;
   cursor: pointer;
-  transition: 0.12s;
+  transition: all 0.15s var(--ease-ui, cubic-bezier(0.4, 0, 0.2, 1));
+  background: var(--surface);
+  color: var(--sched-ink-strong);
+  border: 1.5px solid var(--composer-border);
 }
-.sched-time:hover:not(:disabled) { border-color: var(--sp-brand); background: color-mix(in srgb, var(--sp-brand) 5%, #fff); }
-.sched-time.sel { border-color: var(--sp-brand); background: color-mix(in srgb, var(--sp-brand) 10%, #fff); box-shadow: inset 0 0 0 1px var(--sp-brand); }
-
-.sched-confirmbar { margin-top: 26px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
-
-/* success state */
-.sched-done { text-align: center; padding: 30px 6px; }
-.sched-done-check {
-  width: 60px; height: 60px; border-radius: 50%;
-  margin: 0 auto 16px; display: grid; place-items: center;
-  font-size: 30px; color: #fff; background: var(--sp-brand);
+.sched-time:hover:not(:disabled) {
+  border-color: var(--tenant-accent);
+  background: var(--tenant-tint);
 }
-.sched-done-check.cancel { background: #d23b53; }
-.sched-done-title { font-size: 24px; margin: 0 0 6px; }
+.sched-time.sel {
+  background: var(--tenant-tint);
+  color: var(--tenant-accent-deep);
+  border-color: var(--tenant-accent);
+}
+.sched-time-check {
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: var(--tenant-accent);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
 
-/* companion message wrapper (message text + any conversational §B18 affordances) */
-.sched-msg-wrap { display: flex; flex-direction: column; gap: 8px; }
+/* empty / loading states */
+.sched-empty {
+  border: 1px dashed var(--composer-border);
+  border-radius: 12px;
+  padding: 16px 18px;
+  font-size: 13px;
+  color: var(--ink-faint);
+}
+.sched-typing {
+  font-size: 13px;
+  color: var(--ink-faint);
+  padding: 4px 0;
+}
+
+/* ── confirm CTA ── */
+.sched-confirmbar { margin-top: 28px; }
+.sched-cta {
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 13px 28px;
+  border-radius: 999px;
+  border: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all 0.15s var(--ease-ui, cubic-bezier(0.4, 0, 0.2, 1));
+  background: var(--tenant-accent);
+  color: #fff;
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--tenant-accent) 25%, transparent);
+}
+.sched-cta:hover:not(:disabled) { background: var(--tenant-accent-deep); }
+.sched-cta:disabled {
+  background: var(--tenant-tint-deep);
+  color: var(--sched-cta-disabled-ink);
+  box-shadow: none;
+  cursor: not-allowed;
+}
+.sched-cta-danger { background: var(--danger); box-shadow: none; }
+.sched-cta-danger:hover:not(:disabled) { background: #b91c1c; }
+
+.sched-cancel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: flex-start;
+}
+.sched-hint { font-size: 13px; color: var(--ink-soft); }
+
+/* ── confirmation banner (reschedule / cancel success) ── */
+.sched-banner {
+  margin-top: 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--tenant-tint);
+  border: 1px solid var(--composer-border);
+  border-radius: 12px;
+  padding: 12px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--tenant-accent-deep);
+}
+.sched-banner-check {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--tenant-accent);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+/* ── companion chat card ── */
+.sched-companion { overflow: hidden; }
+.sched-chead {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid var(--hairline-soft);
+}
+.sched-ct { font-size: 14px; font-weight: 700; color: var(--ink); }
+.sched-cs { font-size: 12px; color: var(--ink-soft); }
+
+.sched-cbody {
+  padding: 16px 20px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+/* Hairline thread anatomy — no bubble for bot: caps sender label + plain body. */
+.sched-msg-wrap { display: flex; flex-direction: column; gap: 4px; }
 .sched-msg-wrap.user { align-items: flex-end; }
-.sched-msg-wrap.bot { align-items: flex-start; }
+.sched-sender {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--tenant-accent-deep);
+}
+.sched-msg.bot {
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--ink-body);
+  max-width: 90%;
+  overflow-wrap: break-word;
+}
+.sched-msg.user {
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--sched-ink-strong);
+  max-width: 85%;
+  background: var(--tenant-tint-deep);
+  border-radius: 12px;
+  padding: 9px 14px;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+/* Trim the shared .streaming-formatted block margins inside the bot message so
+   the agent output doesn't inflate the thread row (same fix as the old sheet;
+   the ancestor chain raises specificity so the !important beats the shared rule). */
+.sched-page .sched-cbody .sched-msg.bot .streaming-formatted { white-space: normal; }
+.sched-page .sched-cbody .sched-msg.bot .streaming-formatted > :first-child { margin-top: 0 !important; }
+.sched-page .sched-cbody .sched-msg.bot .streaming-formatted > :last-child { margin-bottom: 0 !important; }
+
+/* composer */
+.sched-cfoot {
+  display: flex;
+  gap: 8px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--hairline-soft);
+}
+.sched-cfoot input {
+  flex: 1;
+  border: 1px solid var(--composer-border);
+  border-radius: 999px;
+  padding: 10px 18px;
+  font-family: inherit;
+  font-size: 13.5px;
+  color: var(--ink);
+  outline: none;
+  background: var(--surface-raised);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+}
+.sched-cfoot input:focus { border-color: var(--tenant-accent); }
+.sched-send {
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  border: 1px solid var(--composer-border);
+  background: var(--surface-raised);
+  color: var(--tenant-accent-faint); /* unfilled arrow when empty */
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s var(--ease-ui, cubic-bezier(0.4, 0, 0.2, 1));
+}
+.sched-send:not(:disabled) { /* fills once there's content (button un-disables) */
+  background: var(--tenant-accent);
+  color: #fff;
+  border-color: var(--tenant-accent);
+}
+.sched-send:hover:not(:disabled) {
+  background: var(--tenant-accent-deep);
+  border-color: var(--tenant-accent-deep);
+}
+.sched-send:disabled { cursor: default; }
+
+/* ── powered-by line ── */
+.sched-poweredby {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--ink-ghost);
+}
+.sched-poweredby-mark { width: 16px; height: 16px; border-radius: 4px; }
+.sched-poweredby-brand { font-weight: 700; color: var(--poweredby-mark-ink); }
 
 /* ── reused §B18 SchedulingSlots → full-width ROWS within this page only ── */
 .sched-page .scheduling-slots { margin-top: 4px; }
-.sched-page .scheduling-context-line { color: var(--sp-muted); font-size: 13px; margin-bottom: 10px; }
+.sched-page .scheduling-context-line { color: var(--ink-soft); font-size: 13px; margin-bottom: 10px; }
 .sched-page .scheduling-slots .hairline-scheduling-card {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 .sched-page .scheduling-slots .hairline-scheduling-row {
   display: flex;
@@ -178,178 +494,64 @@
   justify-content: space-between;
   width: 100%;
   text-align: left;
-  border: 1.5px solid var(--sp-line);
-  background: #fff;
-  color: var(--sp-ink);
+  border: 1.5px solid var(--composer-border);
+  background: var(--surface);
+  color: var(--sched-ink-strong);
   font: inherit;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
   border-radius: 12px;
-  padding: 15px 18px;
+  padding: 14px 18px;
   cursor: pointer;
-  transition: 0.12s;
+  transition: all 0.15s var(--ease-ui, cubic-bezier(0.4, 0, 0.2, 1));
 }
 .sched-page .scheduling-slots .hairline-scheduling-row:hover:not(:disabled) {
-  border-color: var(--sp-brand);
-  background: color-mix(in srgb, var(--sp-brand) 5%, #fff);
+  border-color: var(--tenant-accent);
+  background: var(--tenant-tint);
 }
 .sched-page .scheduling-slot-selected {
   display: inline-block;
-  border: 1.5px solid var(--sp-brand);
-  background: var(--sp-brand);
+  border: 1.5px solid var(--tenant-accent);
+  background: var(--tenant-accent);
   color: #fff;
   border-radius: 12px;
   padding: 14px 18px;
   font-weight: 700;
 }
-.sched-page .scheduling-microcopy-close { color: var(--sp-muted); font-size: 13px; margin-top: 12px; }
+.sched-page .scheduling-microcopy-close { color: var(--ink-soft); font-size: 13px; margin-top: 12px; }
 .sched-page .scheduling-confirm-card { margin-top: 14px; }
-.sched-page .scheduling-confirm-email { color: var(--sp-muted); font-size: 13.5px; margin: 6px 0; display: block; }
+.sched-page .scheduling-confirm-email { color: var(--ink-soft); font-size: 13.5px; margin: 6px 0; display: block; }
 .sched-page .scheduling-notice {
   margin-top: 12px;
-  background: color-mix(in srgb, var(--sp-brand) 7%, #fff);
-  border: 1px solid color-mix(in srgb, var(--sp-brand) 25%, var(--sp-line));
+  background: var(--tenant-tint);
+  border: 1px solid var(--composer-border);
   border-radius: 12px;
   padding: 12px 14px;
   font-size: 14px;
+  color: var(--tenant-accent-deep);
 }
-
-/* primary / danger buttons */
-.sched-cta, .sched-page .hairline-scheduling-confirm-button {
-  border: 0;
-  background: var(--sp-brand);
-  color: #fff;
-  font: inherit;
+.sched-page .hairline-scheduling-confirm-button {
+  font-family: inherit;
+  font-size: 14px;
   font-weight: 700;
-  font-size: 15px;
-  padding: 14px 24px;
-  border-radius: 12px;
+  padding: 13px 28px;
+  border-radius: 999px;
+  border: none;
   cursor: pointer;
-  box-shadow: 0 8px 18px color-mix(in srgb, var(--sp-brand) 30%, transparent);
+  background: var(--tenant-accent);
+  color: #fff;
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--tenant-accent) 25%, transparent);
 }
-.sched-cta:disabled, .sched-page .hairline-scheduling-confirm-button:disabled {
-  background: #c8d3cf;
+.sched-page .hairline-scheduling-confirm-button:disabled {
+  background: var(--tenant-tint-deep);
+  color: var(--sched-cta-disabled-ink);
   box-shadow: none;
   cursor: not-allowed;
 }
-.sched-cta-danger { background: #d23b53; box-shadow: none; }
-.sched-cancel { display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
-.sched-hint { color: var(--sp-muted); font-size: 13.5px; }
-
-/* ── month calendar ── */
-.sched-cal { margin-top: 6px; border: 1px solid var(--sp-line); border-radius: 14px; padding: 16px; }
-.sched-cal-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
-.sched-cal-month { font-weight: 700; font-size: 15px; }
-.sched-cal-nav button {
-  border: 1px solid var(--sp-line);
-  background: #fff;
-  border-radius: 8px;
-  width: 30px;
-  height: 30px;
-  cursor: pointer;
-  font-size: 15px;
-  color: var(--sp-ink);
-}
-.sched-cal-nav button:disabled { opacity: 0.4; cursor: default; }
-.sched-cal-dows, .sched-cal-days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
-.sched-cal-dows div { text-align: center; font-size: 11px; color: var(--sp-muted); font-weight: 600; padding: 4px 0; }
-.sched-cal-day {
-  aspect-ratio: 1;
-  border: 1px solid transparent;
-  background: #fff;
-  border-radius: 9px;
-  cursor: pointer;
-  font: inherit;
-  font-weight: 600;
-  font-size: 14px;
-  color: var(--sp-ink);
-}
-.sched-cal-day:hover:not(:disabled) { background: color-mix(in srgb, var(--sp-brand) 12%, #fff); }
-.sched-cal-day.sel { background: var(--sp-brand); color: #fff; }
-.sched-cal-day:disabled { color: #c7d2cd; cursor: default; }
-.sched-cal-empty { display: block; }
-
-/* ── companion chat ── */
-.sched-companion { margin-top: 18px; overflow: hidden; }
-.sched-chead {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  padding: 15px 20px;
-  border: 0;
-  border-bottom: 1px solid var(--sp-line);
-  background: var(--sp-card);
-  cursor: pointer;
-  width: 100%;
-  text-align: left;
-}
-.sched-ava {
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, var(--sp-brand), color-mix(in srgb, var(--sp-brand) 70%, #000));
-  color: #fff;
-  display: grid;
-  place-items: center;
-  font-weight: 800;
-  font-size: 13px;
-  flex: none;
-}
-.sched-ct { font-weight: 700; font-size: 14.5px; }
-.sched-cs { font-size: 12px; color: var(--sp-muted); }
-.sched-chev { margin-left: auto; color: var(--sp-muted); transition: 0.2s; }
-.sched-companion.collapsed .sched-cbody,
-.sched-companion.collapsed .sched-cfoot { display: none; }
-.sched-companion.collapsed .sched-chev { transform: rotate(-90deg); }
-.sched-cbody {
-  padding: 16px 18px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  background: color-mix(in srgb, var(--sp-brand) 4%, #fff);
-  max-height: 260px;
-  overflow-y: auto;
-}
-/* width: fit-content shrink-wraps the bubble to its text (max-width caps long messages,
-   which then wrap); the .sched-msg-wrap flex column + align-self handle left/right alignment. */
-.sched-msg { width: fit-content; max-width: 84%; padding: 10px 13px; border-radius: 13px; font-size: 13.5px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: break-word; }
-.sched-msg.bot { background: #fff; border: 1px solid var(--sp-line); border-bottom-left-radius: 5px; align-self: flex-start; }
-.sched-msg.user { background: var(--sp-brand); color: #fff; border-bottom-right-radius: 5px; align-self: flex-end; }
-/* Vertical fit. The agent output is wrapped in .streaming-formatted; two things inflated the
-   bubble height: (1) the shared `div.streaming-formatted p:not(…):not(…):not(…)` rule forces
-   16px top/bottom margins with !important at specificity (0,4,2); (2) .sched-msg's white-space:
-   pre-wrap renders the trailing "\n" text node after </p> as an empty ~20px line.
-   Fix (1): trim the leading/trailing block margin. The ancestor chain (.sched-page .sched-cbody
-   .sched-msg) raises specificity to (0,5,0) so this !important actually beats the shared rule;
-   inter-paragraph spacing (p+p) is preserved. Fix (2): normal white-space on the HTML content
-   (the <p> handles its own wrapping). Both scoped to the schedule page only. */
-.sched-page .sched-cbody .sched-msg .streaming-formatted > :first-child { margin-top: 0 !important; }
-.sched-page .sched-cbody .sched-msg .streaming-formatted > :last-child { margin-bottom: 0 !important; }
-.sched-msg .streaming-formatted { white-space: normal; }
-.sched-cfoot { display: flex; gap: 8px; padding: 12px 14px; border-top: 1px solid var(--sp-line); }
-.sched-cfoot input {
-  flex: 1;
-  border: 1px solid var(--sp-line);
-  border-radius: 10px;
-  padding: 11px 12px;
-  font: inherit;
-  font-size: 14px;
-  outline: none;
-}
-.sched-cfoot input:focus { border-color: var(--sp-brand); }
-.sched-cfoot button {
-  border: 0;
-  background: var(--sp-brand);
-  color: #fff;
-  border-radius: 10px;
-  width: 42px;
-  cursor: pointer;
-  font-size: 16px;
-}
-.sched-cfoot button:disabled { opacity: 0.5; cursor: default; }
 
 @media (max-width: 560px) {
+  .sched-brand { padding: 14px 20px; }
   .sched-picker { padding: 24px 20px; }
-  .sched-title { font-size: 25px; }
-  .sched-wrap { margin: 16px auto; }
+  .sched-title { font-size: 23px; }
+  .sched-wrap { padding: 24px 16px 48px; }
 }

@@ -46,17 +46,6 @@ function qp(name) {
     return null;
   }
 }
-function initialsOf(name) {
-  return (
-    String(name || '')
-      .split(/\s+/)
-      .filter(Boolean)
-      .map((w) => w[0])
-      .slice(0, 2)
-      .join('')
-      .toUpperCase() || '·'
-  );
-}
 function isoOf(d) {
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
@@ -97,6 +86,28 @@ function formatCurrent(startAt, tz) {
     return null;
   }
 }
+// Footer timezone note ("Times shown in Central Time (CDT)"). Long + short names
+// derived from the booking's timezone; returns null when unavailable so the
+// powered-by line degrades to "Powered by MyRecruiter" alone.
+function tzNote(tz, ref) {
+  if (!tz) return null;
+  try {
+    const d = ref ? new Date(ref) : new Date();
+    const at = isNaN(d.getTime()) ? new Date() : d;
+    const nameOf = (style) => {
+      const parts = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: style }).formatToParts(at);
+      const p = parts.find((x) => x.type === 'timeZoneName');
+      return p ? p.value : null;
+    };
+    const long = nameOf('long');
+    const short = nameOf('short');
+    if (long && short && long !== short) return `Times shown in ${long} (${short})`;
+    if (short) return `Times shown in ${short}`;
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 export default function SchedulingPage() {
   const { config } = useConfig();
@@ -110,8 +121,6 @@ export default function SchedulingPage() {
 
   const branding = config?.branding || {};
   const orgName = config?.chat_title || branding.chat_title || 'Scheduling';
-  const logoUrl = branding.logo_url || branding.avatar_url || '';
-  const ini = useMemo(() => initialsOf(orgName), [orgName]);
 
   const quickDays = useMemo(
     () => nextWeekdays(3).map((d) => ({ iso: isoOf(d), label: dayLabel(d) })),
@@ -125,12 +134,12 @@ export default function SchedulingPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [done, setDone] = useState(null);
-  const [companionOpen, setCompanionOpen] = useState(true);
   const [chatInput, setChatInput] = useState('');
 
   const apptLabel = summary && summary.appointment_label;
-  const heroTitle = apptLabel ? `${copy.verb} Your ${apptLabel}` : `${copy.verb} your appointment`;
+  const heroTitle = apptLabel ? `${copy.verb} your ${apptLabel}` : `${copy.verb} your appointment`;
   const currentLine = summary && formatCurrent(summary.current_start_at, summary.timezone);
+  const tzLine = summary && tzNote(summary.timezone, summary.current_start_at);
 
   async function loadDay(dateIso) {
     if (!tenantHash || !session) {
@@ -140,6 +149,7 @@ export default function SchedulingPage() {
     setLoading(true);
     setError(null);
     setSelectedSlot(null);
+    setDone(null); // changing the day clears any confirmation banner
     try {
       const r = await proposeTimes({ tenantHash, session, date: isCancel ? undefined : dateIso });
       setSummary({
@@ -223,142 +233,142 @@ export default function SchedulingPage() {
 
   return (
     <div className="sched-page" data-purpose={purpose}>
+      {/* Org header — wordmark-as-logo (no logo image), "Scheduling" past a hairline. */}
       <header className="sched-brand">
-        {logoUrl ? <img className="sched-logo-img" src={logoUrl} alt="" /> : <div className="sched-logo">{ini}</div>}
-        <div className="sched-brand-text">
-          <div className="sched-org">{orgName}</div>
-          <div className="sched-tag">Scheduling</div>
-        </div>
-        <div className="sched-secure">🔒 Secure link</div>
+        <div className="sched-org">{orgName}</div>
+        <div className="sched-tag">Scheduling</div>
       </header>
 
       <main className="sched-wrap">
         <section className="sched-panel sched-picker">
-          {done ? (
-            <div className="sched-done">
-              <div className={`sched-done-check${done === 'canceled' ? ' cancel' : ''}`}>✓</div>
-              <h1 className="sched-done-title">{done === 'canceled' ? 'Appointment cancelled' : "You're rescheduled"}</h1>
-              <p className="sched-current">
-                {done === 'canceled'
-                  ? 'The team has been notified. You can book again anytime.'
-                  : 'A confirmation and calendar invite are on their way to your inbox.'}
-              </p>
-            </div>
+          <span className="sched-pill">{copy.pill}</span>
+          <h1 className="sched-title">{heroTitle}</h1>
+          {currentLine && (
+            <p className="sched-current">Currently booked for <b>{currentLine}</b></p>
+          )}
+
+          {isCancel ? (
+            done === 'canceled' ? (
+              <div className="sched-banner">
+                <span className="sched-banner-check" aria-hidden="true">✓</span>
+                <span>Your appointment has been canceled. The team has been notified.</span>
+              </div>
+            ) : (
+              <div className="sched-cancel">
+                <button type="button" className="sched-cta sched-cta-danger" disabled={loading} onClick={confirmCancel}>
+                  {loading ? 'Canceling…' : 'Cancel appointment'}
+                </button>
+                <span className="sched-hint">Changed your mind? Just close this page — nothing happens until you confirm.</span>
+                {error && <p className="sched-empty">Something went wrong — please try again.</p>}
+              </div>
+            )
           ) : (
             <>
-              <span className="sched-pill">{copy.pill}</span>
-              <h1 className="sched-title">{heroTitle}</h1>
-              {currentLine && (
-                <p className="sched-current">Current appointment: <b>{currentLine}</b></p>
+              <div className="sched-section-label">Choose a day</div>
+              <div className="sched-chips">
+                {quickDays.map((d) => (
+                  <button
+                    key={d.iso}
+                    type="button"
+                    className={`sched-chip${selectedDay === d.iso && !showCalendar ? ' on' : ''}`}
+                    disabled={loading}
+                    onClick={() => pickQuickDay(d.iso)}
+                  >
+                    {d.label}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className={`sched-chip${showCalendar ? ' on' : ''}`}
+                  disabled={loading}
+                  onClick={() => setShowCalendar((s) => !s)}
+                >
+                  Pick a date
+                </button>
+              </div>
+
+              {showCalendar && (
+                <SchedulingMonthCalendar onSelectDay={pickCalendarDay} config={config} disabled={loading} />
               )}
 
-              {isCancel ? (
-                <div className="sched-cancel">
-                  <button type="button" className="sched-cta sched-cta-danger" disabled={loading} onClick={confirmCancel}>
-                    {loading ? 'Cancelling…' : 'Cancel Appointment'}
-                  </button>
-                  <span className="sched-hint">Changed your mind? Just close this page — nothing happens until you confirm.</span>
+              <div className="sched-section-label">
+                Available times{selectedDayLabel ? ` · ${selectedDayLabel}` : ''}
+              </div>
+              {loading ? (
+                <p className="sched-typing">Finding times…</p>
+              ) : times.length > 0 ? (
+                <div className="sched-timelist">
+                  {times.map((s) => {
+                    const sel = selectedSlot && (selectedSlot.slotId || selectedSlot.start) === (s.slotId || s.start);
+                    return (
+                      <button
+                        key={s.slotId || s.start}
+                        type="button"
+                        className={`sched-time${sel ? ' sel' : ''}`}
+                        onClick={() => { setSelectedSlot(s); setDone(null); }}
+                      >
+                        <span>{s.label}</span>
+                        {sel && <span className="sched-time-check" aria-hidden="true">✓</span>}
+                      </button>
+                    );
+                  })}
                 </div>
               ) : (
-                <>
-                  <div className="sched-section-label">Choose a Day</div>
-                  <div className="sched-chips">
-                    {quickDays.map((d) => (
-                      <button
-                        key={d.iso}
-                        type="button"
-                        className={`sched-chip${selectedDay === d.iso && !showCalendar ? ' on' : ''}`}
-                        disabled={loading}
-                        onClick={() => pickQuickDay(d.iso)}
-                      >
-                        {d.label}
-                      </button>
-                    ))}
-                    <button
-                      type="button"
-                      className={`sched-chip${showCalendar ? ' on' : ''}`}
-                      disabled={loading}
-                      onClick={() => setShowCalendar((s) => !s)}
-                    >
-                      Pick a date
-                    </button>
-                  </div>
-
-                  {showCalendar && (
-                    <SchedulingMonthCalendar onSelectDay={pickCalendarDay} config={config} disabled={loading} />
-                  )}
-
-                  <div className="sched-section-label sched-times-label">
-                    Available Times{selectedDayLabel ? ` · ${selectedDayLabel}` : ''}
-                  </div>
-                  {loading ? (
-                    <p className="sched-typing">Finding times…</p>
-                  ) : times.length > 0 ? (
-                    <div className="sched-timelist">
-                      {times.map((s) => (
-                        <button
-                          key={s.slotId || s.start}
-                          type="button"
-                          className={`sched-time${selectedSlot && (selectedSlot.slotId || selectedSlot.start) === (s.slotId || s.start) ? ' sel' : ''}`}
-                          onClick={() => setSelectedSlot(s)}
-                        >
-                          {s.label}
-                        </button>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="sched-empty">
-                      {error ? 'We couldn’t load times — try another day or ask below.' : 'No open times that day — try another day or “Pick a date.”'}
-                    </p>
-                  )}
-
-                  <div className="sched-confirmbar">
-                    <button type="button" className="sched-cta" disabled={!selectedSlot || loading} onClick={confirmReschedule}>
-                      Confirm New Time
-                    </button>
-                    {selectedSlot && <span className="sched-hint">Selected: <b>{selectedSlot.label}</b></span>}
-                  </div>
-                </>
+                <p className="sched-empty">
+                  {error ? 'We couldn’t load times — try another date, or ask below.' : 'No times available that day — try another date.'}
+                </p>
               )}
-              {error && error !== 'load_failed' && !times.length && isCancel && (
-                <p className="sched-empty">Something went wrong — please try again.</p>
+
+              <div className="sched-confirmbar">
+                <button type="button" className="sched-cta" disabled={!selectedSlot || loading} onClick={confirmReschedule}>
+                  Confirm new time
+                </button>
+              </div>
+              {done === 'rescheduled' && selectedSlot && (
+                <div className="sched-banner">
+                  <span className="sched-banner-check" aria-hidden="true">✓</span>
+                  <span>You&rsquo;re rebooked for {selectedSlot.label}. A calendar update is on its way.</span>
+                </div>
               )}
             </>
           )}
         </section>
 
         {/* COMPANION CHAT — full agent chat (questions + conversational scheduling). */}
-        <section className={`sched-panel sched-companion${companionOpen ? '' : ' collapsed'}`}>
-          <button type="button" className="sched-chead" onClick={() => setCompanionOpen((o) => !o)}>
-            <div className="sched-ava">{ini}</div>
-            <div className="sched-brand-text">
-              <div className="sched-ct">Have a question?</div>
-              <div className="sched-cs">Ask the {orgName} team anything about your appointment.</div>
-            </div>
-            <span className="sched-chev">▾</span>
-          </button>
+        <section className="sched-panel sched-companion">
+          <div className="sched-chead">
+            <div className="sched-ct">Have a question?</div>
+            <div className="sched-cs">Ask the {orgName} team anything about your appointment.</div>
+          </div>
           <div className="sched-cbody">
             {chatBubbles.length === 0 ? (
-              <div className="sched-msg bot">
-                Ask anything about your appointment — what to expect, the location, or who you&rsquo;ll meet.
+              <div className="sched-msg-wrap bot">
+                <div className="sched-sender">{orgName}</div>
+                <div className="sched-msg bot">
+                  Ask anything about your appointment — what to expect, the location, or who you&rsquo;ll meet.
+                </div>
               </div>
             ) : (
-              chatBubbles.map((m) => (
-                <div key={m.id} className={`sched-msg-wrap ${m.role === 'user' ? 'user' : 'bot'}`}>
-                  {(m.content || '').trim().length > 0 && (
-                    <div
-                      className={`sched-msg ${m.role === 'user' ? 'user' : 'bot'}`}
-                      dangerouslySetInnerHTML={{ __html: sanitizeHTML(m.content) }}
-                    />
-                  )}
-                  {/* conversational-scheduling affordances, same as today */}
-                  {m.metadata?.schedulingSlots?.length > 0 && (
-                    <SchedulingSlots slots={m.metadata.schedulingSlots} schedulingContext={m.metadata.schedulingContext} />
-                  )}
-                  {m.metadata?.schedulingConfirm?.slot && <SchedulingConfirmCard confirm={m.metadata.schedulingConfirm} />}
-                  {m.metadata?.schedulingNotice && <SchedulingNotice notice={m.metadata.schedulingNotice} />}
-                </div>
-              ))
+              chatBubbles.map((m) => {
+                const isUser = m.role === 'user';
+                return (
+                  <div key={m.id} className={`sched-msg-wrap ${isUser ? 'user' : 'bot'}`}>
+                    {!isUser && <div className="sched-sender">{orgName}</div>}
+                    {(m.content || '').trim().length > 0 && (
+                      <div
+                        className={`sched-msg ${isUser ? 'user' : 'bot'}`}
+                        dangerouslySetInnerHTML={{ __html: sanitizeHTML(m.content) }}
+                      />
+                    )}
+                    {/* conversational-scheduling affordances, same as today */}
+                    {m.metadata?.schedulingSlots?.length > 0 && (
+                      <SchedulingSlots slots={m.metadata.schedulingSlots} schedulingContext={m.metadata.schedulingContext} />
+                    )}
+                    {m.metadata?.schedulingConfirm?.slot && <SchedulingConfirmCard confirm={m.metadata.schedulingConfirm} />}
+                    {m.metadata?.schedulingNotice && <SchedulingNotice notice={m.metadata.schedulingNotice} />}
+                  </div>
+                );
+              })
             )}
           </div>
           <form className="sched-cfoot" onSubmit={chatSend}>
@@ -369,9 +379,17 @@ export default function SchedulingPage() {
               disabled={isTyping}
               aria-label="Ask a question"
             />
-            <button type="submit" disabled={isTyping || !chatInput.trim()} aria-label="Send">➤</button>
+            <button className="sched-send" type="submit" disabled={isTyping || !chatInput.trim()} aria-label="Send">↑</button>
           </form>
         </section>
+
+        {/* Powered-by line — bundled mark, fixed platform attribution + timezone note. */}
+        <div className="sched-poweredby">
+          <span>Powered by</span>
+          <img className="sched-poweredby-mark" src="/myrecruiter-mark.png" alt="" aria-hidden="true" />
+          <span className="sched-poweredby-brand">MyRecruiter</span>
+          {tzLine && <span>· {tzLine}</span>}
+        </div>
       </main>
     </div>
   );
