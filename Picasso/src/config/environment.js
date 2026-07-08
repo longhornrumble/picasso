@@ -355,15 +355,7 @@ export const config = {
     }
     return `${ENVIRONMENTS[currentEnv].CONVERSATION_ENDPOINT}&operation=${encodeURIComponent(operation)}&t=${encodeURIComponent(tenantHash)}`;
   },
-  
-  // New JWT/Function URL methods
-  getStreamTokenUrl: (tenantHash) => {
-    if (!tenantHash) {
-      throw new Error('getStreamTokenUrl: tenantHash is required');
-    }
-    return `${ENVIRONMENTS[currentEnv].CHAT_ENDPOINT}&action=generate_stream_token&t=${encodeURIComponent(tenantHash)}`;
-  },
-  
+
   getAssetUrl: (path) => {
     if (!path) {
       throw new Error('getAssetUrl: path is required');
