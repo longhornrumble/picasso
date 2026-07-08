@@ -171,10 +171,13 @@ resource "aws_cloudfront_origin_request_policy" "picasso_origin_request" {
 #     markdown response) produced ZERO CSP violations across every directive
 #     (script/style/img/font/connect), verified via Playwright on staging.chat.
 #
-# Emitted via custom_headers_config, NOT security_headers_config.content_security_policy:
-# the managed block only sets the ENFORCING header, so Report-Only must be a
-# custom header. (frame-ancestors also only works from an HTTP header, never a
-# <meta> tag — which is why the absent meta-CSP couldn't have carried it anyway.)
+# ENFORCING is emitted via security_headers_config.content_security_policy (the
+# managed CSP block). CloudFront REJECTS `Content-Security-Policy` in
+# custom_headers_config ("security header ... cannot be set as custom header"), so
+# the enforcing header MUST use the managed block. (The Report-Only variant is NOT
+# a managed security header, so it originally lived in custom_headers_config; the
+# flip moves it here. frame-ancestors only works from an HTTP header, never a
+# <meta> tag.)
 #
 # Policy rationale:
 #   - frame-ancestors *  — the widget iframe.html embeds on ARBITRARY client
@@ -192,11 +195,10 @@ resource "aws_cloudfront_origin_request_policy" "picasso_origin_request" {
 resource "aws_cloudfront_response_headers_policy" "widget_csp" {
   name = "picasso-widget-csp-staging"
 
-  custom_headers_config {
-    items {
-      header   = "Content-Security-Policy"
+  security_headers_config {
+    content_security_policy {
       override = true
-      value = join(" ", [
+      content_security_policy = join(" ", [
         "default-src 'self';",
         "script-src 'self';",
         "style-src 'self' 'unsafe-inline';",
