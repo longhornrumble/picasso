@@ -57,21 +57,25 @@ beforeEach(() => {
 describe('reschedule', () => {
   test('mount → gateway propose; hero shows current appointment + Choose a Day + times', async () => {
     renderPage('reschedule');
-    expect(screen.getByText('Atlanta Angels')).toBeInTheDocument();
-    expect(screen.getByText('Choose a Day')).toBeInTheDocument();
+    // org name appears twice by design (header wordmark + chat sender label)
+    expect(screen.getByText('Atlanta Angels', { selector: '.sched-org' })).toBeInTheDocument();
+    expect(screen.getByText('Choose a day')).toBeInTheDocument();
     // title + current-appointment line populate from the gateway summary (async)
-    expect(await screen.findByRole('heading', { name: /Reschedule Your Intro Call/ })).toBeInTheDocument();
-    expect(screen.getByText(/Current appointment:/)).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /Reschedule your Intro Call/ })).toBeInTheDocument();
+    expect(screen.getByText(/Currently booked for/)).toBeInTheDocument();
     expect(screen.getByText(/June 15/)).toBeInTheDocument();
     // times render after the propose resolves
     expect(await screen.findByRole('button', { name: '10:30 AM' })).toBeInTheDocument();
     expect(proposeTimes).toHaveBeenCalledWith(expect.objectContaining({ tenantHash: 'hsh', session: 'sid' }));
+    // powered-by line + derived timezone note (from the summary's America/Chicago)
+    expect(screen.getByText('MyRecruiter')).toBeInTheDocument();
+    expect(screen.getByText(/Times shown in/)).toBeInTheDocument();
   });
 
   test('select a time → Confirm enabled → mutate reschedule → success', async () => {
     renderPage('reschedule');
     const slot = await screen.findByRole('button', { name: '10:30 AM' });
-    const confirm = screen.getByRole('button', { name: 'Confirm New Time' });
+    const confirm = screen.getByRole('button', { name: 'Confirm new time' });
     expect(confirm).toBeDisabled();
     fireEvent.click(slot);
     expect(confirm).toBeEnabled();
@@ -80,7 +84,7 @@ describe('reschedule', () => {
       mutation: 'reschedule',
       newSlot: { start: SLOTS[1].start, end: SLOTS[1].end },
     })));
-    expect(await screen.findByText(/You're rescheduled/)).toBeInTheDocument();
+    expect(await screen.findByText(/rebooked for/)).toBeInTheDocument();
   });
 
   test('"Pick a date" reveals the month calendar', async () => {
@@ -105,12 +109,12 @@ describe('cancel', () => {
   test('cancel mode → Cancel Appointment → mutate cancel → success', async () => {
     mutateBooking.mockResolvedValue({ outcome: 'deleted' });
     renderPage('cancel');
-    const btn = await screen.findByRole('button', { name: 'Cancel Appointment' });
+    const btn = await screen.findByRole('button', { name: 'Cancel appointment' });
     // no day picker in cancel mode
-    expect(screen.queryByText('Choose a Day')).not.toBeInTheDocument();
+    expect(screen.queryByText('Choose a day')).not.toBeInTheDocument();
     fireEvent.click(btn);
     await waitFor(() => expect(mutateBooking).toHaveBeenCalledWith(expect.objectContaining({ mutation: 'cancel' })));
-    expect(await screen.findByText(/Appointment cancelled/)).toBeInTheDocument();
+    expect(await screen.findByText(/appointment has been canceled/i)).toBeInTheDocument();
   });
 });
 
@@ -139,6 +143,6 @@ describe('failure handling', () => {
   test('gateway propose error → shows a try-another-day message, no crash', async () => {
     proposeTimes.mockRejectedValue(Object.assign(new Error('boom'), { code: 'propose_failed' }));
     renderPage('reschedule');
-    expect(await screen.findByText(/couldn’t load times|try another day/i)).toBeInTheDocument();
+    expect(await screen.findByText(/couldn’t load times|try another date/i)).toBeInTheDocument();
   });
 });
