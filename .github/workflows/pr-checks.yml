@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - main
+      - staging   # code/IaC PRs route to staging first — gate them too (was main-only)
 
 env:
   NODE_VERSION: '22'
