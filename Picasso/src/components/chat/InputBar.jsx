@@ -35,6 +35,10 @@ export default function InputBar({ input, setInput }) {
   const { isFormMode, suspendForm } = useFormMode();
   const features = config?.features || {};
   const [showAttachments, setShowAttachments] = useState(false);
+  const uploadTimersRef = useRef([]);
+  useEffect(() => () => {
+    uploadTimersRef.current.forEach(clearTimeout);
+  }, []);
   const [_uploadingFiles, setUploadingFiles] = useState(new Set());
   const [isExpanded, setIsExpanded] = useState(false);
   const textareaRef = useRef(null);
@@ -221,7 +225,7 @@ export default function InputBar({ input, setInput }) {
         skipBotResponse: true,
       });
 
-      setTimeout(() => {
+      uploadTimersRef.current.push(setTimeout(() => {
         setUploadingFiles((current) => {
           if (current.has(fileId)) {
             addMessage({
@@ -240,7 +244,7 @@ export default function InputBar({ input, setInput }) {
           }
           return current;
         });
-      }, 2000);
+      }, 2000));
     };
 
     inputElem.click();

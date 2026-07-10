@@ -28,7 +28,8 @@ import {
   mergeSchedulingSlots,
   computeWelcomeActions,
   _storeGet,
-  _storeKeys
+  _storeKeys,
+  _storeRemove
 } from './shared/messageHelpers';
 import { logger } from '../utils/logger';
 import { config as envConfig } from '../config/environment';
@@ -136,20 +137,9 @@ async function streamChat({
       signal: controller.signal,
     };
 
-    let fetchUrl = url;
-    if (method === 'POST') {
-      fetchOptions.body = JSON.stringify({ ...body, stream: true });
-    } else {
-      // GET: append params
-      const u = new URL(url, window.location.origin);
-      if (body?.tenant_hash) u.searchParams.set('t', body.tenant_hash);
-      if (body?.session_id) u.searchParams.set('session_id', body.session_id);
-      if (body?.user_input) u.searchParams.set('message', body.user_input);
-      u.searchParams.set('stream', 'true');
-      fetchUrl = u.toString();
-    }
+    fetchOptions.body = JSON.stringify({ ...body, stream: true });
 
-    const res = await fetch(fetchUrl, fetchOptions);
+    const res = await fetch(url, fetchOptions);
     if (!res.ok) {
       throw new Error(`HTTP ${res.status}: ${res.statusText}`);
     }
@@ -425,18 +415,14 @@ export default function StreamingChatProvider({ children }) {
 
   // Session context tracking for forms - load from sessionStorage if available
   const [sessionContext, setSessionContext] = useState(() => {
-    console.log('🔍🔍🔍 [StreamingChatProvider] INITIALIZING SESSION CONTEXT 🔍🔍🔍');
     const saved = getFromSession('picasso_session_context');
-    console.log('🔍🔍🔍 [StreamingChatProvider] Raw sessionStorage value:', saved);
     if (saved) {
-      console.log('🔍🔍🔍 [StreamingChatProvider] ✅ Restored session context from storage:', {
-        completed_forms: saved.completed_forms,
-        form_count: saved.completed_forms?.length || 0,
-        full_data: saved
+      logger.debug('Restored session context from storage', {
+        form_count: saved.completed_forms?.length || 0
       });
       return saved;
     }
-    console.log('🔍🔍🔍 [StreamingChatProvider] ❌ No saved session context, using empty state');
+    logger.debug('No saved session context, using empty state');
     return {
       completed_forms: [],
       form_submissions: {},
@@ -453,6 +439,7 @@ export default function StreamingChatProvider({ children }) {
   const tenantHashRef = useRef(getTenantHash());
   const conversationManagerRef = useRef(null);
   const abortControllersRef = useRef(new Map());
+  const resumePromptTimerRef = useRef(null); // cleared on unmount
   const pendingCtasRef = useRef(null); // Fix: Use ref instead of closure variable
   const pendingShowcaseCardRef = useRef(null); // Ref for staging showcase card
   const pendingSuggestedChipsRef = useRef(null); // v3.0: AI-generated follow-up chips
@@ -1217,7 +1204,8 @@ export default function StreamingChatProvider({ children }) {
           // Capture rawCtaButtons before they're cleared (for program switch detection)
           const capturedRawCtas = [...rawCtaButtons];
 
-          setTimeout(() => {
+          clearTimeout(resumePromptTimerRef.current);
+          resumePromptTimerRef.current = setTimeout(() => {
             // Check sessionStorage for suspended forms
             const suspendedFormKeys = _storeKeys().filter(key => key.startsWith('picasso_form_'));
 
@@ -1231,7 +1219,14 @@ export default function StreamingChatProvider({ children }) {
               // Get the first suspended form
               const formStateStr = _storeGet(suspendedFormKeys[0]);
               if (formStateStr) {
-                const formState = JSON.parse(formStateStr);
+                let formState;
+                try {
+                  formState = JSON.parse(formStateStr);
+                } catch (parseErr) {
+                  logger.warn('Corrupted suspended-form entry, removing', { key: suspendedFormKeys[0] });
+                  _storeRemove(suspendedFormKeys[0]);
+                  return;
+                }
                 const formId = formState.formId;
                 const formTitle = formState.formTitle || 'your application';
 
@@ -1412,8 +1407,10 @@ export default function StreamingChatProvider({ children }) {
             });
             
           } catch (fallbackErr) {
+            // Nobody awaits this callback — rethrowing could only become an
+            // unhandled promise rejection. The outer catch already replaced
+            // the placeholder with the error bubble.
             logger.error('HTTP fallback also failed', fallbackErr);
-            throw fallbackErr;
           }
         }
       });
@@ -1562,7 +1559,7 @@ export default function StreamingChatProvider({ children }) {
         console.log('[StreamingChatProvider] Updated messages array:', updated.length);
         return updated;
       });
-      saveToSession([...messages, newMessage]);
+      saveToSession('picasso_messages', [...messages, newMessage]);
       console.log('[StreamingChatProvider] Assistant message added successfully');
       return;
     }
@@ -1711,7 +1708,7 @@ export default function StreamingChatProvider({ children }) {
 
       // CRITICAL: Persist to sessionStorage so it survives re-renders
       saveToSession('picasso_session_context', updated);
-      console.log('🚨🚨🚨 SESSION CONTEXT SAVED TO STORAGE 🚨🚨🚨', updated);
+      logger.debug('Session context saved to storage', { form_count: updated.completed_forms?.length || 0 });
 
       return updated;
     });
@@ -1728,47 +1725,14 @@ export default function StreamingChatProvider({ children }) {
         controller.abort();
       });
       abortControllersRef.current.clear();
+
+      // Cancel any pending resume-prompt timer
+      clearTimeout(resumePromptTimerRef.current);
     };
   }, []);
   
-  // Debug: Log messages state whenever it changes
-  useEffect(() => {
-    console.log('[StreamingChatProvider] Messages state updated:', {
-      messageCount: messages.length,
-      messagesWithCTAs: messages.filter(m => m.ctaButtons?.length > 0).map(m => ({
-        id: m.id,
-        role: m.role,
-        ctaButtonsLength: m.ctaButtons.length,
-        ctaButtons: m.ctaButtons
-      })),
-      lastMessage: messages[messages.length - 1],
-      lastMessageCtas: messages[messages.length - 1]?.ctaButtons,
-      allMessages: messages.map(m => ({
-        id: m.id,
-        role: m.role,
-        hasCtaButtons: !!m.ctaButtons,
-        ctaButtonsLength: m.ctaButtons?.length,
-        ctaButtonsType: typeof m.ctaButtons,
-        ctaButtonsValue: m.ctaButtons
-      }))
-    });
-  }, [messages]);
-
   // Build context value - using useMemo to control when it changes
   const contextValue = React.useMemo(() => {
-    // Debug: Log what we're about to pass in context
-    console.log('[StreamingChatProvider] Building context value with messages:', {
-      count: messages.length,
-      messagesWithCTAs: messages.filter(m => m.ctaButtons?.length > 0).map(m => ({
-        id: m.id,
-        ctaButtonsLength: m.ctaButtons.length
-      })),
-      allMessages: messages.map(m => ({
-        id: m.id,
-        role: m.role,
-        hasCTAs: !!m.ctaButtons?.length
-      }))
-    });
 
     return {
       // Core state

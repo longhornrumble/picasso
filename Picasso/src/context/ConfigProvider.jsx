@@ -24,7 +24,6 @@ const ConfigProvider = ({ children }) => {
     tenantHash: null
   });
   
-  const updateIntervalRef = useRef(null);
 
   // Get tenant hash from script data-tenant attribute
   const getTenantHash = () => {
@@ -132,11 +131,6 @@ const ConfigProvider = ({ children }) => {
       console.log('📡 Response status:', response.status);
 
       // If primary endpoint fails with 404, it means the tenant hash is invalid
-      if (response.status === 404) {
-        console.warn('⚠️ Tenant configuration not found - invalid or unauthorized tenant hash');
-        // Don't try fallback endpoints for security - fail closed
-      }
-
       if (response.status === 404) {
         // Handle missing tenant gracefully with fallback
         console.warn('⚠️ Tenant config not found (404), using fallback');
@@ -308,32 +302,6 @@ const ConfigProvider = ({ children }) => {
     }
   };
 
-  // Set up automatic config checking
-  const _startConfigWatcher = () => {
-    // Clear any existing interval
-    if (updateIntervalRef.current) {
-      clearInterval(updateIntervalRef.current);
-    }
-
-    // Check for updates every 2 minutes (reduced from 5)
-    // Note: Only check for updates if chat has no active messages to avoid disrupting conversations
-    const checkInterval = 2 * 60 * 1000;
-    
-    const conditionalConfigCheck = () => {
-      // Skip config update if there are active messages in the chat
-      const chatHasMessages = window.picassoChatHasMessages;
-      if (chatHasMessages) {
-        console.log('⏸️ Skipping config update - chat has active messages');
-        return;
-      }
-      checkForConfigUpdates();
-    };
-    
-    updateIntervalRef.current = setInterval(conditionalConfigCheck, checkInterval);
-    
-    console.log(`🕐 Config update checker started (every ${checkInterval / 1000}s, respects active conversations)`);
-  };
-
   // Manual refresh function
   const refreshConfig = async () => {
     console.log('🔄 Manual config refresh requested');
@@ -401,14 +369,18 @@ const ConfigProvider = ({ children }) => {
 
   // Handle visibility change (check config when user returns to tab)
   useEffect(() => {
+    let visibilityTimer = null;
     const handleVisibilityChange = () => {
       if (!document.hidden && config) {
-        setTimeout(checkForConfigUpdates, 1000);
+        visibilityTimer = setTimeout(checkForConfigUpdates, 1000);
       }
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      clearTimeout(visibilityTimer);
+    };
   }, [config]);
 
   // Provide context value
@@ -437,15 +409,10 @@ const ConfigProvider = ({ children }) => {
   );
 };
 
-// Global functions for debugging - S3/CloudFront system
-if (typeof window !== 'undefined') {
-  // Manual config refresh
-  window.refreshPicassoConfig = () => {
-    if (window.configProvider) {
-      window.configProvider.refreshConfig();
-    }
-  };
-
+// Global functions for debugging - S3/CloudFront system.
+// Dev/staging only: no reason to ship a test harness (or its console
+// banners) to every tenant page in production builds.
+if (typeof window !== 'undefined' && environmentConfig.ENVIRONMENT !== 'production') {
   // Test health check action
   window.testHealthCheck = async (tenantHash) => {
     const hash = tenantHash || environmentConfig.getDefaultTenantHash();
@@ -541,22 +508,6 @@ if (typeof window !== 'undefined') {
     }
   };
 
-  console.log(`
-🛠️  PICASSO LAMBDA MASTER_FUNCTION COMMANDS:
-   testHealthCheck()             - Test action=health_check
-   testConfigLoad()              - Test Lambda config load  
-   testChatAction()              - Test action=chat
-   refreshPicassoConfig()        - Force refresh config
-   
-   CONFIG SOURCE: Lambda Master_Function
-   ✅ Hash-based auth, tenant inference, 2-minute cache
-  `);
-
-  console.log(`
-🛠️  CONFIG API TEST COMMANDS:
-   testConfigAPI("tenant_hash")    - Test config fetch
-   testConfigAPI()                 - Test with current hash
-  `);
 }
 
 // Hook for manual config refresh in components

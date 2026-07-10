@@ -6,7 +6,6 @@ import FormModeContext, { useFormMode } from "../../context/FormModeContext";
 import strings from "../../i18n/strings";
 import FilePreview from "./FIlePreview";  // Note: File has unusual capitalization
 import { streamingRegistry } from "../../utils/streamingRegistry";
-import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import CTAButton, { CTAButtonGroup } from './CTAButton';
 import ResponseActions from './ResponseActions'; // W2.6: copy + inert thumbs row
@@ -27,16 +26,6 @@ function emitAnalyticsEvent(eventType, payload) {
   }
 }
 
-// Configure marked for streaming markdown
-marked.setOptions({
-  gfm: true,
-  breaks: true,
-  mangle: false,
-  headerIds: false,
-  pedantic: false,
-  smartypants: false,
-  sanitize: false
-});
 
 // Simple markdown processor for streaming
 // Shared DOMPurify config for message HTML rendered via innerHTML /
@@ -58,34 +47,6 @@ const MESSAGE_HTML_SANITIZE_CONFIG = {
   ALLOW_DATA_ATTR: false
 };
 
-const processStreamingMarkdown = (text) => {
-  if (!text) return '';
-
-  try {
-    // Convert markdown to HTML
-    const html = marked.parse(text);
-
-    // Sanitize the HTML
-    const safeHtml = DOMPurify.sanitize(html, MESSAGE_HTML_SANITIZE_CONFIG);
-    
-    // Use target="_top" to make links break out of iframe and open in parent page
-    return safeHtml.replace(
-      /<a\s+([^>]*href=["'](?:https?:|mailto:|tel:)[^"']+["'][^>]*)>/gi,
-      (match, attrs) => {
-        // Remove existing target and add target="_top" for iframe breakout
-        const cleanedAttrs = attrs.replace(/\s*target=["'][^"']*["']\s*/gi, '');
-        // Add target="_top" and rel for security
-        if (!/rel=/i.test(cleanedAttrs)) {
-          return `<a ${cleanedAttrs} target="_top" rel="noopener noreferrer">`;
-        }
-        return `<a ${cleanedAttrs} target="_top">`;
-      }
-    );
-  } catch (err) {
-    console.error('[Bubble] Markdown processing error:', err);
-    return DOMPurify.sanitize(text);
-  }
-};
 
 /**
  * Props contract notes:

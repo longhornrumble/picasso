@@ -351,8 +351,9 @@ async function flushEventsToBackend() {
     }
   } catch (error) {
     console.warn('[Analytics] Failed to flush events:', error);
-    // Re-queue failed events for retry
-    analyticsState.eventQueue = [...events, ...(analyticsState.eventQueue || [])];
+    // Re-queue failed events for retry, capped so a dead endpoint can't grow
+    // the queue without bound (keep the most recent 200)
+    analyticsState.eventQueue = [...events, ...(analyticsState.eventQueue || [])].slice(-200);
   }
 }
 
@@ -561,126 +562,6 @@ function initializeWidget() {
       console.log('📐 Schedule mode enabled - branded scheduling page');
     }
     
-    // Create a proper fetchTenantConfig function for the iframe context
-    window.fetchTenantConfig = async () => {
-      performanceMetrics.configStartTime = performance.now();
-      
-      try {
-        // Check for cached config first (performance optimization)
-        const cacheKey = `picasso_config_${tenantHash}`;
-        const cached = _storeGet(cacheKey);
-        if (cached) {
-          try {
-            const cachedConfig = JSON.parse(cached);
-            const cacheAge = Date.now() - (cachedConfig._cached || 0);
-            if (cacheAge < 300000) { // 5 minutes cache
-              performanceMetrics.configEndTime = performance.now();
-              const loadTime = performanceMetrics.configEndTime - performanceMetrics.configStartTime;
-              
-              // Track cached config performance
-              performanceTracker.track('configFetch', loadTime, {
-                tenantHash,
-                fromCache: true,
-                cacheAge
-              });
-              
-              console.log(`⚡ Config loaded from cache in ${loadTime.toFixed(2)}ms ✅`);
-
-              // Ensure analytics state has tenant hash (fallback if PICASSO_INIT wasn't received)
-              if (!analyticsState.tenantHash && tenantHash) {
-                analyticsState.tenantHash = tenantHash;
-                console.log('📊 Analytics tenant hash set from cached config:', tenantHash);
-              }
-
-              return cachedConfig;
-            }
-          } catch {
-            console.warn('Invalid cached config, fetching fresh');
-          }
-        }
-        
-        const configUrl = environmentConfig.getConfigUrl(tenantHash);
-        console.log('🔄 Fetching config from:', configUrl);
-        
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000); // PERFORMANCE: 3 second timeout for faster failure detection
-        
-        const response = await fetch(configUrl, {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-          },
-          mode: 'cors',
-          credentials: 'omit',
-          cache: 'no-cache',
-          signal: controller.signal
-        });
-
-        clearTimeout(timeoutId);
-        
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-
-        const config = await response.json();
-        
-        // Cache the config with timestamp
-        config._cached = Date.now();
-        try {
-          _storeSet(cacheKey, JSON.stringify(config));
-        } catch (e) {
-          console.warn('Failed to cache config:', e);
-        }
-        
-        performanceMetrics.configEndTime = performance.now();
-        const loadTime = performanceMetrics.configEndTime - performanceMetrics.configStartTime;
-        
-        // Track config fetch performance
-        performanceTracker.track('configFetch', loadTime, {
-          tenantHash,
-          fromCache: false
-        });
-        
-        console.log(`⚡ Config fetched in ${loadTime.toFixed(2)}ms ${loadTime < 200 ? '✅' : '⚠️ (PRD target: <200ms)'}`);
-
-        // Ensure analytics state has tenant hash (fallback if PICASSO_INIT wasn't received)
-        if (!analyticsState.tenantHash && tenantHash) {
-          analyticsState.tenantHash = tenantHash;
-          console.log('📊 Analytics tenant hash set from config fetch:', tenantHash);
-        }
-
-        return config;
-      } catch (error) {
-        performanceMetrics.configEndTime = performance.now();
-        const loadTime = performanceMetrics.configEndTime - performanceMetrics.configStartTime;
-        console.error(`❌ Failed to fetch config in ${loadTime.toFixed(2)}ms:`, error);
-        
-        // Return a basic fallback config
-        return {
-          tenant_id: tenantHash,
-          tenant_hash: tenantHash,
-          chat_title: 'Chat Assistant',
-          welcome_message: 'Hello! How can I help you today?',
-          branding: {
-            primary_color: '#3b82f6',
-            background_color: '#ffffff',
-            font_color: '#374151',
-            chat_title: 'Chat Assistant'
-          },
-          features: {
-            quick_help: { enabled: true },
-            action_chips: { enabled: true },
-            callout: { enabled: true }
-          },
-          widget_behavior: {
-            auto_open: false,
-            auto_open_delay: 3
-          }
-        };
-      }
-    };
-    
     // Create script tag for compatibility (some components might check for it)
     const existingScript = document.querySelector('script[src*="widget.js"]');
     if (!existingScript) {
@@ -784,26 +665,6 @@ function initializeWidget() {
 
     // Listen for commands from host (PRD-compliant)
     setupCommandListener();
-
-    // Watch for body class changes to notify parent about size changes
-    // NOTE: ChatWidget.jsx now handles sending SIZE_CHANGE messages with accurate dimensions
-    // This observer is kept for potential future use but no longer sends messages
-    const bodyObserver = new MutationObserver((mutations) => {
-      mutations.forEach((mutation) => {
-        if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
-          const isOpen = document.body.classList.contains('chat-open');
-          console.log(`📐 Body class changed: ${isOpen ? 'OPEN' : 'CLOSED'} (ChatWidget handles resize)`);
-        }
-      });
-    });
-
-    // Start observing body for class changes
-    bodyObserver.observe(document.body, {
-      attributes: true,
-      attributeFilter: ['class']
-    });
-
-    console.log('👁️ MutationObserver watching for chat-open class changes');
 
   } catch (error) {
     console.error("❌ Error initializing Picasso Widget:", error);

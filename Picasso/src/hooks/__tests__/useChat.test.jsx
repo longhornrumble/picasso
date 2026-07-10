@@ -1,9 +1,7 @@
 import { renderHook } from '@testing-library/react';
 import { describe, it, expect, jest } from '@jest/globals';
 import { useChat } from '../useChat';
-import { ChatProvider } from '../../context/ChatProvider';
-import { ConfigProvider } from '../../context/ConfigProvider';
-import { FormModeProvider } from '../../context/FormModeContext';
+import { ChatContext } from '../../context/shared/ChatContext';
 
 describe('useChat', () => {
   it('should throw error when used outside ChatProvider', () => {
@@ -30,14 +28,21 @@ describe('useChat', () => {
     consoleSpy.mockRestore();
   });
 
-  it('should return chat context when used within ChatProvider', () => {
-    // ChatProvider requires ConfigProvider (for useConfig) and FormModeProvider (for useFormMode)
+  it('should return chat context when used within a provider', () => {
+    // The live providers (Streaming/HTTP) publish their state through the
+    // shared ChatContext — useChat only depends on that contract, so the
+    // test supplies the contract shape directly.
+    const contextValue = {
+      messages: [],
+      isTyping: false,
+      addMessage: jest.fn(),
+      updateMessage: jest.fn(),
+      clearMessages: jest.fn(),
+      retryMessage: jest.fn(),
+    };
+
     const wrapper = ({ children }) => (
-      <ConfigProvider>
-        <FormModeProvider>
-          <ChatProvider>{children}</ChatProvider>
-        </FormModeProvider>
-      </ConfigProvider>
+      <ChatContext.Provider value={contextValue}>{children}</ChatContext.Provider>
     );
 
     const { result } = renderHook(() => useChat(), { wrapper });

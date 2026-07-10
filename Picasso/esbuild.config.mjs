@@ -190,8 +190,7 @@ if (fs.existsSync(widgetFramePath)) {
   console.log('⚠️ widget-frame.html not found in root directory');
 }
 
-// widget.js is now built from src/widget-standalone.js with proper environment variables
-// No need to copy current-widget.js anymore
+// widget.js is built from src/widget-host.js (see widgetBuildOptions below)
 
 // Copy test files, service worker, and standalone assets from public directory
 const testFiles = ['test-staging.html', 'test-staging-loader.js', 'form-ui-examples.html', 'sw.js', 'myrecruiter-mark.png'];
