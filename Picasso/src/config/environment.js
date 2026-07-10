@@ -313,14 +313,18 @@ if (currentEnv !== requestedEnv) {
   console.error(`❌ Unknown environment "${requestedEnv}" — falling back to production endpoints`);
 }
 
-// Clean environment configuration - no overrides, single source of truth
-console.log(`🔧 Using clean environment configuration for ${currentEnv}`);
-console.log(`📍 Environment ${currentEnv} endpoints:`, {
-  API_BASE_URL: ENVIRONMENTS[currentEnv].API_BASE_URL,
-  CHAT_ENDPOINT: ENVIRONMENTS[currentEnv].CHAT_ENDPOINT,
-  CONFIG_ENDPOINT: ENVIRONMENTS[currentEnv].CONFIG_ENDPOINT,
-  STREAMING_ENDPOINT: ENVIRONMENTS[currentEnv].STREAMING_ENDPOINT
-});
+// Clean environment configuration - no overrides, single source of truth.
+// Endpoint dump is dev/staging-only: no reason to print internal endpoints
+// on every tenant page's console in production.
+if (currentEnv !== 'production') {
+  console.log(`🔧 Using clean environment configuration for ${currentEnv}`);
+  console.log(`📍 Environment ${currentEnv} endpoints:`, {
+    API_BASE_URL: ENVIRONMENTS[currentEnv].API_BASE_URL,
+    CHAT_ENDPOINT: ENVIRONMENTS[currentEnv].CHAT_ENDPOINT,
+    CONFIG_ENDPOINT: ENVIRONMENTS[currentEnv].CONFIG_ENDPOINT,
+    STREAMING_ENDPOINT: ENVIRONMENTS[currentEnv].STREAMING_ENDPOINT
+  });
+}
 
 // Validate the selected environment configuration (log loudly, never throw:
 // a module-load throw kills the whole widget on every embedding page)

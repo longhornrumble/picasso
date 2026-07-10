@@ -415,18 +415,14 @@ export default function StreamingChatProvider({ children }) {
 
   // Session context tracking for forms - load from sessionStorage if available
   const [sessionContext, setSessionContext] = useState(() => {
-    console.log('🔍🔍🔍 [StreamingChatProvider] INITIALIZING SESSION CONTEXT 🔍🔍🔍');
     const saved = getFromSession('picasso_session_context');
-    console.log('🔍🔍🔍 [StreamingChatProvider] Raw sessionStorage value:', saved);
     if (saved) {
-      console.log('🔍🔍🔍 [StreamingChatProvider] ✅ Restored session context from storage:', {
-        completed_forms: saved.completed_forms,
-        form_count: saved.completed_forms?.length || 0,
-        full_data: saved
+      logger.debug('Restored session context from storage', {
+        form_count: saved.completed_forms?.length || 0
       });
       return saved;
     }
-    console.log('🔍🔍🔍 [StreamingChatProvider] ❌ No saved session context, using empty state');
+    logger.debug('No saved session context, using empty state');
     return {
       completed_forms: [],
       form_submissions: {},
@@ -1712,7 +1708,7 @@ export default function StreamingChatProvider({ children }) {
 
       // CRITICAL: Persist to sessionStorage so it survives re-renders
       saveToSession('picasso_session_context', updated);
-      console.log('🚨🚨🚨 SESSION CONTEXT SAVED TO STORAGE 🚨🚨🚨', updated);
+      logger.debug('Session context saved to storage', { form_count: updated.completed_forms?.length || 0 });
 
       return updated;
     });
@@ -1735,44 +1731,8 @@ export default function StreamingChatProvider({ children }) {
     };
   }, []);
   
-  // Debug: Log messages state whenever it changes
-  useEffect(() => {
-    console.log('[StreamingChatProvider] Messages state updated:', {
-      messageCount: messages.length,
-      messagesWithCTAs: messages.filter(m => m.ctaButtons?.length > 0).map(m => ({
-        id: m.id,
-        role: m.role,
-        ctaButtonsLength: m.ctaButtons.length,
-        ctaButtons: m.ctaButtons
-      })),
-      lastMessage: messages[messages.length - 1],
-      lastMessageCtas: messages[messages.length - 1]?.ctaButtons,
-      allMessages: messages.map(m => ({
-        id: m.id,
-        role: m.role,
-        hasCtaButtons: !!m.ctaButtons,
-        ctaButtonsLength: m.ctaButtons?.length,
-        ctaButtonsType: typeof m.ctaButtons,
-        ctaButtonsValue: m.ctaButtons
-      }))
-    });
-  }, [messages]);
-
   // Build context value - using useMemo to control when it changes
   const contextValue = React.useMemo(() => {
-    // Debug: Log what we're about to pass in context
-    console.log('[StreamingChatProvider] Building context value with messages:', {
-      count: messages.length,
-      messagesWithCTAs: messages.filter(m => m.ctaButtons?.length > 0).map(m => ({
-        id: m.id,
-        ctaButtonsLength: m.ctaButtons.length
-      })),
-      allMessages: messages.map(m => ({
-        id: m.id,
-        role: m.role,
-        hasCTAs: !!m.ctaButtons?.length
-      }))
-    });
 
     return {
       // Core state

@@ -409,15 +409,10 @@ const ConfigProvider = ({ children }) => {
   );
 };
 
-// Global functions for debugging - S3/CloudFront system
-if (typeof window !== 'undefined') {
-  // Manual config refresh
-  window.refreshPicassoConfig = () => {
-    if (window.configProvider) {
-      window.configProvider.refreshConfig();
-    }
-  };
-
+// Global functions for debugging - S3/CloudFront system.
+// Dev/staging only: no reason to ship a test harness (or its console
+// banners) to every tenant page in production builds.
+if (typeof window !== 'undefined' && environmentConfig.ENVIRONMENT !== 'production') {
   // Test health check action
   window.testHealthCheck = async (tenantHash) => {
     const hash = tenantHash || environmentConfig.getDefaultTenantHash();
@@ -513,22 +508,6 @@ if (typeof window !== 'undefined') {
     }
   };
 
-  console.log(`
-🛠️  PICASSO LAMBDA MASTER_FUNCTION COMMANDS:
-   testHealthCheck()             - Test action=health_check
-   testConfigLoad()              - Test Lambda config load  
-   testChatAction()              - Test action=chat
-   refreshPicassoConfig()        - Force refresh config
-   
-   CONFIG SOURCE: Lambda Master_Function
-   ✅ Hash-based auth, tenant inference, 2-minute cache
-  `);
-
-  console.log(`
-🛠️  CONFIG API TEST COMMANDS:
-   testConfigAPI("tenant_hash")    - Test config fetch
-   testConfigAPI()                 - Test with current hash
-  `);
 }
 
 // Hook for manual config refresh in components

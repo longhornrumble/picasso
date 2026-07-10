@@ -959,8 +959,9 @@ export function CSSVariablesProvider({ children }) {
   return children;
 }
 
-// Development and testing helpers
-if (typeof window !== 'undefined') {
+// Development and testing helpers — dev/staging builds only; production
+// tenant pages don't get the test harness or its module-load banner.
+if (typeof window !== 'undefined' && environmentConfig.ENVIRONMENT !== 'production') {
   // Global function to test CSS variable updates
   window.testCSS = (property, value) => {
     console.log(`🧪 Testing CSS update: ${property} = ${value}`);
