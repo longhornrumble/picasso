@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { useConfig } from '../hooks/useConfig';
-import { _storeGet, _storeSet, _storeRemove, _storeKeys } from './shared/messageHelpers';
+import { _storeGet, _storeSet, _storeRemove, _storeKeys, getFromSession, saveToSession } from './shared/messageHelpers';
 import {
   FORM_VIEWED,
   FORM_STARTED,
@@ -59,12 +59,20 @@ export const FormModeProvider = ({ children }) => {
 
   // Session storage key prefix
   const STORAGE_PREFIX = 'picasso_form_';
-  const SESSION_ID = _storeGet('picasso_session_id') ||
-                      (() => {
-                        const id = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-                        _storeSet('picasso_session_id', id);
-                        return id;
-                      })();
+  // Read/write through the shared wrapped helpers (the chat providers store
+  // picasso_session_id via saveToSession's {value,timestamp} envelope — a raw
+  // _storeGet here returned the whole JSON blob as the "id"), and freeze the
+  // id in a ref so suspend/cancel storage keys can't diverge between renders.
+  const sessionIdRef = useRef(null);
+  if (sessionIdRef.current === null) {
+    sessionIdRef.current = getFromSession('picasso_session_id') ||
+      (() => {
+        const id = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        saveToSession('picasso_session_id', id);
+        return id;
+      })();
+  }
+  const SESSION_ID = sessionIdRef.current;
 
   // Load suspended forms from session storage on mount
   useEffect(() => {

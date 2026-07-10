@@ -28,7 +28,8 @@ import {
   mergeSchedulingSlots,
   computeWelcomeActions,
   _storeGet,
-  _storeKeys
+  _storeKeys,
+  _storeRemove
 } from './shared/messageHelpers';
 import { logger } from '../utils/logger';
 import { config as envConfig } from '../config/environment';
@@ -442,6 +443,7 @@ export default function StreamingChatProvider({ children }) {
   const tenantHashRef = useRef(getTenantHash());
   const conversationManagerRef = useRef(null);
   const abortControllersRef = useRef(new Map());
+  const resumePromptTimerRef = useRef(null); // cleared on unmount
   const pendingCtasRef = useRef(null); // Fix: Use ref instead of closure variable
   const pendingShowcaseCardRef = useRef(null); // Ref for staging showcase card
   const pendingSuggestedChipsRef = useRef(null); // v3.0: AI-generated follow-up chips
@@ -1206,7 +1208,8 @@ export default function StreamingChatProvider({ children }) {
           // Capture rawCtaButtons before they're cleared (for program switch detection)
           const capturedRawCtas = [...rawCtaButtons];
 
-          setTimeout(() => {
+          clearTimeout(resumePromptTimerRef.current);
+          resumePromptTimerRef.current = setTimeout(() => {
             // Check sessionStorage for suspended forms
             const suspendedFormKeys = _storeKeys().filter(key => key.startsWith('picasso_form_'));
 
@@ -1220,7 +1223,14 @@ export default function StreamingChatProvider({ children }) {
               // Get the first suspended form
               const formStateStr = _storeGet(suspendedFormKeys[0]);
               if (formStateStr) {
-                const formState = JSON.parse(formStateStr);
+                let formState;
+                try {
+                  formState = JSON.parse(formStateStr);
+                } catch (parseErr) {
+                  logger.warn('Corrupted suspended-form entry, removing', { key: suspendedFormKeys[0] });
+                  _storeRemove(suspendedFormKeys[0]);
+                  return;
+                }
                 const formId = formState.formId;
                 const formTitle = formState.formTitle || 'your application';
 
@@ -1401,8 +1411,10 @@ export default function StreamingChatProvider({ children }) {
             });
             
           } catch (fallbackErr) {
+            // Nobody awaits this callback — rethrowing could only become an
+            // unhandled promise rejection. The outer catch already replaced
+            // the placeholder with the error bubble.
             logger.error('HTTP fallback also failed', fallbackErr);
-            throw fallbackErr;
           }
         }
       });
@@ -1717,6 +1729,9 @@ export default function StreamingChatProvider({ children }) {
         controller.abort();
       });
       abortControllersRef.current.clear();
+
+      // Cancel any pending resume-prompt timer
+      clearTimeout(resumePromptTimerRef.current);
     };
   }, []);
   

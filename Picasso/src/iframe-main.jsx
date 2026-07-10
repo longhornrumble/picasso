@@ -351,8 +351,9 @@ async function flushEventsToBackend() {
     }
   } catch (error) {
     console.warn('[Analytics] Failed to flush events:', error);
-    // Re-queue failed events for retry
-    analyticsState.eventQueue = [...events, ...(analyticsState.eventQueue || [])];
+    // Re-queue failed events for retry, capped so a dead endpoint can't grow
+    // the queue without bound (keep the most recent 200)
+    analyticsState.eventQueue = [...events, ...(analyticsState.eventQueue || [])].slice(-200);
   }
 }
 

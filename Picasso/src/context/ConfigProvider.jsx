@@ -369,14 +369,18 @@ const ConfigProvider = ({ children }) => {
 
   // Handle visibility change (check config when user returns to tab)
   useEffect(() => {
+    let visibilityTimer = null;
     const handleVisibilityChange = () => {
       if (!document.hidden && config) {
-        setTimeout(checkForConfigUpdates, 1000);
+        visibilityTimer = setTimeout(checkForConfigUpdates, 1000);
       }
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      clearTimeout(visibilityTimer);
+    };
   }, [config]);
 
   // Provide context value
