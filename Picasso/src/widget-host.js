@@ -263,6 +263,14 @@ import { getBindingSessionId } from './utils/bindingSession.js';
         iframeUrl += '&nocache';
       }
 
+      // Forward the transport override so HTTP vs streaming can be tested
+      // independently from the host page (?streaming=false|true — read by
+      // config/streaming-config.js inside the iframe).
+      const streamingParam = urlParams.get('streaming');
+      if (streamingParam === 'false' || streamingParam === 'true') {
+        iframeUrl += `&streaming=${streamingParam}`;
+      }
+
       // Scheduling redemption: forward the opaque ?session=<uuid> binding id from the host
       // page into the iframe so the in-iframe chat request can carry it to the backend (§B12).
       const bindingSessionId = getBindingSessionId(window.location.search);
