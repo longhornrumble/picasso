@@ -299,13 +299,16 @@ import { getBindingSessionId } from './utils/bindingSession.js';
     setupEventListeners() {
       // Listen for iframe messages
       window.addEventListener('message', (event) => {
-        console.log('📨 Host received message:', event.data.type, 'from:', event.origin);
-        
+        // Source check FIRST, and null-safe: any other script on the embedding
+        // page can postMessage(null) — reading .type before the check threw.
         if (event.source !== this.iframe.contentWindow) {
-          console.log('❌ Message not from our iframe, ignoring');
           return;
         }
-        
+        if (!event.data || typeof event.data.type !== 'string') {
+          return;
+        }
+        console.log('📨 Host received message:', event.data.type, 'from:', event.origin);
+
         switch (event.data.type) {
           case 'PICASSO_IFRAME_READY':
             console.log('📡 Iframe ready, sending init data');
@@ -370,7 +373,7 @@ import { getBindingSessionId } from './utils/bindingSession.js';
             this.iframe.contentWindow.postMessage({
               type: 'PICASSO_COMMAND',
               action: 'OPEN_CHAT'
-            }, '*');
+            }, this.iframeOrigin || '*');
           }
         }
       });
@@ -478,8 +481,9 @@ import { getBindingSessionId } from './utils/bindingSession.js';
         console.log('📊 [Analytics Host] Flush successful:', result);
       } catch (error) {
         console.warn('[Analytics Host] Failed to flush events:', error);
-        // Re-queue failed events
-        this.analyticsQueue = [...events, ...this.analyticsQueue];
+        // Re-queue failed events, capped so a dead endpoint can't grow the
+        // queue without bound (keep the most recent 200)
+        this.analyticsQueue = [...events, ...this.analyticsQueue].slice(-200);
       }
     },
     
@@ -744,7 +748,7 @@ import { getBindingSessionId } from './utils/bindingSession.js';
           type: 'PICASSO_COMMAND',
           action: 'SIZE_CHANGE',
           payload: { size: isMobile ? 'mobile' : 'desktop', isMobile }
-        }, '*');
+        }, this.iframeOrigin || '*');
       }
     },
     
@@ -949,7 +953,13 @@ import { getBindingSessionId } from './utils/bindingSession.js';
     onEvent(callback) {
       if (typeof callback === 'function') {
         window.addEventListener('message', (event) => {
-          if (event.data.type === 'PICASSO_EVENT') {
+          // Only accept events from our own iframe — any frame could spoof
+          // a PICASSO_EVENT into the tenant page's callback otherwise.
+          if (!globalWidgetInstance?.iframe ||
+              event.source !== globalWidgetInstance.iframe.contentWindow) {
+            return;
+          }
+          if (event.data && event.data.type === 'PICASSO_EVENT') {
             callback(event.data);
           }
         });

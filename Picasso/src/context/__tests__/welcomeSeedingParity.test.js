@@ -26,7 +26,6 @@ import { join } from 'path';
 const PROVIDER_FILES = [
   'StreamingChatProvider.jsx',
   'HTTPChatProvider.jsx',
-  'ChatProvider.jsx',
 ];
 
 function readProvider(filename) {

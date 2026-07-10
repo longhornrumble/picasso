@@ -212,84 +212,6 @@ export const classifyError = (error, response = null) => {
 };
 
 /**
- * Enhanced retry logic with exponential backoff
- */
-export const shouldRetry = (errorClassification, attempt, _maxRetries = 3) => {
-  if (!errorClassification.retryable) {
-    return false;
-  }
-  
-  const retryLimits = {
-    [ERROR_TYPES.NETWORK_ERROR]: 3,
-    [ERROR_TYPES.TIMEOUT_ERROR]: 3,
-    [ERROR_TYPES.RATE_LIMIT_ERROR]: 2,
-    [ERROR_TYPES.SERVER_ERROR]: 3,
-    [ERROR_TYPES.JWT_ERROR]: 2,
-    [ERROR_TYPES.JWT_EXPIRED_ERROR]: 1, // Only retry once for expired tokens
-    [ERROR_TYPES.JWT_VALIDATION_ERROR]: 0, // Never retry validation errors
-    [ERROR_TYPES.FUNCTION_URL_ERROR]: 2,
-    [ERROR_TYPES.UNKNOWN_ERROR]: 1
-  };
-  
-  const limit = retryLimits[errorClassification.type] || 1;
-  return attempt < limit;
-};
-
-/**
- * Calculate backoff delay with jitter
- */
-export const getBackoffDelay = (errorClassification, attempt, baseDelay = 1000) => {
-  const delays = {
-    [ERROR_TYPES.NETWORK_ERROR]: 1000,
-    [ERROR_TYPES.TIMEOUT_ERROR]: 2000,
-    [ERROR_TYPES.RATE_LIMIT_ERROR]: 5000,
-    [ERROR_TYPES.SERVER_ERROR]: 2000,
-    [ERROR_TYPES.JWT_ERROR]: 1500,
-    [ERROR_TYPES.JWT_EXPIRED_ERROR]: 500, // Quick retry for expired tokens
-    [ERROR_TYPES.JWT_VALIDATION_ERROR]: 0, // No retry delay
-    [ERROR_TYPES.FUNCTION_URL_ERROR]: 2000,
-    [ERROR_TYPES.UNKNOWN_ERROR]: 1000
-  };
-  
-  const delay = delays[errorClassification.type] || baseDelay;
-  const exponentialDelay = delay * Math.pow(2, attempt - 1);
-  
-  // Add jitter to prevent thundering herd
-  const jitter = Math.random() * 0.1 * exponentialDelay;
-  
-  return Math.min(exponentialDelay + jitter, 30000); // Max 30 seconds
-};
-
-/**
- * Get user-friendly error messages
- */
-export const getUserFriendlyMessage = (errorClassification, attempt = 1) => {
-  const messages = {
-    [ERROR_TYPES.NETWORK_ERROR]: "You appear to be offline. Please check your connection and try again.",
-    [ERROR_TYPES.TIMEOUT_ERROR]: "The request is taking longer than expected. Please try again.",
-    [ERROR_TYPES.RATE_LIMIT_ERROR]: "I'm receiving a lot of messages right now. Please wait a moment before trying again.",
-    [ERROR_TYPES.SERVER_ERROR]: "Our chat service is temporarily unavailable. Please try again in a few moments.",
-    [ERROR_TYPES.CLIENT_ERROR]: "I'm having trouble processing that request. Please check your input and try again.",
-    [ERROR_TYPES.VALIDATION_ERROR]: "The information provided is invalid. Please check and try again.",
-    [ERROR_TYPES.RENDER_ERROR]: "There was a problem displaying the chat. Please refresh the page.",
-    [ERROR_TYPES.CONFIG_ERROR]: "There's a configuration issue. Please contact support.",
-    [ERROR_TYPES.JWT_ERROR]: "Authentication failed. Please try again.",
-    [ERROR_TYPES.JWT_EXPIRED_ERROR]: "Your session has expired. Please try again.",
-    [ERROR_TYPES.JWT_VALIDATION_ERROR]: "Authentication validation failed. Please refresh and try again.",
-    [ERROR_TYPES.FUNCTION_URL_ERROR]: "Chat service connection failed. Please try again.",
-    [ERROR_TYPES.UNKNOWN_ERROR]: "Something unexpected happened. Please try again."
-  };
-  
-  const baseMessage = messages[errorClassification.type] || messages[ERROR_TYPES.UNKNOWN_ERROR];
-  
-  if (attempt > 1) {
-    return `${baseMessage} (Attempt ${attempt})`;
-  }
-  
-  return baseMessage;
-};
-
-/**
  * Structured error logger with different levels
  */
 class ErrorLogger {
@@ -348,15 +270,6 @@ class ErrorLogger {
       console.error('🚨 Picasso Error:', sanitizedError.message);
     }
     
-    // Report to external service in production
-    // TODO: Enable when Lambda endpoint supports action=log_error
-    if (environmentConfig.ENVIRONMENT === 'production' && false) {
-      this.reportToExternalService(logEntry);
-    }
-    
-    // Notify parent window if in iframe
-    this.notifyParentWindow(logEntry);
-    
     return logEntry;
     } catch (loggerError) {
       // If the logger itself fails, just log to console
@@ -409,66 +322,6 @@ class ErrorLogger {
    */
   generateErrorId() {
     return `ERR_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  }
-  
-  /**
-   * Report error to external service
-   */
-  reportToExternalService(logEntry) {
-    // TEMPORARILY DISABLED: Lambda doesn't support log_error action yet
-    // TODO: Enable when Lambda endpoint is updated to handle error logging
-    /*
-    try {
-      // Use environment-specific error reporting endpoint
-      const errorEndpoint = environmentConfig.ERROR_REPORTING_ENDPOINT || 
-                           window.PicassoConfig?.error_reporting_endpoint;
-      
-      if (errorEndpoint && environmentConfig.ERROR_REPORTING !== false) {
-        const tenantHash = window.PicassoConfig?.tenant || 
-                          window.PicassoConfig?.tenant_id || 
-                          'unknown';
-        
-        fetch(errorEndpoint, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-tenant-id': tenantHash
-          },
-          body: JSON.stringify({
-            ...logEntry,
-            source: 'picasso-widget',
-            iframeMode: document.body.getAttribute('data-iframe') === 'true'
-          }),
-          credentials: 'omit'
-        }).catch(err => {
-          console.warn('Failed to report error to external service:', err);
-        });
-      }
-    } catch (error) {
-      console.warn('Error reporting failed:', error);
-    }
-    */
-  }
-  
-  /**
-   * Notify parent window of errors (for iframe scenarios)
-   */
-  notifyParentWindow(logEntry) {
-    try {
-      if (window.parent && window.parent !== window) {
-        window.parent.postMessage({
-          type: 'PICASSO_ERROR',
-          error: {
-            id: logEntry.errorId,
-            message: logEntry.message,
-            classification: logEntry.classification,
-            timestamp: logEntry.timestamp
-          }
-        }, '*');
-      }
-    } catch (error) {
-      console.warn('Failed to notify parent window:', error);
-    }
   }
   
   /**
@@ -592,9 +445,6 @@ export default {
   ERROR_CATEGORY,
   ERROR_TYPES,
   classifyError,
-  shouldRetry,
-  getBackoffDelay,
-  getUserFriendlyMessage,
   errorLogger,
   setupGlobalErrorHandling,
   performanceMonitor

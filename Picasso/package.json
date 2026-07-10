@@ -2,7 +2,7 @@
   "name": "picasso-chat-widget",
   "version": "1.0.0",
   "description": "React-based chat widget with TypeScript support",
-  "main": "src/widget.js",
+  "main": "src/widget-host.js",
   "type": "module",
   "scripts": {
     "dev": "BUILD_ENV=development node esbuild.config.mjs --serve",

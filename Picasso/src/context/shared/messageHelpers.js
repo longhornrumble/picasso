@@ -264,11 +264,11 @@ export const getFromSession = (key) => {
 
 export const clearSession = () => {
   try {
-    const keysToKeep = ['picasso_config_cache']; // Keep config cache
-    const allKeys = _storeKeys();
-
-    allKeys.forEach(key => {
-      if (key.startsWith('picasso_') && !keysToKeep.includes(key)) {
+    // No keep-list: 'picasso_config_cache' was never written anywhere, and the
+    // real config cache key ('picasso-config-<hash>') doesn't match the
+    // 'picasso_' prefix, so it already survives this sweep.
+    _storeKeys().forEach(key => {
+      if (key.startsWith('picasso_')) {
         _storeRemove(key);
       }
     });

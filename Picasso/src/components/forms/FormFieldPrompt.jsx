@@ -41,6 +41,8 @@ export default function FormFieldPrompt({ onCancel }) {
   const [inputValue, setInputValue] = useState('');
   const [eligibilityMessage, setEligibilityMessage] = useState(null);
   const [isFadingOut, setIsFadingOut] = useState(false);
+  const fadeTimerRef = useRef(null);
+  useEffect(() => () => clearTimeout(fadeTimerRef.current), []);
   const inputRef = useRef(null);
 
   const currentField = getCurrentField();
@@ -196,8 +198,9 @@ export default function FormFieldPrompt({ onCancel }) {
       setEligibilityMessage(result.failureMessage);
       setIsFadingOut(false);
 
-      // Start fade out after 2 seconds
-      setTimeout(() => {
+      // Start fade out after 2 seconds (ref-tracked; cleared on unmount)
+      clearTimeout(fadeTimerRef.current);
+      fadeTimerRef.current = setTimeout(() => {
         setIsFadingOut(true);
       }, 2000);
 
