@@ -4,7 +4,6 @@ import { MessagesSquare, X } from "lucide-react";
 import { useChat } from "../../hooks/useChat";
 import { useConfig } from "../../hooks/useConfig";
 import { useCSSVariables } from "./useCSSVariables";
-import { initializeMobileCompatibility } from "../../utils/mobileCompatibility";
 import { resolveWidgetBehavior } from "../../utils/resolveWidgetBehavior";
 import ChatHeader from "./ChatHeader";
 import InputBar from "./InputBar";

@@ -136,20 +136,9 @@ async function streamChat({
       signal: controller.signal,
     };
 
-    let fetchUrl = url;
-    if (method === 'POST') {
-      fetchOptions.body = JSON.stringify({ ...body, stream: true });
-    } else {
-      // GET: append params
-      const u = new URL(url, window.location.origin);
-      if (body?.tenant_hash) u.searchParams.set('t', body.tenant_hash);
-      if (body?.session_id) u.searchParams.set('session_id', body.session_id);
-      if (body?.user_input) u.searchParams.set('message', body.user_input);
-      u.searchParams.set('stream', 'true');
-      fetchUrl = u.toString();
-    }
+    fetchOptions.body = JSON.stringify({ ...body, stream: true });
 
-    const res = await fetch(fetchUrl, fetchOptions);
+    const res = await fetch(url, fetchOptions);
     if (!res.ok) {
       throw new Error(`HTTP ${res.status}: ${res.statusText}`);
     }

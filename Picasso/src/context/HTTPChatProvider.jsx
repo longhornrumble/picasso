@@ -28,7 +28,6 @@ import {
   trimHistoryForSend,
   computeWelcomeActions,
   _storeGet,
-  _storeSet,
   _storeRemove,
   _storeKeys
 } from './shared/messageHelpers';
