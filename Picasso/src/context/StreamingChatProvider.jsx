@@ -87,7 +87,7 @@ const FIRST_CHUNK_TIMEOUT = 15000; // 15 seconds to receive first byte (heartbea
 /**
  * Core streaming function that handles SSE and NDJSON
  */
-async function streamChat({
+export async function streamChat({
   url,
   headers,
   body,
@@ -376,7 +376,14 @@ async function streamChat({
       return totalText;
     }
     
-    onError?.(error);
+    if (onError) {
+      // The handler owns recovery (HTTP fallback). Await it: if it resolves,
+      // the fallback delivered the reply into the placeholder message and the
+      // error must NOT propagate (the outer catch would overwrite that reply
+      // with an error bubble). If it throws, both transports failed.
+      await onError(error);
+      return totalText;
+    }
     throw error;
   } finally {
     clearTimeout(streamTimeout);
@@ -617,8 +624,19 @@ export default function StreamingChatProvider({ children }) {
       }
       
       const data = await response.json();
+
+      // Master_Function may return a Lambda-proxy envelope ({body: "<json>"})
+      // — unwrap it the same way HTTPChatProvider does before callers read
+      // content fields.
+      if (data && typeof data.body === 'string') {
+        try {
+          return JSON.parse(data.body);
+        } catch {
+          // fall through to raw data
+        }
+      }
       return data;
-      
+
     } catch (err) {
       clearTimeout(timeoutId);
       throw err;
@@ -1407,10 +1425,12 @@ export default function StreamingChatProvider({ children }) {
             });
             
           } catch (fallbackErr) {
-            // Nobody awaits this callback — rethrowing could only become an
-            // unhandled promise rejection. The outer catch already replaced
-            // the placeholder with the error bubble.
+            // streamChat awaits this handler: throwing here means BOTH
+            // transports failed, and sendMessage's outer catch renders the
+            // error bubble. (A fallback success resolves instead, so the
+            // placeholder keeps the delivered reply.)
             logger.error('HTTP fallback also failed', fallbackErr);
+            throw fallbackErr;
           }
         }
       });
