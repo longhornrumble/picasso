@@ -1,63 +1,51 @@
 /**
  * Centralized Streaming Configuration
- * 
+ *
  * SINGLE SOURCE OF TRUTH for streaming decisions throughout the platform.
- * All components and modules should import and use this configuration.
- * 
- * To control streaming:
- * 1. Set STREAMING_ENABLED to true/false here
- * 2. Set FORCE_OVERRIDE to true to ignore tenant config
- * 3. All parts of the platform will automatically respect this setting
+ *
+ * Streaming is the product; HTTP is the fallback (operator ruling 2026-07-10).
+ * Tenant config does NOT select the transport — only runtime levers do, so
+ * each mode can be tested independently and streaming can be killed in an
+ * emergency:
+ *   1. window.PICASSO_DISABLE_STREAMING = true  → HTTP (emergency kill switch)
+ *   2. ?streaming=false / ?streaming=true       → explicit override (testing)
+ *   3. default                                  → streaming
  */
-
-// ============================================
-// MAIN CONTROL - CHANGE THIS TO ENABLE/DISABLE STREAMING
-// ============================================
-const STREAMING_ENABLED = true; // Set to true to enable streaming, false to disable
-const FORCE_OVERRIDE = true; // Set to true to ignore tenant config and use STREAMING_ENABLED value
-
-// ============================================
-// Configuration Export
-// ============================================
 
 /**
- * Determines if streaming should be used based on:
- * 1. Main control flag above
- * 2. Tenant config (if explicitly set)
- * 3. Runtime overrides (for testing)
+ * Determine the transport for this page load.
+ * @param {object} [_tenantConfig] retained for call-site compatibility;
+ *   deliberately unused — tenant config does not select the transport.
  */
-export const isStreamingEnabled = (tenantConfig = null) => {
-  // If FORCE_OVERRIDE is true, ignore everything else and use STREAMING_ENABLED
-  if (FORCE_OVERRIDE) {
-    console.log(`🚨 FORCE OVERRIDE ACTIVE: Streaming ${STREAMING_ENABLED ? 'ENABLED' : 'DISABLED'} (ignoring tenant config)`);
-    return STREAMING_ENABLED;
-  }
-  
-  // Check for runtime override first (highest priority when not forced)
+export const isStreamingEnabled = (_tenantConfig = null) => {
   if (typeof window !== 'undefined') {
-    // Check for forced disable
+    // Emergency kill switch (also settable via window.toggleStreaming(false))
     if (window.PICASSO_DISABLE_STREAMING === true) {
       console.log('🔴 Streaming disabled by runtime override (window.PICASSO_DISABLE_STREAMING)');
       return false;
     }
-    
-    // Check for forced enable
     if (window.PICASSO_FORCE_STREAMING === true) {
-      console.log('✅ Streaming enabled by runtime override (window.PICASSO_FORCE_STREAMING)');
       return true;
     }
+
+    // Explicit URL override — lets each transport be exercised independently
+    // (e.g. iframe.html?t=<hash>&streaming=false to test the HTTP path)
+    try {
+      const param = new URLSearchParams(window.location.search).get('streaming');
+      if (param === 'false') {
+        console.log('🔴 Streaming disabled by URL override (?streaming=false)');
+        return false;
+      }
+      if (param === 'true') {
+        return true;
+      }
+    } catch {
+      // Ignore URL parsing errors
+    }
   }
-  
-  // Check tenant config if provided (second priority)
-  if (tenantConfig?.features?.streaming_enabled !== undefined) {
-    const configValue = tenantConfig.features.streaming_enabled;
-    console.log(`📋 Streaming ${configValue ? 'enabled' : 'disabled'} by tenant config`);
-    return configValue;
-  }
-  
-  // Use main control flag (default)
-  console.log(`🎯 Streaming ${STREAMING_ENABLED ? 'enabled' : 'disabled'} by default config (streaming-config.js: STREAMING_ENABLED = ${STREAMING_ENABLED})`);
-  return STREAMING_ENABLED;
+
+  // Default: streaming is the product
+  return true;
 };
 
 /**
@@ -65,9 +53,8 @@ export const isStreamingEnabled = (tenantConfig = null) => {
  */
 export const getStreamingStatus = () => {
   return {
-    mainControl: STREAMING_ENABLED,
-    runtimeOverride: typeof window !== 'undefined' ? 
-      (window.PICASSO_DISABLE_STREAMING ? 'disabled' : 
+    runtimeOverride: typeof window !== 'undefined' ?
+      (window.PICASSO_DISABLE_STREAMING ? 'disabled' :
        window.PICASSO_FORCE_STREAMING ? 'enabled' : 'none') : 'n/a',
     currentValue: isStreamingEnabled()
   };
@@ -83,7 +70,7 @@ if (typeof window !== 'undefined') {
     console.log('🔧 Streaming Configuration:', status);
     return status;
   };
-  
+
   // Helper to toggle streaming at runtime
   window.toggleStreaming = (enabled) => {
     if (enabled) {
@@ -99,11 +86,7 @@ if (typeof window !== 'undefined') {
   };
 }
 
-// Log initial configuration
-console.log(`📌 Streaming Config Loaded: STREAMING_ENABLED = ${STREAMING_ENABLED}`);
-
 export default {
   isStreamingEnabled,
-  getStreamingStatus,
-  STREAMING_ENABLED
+  getStreamingStatus
 };
