@@ -182,11 +182,20 @@ export default function HTTPChatProvider({ children }) {
             _storeRemove('picasso_session_context');
             _storeRemove('picasso_session_timestamp');
 
-            // Start fresh
-            sessionIdRef.current = generateSessionId();
+            // Start fresh (same id format as the streaming provider / analytics)
+            sessionIdRef.current = window.analyticsState?.sessionId ||
+              `sess_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 8)}`;
             saveToSession('picasso_session_id', sessionIdRef.current);
             saveToSession('picasso_session_timestamp', Date.now());
-            setMessages([createWelcomeMessage()]);
+            if (tenantConfig?.welcome_message) {
+              const welcomeMessage = createAssistantMessage(tenantConfig.welcome_message, {
+                id: 'welcome',
+                isWelcome: true,
+                actions: computeWelcomeActions(tenantConfig)
+              });
+              setMessages([welcomeMessage]);
+              saveToSession('picasso_messages', [welcomeMessage]);
+            }
 
             logger.info('HTTP Provider: Started fresh session after clearing stale data', {
               sessionId: sessionIdRef.current.substring(0, 20) + '...'
@@ -779,9 +788,10 @@ export default function HTTPChatProvider({ children }) {
     setMessages(newMessages);
     saveToSession('picasso_messages', newMessages);
 
-    // Reset conversation manager
-    if (conversationManagerRef.current) {
-      conversationManagerRef.current.reset();
+    // Reset conversation manager (guarded like the streaming provider)
+    if (conversationManagerRef.current &&
+        typeof conversationManagerRef.current.resetLocalState === 'function') {
+      conversationManagerRef.current.resetLocalState();
     }
 
     // Notify host to reset adaptive height

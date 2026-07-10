@@ -1551,7 +1551,7 @@ export default function StreamingChatProvider({ children }) {
         console.log('[StreamingChatProvider] Updated messages array:', updated.length);
         return updated;
       });
-      saveToSession([...messages, newMessage]);
+      saveToSession('picasso_messages', [...messages, newMessage]);
       console.log('[StreamingChatProvider] Assistant message added successfully');
       return;
     }

@@ -303,8 +303,15 @@ if (typeof window !== 'undefined') {
 }
 
 // Use runtime override if available, otherwise build-time environment constant, otherwise auto-detection
-const currentEnv = runtimeOverrideEnv || 
-                   (typeof __ENVIRONMENT__ !== 'undefined' ? __ENVIRONMENT__ : getEnvironment());
+const requestedEnv = runtimeOverrideEnv ||
+                     (typeof __ENVIRONMENT__ !== 'undefined' ? __ENVIRONMENT__ : getEnvironment());
+// Fail safe, not dead: an unrecognized env token must not throw at module load
+// (that would brick the widget on every client site of the build) — fall back
+// to production endpoints and log loudly.
+const currentEnv = ENVIRONMENTS[requestedEnv] ? requestedEnv : 'production';
+if (currentEnv !== requestedEnv) {
+  console.error(`❌ Unknown environment "${requestedEnv}" — falling back to production endpoints`);
+}
 
 // Clean environment configuration - no overrides, single source of truth
 console.log(`🔧 Using clean environment configuration for ${currentEnv}`);
@@ -315,10 +322,10 @@ console.log(`📍 Environment ${currentEnv} endpoints:`, {
   STREAMING_ENDPOINT: ENVIRONMENTS[currentEnv].STREAMING_ENDPOINT
 });
 
-// Validate the selected environment configuration
+// Validate the selected environment configuration (log loudly, never throw:
+// a module-load throw kills the whole widget on every embedding page)
 if (!validateEnvironmentConfig(currentEnv, ENVIRONMENTS[currentEnv])) {
   console.error(`❌ Critical: Invalid ${currentEnv} environment configuration!`);
-  throw new Error(`Invalid environment configuration for: ${currentEnv}`);
 }
 
 // Dynamic widget domain detection for development
@@ -463,6 +470,13 @@ export const config = {
     baseConfig.mode = 'cors';
     baseConfig.credentials = 'omit';
     
+    // The configured timeout only works if wired into an AbortSignal —
+    // fetch() ignores a bare `timeout` key. Guarded: older targets
+    // (safari12-era) lack AbortSignal.timeout and just keep browser defaults.
+    if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+      baseConfig.signal = AbortSignal.timeout(baseConfig.timeout);
+    }
+
     // Merge configs properly, keeping merged headers
     const mergedConfig = { ...baseConfig, ...options };
     if (options.headers) {
@@ -509,73 +523,6 @@ export const config = {
     const enabled = checkStreamingEnabled(tenantConfig);
     console.log(`📡 environment.js: Streaming ${enabled ? 'ENABLED' : 'DISABLED'} (from streaming-config.js)`);
     return enabled;
-    
-    // OLD CODE REMOVED - NOW USING CENTRALIZED CONFIG
-    /*
-    // Global kill switch (for emergency disable)
-    if (typeof window !== 'undefined' && window.PICASSO_DISABLE_STREAMING === true) {
-      return false;
-    }
-    
-    // URL parameter override (for testing) - check this first to allow explicit control
-    if (typeof window !== 'undefined') {
-      try {
-        const urlParams = new URLSearchParams(window.location.search);
-        if (urlParams.get('streaming') === 'false') {
-          return false; // Allow explicit disable via URL
-        }
-        if (urlParams.get('streaming') === 'true') {
-          return true; // Allow explicit enable via URL
-        }
-      } catch {
-        // Ignore URL parsing errors
-      }
-    }
-    
-    // Tenant-specific feature flags can explicitly disable
-    if (tenantConfig?.features?.streaming_enabled === false ||
-        tenantConfig?.features?.streaming === false) {
-      return false; // Respect explicit tenant disable
-    }
-    
-    // Environment-based enablement - now enabled by default in all environments
-    const environmentAllowsStreaming = true; // Enable streaming in all environments
-    
-    // Default to enabled (streaming is now the default behavior)
-    return environmentAllowsStreaming;
-  },
-  
-  // Check if JWT/Function URL streaming is enabled
-  isJWTStreamingEnabled: (tenantConfig) => {
-    // Global kill switch
-    if (typeof window !== 'undefined' && window.PICASSO_DISABLE_STREAMING === true) {
-      return false;
-    }
-    
-    // Allow streaming in development with proper CORS headers
-    // (Lambda now has CORS configured)
-    
-    // Check for JWT-specific streaming features
-    if (tenantConfig?.features?.jwt_streaming === true ||
-        tenantConfig?.features?.function_url_streaming === true ||
-        tenantConfig?.features?.unified_coordination === true) {
-      return true;
-    }
-    
-    // URL parameter override
-    if (typeof window !== 'undefined') {
-      try {
-        const urlParams = new URLSearchParams(window.location.search);
-        if (urlParams.get('jwt-streaming') === 'true') {
-          return true;
-        }
-      } catch {
-        // Ignore URL parsing errors
-      }
-    }
-    
-    return false;
-    */
   },
   
   // Version and build info
@@ -662,10 +609,8 @@ if (config.isDevelopment() || config.isStaging()) {
     
     window.testStreamingFeatureFlag = (tenantConfig) => {
       const isEnabled = config.isStreamingEnabled(tenantConfig);
-      const isJWTEnabled = config.isJWTStreamingEnabled(tenantConfig);
       console.log('🧪 Streaming Feature Flag Test:', {
         enabled: isEnabled,
-        jwtEnabled: isJWTEnabled,
         environment: currentEnv,
         tenantFeatures: tenantConfig?.features || {},
         globalOverrides: {
@@ -673,7 +618,7 @@ if (config.isDevelopment() || config.isStaging()) {
           disabled: window.PICASSO_DISABLE_STREAMING
         }
       });
-      return { legacy: isEnabled, jwt: isJWTEnabled };
+      return { enabled: isEnabled };
     };
     
     window.validateStagingInfrastructure = () => {
