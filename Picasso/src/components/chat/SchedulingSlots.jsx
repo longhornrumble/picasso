@@ -38,15 +38,18 @@
  * itself no longer shows a local confirm button — selection sends the signal and the
  * server decides whether to ask for an email first or arm the confirm.
  *
- * Styling (Hairline W4.2): this is an UNMOCKED surface (Turn 10 has no
- * scheduling screen) — per HAIRLINE_REDESIGN_MAPPING.md §0 case 2 / §4 item 2,
- * the appearance below is a fresh Hairline treatment extrapolated from the
+ * Styling (Hairline W4.2): the slot list is an UNMOCKED surface (Turn 10 has
+ * no scheduling screen) — per HAIRLINE_REDESIGN_MAPPING.md §0 case 2 / §4
+ * item 2, its appearance is a fresh Hairline treatment extrapolated from the
  * vocabulary already established on merged, MOCKED-adjacent surfaces: slot
  * rows use menu-row anatomy (mirrors src/components/forms/FormFieldPrompt.jsx's
  * `.hairline-form-menu`/`.hairline-form-menu-row`, itself a W4.1 unmocked-
- * surface precedent), and the "Yes, book it" commit action uses pill-button
- * anatomy (mirrors hairline-views.css's `.hairline-pill-button--danger`, the
- * Settings destructive-confirm pill, as this action's positive-commit twin).
+ * surface precedent). The CONFIRM CARD is now a MOCKED surface: it follows
+ * the Hairline "12a" booking-confirm mock verbatim
+ * (design/hairline/booking-confirmation-spec.md, 2026-07-11) — two quiet
+ * labeled rows (calendar + bold slot, mail + email) in a hairline card, a
+ * compact content-width accent pill beneath (NOT full-width), and the 12b
+ * booked state (green chip + dimmed card) after tapping.
  * NOT a restyle of the old `.suggested-chip`/`.cta-button` pill look — theme.css
  * still owns those classes for other surfaces, but this component no longer
  * references them. Rules live in the "W4.2 IN-CHAT SCHEDULING" section
@@ -59,7 +62,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { ChevronRight, Info } from 'lucide-react';
+import { Calendar, Check, ChevronRight, Info, Mail } from 'lucide-react';
 import { useChat } from '../../hooks/useChat';
 import {
   SCHEDULING_CHIP_CLICKED
@@ -262,26 +265,45 @@ export function SchedulingConfirmCard({ confirm }) {
     });
   };
 
+  // Hairline 12a (design/hairline/booking-confirmation-spec.md): two quiet
+  // labeled rows — calendar + bold slot, mail + email — no pill-in-a-box.
+  // 12b booked state: on confirm the button is REPLACED by a green "Booked"
+  // chip on the slot row and the card dims; the one-shot guard is structural
+  // (no button left to double-tap). The server still re-arms by emitting a
+  // fresh `scheduling_confirm` if the commit fails.
   return (
     <div className="scheduling-slots scheduling-confirm-card" data-testid="scheduling-confirm" ref={ref}>
-      <div className="hairline-scheduling-card hairline-scheduling-confirm-card">
+      <div
+        className={`hairline-scheduling-card hairline-scheduling-confirm-card${confirmed ? ' hairline-scheduling-confirm-card--booked' : ''}`}
+      >
         <div className="hairline-scheduling-confirm-row">
-          <span className="scheduling-slot-selected">{confirm.slot.label}</span>
+          <Calendar className="scheduling-confirm-row-icon scheduling-confirm-row-icon--slot" size={14} strokeWidth={2} aria-hidden="true" />
+          <span className="scheduling-confirm-slot-label">{confirm.slot.label}</span>
+          {confirmed && (
+            <span className="scheduling-booked-chip" data-testid="scheduling-booked-chip">
+              <Check size={12} strokeWidth={2.5} aria-hidden="true" />
+              Booked
+            </span>
+          )}
         </div>
         {confirm.attendee_email && (
           <div className="hairline-scheduling-confirm-row">
+            <Mail className="scheduling-confirm-row-icon scheduling-confirm-row-icon--email" size={14} strokeWidth={2} aria-hidden="true" />
             <span className="scheduling-confirm-email">{confirm.attendee_email}</span>
           </div>
         )}
       </div>
-      <button
-        type="button"
-        className="hairline-scheduling-confirm-button"
-        disabled={isTyping || confirmed}
-        onClick={handleConfirm}
-      >
-        {SCHEDULING_STRINGS.confirmAffirmative}
-      </button>
+      {!confirmed && (
+        <button
+          type="button"
+          className="hairline-scheduling-confirm-button"
+          disabled={isTyping}
+          onClick={handleConfirm}
+        >
+          <Check size={14} strokeWidth={2.5} aria-hidden="true" />
+          {SCHEDULING_STRINGS.confirmAffirmative}
+        </button>
+      )}
     </div>
   );
 }

@@ -410,7 +410,6 @@ describe('SchedulingConfirmCard — confirm_book dispatch (§B16b amended, serve
   it('tapping confirm sends a confirm_book-eliciting turn (no PII), one-shot', () => {
     const { ctx } = renderWithChat(<SchedulingConfirmCard confirm={CONFIRM} />);
     fireEvent.click(screen.getByText(SCHEDULING_STRINGS.confirmAffirmative));
-    fireEvent.click(screen.getByText(SCHEDULING_STRINGS.confirmAffirmative)); // double-tap guarded
 
     expect(ctx.sendMessage).toHaveBeenCalledTimes(1);
     expect(ctx.sendMessage).toHaveBeenLastCalledWith(
@@ -420,11 +419,26 @@ describe('SchedulingConfirmCard — confirm_book dispatch (§B16b amended, serve
     // The affirmative carries no coordinator identity.
     const [text] = ctx.sendMessage.mock.calls[0];
     expect(text).not.toMatch(/maya/i);
+
+    // Hairline 12b booked state: the button is REPLACED after tapping — the
+    // one-shot guard is structural (nothing left to double-tap) — and a green
+    // "Booked" chip marks the slot row on the dimmed card.
+    expect(screen.queryByText(SCHEDULING_STRINGS.confirmAffirmative)).toBeNull();
+    expect(screen.getByTestId('scheduling-booked-chip')).toBeInTheDocument();
   });
 
   it('renders nothing without a staged slot (schema discipline)', () => {
     const { container } = renderWithChat(<SchedulingConfirmCard confirm={null} />);
     expect(container.querySelector('[data-testid="scheduling-confirm"]')).toBeNull();
+  });
+
+  it('renders without the email row when attendee_email is absent (old-shape record, schema discipline)', () => {
+    const { container } = renderWithChat(
+      <SchedulingConfirmCard confirm={{ slot: { slotId: 's1', label: 'Tue, Jun 3 · 2:00 PM' } }} />
+    );
+    expect(screen.getByText('Tue, Jun 3 · 2:00 PM')).toBeInTheDocument();
+    expect(screen.getByText(SCHEDULING_STRINGS.confirmAffirmative)).toBeInTheDocument();
+    expect(container.querySelector('.scheduling-confirm-email')).toBeNull();
   });
 });
 

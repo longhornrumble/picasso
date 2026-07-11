@@ -903,8 +903,9 @@
   }
 }
 
-/* --- Selected / staged slot pill (SchedulingSlots interim state AND the
-   confirm card's staged-slot line) ----------------------------------------- */
+/* --- Selected / staged slot pill (SchedulingSlots' interim "you picked
+   this" state only — the confirm card no longer renders it; the 12a mock
+   forbids a pill-in-a-box) ------------------------------------------------- */
 .scheduling-slot-selected {
   display: inline-flex;
   align-items: center;
@@ -918,8 +919,28 @@
   font-weight: 700;
 }
 
-/* --- Confirm card ---------------------------------------------------------- */
+/* --- Confirm card — Hairline "12a" booking-confirm mock (verbatim source:
+   design/hairline/booking-confirmation-spec.md, 2026-07-11). Two quiet
+   labeled rows in a hairline radius-12 card on --surface (no shadow, no
+   fill, no pill-in-a-box), a compact CONTENT-WIDTH accent pill beneath
+   (explicitly NOT the previous full-width slab), and the 12b booked state
+   (green chip + card dimmed to 0.85). The glow derives from the tenant
+   accent via color-mix — same pattern schedule-page.css already uses; old
+   browsers that lack color-mix simply drop the shadow. ---------------------- */
+.hairline-scheduling-confirm-card {
+  border-color: var(--hairline);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.hairline-scheduling-confirm-card--booked {
+  opacity: 0.85;
+}
+
 .hairline-scheduling-confirm-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
   padding: var(--space-card-row-padding);
   border-top: 1px solid var(--hairline-soft);
 }
@@ -928,17 +949,46 @@
   border-top: none;
 }
 
+.scheduling-confirm-row-icon {
+  flex: none;
+}
+
+.scheduling-confirm-row-icon--slot {
+  color: var(--tenant-accent);
+}
+
+.scheduling-confirm-row-icon--email {
+  color: var(--tenant-accent-muted);
+}
+
+.scheduling-confirm-slot-label {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
 .scheduling-confirm-email {
-  font-size: var(--type-row-value-size);
-  color: var(--ink-soft);
+  font-size: 12.5px;
+  color: var(--ink-body);
+}
+
+.scheduling-booked-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  color: #22a45d;
+  font-size: 11.5px;
+  font-weight: 700;
 }
 
 .hairline-scheduling-confirm-button {
-  display: block;
-  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   margin-top: 10px;
   box-sizing: border-box;
-  padding: 10px 0;
+  padding: 11px 22px;
   border: none;
   border-radius: var(--radius-confirm-pill);
   background: var(--tenant-accent);
@@ -947,12 +997,13 @@
   font-size: 13px;
   font-weight: 700;
   cursor: pointer;
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--tenant-accent) 25%, transparent);
   transition: filter var(--duration-fill) var(--ease-ui),
     opacity var(--duration-fill) var(--ease-ui);
 }
 
 .hairline-scheduling-confirm-button:not(:disabled):hover {
-  filter: brightness(0.95);
+  filter: brightness(1.05);
 }
 
 .hairline-scheduling-confirm-button:disabled {
