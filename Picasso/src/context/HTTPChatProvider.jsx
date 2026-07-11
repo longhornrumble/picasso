@@ -34,6 +34,7 @@ import {
 import { logger } from '../utils/logger';
 import { config as envConfig } from '../config/environment';
 import { createConversationManager } from '../utils/conversationManager';
+import { computeSubmissionToken } from '../utils/submissionToken';
 import { MESSAGE_SENT, MESSAGE_RECEIVED } from '../analytics/eventConstants';
 
 /**
@@ -855,6 +856,12 @@ export default function HTTPChatProvider({ children }) {
     const endpoint = envConfig.CHAT_ENDPOINT ||
       `${envConfig.API_BASE_URL}?action=chat&t=${tenantHashRef.current}`;
 
+    // FS5: content-derived idempotency token — a retried submit of the same
+    // answers (timeout + re-click) dedups server-side instead of double-sending
+    // emails/SMS. null (e.g. crypto.subtle unavailable) → field omitted → the
+    // server keeps legacy behavior.
+    const submissionToken = await computeSubmissionToken(sessionIdRef.current, formId, formData);
+
     const requestBody = {
       tenant_hash: tenantHashRef.current,
       form_mode: true,
@@ -862,7 +869,8 @@ export default function HTTPChatProvider({ children }) {
       form_id: formId,
       form_data: formData,
       session_id: sessionIdRef.current,
-      conversation_id: sessionIdRef.current // Same as session_id
+      conversation_id: sessionIdRef.current, // Same as session_id
+      ...(submissionToken ? { client_submission_id: submissionToken } : {})
     };
 
     logger.info('📤 Submitting form to Lambda', { formId, endpoint });
