@@ -34,6 +34,7 @@ import {
 import { logger } from '../utils/logger';
 import { config as envConfig } from '../config/environment';
 import { streamingRegistry } from '../utils/streamingRegistry';
+import { computeSubmissionToken } from '../utils/submissionToken';
 import { createConversationManager } from '../utils/conversationManager';
 import { getBindingSessionId } from '../utils/bindingSession';
 import {
@@ -1599,6 +1600,11 @@ export default function StreamingChatProvider({ children }) {
     const endpoint = envConfig.STREAMING_ENDPOINT ||
       `${envConfig.API_BASE_URL}?action=stream&t=${tenantHashRef.current}`;
 
+    // FS5: content-derived idempotency token — a retried submit of the same
+    // answers (dropped SSE + re-click) dedups server-side instead of
+    // double-sending emails/SMS. null → field omitted → legacy behavior.
+    const submissionToken = await computeSubmissionToken(sessionIdRef.current, formId, formData);
+
     const requestBody = {
       tenant_hash: tenantHashRef.current,
       form_mode: true,
@@ -1606,7 +1612,8 @@ export default function StreamingChatProvider({ children }) {
       form_id: formId,
       form_data: formData,
       session_id: sessionIdRef.current,
-      conversation_id: sessionIdRef.current // Same as session_id
+      conversation_id: sessionIdRef.current, // Same as session_id
+      ...(submissionToken ? { client_submission_id: submissionToken } : {})
     };
 
     logger.info('📤 Submitting form to Lambda', { formId, endpoint });
