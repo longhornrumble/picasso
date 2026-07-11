@@ -187,7 +187,7 @@
   --radius-popover: 12px; /* attach menu */
   --shadow-popover: 0 12px 32px rgba(15, 23, 42, 0.14); /* attach menu */
 
-  --space-message-card-padding: 10px 13px; /* user message card */
+  --space-message-card-padding: 6px 11px; /* user message card (tightened from spec's 10px 13px — Chris, 2026-07-11: card read as over-padded) */
 
   --size-feedback-button: 26px;
   --radius-feedback-button: 8px;
