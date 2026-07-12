@@ -112,7 +112,7 @@ variable "kb_retriever_role_arns" {
 }
 
 variable "meta_app_id" {
-  description = "Meta (Facebook) App ID — same single app for both accounts (791705810685396). Set as META_APP_ID on Meta_OAuth_Handler."
+  description = "Meta (Facebook) App ID — the app registered for this environment's Meta integration. Set as META_APP_ID on Meta_OAuth_Handler."
   type        = string
 }
 

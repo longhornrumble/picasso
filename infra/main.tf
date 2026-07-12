@@ -962,8 +962,10 @@ module "lambda_meta_staging" {
     "arn:aws:iam::614056832592:role/picasso-kb-retriever-from-staging",
   ]
 
-  # Single Meta App for both accounts (dev-mode). Not a secret.
-  meta_app_id = "791705810685396"
+  # Meta App recreated from scratch 2026-07-12 (dev-mode; use cases: Messenger +
+  # Instagram + WhatsApp). The 614 prod residue still points at the old app
+  # 791705810685396. Not a secret.
+  meta_app_id = "1396867945592726"
 
   messenger_verify_token = var.messenger_verify_token
 
