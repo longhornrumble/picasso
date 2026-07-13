@@ -44,9 +44,33 @@ With staging SSO: temporarily corrupt the encrypted token for a TEST page mappin
 
 ---
 
-## 2. Welcome-surface re-push (M5 — placeholder)
+## 2. Welcome-surface re-push (M5)
 
-Added when M5 ships: operator script to re-push ice breakers + persistent menu from tenant config via the Messenger Profile API.
+Connect-time pushes happen automatically (OAuth callback, flag-gated). When a
+tenant's `messenger_behavior.welcome` changes AFTER connect (the Config
+Builder can't trigger pushes yet), re-push with operator staging creds:
+
+```bash
+cd Lambdas/lambda/Meta_OAuth_Handler
+CONFIG_BUCKET=<staging tenant-config bucket> CHANNEL_MAPPINGS_TABLE=picasso-channel-mappings python3 scripts/repush_welcome_surfaces.py <TENANT_ID> --channel messenger   # dry-run: prints the exact profile payload
+# review, then add --execute
+```
+
+Notes: ice breakers cap at 4 (C5); menu titles truncate at 20 chars; a tenant
+with linked IG shares the same Page profile (one push covers both). Verify in
+the real client: profile changes can take a few minutes + a conversation
+refresh to appear.
+
+## 2b. Escalation notify (M6a)
+
+Escalations pass thread control to the Business Suite inbox and email the
+address in `messenger_behavior.escalation_email` (unset ⇒ transfer + pause
+still happen, no email — configure it for every live tenant). The email is
+CONTENT-FREE by tested invariant (G-P2): channel, tenantId, pageId, timestamp,
+deep link only — staff read the conversation in the inbox
+(business.facebook.com/latest/inbox). The bot pauses 24h per escalation
+(`picasso-conversation-state` `pause` row); M6b adds staff-reply echo-watch +
+resume semantics.
 
 ## 3. Tenant onboarding checklist (M6b — placeholder)
 
