@@ -86,6 +86,7 @@ Every D2 row + every D3-surfaced new node has a row below.
 | `picasso-notification-sends-staging` | **2** | Tier 2 recipient + msg_id. 90-d TTL. |
 | `picasso-notification-events-staging` | **2** | Tier 2 bounce / complaint events. 90-d TTL writer-confirmed (D3). |
 | `staging-recent-messages` | **3** | Full chat transcripts → Tier 3 explicit example. Writer attempts `expires_at` but table lacks `ttl{}` (D3 / D2 Finding 1 inverse). |
+| `picasso-conversation-state` (NEW 2026-07-13, Messenger M1c) | **3** | Lock rows coalesce pending **chat message text** (rule 2: free-text/chat content → Tier 3); M7a form-session rows will hold free-text form answers (rule 2). |
 | `staging-conversation-summaries` | **3** | AI-inferred summaries about subjects → Tier 3 explicit example (rule 3). |
 | `picasso-channel-mappings-staging` | **4** | Encrypted Meta page tokens (integration tokens) → Tier 4 inherited per rule 4; row body is Tier 2 (PSID + last_message_at). |
 | `picasso-webhook-dedup-staging` | **1** | Transient pseudonymous Meta `mid` only. Short-TTL dedup ledger. |
