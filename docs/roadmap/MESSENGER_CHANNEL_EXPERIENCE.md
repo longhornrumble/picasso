@@ -1,6 +1,6 @@
 # Messenger Channel Experience — Program Plan
 
-**Status:** 📋 PLANNED — approved by Chris 2026-07-13 (after tech-lead-reviewer adversarial pass, verdict "approve with changes", all changes applied). Execution not started. First subphase = M0.
+**Status:** 🚧 EXECUTING — M0, M1a, M1b, M1c, M2, M3a, M3b, M4, M-Ha ✅ COMPLETE and staging-deployed (2026-07-13; evidence per subphase in §12). **Current gate: the §12 operator checklist (7 items) → M4-S 48h soak — the §8 hard go/no-go before M5+.** Soak kit: [`docs/runbooks/MESSENGER_SOAK_KIT.md`](../runbooks/MESSENGER_SOAK_KIT.md). Plan originally approved by Chris 2026-07-13 after a tech-lead-reviewer adversarial pass.
 **Owner:** Chris Miller
 **Vocabulary:** "Messenger" = **Facebook Messenger + Instagram DM together** (Chris, 2026-07-12). Where the two differ, this doc says "FB" / "IG" explicitly.
 **Repos:** `Lambdas/lambda` (Meta pipeline, BSH, MFS, Booking_Commit_Handler — PRs to `main`, auto-deploys touched staging functions), picasso repo (`infra/`, this doc — code/IaC PRs to `staging`, docs to `main`), `picasso-config-builder` (config types only in this program — UI is a separate project).
