@@ -625,6 +625,13 @@ data "aws_iam_policy_document" "oauth_exec" {
     actions   = ["dynamodb:PutItem", "dynamodb:GetItem", "dynamodb:UpdateItem", "dynamodb:DeleteItem", "dynamodb:Query"]
     resources = [var.channel_mappings_table_arn, var.channel_mappings_tenant_index_arn]
   }
+  # M5 welcome-surface push on connect: read the tenant config (keyed by
+  # tenant_id directly - no mapping/registry resolution needed here).
+  statement {
+    sid       = "TenantConfigReadForWelcomePush"
+    actions   = ["s3:GetObject"]
+    resources = ["${var.tenant_config_bucket_arn}/tenants/*"]
+  }
   statement {
     sid       = "ChannelTokenEncryptDecrypt"
     actions   = ["kms:Encrypt", "kms:Decrypt", "kms:GenerateDataKey"]
@@ -697,6 +704,8 @@ resource "aws_lambda_function" "oauth" {
       CHANNEL_MAPPINGS_TABLE = var.channel_mappings_table_name
       META_LOGIN_CONFIG_ID   = var.meta_login_config_id
       TENANT_REGISTRY_TABLE  = var.tenant_registry_table_name
+      # M5: welcome-surface push reads messenger_behavior.welcome at connect.
+      CONFIG_BUCKET = var.config_bucket_name
     }
   }
 
