@@ -605,9 +605,13 @@ resource "aws_lambda_function" "response_processor" {
       RECENT_MESSAGES_TABLE    = var.recent_messages_table_name
       CONVERSATION_STATE_TABLE = var.conversation_state_table_name
       # M6a escalation rail
-      SES_FROM_EMAIL  = "notify@staging.myrecruiter.ai"
-      FB_INBOX_APP_ID = "263902037430900"
-      IG_INBOX_APP_ID = "1217981644879628"
+      SES_FROM_EMAIL = "notify@staging.myrecruiter.ai"
+      # Platform-default staff recipient when a tenant has no
+      # messenger_behavior.escalation_email (temporary until Config Builder /
+      # the analytics portal manage the per-tenant field; both TBD).
+      ESCALATION_EMAIL = "notify@myrecruiter.ai"
+      FB_INBOX_APP_ID  = "263902037430900"
+      IG_INBOX_APP_ID  = "1217981644879628"
       # M6b echo-watch: our own app id - a foreign appId on an echo means a
       # human/other tool replied (pause the bot; works without Conversation
       # Routing configured).
