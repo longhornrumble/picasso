@@ -428,6 +428,15 @@ data "aws_iam_policy_document" "response_exec" {
     actions   = ["s3:GetObject"]
     resources = ["${var.tenant_config_bucket_arn}/*"]
   }
+  # bedrock-core's loadConfig LISTS the bucket to resolve the tenant's config
+  # key before GetObject. Without this the Meta channel silently degrades:
+  # loadConfig -> null -> no KB ID -> ungrounded replies (found live 2026-07-12;
+  # BSH never exercises this list path, so the twin parity check missed it).
+  statement {
+    sid       = "TenantConfigList"
+    actions   = ["s3:ListBucket"]
+    resources = [var.tenant_config_bucket_arn]
+  }
   # Non-streaming InvokeModel (Response Processor uses InvokeModelCommand).
   statement {
     sid     = "BedrockInvokeClaudeHaiku"

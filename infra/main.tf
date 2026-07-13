@@ -773,6 +773,9 @@ module "analytics_events_pipeline_staging" {
   # second entry during the Wave 1b–4 transition).
   bsh_role_arns = [
     module.lambda_bedrock_handler[0].role_arn,
+    # Meta_Response_Processor emits the same analytics events for the
+    # Messenger/IG channel (explicit-deny queue policy rejected it — 2026-07-12).
+    module.lambda_meta_staging[0].response_processor_role_arn,
   ]
 }
 
