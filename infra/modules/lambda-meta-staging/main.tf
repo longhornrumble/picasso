@@ -116,6 +116,12 @@ variable "meta_app_id" {
   type        = string
 }
 
+variable "meta_login_config_id" {
+  description = "Facebook Login for Business configuration ID. Use-case (business type) Meta apps must send config_id instead of scope in the OAuth dialog. Empty = legacy scope dialog. Set as META_LOGIN_CONFIG_ID on Meta_OAuth_Handler."
+  type        = string
+  default     = ""
+}
+
 variable "messenger_verify_token" {
   description = "Webhook GET-verification shared secret (Meta App Dashboard → Webhooks). Reuse the 614 value so Meta re-verification passes at cutover. Sensitive; supplied via TF_VAR_ from a GitHub staging-environment secret."
   type        = string
@@ -646,6 +652,7 @@ resource "aws_lambda_function" "oauth" {
       KMS_KEY_ID             = var.channel_tokens_kms_key_alias
       OAUTH_CALLBACK_URL     = var.meta_oauth_callback_url
       CHANNEL_MAPPINGS_TABLE = var.channel_mappings_table_name
+      META_LOGIN_CONFIG_ID   = var.meta_login_config_id
     }
   }
 

@@ -967,6 +967,11 @@ module "lambda_meta_staging" {
   # 791705810685396. Not a secret.
   meta_app_id = "1396867945592726"
 
+  # Facebook Login for Business configuration ("Picasso Page Connect") on the
+  # app above. Use-case apps must send config_id instead of scope in the OAuth
+  # dialog; the handler switches on this env being non-empty. Not a secret.
+  meta_login_config_id = "992715177095331"
+
   messenger_verify_token = var.messenger_verify_token
 
   # Two-apply step 2: captured from apply-#1's Meta_OAuth_Handler Function URL
