@@ -436,6 +436,13 @@ data "aws_iam_policy_document" "response_exec" {
     actions   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:DeleteItem", "dynamodb:Query"]
     resources = [var.conversation_state_table_arn]
   }
+  # M6a escalation: staff notification email (mirrors the BSH/MFS SES rail;
+  # identity-wide like those roles - the from address is env-pinned).
+  statement {
+    sid       = "SesSendEscalationEmail"
+    actions   = ["ses:SendEmail"]
+    resources = ["*"]
+  }
   # bedrock-core registry resolution (USE_REGISTRY_FOR_RESOLUTION=true) —
   # mirrors bedrock-handler's DynamoDBTenantRegistryRead.
   statement {
@@ -540,8 +547,12 @@ resource "aws_lambda_function" "response_processor" {
       CHANNEL_MAPPINGS_TABLE   = var.channel_mappings_table_name
       RECENT_MESSAGES_TABLE    = var.recent_messages_table_name
       CONVERSATION_STATE_TABLE = var.conversation_state_table_name
-      KMS_KEY_ID               = var.channel_tokens_kms_key_alias
-      ANALYTICS_QUEUE_URL      = var.analytics_queue_url
+      # M6a escalation rail
+      SES_FROM_EMAIL      = "notify@staging.myrecruiter.ai"
+      FB_INBOX_APP_ID     = "263902037430900"
+      IG_INBOX_APP_ID     = "1217981644879628"
+      KMS_KEY_ID          = var.channel_tokens_kms_key_alias
+      ANALYTICS_QUEUE_URL = var.analytics_queue_url
       # Cross-account KB wiring (absent on the 614 same-account original).
       KB_RETRIEVER_ROLE_ARN       = length(var.kb_retriever_role_arns) > 0 ? var.kb_retriever_role_arns[0] : ""
       CONFIG_BUCKET               = var.config_bucket_name
