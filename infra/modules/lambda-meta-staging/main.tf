@@ -48,6 +48,15 @@ variable "webhook_dedup_table_name" {
   type = string
 }
 
+variable "mfs_function_arn" {
+  description = "ARN of the staging Master_Function. M7a: the processor submits completed Messenger forms via IAM-authenticated Lambda invoke shaped like the widget live lane (G-P3 MUST-S1 - never the public unauthenticated lane)."
+  type        = string
+}
+
+variable "mfs_function_name" {
+  type = string
+}
+
 variable "conversation_state_table_arn" {
   description = "ARN of picasso-conversation-state (contract C4). Response Processor owns every row shape: serialization lock (M1c), escalation pause (M6a), form sessions (M7a), scheduling sessions (M8a), throttle counters (M-Hb)."
   type        = string
@@ -443,6 +452,13 @@ data "aws_iam_policy_document" "response_exec" {
     actions   = ["ses:SendEmail"]
     resources = ["*"]
   }
+  # M7a forms: submit via MFS's hardened form rails (IAM-authenticated
+  # invoke - G-P3 MUST-S1).
+  statement {
+    sid       = "InvokeMfsFormSubmission"
+    actions   = ["lambda:InvokeFunction"]
+    resources = [var.mfs_function_arn]
+  }
   # bedrock-core registry resolution (USE_REGISTRY_FOR_RESOLUTION=true) —
   # mirrors bedrock-handler's DynamoDBTenantRegistryRead.
   statement {
@@ -554,7 +570,9 @@ resource "aws_lambda_function" "response_processor" {
       # M6b echo-watch: our own app id - a foreign appId on an echo means a
       # human/other tool replied (pause the bot; works without Conversation
       # Routing configured).
-      META_APP_ID         = var.meta_app_id
+      META_APP_ID = var.meta_app_id
+      # M7a form submission target (widget-live-lane-shaped payload)
+      MFS_FUNCTION        = var.mfs_function_name
       KMS_KEY_ID          = var.channel_tokens_kms_key_alias
       ANALYTICS_QUEUE_URL = var.analytics_queue_url
       # Cross-account KB wiring (absent on the 614 same-account original).
