@@ -459,6 +459,15 @@ data "aws_iam_policy_document" "response_exec" {
     actions   = ["lambda:InvokeFunction"]
     resources = [var.mfs_function_arn]
   }
+  # M7a forms: the IAM invoke bypasses CloudFront, so the processor carries
+  # MFS's x-picasso-cf-origin header itself - read from MFS's own secret.
+  # MFS's fail-closed validator stays meaningful: only secret-holders or
+  # CloudFront pass.
+  statement {
+    sid       = "ReadMfsCfOriginSecret"
+    actions   = ["secretsmanager:GetSecretValue"]
+    resources = ["arn:aws:secretsmanager:us-east-1:525409062831:secret:picasso/mfs/cf-origin-secret-*"]
+  }
   # bedrock-core registry resolution (USE_REGISTRY_FOR_RESOLUTION=true) —
   # mirrors bedrock-handler's DynamoDBTenantRegistryRead.
   statement {
@@ -572,9 +581,10 @@ resource "aws_lambda_function" "response_processor" {
       # Routing configured).
       META_APP_ID = var.meta_app_id
       # M7a form submission target (widget-live-lane-shaped payload)
-      MFS_FUNCTION        = var.mfs_function_name
-      KMS_KEY_ID          = var.channel_tokens_kms_key_alias
-      ANALYTICS_QUEUE_URL = var.analytics_queue_url
+      MFS_FUNCTION              = var.mfs_function_name
+      MFS_CF_ORIGIN_SECRET_NAME = "picasso/mfs/cf-origin-secret"
+      KMS_KEY_ID                = var.channel_tokens_kms_key_alias
+      ANALYTICS_QUEUE_URL       = var.analytics_queue_url
       # Cross-account KB wiring (absent on the 614 same-account original).
       KB_RETRIEVER_ROLE_ARN       = length(var.kb_retriever_role_arns) > 0 ? var.kb_retriever_role_arns[0] : ""
       CONFIG_BUCKET               = var.config_bucket_name
