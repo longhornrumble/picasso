@@ -548,9 +548,13 @@ resource "aws_lambda_function" "response_processor" {
       RECENT_MESSAGES_TABLE    = var.recent_messages_table_name
       CONVERSATION_STATE_TABLE = var.conversation_state_table_name
       # M6a escalation rail
-      SES_FROM_EMAIL      = "notify@staging.myrecruiter.ai"
-      FB_INBOX_APP_ID     = "263902037430900"
-      IG_INBOX_APP_ID     = "1217981644879628"
+      SES_FROM_EMAIL  = "notify@staging.myrecruiter.ai"
+      FB_INBOX_APP_ID = "263902037430900"
+      IG_INBOX_APP_ID = "1217981644879628"
+      # M6b echo-watch: our own app id - a foreign appId on an echo means a
+      # human/other tool replied (pause the bot; works without Conversation
+      # Routing configured).
+      META_APP_ID         = var.meta_app_id
       KMS_KEY_ID          = var.channel_tokens_kms_key_alias
       ANALYTICS_QUEUE_URL = var.analytics_queue_url
       # Cross-account KB wiring (absent on the 614 same-account original).
