@@ -369,11 +369,21 @@ Advanced Access (`pages_messaging`, `instagram_manage_messages`, Human Agent) is
 - **`docs/runbooks/MESSENGER_OPS.md`** seeded — THE consolidated operator runbook (reconnect procedure, error-class table, Page Integrity subscription, synthetic verification; M5/M6b/M-Hb sections land there).
 - **OPERATOR-QUEUED:** synthetic 190 → alarm fire (runbook §1 has the steps; never against a real tenant Page).
 ### M4-S — (soak go/no-go)
-### M5 —
-### M6a — (G-P2)
-### M6b —
-### Milestone: App Review package —
-### M-Hb —
+### M5 — ✅ CODE COMPLETE 2026-07-13 (lambda#444 → `1ab3f8b`; picasso#761 applied) · live surface checks OPERATOR-QUEUED
+- `push_welcome_surfaces` at OAuth-callback time (plaintext token in hand — no new decrypt surface): `messenger_behavior.welcome` → Messenger Profile API v21.0 (get_started + ice breakers ≤4 per C5 + persistent menu). Flag-gated; best-effort BY CONSTRUCTION (Graph failures can never fail the OAuth flow — pinned). Operator re-push script (dry-run default) until the CB UI exists; procedure in MESSENGER_OPS.md §2. pytest 31/31 (8 new).
+
+### M6a — (G-P2) ✅ CODE COMPLETE 2026-07-13 (lambda#445 → `ab29f4e`; picasso#762 applied; cb#83 escalation_email type)
+- **G-P2 (advisory): PASS WITH CONDITIONS — all MUSTs landed.** The staff email is CONTENT-FREE by tested invariant (channel/tenantId/pageId/timestamp/deep-link; no PSID, no sessionId, no message text; recipient never logged). Advisor's key judgment: content-free is RIGHT even for crisis-adjacent verticals — staff must respond from the Business Suite inbox regardless, so email content buys no pickup speed while copying transcripts into an uncontrolled DSAR-unreachable surface.
+- Flow: negation-guarded, human-noun-gated intent detection (22-case table incl. "how do humans apply?" / "I do not want to talk to a human"; structured taps excluded) → confirmation → `pass_thread_control` (token in body; failures never block) → C4 pause row (24h) → SES email to `messenger_behavior.escalation_email` (C2 v1.1; absent ⇒ transfer+pause still proceed).
+- **Code review: APPROVE WITH CHANGES, all applied** — incl. two HIGH fixes: the pause check now covers the attachment/sticker fallback lane (staff-owned threads got bot replies on stickers), and negation phrases no longer escalate. Drain-loop members are intent-checked (second-message escalations fire). **C7 → v1.1:** sanctioned silent-drain exception recorded. Tests 198/198.
+
+### M6b — ✅ CODE COMPLETE 2026-07-13 (lambda#446 → `accd0ce`; picasso#763 META_APP_ID applied)
+- Echo-watch (works WITHOUT Conversation Routing — D5 belt-and-suspenders): foreign appId on an echo ⇒ C4 `echo_watch` pause row (24h, refreshed per staff reply); own-app/null echoes = zero-cost short-circuit. Resume: expiry-gated + opportunistic stale-row cleanup (fresh-pause race pinned). **Accepted race documented + pinned:** a reply owed before the pause landed still sends; every subsequent inbound is silent. Explicit take_thread_control consumption = named follow-up (onboarding doc says so explicitly — review fix). Standby observability marker. Tests 211/211. Onboarding checklist → MESSENGER_OPS.md §3.
+
+### Milestone: App Review package — 📦 CHECKLIST READY (`docs/roadmap/MESSENGER_APP_REVIEW_PACKAGE.md`, picasso#762) — screencasts + submission = operator, after M4-S/M6 live verification.
+
+### M-Hb — ✅ CODE COMPLETE 2026-07-13 (lambda#447 → `5ea7bf9`)
+- UTC-bucketed per-user-hourly (30) + per-tenant-daily (1000) counters on the state table (C4-additive stateTypes, atomic ADD, once per winning C7 lock hold — a drained burst is one Bedrock call). Config-driven via `messenger_behavior.rate_limits`; **fail-open** on limiter blips; **escalation never throttled** (pinned); breach ladder (3 polite replies then silence); `TENANT_DAILY_CAP`/`RATE_LIMITED` structured markers. Moderation = operator procedure → MESSENGER_OPS.md §4. Tests 222/222. Live flood test → operator checklist.
 ### M7a — (G-P3, Finding 12)
 ### M7b —
 ### M8a — (G-P4)
