@@ -384,10 +384,19 @@ Advanced Access (`pages_messaging`, `instagram_manage_messages`, Human Agent) is
 
 ### M-Hb — ✅ CODE COMPLETE 2026-07-13 (lambda#447 → `5ea7bf9`)
 - UTC-bucketed per-user-hourly (30) + per-tenant-daily (1000) counters on the state table (C4-additive stateTypes, atomic ADD, once per winning C7 lock hold — a drained burst is one Bedrock call). Config-driven via `messenger_behavior.rate_limits`; **fail-open** on limiter blips; **escalation never throttled** (pinned); breach ladder (3 polite replies then silence); `TENANT_DAILY_CAP`/`RATE_LIMITED` structured markers. Moderation = operator procedure → MESSENGER_OPS.md §4. Tests 222/222. Live flood test → operator checklist.
-### M7a — (G-P3, Finding 12)
-### M7b —
-### M8a — (G-P4)
-### M8b —
+### M7a — (G-P3, Finding 12) ✅ CODE COMPLETE 2026-07-13 (lambda#448 → `21cdc74`; IaC picasso#764/#767 applied; inventory picasso#768)
+- **G-P3 (BLOCKING): PASS WITH CONDITIONS — design-phase gate ran BEFORE implementation; all 11 MUSTs (T1–T3, S1–S2, D1–D2, E1–E2, X1–X2) implemented and test-pinned.** Form sessions: 1h idle TTL (expires_at SECONDS; readers filter expired; no extension on failure; deleted on submit). Submission: IAM invoke of MFS with the widget-live-lane payload pinned as a fixture and INDEPENDENTLY re-verified against MFS source by the code reviewer; carries MFS's cf-origin header from its own secret (**implementation found that without this every submission would 403** against REQUIRE_CF_ORIGIN_HEADER — picasso#767). Answer values never logged (spy-pinned). **Finding 12 partially CLOSED by construction** (MFS's existing subject indexing covers Messenger form completers) + explicit P2 deferral recorded in the inventory (picasso#768).
+- Review APPROVE WITH CHANGES, all applied — incl. escalation-intent checking per drained member in the form-active branch. Tests 282/282.
+
+### M7b — ✅ CODE COMPLETE 2026-07-13 (lambda#449 → `86b5e24`)
+- Digression → action-suppressed RAG → resume same field (digressions never touch the row — T1 honesty pinned); **prompt-injection pinned** (session answers can never reach a Bedrock prompt); exit keywords; **eligibility_gate ported verbatim from the widget's client-side rules** (MFS has none — verified; both channels now agree); **state-escape sweep flipped M7a's advance-then-send to send-then-save** (latent bug: a send failure no longer advances the persisted field). Tests 314/314.
+
+### M8a — (G-P4) ✅ CODE COMPLETE 2026-07-13 (lambda#450 → `0bdcdd2`; IaC picasso#769 applied)
+- **G-P4 (light): PASS WITH CONDITIONS (C1–C9, T1'–T3') — design-phase gate; all conditions implemented and pinned.** Load-bearing gate finding: `recordBookingSmsConsent` had ZERO production callers — **M8a is the first wirer of the SMS-consent write** (post-commit-only, exact shown language, per-channel source, never without a captured phone, no raw phone in logs). One documented deviation: `consent_language_shown` persisted on the 1h-TTL session row (C2's exact-string-across-invocations demand outranks the contact-only row letter; template text, not PII).
+- Driver: propose/commit shapes **pinned from BCH source**; carousel ≤10 with explicit tz labels + numbered free-text fallback (C9); email mandatory BOTH channels (commit-without-email pinned impossible — keeps the Finding-12 phone-only class at zero); IG phone mandatory / FB skippable; double-confirm race → ONE commit (BCH's deterministic bookingId + C7 lock); conflict → re-propose (delete-on-retry-success pinned). Tests 364/364.
+
+### M8b — ✅ CODE COMPLETE 2026-07-13 (lambda#451 → `10fd87d`) — THE PROGRAM'S FINAL SUBPHASE
+- Manage (reschedule/cancel) from a **PII-minimized `last_booking` projection** written at commit success from the commit response itself — zero booking-table access by construction, no new grants. **Never mutates without explicit target confirmation (DONE-line rule, pinned)**; unknown/expired booking → graceful decline with zero mutate invokes; mutate shape pinned from BSH's audited executor + BCH's validator; distinct abort wording (aborting a reschedule ≠ cancelling the appointment). Tests 377/377.
 
 ---
 
@@ -401,4 +410,8 @@ Prereq: `aws sso login --profile myrecruiter-staging` (all items are staging-acc
 4. **M1c live race check (optional but recommended):** rapid-fire 3 DMs in <2s; expect one coherent combined reply (lock+coalesce), and `picasso-conversation-state` lock rows appearing/clearing.
 5. **M3b/M4 live checks (flag ON for MYR384719):** scripted conversations on both channels — zero `<<<ACTIONS` leakage in any visible reply; QRs render and taps answer with the CTA's query; URL buttons open; **IG in-app template visibility** confirmed (IG-web invisibility is expected per C5); disclosure appears at the start of each new session (>24h gap).
 6. **M-Ha synthetic fire:** per `docs/runbooks/MESSENGER_OPS.md` §1 — corrupt/revoke a TEST page token, send a DM, expect `token_dead` metric + the OUTAGE! alarm ≤15 min; reconnect + verify OK notification. Never against a real tenant's Page.
-7. **M4-S soak (the go/no-go gate for M5+):** 48h, both channels, ≥30 conversations, tester roster per G7 (role-holders under the dev-mode app; IG Self Messaging as synthetic option). Soak report → §12.
+7. **M4-S soak (the ACTIVATION go/no-go per the §8 amendment):** 48h, both channels, ≥30 conversations, tester roster per G7 (role-holders under the dev-mode app; IG Self Messaging as synthetic option). Soak report → §12. **The soak now also covers M5–M8 behaviors** (all code-complete): add the items below to the scripted matrix.
+8. **M5/M6 live checks:** welcome surfaces visible in real clients after a (re)connect + ice-breaker taps answer; "I want to talk to a person" → Business Suite inbox thread + staff email received + bot paused; staff reply from the inbox pauses the bot (echo-watch); bot resumes after pause expiry.
+9. **M7 live checks (flag ON):** complete a real form E2E on both channels (enum QR taps AND typed equivalents; invalid input re-prompts; summary; confirm) → MFS fulfillment fires (email/S3 verified) + audit row + submission row carries the meta: session id; digression mid-form answers then resumes the same field; cancel exits cleanly.
+10. **M8 live checks:** book E2E on both channels (carousel tz labels sane; IG requires phone with the consent language visible in the prompt; FB skip works) → booking row + confirmation + SMS reminder receipt (IG); consent row written with the exact shown language; reschedule + cancel E2E; double-tap confirm produces ONE booking.
+11. **Rate limits:** flood one test PSID (>30 msgs/hr) → 3 polite messages then silence; escalation phrase still escalates while limited.
