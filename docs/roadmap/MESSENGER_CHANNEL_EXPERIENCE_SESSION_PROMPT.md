@@ -27,7 +27,7 @@ We're making "Messenger" (**= Facebook Messenger + Instagram DM together**, per 
 
 ### How to start
 
-1. State which subphase you're running (default: the first one whose §12 entry is empty — M0 first).
+1. State which subphase you're running (default: the first one whose §12 entry is empty). **State as of 2026-07-13: M0–M4 and M-Ha are COMPLETE — the next step is the §12 operator checklist + M4-S soak (operator-driven; kit at `docs/runbooks/MESSENGER_SOAK_KIT.md`); after a soak "go", the next agent subphase is M5.**
 2. Pull the owning repo(s) to `origin/main`; re-verify the subphase's CONSUME inputs exist and are frozen.
 3. Run the adversarial pre-pass (tech-lead-reviewer agent for M0 contracts and M3a evidence; self-adversarial minimum elsewhere).
 4. Implement to the DONE line — it is falsifiable on purpose; if you can't demonstrate it live on staging, the subphase isn't done.
