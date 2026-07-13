@@ -48,6 +48,42 @@ variable "webhook_dedup_table_name" {
   type = string
 }
 
+variable "booking_commit_function_arn" {
+  description = "ARN of the staging Booking_Commit_Handler. M8a: the Messenger scheduling driver calls scheduling_propose/mutate and the default commit path via IAM invoke."
+  type        = string
+}
+
+variable "booking_commit_function_name" {
+  type = string
+}
+
+variable "sms_consent_table_arn" {
+  description = "ARN of picasso-sms-consent. M8a is the FIRST production wirer of shared/scheduling consent.js (G-P4): conditional immutable PutItem at booking commit."
+  type        = string
+}
+
+variable "sms_consent_table_name" {
+  type = string
+}
+
+variable "mfs_function_arn" {
+  description = "ARN of the staging Master_Function. M7a: the processor submits completed Messenger forms via IAM-authenticated Lambda invoke shaped like the widget live lane (G-P3 MUST-S1 - never the public unauthenticated lane)."
+  type        = string
+}
+
+variable "mfs_function_name" {
+  type = string
+}
+
+variable "conversation_state_table_arn" {
+  description = "ARN of picasso-conversation-state (contract C4). Response Processor owns every row shape: serialization lock (M1c), escalation pause (M6a), form sessions (M7a), scheduling sessions (M8a), throttle counters (M-Hb)."
+  type        = string
+}
+
+variable "conversation_state_table_name" {
+  type = string
+}
+
 variable "recent_messages_table_arn" {
   description = "ARN of the EXISTING picasso-recent-messages table (module.ddb_recent_messages_staging). Shared with core chat — schema-identical (sessionId/messageTimestamp). Response Processor Query's prior context + Put's the new Q&A pair."
   type        = string
@@ -112,8 +148,14 @@ variable "kb_retriever_role_arns" {
 }
 
 variable "meta_app_id" {
-  description = "Meta (Facebook) App ID — same single app for both accounts (791705810685396). Set as META_APP_ID on Meta_OAuth_Handler."
+  description = "Meta (Facebook) App ID — the app registered for this environment's Meta integration. Set as META_APP_ID on Meta_OAuth_Handler."
   type        = string
+}
+
+variable "meta_login_config_id" {
+  description = "Facebook Login for Business configuration ID. Use-case (business type) Meta apps must send config_id instead of scope in the OAuth dialog. Empty = legacy scope dialog. Set as META_LOGIN_CONFIG_ID on Meta_OAuth_Handler."
+  type        = string
+  default     = ""
 }
 
 variable "messenger_verify_token" {
@@ -405,6 +447,59 @@ data "aws_iam_policy_document" "response_exec" {
     actions   = ["dynamodb:Query", "dynamodb:PutItem", "dynamodb:GetItem"]
     resources = [var.recent_messages_table_arn]
   }
+  # M1b is_deleted hygiene: delete history rows for a Meta-deleted message.
+  # Own sid so the grant reads as what it is - the Meta-terms deletion path,
+  # scoped to the shared recent-messages table (code filters meta: sessions).
+  statement {
+    sid       = "RecentMessagesDeleteForMetaIsDeleted"
+    actions   = ["dynamodb:DeleteItem"]
+    resources = [var.recent_messages_table_arn]
+  }
+  # Conversation-state table (contract C4): lock/coalesce serialization rows
+  # now; pause (M6a), form sessions (M7a), scheduling sessions (M8a),
+  # counters (M-Hb) later. Same-role only - never shared (lambda#44 rule).
+  statement {
+    sid       = "ConversationStateReadWrite"
+    actions   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:DeleteItem", "dynamodb:Query"]
+    resources = [var.conversation_state_table_arn]
+  }
+  # M6a escalation: staff notification email (mirrors the BSH/MFS SES rail;
+  # identity-wide like those roles - the from address is env-pinned).
+  statement {
+    sid       = "SesSendEscalationEmail"
+    actions   = ["ses:SendEmail"]
+    resources = ["*"]
+  }
+  # M7a forms: submit via MFS's hardened form rails (IAM-authenticated
+  # invoke - G-P3 MUST-S1).
+  statement {
+    sid       = "InvokeMfsFormSubmission"
+    actions   = ["lambda:InvokeFunction"]
+    resources = [var.mfs_function_arn]
+  }
+  # M8a scheduling: propose/mutate/commit through Booking_Commit_Handler.
+  statement {
+    sid       = "InvokeBookingCommitHandler"
+    actions   = ["lambda:InvokeFunction"]
+    resources = [var.booking_commit_function_arn]
+  }
+  # M8a (G-P4): first production caller of shared/scheduling consent.js -
+  # conditional immutable PutItem only (the module's attribute_not_exists
+  # guard makes overwrites impossible).
+  statement {
+    sid       = "SmsConsentWriteAtCommit"
+    actions   = ["dynamodb:PutItem"]
+    resources = [var.sms_consent_table_arn]
+  }
+  # M7a forms: the IAM invoke bypasses CloudFront, so the processor carries
+  # MFS's x-picasso-cf-origin header itself - read from MFS's own secret.
+  # MFS's fail-closed validator stays meaningful: only secret-holders or
+  # CloudFront pass.
+  statement {
+    sid       = "ReadMfsCfOriginSecret"
+    actions   = ["secretsmanager:GetSecretValue"]
+    resources = ["arn:aws:secretsmanager:us-east-1:525409062831:secret:picasso/mfs/cf-origin-secret-*"]
+  }
   # bedrock-core registry resolution (USE_REGISTRY_FOR_RESOLUTION=true) —
   # mirrors bedrock-handler's DynamoDBTenantRegistryRead.
   statement {
@@ -421,6 +516,15 @@ data "aws_iam_policy_document" "response_exec" {
     sid       = "TenantConfigRead"
     actions   = ["s3:GetObject"]
     resources = ["${var.tenant_config_bucket_arn}/*"]
+  }
+  # bedrock-core's loadConfig LISTS the bucket to resolve the tenant's config
+  # key before GetObject. Without this the Meta channel silently degrades:
+  # loadConfig -> null -> no KB ID -> ungrounded replies (found live 2026-07-12;
+  # BSH never exercises this list path, so the twin parity check missed it).
+  statement {
+    sid       = "TenantConfigList"
+    actions   = ["s3:ListBucket"]
+    resources = [var.tenant_config_bucket_arn]
   }
   # Non-streaming InvokeModel (Response Processor uses InvokeModelCommand).
   statement {
@@ -496,11 +600,26 @@ resource "aws_lambda_function" "response_processor" {
 
   environment {
     variables = {
-      ENVIRONMENT            = "staging"
-      CHANNEL_MAPPINGS_TABLE = var.channel_mappings_table_name
-      RECENT_MESSAGES_TABLE  = var.recent_messages_table_name
-      KMS_KEY_ID             = var.channel_tokens_kms_key_alias
-      ANALYTICS_QUEUE_URL    = var.analytics_queue_url
+      ENVIRONMENT              = "staging"
+      CHANNEL_MAPPINGS_TABLE   = var.channel_mappings_table_name
+      RECENT_MESSAGES_TABLE    = var.recent_messages_table_name
+      CONVERSATION_STATE_TABLE = var.conversation_state_table_name
+      # M6a escalation rail
+      SES_FROM_EMAIL  = "notify@staging.myrecruiter.ai"
+      FB_INBOX_APP_ID = "263902037430900"
+      IG_INBOX_APP_ID = "1217981644879628"
+      # M6b echo-watch: our own app id - a foreign appId on an echo means a
+      # human/other tool replied (pause the bot; works without Conversation
+      # Routing configured).
+      META_APP_ID = var.meta_app_id
+      # M7a form submission target (widget-live-lane-shaped payload)
+      MFS_FUNCTION              = var.mfs_function_name
+      MFS_CF_ORIGIN_SECRET_NAME = "picasso/mfs/cf-origin-secret"
+      # M8a scheduling rails
+      BOOKING_COMMIT_FUNCTION = var.booking_commit_function_name
+      SMS_CONSENT_TABLE       = var.sms_consent_table_name
+      KMS_KEY_ID              = var.channel_tokens_kms_key_alias
+      ANALYTICS_QUEUE_URL     = var.analytics_queue_url
       # Cross-account KB wiring (absent on the 614 same-account original).
       KB_RETRIEVER_ROLE_ARN       = length(var.kb_retriever_role_arns) > 0 ? var.kb_retriever_role_arns[0] : ""
       CONFIG_BUCKET               = var.config_bucket_name
@@ -584,10 +703,25 @@ data "aws_iam_policy_document" "oauth_exec" {
     actions   = ["dynamodb:PutItem", "dynamodb:GetItem", "dynamodb:UpdateItem", "dynamodb:DeleteItem", "dynamodb:Query"]
     resources = [var.channel_mappings_table_arn, var.channel_mappings_tenant_index_arn]
   }
+  # M5 welcome-surface push on connect: read the tenant config (keyed by
+  # tenant_id directly - no mapping/registry resolution needed here).
+  statement {
+    sid       = "TenantConfigReadForWelcomePush"
+    actions   = ["s3:GetObject"]
+    resources = ["${var.tenant_config_bucket_arn}/tenants/*"]
+  }
   statement {
     sid       = "ChannelTokenEncryptDecrypt"
     actions   = ["kms:Encrypt", "kms:Decrypt", "kms:GenerateDataKey"]
     resources = [var.channel_tokens_kms_key_arn]
+  }
+  # Connect-time lookup of the PLATFORM tenantHash — bedrock-core resolves
+  # configs by the registry hash, so the mapping row must carry it (a locally
+  # computed hash matched nothing → ungrounded replies; found live 2026-07-12).
+  statement {
+    sid       = "TenantRegistryRead"
+    actions   = ["dynamodb:GetItem"]
+    resources = [var.tenant_registry_table_arn]
   }
   statement {
     sid       = "MetaAppSecretRead"
@@ -646,6 +780,10 @@ resource "aws_lambda_function" "oauth" {
       KMS_KEY_ID             = var.channel_tokens_kms_key_alias
       OAUTH_CALLBACK_URL     = var.meta_oauth_callback_url
       CHANNEL_MAPPINGS_TABLE = var.channel_mappings_table_name
+      META_LOGIN_CONFIG_ID   = var.meta_login_config_id
+      TENANT_REGISTRY_TABLE  = var.tenant_registry_table_name
+      # M5: welcome-surface push reads messenger_behavior.welcome at connect.
+      CONFIG_BUCKET = var.config_bucket_name
     }
   }
 

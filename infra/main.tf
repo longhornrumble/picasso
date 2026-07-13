@@ -773,6 +773,9 @@ module "analytics_events_pipeline_staging" {
   # second entry during the Wave 1b–4 transition).
   bsh_role_arns = [
     module.lambda_bedrock_handler[0].role_arn,
+    # Meta_Response_Processor emits the same analytics events for the
+    # Messenger/IG channel (explicit-deny queue policy rejected it — 2026-07-12).
+    module.lambda_meta_staging[0].response_processor_role_arn,
   ]
 }
 
@@ -925,6 +928,13 @@ module "secrets_meta_app_staging" {
   source = "./modules/secrets-meta-app-staging"
 }
 
+# Messenger Channel Experience M1c (contract C4): per-conversation state —
+# serialization locks now, escalation pause / form / scheduling sessions later.
+module "ddb_conversation_state" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/ddb-conversation-state"
+}
+
 module "lambda_meta_staging" {
   count                    = var.env == "staging" ? 1 : 0
   source                   = "./modules/lambda-meta-staging"
@@ -939,6 +949,20 @@ module "lambda_meta_staging" {
   # Shared with core chat — schema-identical, already Terraform-managed.
   recent_messages_table_arn  = module.ddb_recent_messages_staging[0].table_arn
   recent_messages_table_name = module.ddb_recent_messages_staging[0].table_name
+
+  # Messenger conversation state (contract C4) — M1c.
+  conversation_state_table_arn  = module.ddb_conversation_state[0].table_arn
+  conversation_state_table_name = module.ddb_conversation_state[0].table_name
+
+  # M7a: form submissions ride MFS's hardened rails via IAM-auth invoke.
+  mfs_function_arn  = module.lambda_master_function[0].function_arn
+  mfs_function_name = module.lambda_master_function[0].function_name
+
+  # M8a: scheduling propose/mutate/commit + first consent.js wirer (G-P4).
+  booking_commit_function_arn  = module.lambda_booking_commit_staging[0].commit_function_arn
+  booking_commit_function_name = module.lambda_booking_commit_staging[0].commit_function_name
+  sms_consent_table_arn        = module.picasso_form_tables.sms_consent_table_arn
+  sms_consent_table_name       = module.picasso_form_tables.sms_consent_table_name
 
   # bedrock-core registry resolution (cross-account-KB twin requirement).
   tenant_registry_table_arn  = module.ddb_tenant_registry_staging[0].table_arn
@@ -962,8 +986,15 @@ module "lambda_meta_staging" {
     "arn:aws:iam::614056832592:role/picasso-kb-retriever-from-staging",
   ]
 
-  # Single Meta App for both accounts (dev-mode). Not a secret.
-  meta_app_id = "791705810685396"
+  # Meta App recreated from scratch 2026-07-12 (dev-mode; use cases: Messenger +
+  # Instagram + WhatsApp). The 614 prod residue still points at the old app
+  # 791705810685396. Not a secret.
+  meta_app_id = "1396867945592726"
+
+  # Facebook Login for Business configuration ("Picasso Page Connect") on the
+  # app above. Use-case apps must send config_id instead of scope in the OAuth
+  # dialog; the handler switches on this env being non-empty. Not a secret.
+  meta_login_config_id = "992715177095331"
 
   messenger_verify_token = var.messenger_verify_token
 
