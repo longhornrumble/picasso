@@ -111,3 +111,102 @@ resource "aws_cloudwatch_metric_alarm" "response_duration" {
   alarm_actions       = [var.sns_topic_arn]
   ok_actions          = [var.sns_topic_arn]
 }
+
+# ─────────────────────────────────────────────────────────────────────────────
+# M-Ha — channel-health detection (Messenger Channel Experience, G1).
+#
+# Meta emits no token-invalidation webhook; a dead Page token just makes every
+# send fail. The processor logs a structured META_SEND_FAILURE line per failed
+# send (metaSendErrors.js, lambda repo) with a `classification` field from the
+# reconciled error set. Filters below turn those into per-class metrics with a
+# ChannelType dimension; alarms fire on the channel-death signals.
+#
+# Alarm philosophy (plan M-Ha adversarial focus - sustained vs one-off):
+#   token_dead      - sustained (a dead token fails EVERY send; 2+/5min over
+#                     3 periods separates real death from a blip)
+#   page_restricted - immediate (a policy restriction is discrete + severe)
+#   rate_limited    - burst threshold only
+#   user_unavailable / window_closed - metrics only, NO alarm (per-user noise;
+#                     the 24h guard owns window behavior)
+# ─────────────────────────────────────────────────────────────────────────────
+
+locals {
+  meta_send_failure_classes = [
+    "token_dead",
+    "user_unavailable",
+    "rate_limited",
+    "window_closed",
+    "page_restricted",
+  ]
+  response_processor_log_group = "/aws/lambda/${var.response_processor_function_name}"
+}
+
+resource "aws_cloudwatch_log_metric_filter" "meta_send_failure" {
+  for_each       = toset(local.meta_send_failure_classes)
+  name           = "meta-send-failure-${replace(each.key, "_", "-")}"
+  log_group_name = local.response_processor_log_group
+  pattern        = "{ $.message = \"META_SEND_FAILURE\" && $.classification = \"${each.key}\" }"
+
+  metric_transformation {
+    name      = "MetaSendFailure_${each.key}"
+    namespace = "Picasso/MetaSend"
+    value     = "1"
+    # default_value deliberately omitted - incompatible with dimensions
+    dimensions = {
+      ChannelType = "$.channelType"
+    }
+  }
+}
+
+# token_dead: sustained per channel. OUTAGE! prefix per the ops convention -
+# this is the silent-channel-death signal the subphase exists for.
+resource "aws_cloudwatch_metric_alarm" "meta_send_token_dead" {
+  for_each            = toset(["messenger", "instagram"])
+  alarm_name          = "OUTAGE! Meta ${each.key} channel dead - Page token failing (staging)"
+  alarm_description   = "Sustained Page-token failures on ${each.key} sends - the channel is dead (Meta error 190). Reconnect runbook: docs/runbooks/MESSENGER_OPS.md"
+  namespace           = "Picasso/MetaSend"
+  metric_name         = "MetaSendFailure_token_dead"
+  dimensions          = { ChannelType = each.key }
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 3
+  threshold           = 2
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [var.sns_topic_arn]
+  ok_actions          = [var.sns_topic_arn]
+}
+
+resource "aws_cloudwatch_metric_alarm" "meta_send_page_restricted" {
+  for_each            = toset(["messenger", "instagram"])
+  alarm_name          = "OUTAGE! Meta ${each.key} Page messaging restricted (staging)"
+  alarm_description   = "Page messaging restricted by Meta on ${each.key} (error 10/1893063) - policy enforcement. Runbook: docs/runbooks/MESSENGER_OPS.md"
+  namespace           = "Picasso/MetaSend"
+  metric_name         = "MetaSendFailure_page_restricted"
+  dimensions          = { ChannelType = each.key }
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = 1
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [var.sns_topic_arn]
+  ok_actions          = [var.sns_topic_arn]
+}
+
+resource "aws_cloudwatch_metric_alarm" "meta_send_rate_limited" {
+  for_each            = toset(["messenger", "instagram"])
+  alarm_name          = "meta-send-rate-limited-${each.key}-staging"
+  alarm_description   = "Burst of Meta rate-limit errors (613) on ${each.key} sends"
+  namespace           = "Picasso/MetaSend"
+  metric_name         = "MetaSendFailure_rate_limited"
+  dimensions          = { ChannelType = each.key }
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = 15
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [var.sns_topic_arn]
+  ok_actions          = [var.sns_topic_arn]
+}
