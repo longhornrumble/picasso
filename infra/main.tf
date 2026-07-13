@@ -958,6 +958,12 @@ module "lambda_meta_staging" {
   mfs_function_arn  = module.lambda_master_function[0].function_arn
   mfs_function_name = module.lambda_master_function[0].function_name
 
+  # M8a: scheduling propose/mutate/commit + first consent.js wirer (G-P4).
+  booking_commit_function_arn  = module.lambda_booking_commit_staging[0].commit_function_arn
+  booking_commit_function_name = module.lambda_booking_commit_staging[0].commit_function_name
+  sms_consent_table_arn        = module.picasso_form_tables.sms_consent_table_arn
+  sms_consent_table_name       = module.picasso_form_tables.sms_consent_table_name
+
   # bedrock-core registry resolution (cross-account-KB twin requirement).
   tenant_registry_table_arn  = module.ddb_tenant_registry_staging[0].table_arn
   tenant_registry_table_name = module.ddb_tenant_registry_staging[0].table_name
