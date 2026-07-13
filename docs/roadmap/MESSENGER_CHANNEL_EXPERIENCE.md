@@ -315,7 +315,12 @@ Advanced Access (`pages_messaging`, `instagram_manage_messages`, Human Agent) is
 
 > One entry per subphase at completion: PR link(s), DONE-line evidence (test summary lines, live staging verification), gate sign-offs, deviations from this plan (with why). Empty until execution begins.
 
-### M0 —
+### M0 — ✅ COMPLETE 2026-07-13
+- **PRs (both merged):** lambda#433 → `8f4039a` (`docs/messenger/CONTRACTS.md`, C1–C9 v1.0); config-builder#82 → `6d0ec4e` (C2 types: `MessengerBehaviorConfig` + `MESSENGER_CHANNEL` flag + Zod `messengerBehaviorSchema` + old/new-shape fixture tests).
+- **Tech-lead-reviewer adversarial pass (gate):** verdict APPROVE WITH CHANGES; all findings applied pre-freeze — 3 blocking (echo events invert sender/recipient ⇒ C1 now mandates `psid` = `recipient.id` for `eventKind:'echo'`; C7 release made conditional on empty `pending`, closing a drop-on-release race; C4 `lock.pending` item shape extended to carry v2 fields so non-text bursts coalesce) + 4 should-fix (metadata-only events `messaging_referrals`/`response_feedback` ⇒ logged intentional skip, not `unsupported` fallback; `replyTo` story-context field; C9 split-reply rule — QRs on final chunk, button template after it; C7 lock-TTL ≥ function-timeout+10s invariant, coupled to `lambda-meta-staging` 120s timeout). Reviewer verified the C1 deploy-gap claim against live code (`validateEvent` drops null-text without crash/retry) and confirmed C8 boundary math + C2/CB type parity.
+- **DONE line:** every contract version-stamped (`v1.0 2026-07-13`) with ≥1 named downstream consumer; flag name finalized `MESSENGER_CHANNEL`. CB verification: `tsc --noEmit` clean, vitest 504/504, eslint clean. Lambda merge's Deploy-Staging run: all function deploys **skipped** (docs-only, verified).
+- **Deviations:** (1) beyond "types", also added the Zod `messengerBehaviorSchema` mirror — repo convention is interface+schema in parallel (`channels` precedent); ≤4 ice-breaker cap enforced per C5. (2) C1 gained `replyTo` + metadata-skip rules and C7/C9 gained the race/split-reply fixes vs the plan's sketch — all from the adversarial pass, recorded in CONTRACTS.md's version log.
+
 ### M1a —
 ### M1b — (G-P1)
 ### M1c —
