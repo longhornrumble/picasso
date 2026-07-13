@@ -321,11 +321,32 @@ Advanced Access (`pages_messaging`, `instagram_manage_messages`, Human Agent) is
 - **DONE line:** every contract version-stamped (`v1.0 2026-07-13`) with ≥1 named downstream consumer; flag name finalized `MESSENGER_CHANNEL`. CB verification: `tsc --noEmit` clean, vitest 504/504, eslint clean. Lambda merge's Deploy-Staging run: all function deploys **skipped** (docs-only, verified).
 - **Deviations:** (1) beyond "types", also added the Zod `messengerBehaviorSchema` mirror — repo convention is interface+schema in parallel (`channels` precedent); ≤4 ice-breaker cap enforced per C5. (2) C1 gained `replyTo` + metadata-skip rules and C7/C9 gained the race/split-reply fixes vs the plan's sketch — all from the adversarial pass, recorded in CONTRACTS.md's version log.
 
-### M1a —
-### M1b — (G-P1)
-### M1c —
-### M2 —
-### M3a —
+### M1a — ✅ CODE COMPLETE + DEPLOYED 2026-07-13 · live real-DM smoke OPERATOR-QUEUED
+- **PR:** lambda#434 → `2f40962` (merged; staging deploy run verified: Meta_Webhook_Handler + Meta_Response_Processor deploy jobs SUCCESS — note the deploy workflow's documented full-matrix design redeploys everything on any hit; idempotent).
+- **Implements C1:** pure classifier `classify.js` (never throws) — every fixture → typed v2 invoke or logged intentional skip; `entry.standby[]` iteration; FB `message_deletions` fan-out per mid; edit/delete bypass dedup (idempotent downstream, noted in C1 v1.1); metadata-only events (reactions/receipts/standalone referrals/response_feedback) → logged skips.
+- **C1 → v1.1 amendment (in the same PR, reviewed):** echo `messageText` ALWAYS null — echoes carry our own reply text and the legacy processor would have answered it during the deploy gap (bot-answers-itself loop, caught in the adversarial pre-pass); `timestamp` receipt-time fallback; `'standby'` dropped from the eventKind enum (rides `isStandby`).
+- **Tests:** webhook **58/58** (fixture library `__fixtures__/messagingEvents.js` = the shared surface for M1b/M3b/M6b; v1 byte-compat pinned; meta-test forbids silent drops across the whole library); processor **43/43** incl. new cross-function legacy-gap contract suite (v2 kinds drop cleanly through the REAL classifier — no crash/Bedrock/sends). Code-reviewer: APPROVE WITH CHANGES, all applied (incl. the cross-function test C1 §4 mandates).
+- **Deliverable:** `docs/messenger/DASHBOARD_RUNBOOK.md` — subscribe `message_edits`/`message_deletions`(FB) + `message_edit`(IG) NOW; `message_echoes`/standby deferred to M6b (cost rationale).
+- **OPERATOR-QUEUED (staging SSO expired mid-session):** real-DM smoke both channels; see the operator checklist at the end of §12.
+
+### M1b — (G-P1) ✅ CODE COMPLETE + MERGED 2026-07-13 (lambda#436 → `96db09c`, staging auto-deployed) · live DONE-line checks OPERATOR-QUEUED
+- **G-P1 (blocking) sign-off — pii-data-lifecycle-advisor: PASS WITH CONDITIONS.** Retention: 7-day `expires_at` TTL for `meta:` rows APPROVED (closes the Meta half of inventory Finding 1; per-tenant shorter retention = named follow-up for foster-care-adjacent tenants). is_deleted: mid-matched deletion APPROVED; legacy mid-less residual ACCEPTED as bounded contingent on the backfill running (operator-queued). Analytics verified text-free (identifiers + lengths only) — no delete propagation needed. Finding 12 not worsened. All MUST conditions verified in the diff: backfill dry-run-first + `meta:` filter + per-item hard-fail + CAS; edit updates `content` AND `text_en`; zero content in logs (v2 validation-failure redaction hardened + console.error-spied pin); `replyTo.storyUrl` never persisted; idempotent edit/delete; Living-Inventory updated same session (picasso#755). **Premise correction recorded:** the advisor's "mirrors the widget 7d convention" rationale was fed a wrong premise — widget rows in the shared table use **24h**; 7d stands on the verdict's independent legs (plan-frozen DONE line, bounded, C8-sufficient) and the two-profile split is documented in the inventory.
+- **Code-reviewer gate: REJECT → APPROVE.** Two blocking findings fixed pre-merge: (1) v2 validation-failure log leaked the full event (editedText/storyUrl) → shape-only redaction; (2) unsupported-input fallback could send outside the 24h window → guard added (stale delete still deletes — pinned).
+- **Tests:** processor **72/72** (29 new: flag-off byte-identical baseline; failure paths; IG exactly-1000 boundary; G-P1 redaction pin). Webhook 58/58 untouched. Shared-table adversarial focus: exact-match sessionId keys only — reviewer confirmed no constructible non-`meta:` path (guards are defense-in-depth).
+- **OPERATOR-QUEUED:** backfill dry-run → review → `--execute`; live attachment-DM fallback + DynamoDB-verified delete.
+
+### M1c — ✅ COMPLETE 2026-07-13 (picasso#755 → `2a360fc` IaC; lambda#437 → `2ae8dec` C7 code)
+- **`picasso-conversation-state` LIVE on staging** via CI apply (run success; plan reviewed pre-merge: 1 add, 3 in-place, 0 destroy — the `webhook_exec` change is the benign known-after-apply cascade from the processor's env-var update). C4 shape: PK `sessionId`/SK `stateType`, TTL `expires_at`, PITR, bare name. Processor role (dedicated, lambda#44 rule) gains `ConversationStateReadWrite` + `RecentMessagesDeleteForMetaIsDeleted`; env `CONVERSATION_STATE_TABLE`. Prod-side workflow job verified **plan-only** (apply skipped).
+- **Living-Inventory rule satisfied in the same PR:** pii-inventory fired-rule note (M1b+M1c) + new §B row; data-classification Tier 3 row (lock rows coalesce chat text; M7a form answers later).
+- **C7 lock+coalesce code (lambda#437 → `2ae8dec`, merged + staging auto-deployed):** `conversationLock.js` — conditional-Put acquire with stale-takeover `ALL_OLD` pending inheritance (a crashed winner's coalesced messages get answered, not dropped — strengthens C7's no-drop guarantee); losers `list_append` + exit (zero Bedrock); winner drains claimed batches as combined turns through the extracted `runTurn` pipeline (DRAIN_CAP=3 Bedrock cycles, then config-driven `rate_limited` replies); **conditional release** (never drop-on-release); `LOCK_TTL_SECONDS=130` pins the TTL ≥ fn-timeout+10s invariant; lock errors fail OPEN (serialization never blocks replies).
+- **Race tests green (DONE line):** processor **92/92** — 13 lock-unit + 7 handler-race integration: two racing invokes ⇒ exactly ONE Bedrock call; loser coalesces with zero sends; combined drain turn carries both coalesced texts; stale-takeover inheritance answered; release contention loops instead of dropping; fail-open on lock-table outage. `index.test.js`'s unset `CONVERSATION_STATE_TABLE` doubles as the disabled-mode proof.
+- **OPERATOR-QUEUED:** live 3-rapid-DM race check (checklist item 4).
+
+### M2 — ✅ COMPLETE 2026-07-13
+- **PR:** lambda#435 → `34cda4a` (merged; full-matrix staging redeploy succeeded — BSH now ships the shared-prompt bundle).
+- **Pure move, proven:** trio `prompt_v4.js`/`prompt_v5.js`/`streamTail.js` → `shared/prompt/` — git-mv R100 + **sha256 byte-identity vs origin/main verified**; BSH esbuild bundle confirmed to inline the new path; runtime prompt build exercised from the new location.
+- **DONE line:** BSH suite **1176/1176** (exit 0) with flipped imports; trio's pure suites moved to `shared/prompt/__tests__` (**160/160**) with the BSH coverage ratchets transplanted and **enforced** (v4 99.5/90.8, v5 100/96, streamTail 100/100) via the new `shared-prompt-tests` CI job (shared/scheduling precedent; ran green on the PR); BSH keeps the source-pin wiring describes (`prompt_wiring_pins.test.js`). `deploy-staging.yml` filters now cover `shared/prompt/**` for BSH AND Meta_Response_Processor; **pr-checks `eval_gate` filter followed the move** (else the V5 eval net silently stops gating prompt changes) — Chat Eval Net ran and PASSED on the moved files.
+### M3a — ⏸️ NOT STARTED — next on the critical path; BLOCKED on Bedrock access for the A/B evidence runs (V5 evidence-gate discipline). The prompt draft without evidence would violate the gate this plan adopts from the V5 program; start M3a in a session with staging AWS access (or wire the evidence runner into a CI workflow-dispatch job first).
 ### M3b —
 ### M4 —
 ### M-Ha —
@@ -339,3 +360,14 @@ Advanced Access (`pages_messaging`, `instagram_manage_messages`, Human Agent) is
 ### M7b —
 ### M8a — (G-P4)
 ### M8b —
+
+---
+
+### 🧑‍✈️ Operator verification queue (accumulated 2026-07-13 — staging SSO expired mid-session; each item is a subphase DONE-line residual)
+
+Prereq: `aws sso login --profile myrecruiter-staging` (all items are staging-account 525; nothing here touches prod).
+
+1. **M1a live smoke:** send a real DM (text + an attachment + a quick emoji reaction) to the MYR384719-connected Page and IG account. Expect in `/aws/lambda/Meta_Webhook_Handler` logs: `Queued text event`, `Queued attachment event`, `Intentional skip (reaction)`; zero silent drops. Dashboard step: subscribe `message_edits` + `message_deletions` (FB) and `message_edit` (IG) per `docs/messenger/DASHBOARD_RUNBOOK.md` (lambda repo), then edit + delete a sent DM and confirm `Queued edit event` / `Queued delete event`.
+2. **M1b backfill (G-P1 condition):** `cd Lambdas/lambda/Meta_Response_Processor && node scripts/backfill-expires-at.js` (dry-run) → review output in-session → re-run with `--execute`. Dry-run-before-destroy rule applies; script hard-fails on any non-`meta:` row.
+3. **M1b live DONE-line:** with `MESSENGER_CHANNEL: true` on MYR384719's staging config — attachment DM gets the fallback reply; delete that DM and verify the matching `picasso-recent-messages` row (by `mid`) is gone; confirm new rows carry `expires_at` (≈ +7d, epoch s) and user rows carry `mid`; first turn of a fresh session shows the disclosure line.
+4. **M1c live race check (optional but recommended):** rapid-fire 3 DMs in <2s; expect one coherent combined reply (lock+coalesce) once the C7 module lands, and `picasso-conversation-state` lock rows appearing/clearing.
