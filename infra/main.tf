@@ -954,6 +954,10 @@ module "lambda_meta_staging" {
   conversation_state_table_arn  = module.ddb_conversation_state[0].table_arn
   conversation_state_table_name = module.ddb_conversation_state[0].table_name
 
+  # M7a: form submissions ride MFS's hardened rails via IAM-auth invoke.
+  mfs_function_arn  = module.lambda_master_function[0].function_arn
+  mfs_function_name = module.lambda_master_function[0].function_name
+
   # bedrock-core registry resolution (cross-account-KB twin requirement).
   tenant_registry_table_arn  = module.ddb_tenant_registry_staging[0].table_arn
   tenant_registry_table_name = module.ddb_tenant_registry_staging[0].table_name
