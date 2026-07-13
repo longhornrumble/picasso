@@ -928,6 +928,13 @@ module "secrets_meta_app_staging" {
   source = "./modules/secrets-meta-app-staging"
 }
 
+# Messenger Channel Experience M1c (contract C4): per-conversation state —
+# serialization locks now, escalation pause / form / scheduling sessions later.
+module "ddb_conversation_state" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/ddb-conversation-state"
+}
+
 module "lambda_meta_staging" {
   count                    = var.env == "staging" ? 1 : 0
   source                   = "./modules/lambda-meta-staging"
@@ -942,6 +949,10 @@ module "lambda_meta_staging" {
   # Shared with core chat — schema-identical, already Terraform-managed.
   recent_messages_table_arn  = module.ddb_recent_messages_staging[0].table_arn
   recent_messages_table_name = module.ddb_recent_messages_staging[0].table_name
+
+  # Messenger conversation state (contract C4) — M1c.
+  conversation_state_table_arn  = module.ddb_conversation_state[0].table_arn
+  conversation_state_table_name = module.ddb_conversation_state[0].table_name
 
   # bedrock-core registry resolution (cross-account-KB twin requirement).
   tenant_registry_table_arn  = module.ddb_tenant_registry_staging[0].table_arn

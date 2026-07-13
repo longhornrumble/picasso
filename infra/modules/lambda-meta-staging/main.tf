@@ -48,6 +48,15 @@ variable "webhook_dedup_table_name" {
   type = string
 }
 
+variable "conversation_state_table_arn" {
+  description = "ARN of picasso-conversation-state (contract C4). Response Processor owns every row shape: serialization lock (M1c), escalation pause (M6a), form sessions (M7a), scheduling sessions (M8a), throttle counters (M-Hb)."
+  type        = string
+}
+
+variable "conversation_state_table_name" {
+  type = string
+}
+
 variable "recent_messages_table_arn" {
   description = "ARN of the EXISTING picasso-recent-messages table (module.ddb_recent_messages_staging). Shared with core chat — schema-identical (sessionId/messageTimestamp). Response Processor Query's prior context + Put's the new Q&A pair."
   type        = string
@@ -411,6 +420,22 @@ data "aws_iam_policy_document" "response_exec" {
     actions   = ["dynamodb:Query", "dynamodb:PutItem", "dynamodb:GetItem"]
     resources = [var.recent_messages_table_arn]
   }
+  # M1b is_deleted hygiene: delete history rows for a Meta-deleted message.
+  # Own sid so the grant reads as what it is - the Meta-terms deletion path,
+  # scoped to the shared recent-messages table (code filters meta: sessions).
+  statement {
+    sid       = "RecentMessagesDeleteForMetaIsDeleted"
+    actions   = ["dynamodb:DeleteItem"]
+    resources = [var.recent_messages_table_arn]
+  }
+  # Conversation-state table (contract C4): lock/coalesce serialization rows
+  # now; pause (M6a), form sessions (M7a), scheduling sessions (M8a),
+  # counters (M-Hb) later. Same-role only - never shared (lambda#44 rule).
+  statement {
+    sid       = "ConversationStateReadWrite"
+    actions   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:DeleteItem", "dynamodb:Query"]
+    resources = [var.conversation_state_table_arn]
+  }
   # bedrock-core registry resolution (USE_REGISTRY_FOR_RESOLUTION=true) —
   # mirrors bedrock-handler's DynamoDBTenantRegistryRead.
   statement {
@@ -511,11 +536,12 @@ resource "aws_lambda_function" "response_processor" {
 
   environment {
     variables = {
-      ENVIRONMENT            = "staging"
-      CHANNEL_MAPPINGS_TABLE = var.channel_mappings_table_name
-      RECENT_MESSAGES_TABLE  = var.recent_messages_table_name
-      KMS_KEY_ID             = var.channel_tokens_kms_key_alias
-      ANALYTICS_QUEUE_URL    = var.analytics_queue_url
+      ENVIRONMENT              = "staging"
+      CHANNEL_MAPPINGS_TABLE   = var.channel_mappings_table_name
+      RECENT_MESSAGES_TABLE    = var.recent_messages_table_name
+      CONVERSATION_STATE_TABLE = var.conversation_state_table_name
+      KMS_KEY_ID               = var.channel_tokens_kms_key_alias
+      ANALYTICS_QUEUE_URL      = var.analytics_queue_url
       # Cross-account KB wiring (absent on the 614 same-account original).
       KB_RETRIEVER_ROLE_ARN       = length(var.kb_retriever_role_arns) > 0 ? var.kb_retriever_role_arns[0] : ""
       CONFIG_BUCKET               = var.config_bucket_name
