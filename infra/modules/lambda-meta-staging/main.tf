@@ -604,6 +604,14 @@ data "aws_iam_policy_document" "oauth_exec" {
     actions   = ["kms:Encrypt", "kms:Decrypt", "kms:GenerateDataKey"]
     resources = [var.channel_tokens_kms_key_arn]
   }
+  # Connect-time lookup of the PLATFORM tenantHash — bedrock-core resolves
+  # configs by the registry hash, so the mapping row must carry it (a locally
+  # computed hash matched nothing → ungrounded replies; found live 2026-07-12).
+  statement {
+    sid       = "TenantRegistryRead"
+    actions   = ["dynamodb:GetItem"]
+    resources = [var.tenant_registry_table_arn]
+  }
   statement {
     sid       = "MetaAppSecretRead"
     actions   = ["secretsmanager:GetSecretValue"]
@@ -662,6 +670,7 @@ resource "aws_lambda_function" "oauth" {
       OAUTH_CALLBACK_URL     = var.meta_oauth_callback_url
       CHANNEL_MAPPINGS_TABLE = var.channel_mappings_table_name
       META_LOGIN_CONFIG_ID   = var.meta_login_config_id
+      TENANT_REGISTRY_TABLE  = var.tenant_registry_table_name
     }
   }
 
