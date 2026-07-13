@@ -48,6 +48,24 @@ variable "webhook_dedup_table_name" {
   type = string
 }
 
+variable "booking_commit_function_arn" {
+  description = "ARN of the staging Booking_Commit_Handler. M8a: the Messenger scheduling driver calls scheduling_propose/mutate and the default commit path via IAM invoke."
+  type        = string
+}
+
+variable "booking_commit_function_name" {
+  type = string
+}
+
+variable "sms_consent_table_arn" {
+  description = "ARN of picasso-sms-consent. M8a is the FIRST production wirer of shared/scheduling consent.js (G-P4): conditional immutable PutItem at booking commit."
+  type        = string
+}
+
+variable "sms_consent_table_name" {
+  type = string
+}
+
 variable "mfs_function_arn" {
   description = "ARN of the staging Master_Function. M7a: the processor submits completed Messenger forms via IAM-authenticated Lambda invoke shaped like the widget live lane (G-P3 MUST-S1 - never the public unauthenticated lane)."
   type        = string
@@ -459,6 +477,20 @@ data "aws_iam_policy_document" "response_exec" {
     actions   = ["lambda:InvokeFunction"]
     resources = [var.mfs_function_arn]
   }
+  # M8a scheduling: propose/mutate/commit through Booking_Commit_Handler.
+  statement {
+    sid       = "InvokeBookingCommitHandler"
+    actions   = ["lambda:InvokeFunction"]
+    resources = [var.booking_commit_function_arn]
+  }
+  # M8a (G-P4): first production caller of shared/scheduling consent.js -
+  # conditional immutable PutItem only (the module's attribute_not_exists
+  # guard makes overwrites impossible).
+  statement {
+    sid       = "SmsConsentWriteAtCommit"
+    actions   = ["dynamodb:PutItem"]
+    resources = [var.sms_consent_table_arn]
+  }
   # M7a forms: the IAM invoke bypasses CloudFront, so the processor carries
   # MFS's x-picasso-cf-origin header itself - read from MFS's own secret.
   # MFS's fail-closed validator stays meaningful: only secret-holders or
@@ -583,8 +615,11 @@ resource "aws_lambda_function" "response_processor" {
       # M7a form submission target (widget-live-lane-shaped payload)
       MFS_FUNCTION              = var.mfs_function_name
       MFS_CF_ORIGIN_SECRET_NAME = "picasso/mfs/cf-origin-secret"
-      KMS_KEY_ID                = var.channel_tokens_kms_key_alias
-      ANALYTICS_QUEUE_URL       = var.analytics_queue_url
+      # M8a scheduling rails
+      BOOKING_COMMIT_FUNCTION = var.booking_commit_function_name
+      SMS_CONSENT_TABLE       = var.sms_consent_table_name
+      KMS_KEY_ID              = var.channel_tokens_kms_key_alias
+      ANALYTICS_QUEUE_URL     = var.analytics_queue_url
       # Cross-account KB wiring (absent on the 614 same-account original).
       KB_RETRIEVER_ROLE_ARN       = length(var.kb_retriever_role_arns) > 0 ? var.kb_retriever_role_arns[0] : ""
       CONFIG_BUCKET               = var.config_bucket_name
