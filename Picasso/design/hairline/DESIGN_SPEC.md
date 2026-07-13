@@ -91,7 +91,7 @@ Reference family: **Plus Jakarta Sans** (weights 400/600/700 only). Fallback: `s
 - Menu/settings card: radius 10px, border `--hairline`, rows 12px 15px padding (11px 14px settings), dividers `--hairline-soft`
 - Composer pill: radius 999px; expanded composer: radius 18px
 - Overlay card: radius 12px, shadow `0 16px 48px rgba(15,23,42,0.16)`
-- Message cards (user): radius 10px, padding 10px 13px
+- Message cards (user): radius 10px, padding 6px 11px (tightened from 10px 13px, 2026-07-11)
 - Feedback buttons: 26×26px, radius 8px
 - Send button: 30×30px circle
 - Icons: Lucide, 2px stroke, rounded caps/joins. Header 15px, composer 15–16px, feedback 13px, row chevrons 13px.
@@ -124,7 +124,7 @@ Purpose: browse the finite FAQ list. Summoned from the welcome menu row.
 
 Purpose: active thread. **Asymmetric message treatment** (decided; validated against Claude's mobile app):
 - Header: wordmark + settings + close — same as welcome (no help icon).
-- **User message**: right-aligned, max-width 85%; caps label "YOU" (9px/700/0.12em, `--tenant-accent-muted`, right-aligned) above a **tinted card** — `--tenant-tint` fill, `--hairline-strong` border, radius 10, padding 10px 13px, text 13px `#334155`.
+- **User message**: right-aligned, max-width 85%; caps label "YOU" (9px/700/0.12em, `--tenant-accent-muted`, right-aligned) above a **tinted card** — `--tenant-tint` fill, `--hairline-strong` border, radius 10, padding 6px 11px, text 13px `#334155`.
 - **Bot message**: left-aligned, no card/bubble; caps wordmark label (`--tenant-accent-deep`) above plain body text 13.5px/1.6 `--ink-body`.
 - **Response actions** under every completed bot reply, 9px top margin, left-aligned row, 3px gap, order: **copy · thumbs-up · thumbs-down**. 26×26 radius-8 buttons; idle icon `--tenant-accent-muted`, no fill; hover `--tenant-tint` fill + `--tenant-accent-deep` icon. Thumbs post feedback to the LLM improvement loop; copy copies the reply's plain text.
 - **Suggestion card** (bot follow-ups): same anatomy as menu card; **primary suggestion row emphasized** — `--tenant-tint` fill, 700 weight, `--tenant-accent-deep` text; other rows standard. Tapping a suggestion sends it as a user message (re-enters the thread as a "YOU" message).

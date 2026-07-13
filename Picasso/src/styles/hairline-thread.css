@@ -145,14 +145,17 @@
   color: var(--ink-message-user);
 }
 
-/* The LIVE-send path wraps user text in the same `.streaming-formatted`
-   markdown wrapper bot replies use
-   (`<div class="streaming-formatted"><p>…</p></div>`), so the card's inner
-   <p> picks up paragraph margins the card's spec padding (10px 13px)
-   doesn't budget for — a one-line user bubble rendered ~75px tall instead
-   of ~42px (W6.3 follow-up, Chris's mobile report 2026-07-03; the audit's
-   session-restore seeding stored plain text, which is why it slipped
-   past). The bot side already pins its own paragraph rhythm
+/* User-message text reaches the card in TWO DOM shapes, both of which pick
+   up theme.css paragraph margins the card's padding doesn't budget for:
+   1. `<div class="streaming-formatted"><p>…</p></div>` (messageHelpers'
+      formatMessageContent — session restore, HTTP provider). W6.3 fix,
+      Chris's mobile report 2026-07-03: a one-line bubble rendered ~75px.
+   2. A bare `<p>…</p>` directly under `.message-text` (the streaming
+      provider's live-send path skips the wrapper). Found 2026-07-11 —
+      live devtools on staging showed `margin: 16px 0` on the inner <p>
+      inflating a one-line bubble to 68px while shape 1 measured clean.
+   Targeting `.message-text p` covers both (shape 1's <p> is still a
+   `.message-text` descendant). The bot side pins its own paragraph rhythm
    (`.hairline-message--bot .streaming-formatted p` below); this is the
    user-card counterpart: flush margins so the card hugs its content, with
    a modest gap kept between paragraphs if a user ever sends multiple.
@@ -164,11 +167,11 @@
    p:not(×3)` at (0,4,2), all `margin: 16px !important` — outranks any
    plain-specificity rule, so this must be ≥(0,5,1) + !important (verified
    live by enumerating every matching margin rule). Dies with theme.css. */
-.hairline-message.hairline-message--user .hairline-message-group .hairline-message-card .streaming-formatted p {
+.hairline-message.hairline-message--user .hairline-message-group .hairline-message-card .message-text p {
   margin: 0 !important;
 }
 
-.hairline-message.hairline-message--user .hairline-message-group .hairline-message-card .streaming-formatted p + p {
+.hairline-message.hairline-message--user .hairline-message-group .hairline-message-card .message-text p + p {
   margin-top: var(--space-markdown-block-gap) !important;
 }
 
@@ -900,8 +903,9 @@
   }
 }
 
-/* --- Selected / staged slot pill (SchedulingSlots interim state AND the
-   confirm card's staged-slot line) ----------------------------------------- */
+/* --- Selected / staged slot pill (SchedulingSlots' interim "you picked
+   this" state only — the confirm card no longer renders it; the 12a mock
+   forbids a pill-in-a-box) ------------------------------------------------- */
 .scheduling-slot-selected {
   display: inline-flex;
   align-items: center;
@@ -915,8 +919,28 @@
   font-weight: 700;
 }
 
-/* --- Confirm card ---------------------------------------------------------- */
+/* --- Confirm card — Hairline "12a" booking-confirm mock (verbatim source:
+   design/hairline/booking-confirmation-spec.md, 2026-07-11). Two quiet
+   labeled rows in a hairline radius-12 card on --surface (no shadow, no
+   fill, no pill-in-a-box), a compact CONTENT-WIDTH accent pill beneath
+   (explicitly NOT the previous full-width slab), and the 12b booked state
+   (green chip + card dimmed to 0.85). The glow derives from the tenant
+   accent via color-mix — same pattern schedule-page.css already uses; old
+   browsers that lack color-mix simply drop the shadow. ---------------------- */
+.hairline-scheduling-confirm-card {
+  border-color: var(--hairline);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.hairline-scheduling-confirm-card--booked {
+  opacity: 0.85;
+}
+
 .hairline-scheduling-confirm-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
   padding: var(--space-card-row-padding);
   border-top: 1px solid var(--hairline-soft);
 }
@@ -925,17 +949,46 @@
   border-top: none;
 }
 
+.scheduling-confirm-row-icon {
+  flex: none;
+}
+
+.scheduling-confirm-row-icon--slot {
+  color: var(--tenant-accent);
+}
+
+.scheduling-confirm-row-icon--email {
+  color: var(--tenant-accent-muted);
+}
+
+.scheduling-confirm-slot-label {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
 .scheduling-confirm-email {
-  font-size: var(--type-row-value-size);
-  color: var(--ink-soft);
+  font-size: 12.5px;
+  color: var(--ink-body);
+}
+
+.scheduling-booked-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  color: #22a45d;
+  font-size: 11.5px;
+  font-weight: 700;
 }
 
 .hairline-scheduling-confirm-button {
-  display: block;
-  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   margin-top: 10px;
   box-sizing: border-box;
-  padding: 10px 0;
+  padding: 11px 22px;
   border: none;
   border-radius: var(--radius-confirm-pill);
   background: var(--tenant-accent);
@@ -944,12 +997,13 @@
   font-size: 13px;
   font-weight: 700;
   cursor: pointer;
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--tenant-accent) 25%, transparent);
   transition: filter var(--duration-fill) var(--ease-ui),
     opacity var(--duration-fill) var(--ease-ui);
 }
 
 .hairline-scheduling-confirm-button:not(:disabled):hover {
-  filter: brightness(0.95);
+  filter: brightness(1.05);
 }
 
 .hairline-scheduling-confirm-button:disabled {
