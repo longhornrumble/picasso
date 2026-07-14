@@ -232,3 +232,37 @@ Each subphase below: Scope / OWN / CONSUME / PRODUCE / Deliverables (incl. tests
 - [`MESSENGER_CHANNEL_EXPERIENCE.md`](MESSENGER_CHANNEL_EXPERIENCE.md) §12 — the lambda-side pipeline this program manages; its `feature_flags.MESSENGER_CHANNEL` gate, `messenger_behavior` config contract (C2), and operator checklist are the runtime this program's UI activates and edits. Its §12 execution-evidence log records M0–M8b's code-complete state as of 2026-07-13; the §12 operator checklist + M4-S soak are that program's own gate, independent of this one.
 - [`MESSENGER_APP_REVIEW_PACKAGE.md`](MESSENGER_APP_REVIEW_PACKAGE.md) — the Advanced Access / real-tenant-connect gate T3b's role-holder path deliberately does not wait on.
 - [`SOP_DEVELOPMENT_WORKFLOW.md`](../../picasso-config-builder/docs/SOP_DEVELOPMENT_WORKFLOW.md) + [`AGENT_RESPONSIBILITY_MATRIX.md`](../../picasso-config-builder/docs/AGENT_RESPONSIBILITY_MATRIX.md) — process + agent selection, applied per-subphase per §6.
+
+## 11. P0c — portal auth topology & write-path (decision record, 2026-07-13)
+
+Spike complete. Both P0c questions are answered against `origin/main` of both repos; **R10 is resolved (not blocking)** and T3b/T3c scopes below are confirmed. No architectural change or human decision was required.
+
+**Clerk topology (verified):** there are two *separate* Clerk apps, and their tokens do **not** cross-validate:
+- **`present-skunk-55`** (`present-skunk-55.clerk.accounts.dev`) — the Config Builder's instance. `Picasso_Config_Manager/auth.mjs:15-16` validates against its JWKS.
+- **`divine-impala-48`** (`divine-impala-48.clerk.accounts.dev`) — the analytics **dashboard/portal's** instance (`picasso-analytics-dashboard/.env.staging`), and `Analytics_Dashboard_API/lambda_function.py:167-169` validates against **that same** JWKS.
+
+**Why this is fine (the R10 fear was misframed):** the portal never calls Config Manager. Portal config writes go through **`Analytics_Dashboard_API`**, which shares the portal's own `divine-impala-48` instance — so no token ever has to cross the two apps.
+
+**(a) Do dashboard Clerk JWTs validate against the backends the portal calls?**
+- `Analytics_Dashboard_API` → **yes**, same instance (`divine-impala-48`). This is the portal's config-write backend for T3c.
+- `Meta_OAuth_Handler` (Python) → **not applicable**: it uses **no Clerk**. The OAuth flow is gated by an HMAC-signed **state JWT** (`META_APP_SECRET`) carrying `tenant_id`; `GET /meta/oauth/url?tenant_id=X` takes `tenant_id` as a query param and returns a signed dialog URL. CORS is `Access-Control-Allow-Origin: *`, so the portal origin can call it directly (as CB's `ChannelsSettings` already does). T3b calls the same endpoint.
+- `Picasso_Config_Manager` → validates `present-skunk-55`; the portal does **not** use it. (CB does, unchanged.)
+
+**(b) Portal config-write path (confirmed):** `Analytics_Dashboard_API` read-modify-writes `tenants/{id}/{id}-config.json` with S3 `put_object(IfMatch=<etag>)` optimistic locking (`lambda_function.py:7845/7893`; `ConfigETagMismatchError:246`). The `/settings/notifications` PATCH (`handle_settings_notifications_patch:8062`) is the precedent T3c mirrors.
+
+**Confirmed T3b/T3c scope:**
+- **T3b** — portal Meta connect card calls `Meta_OAuth_Handler`'s `/meta/oauth/url?tenant_id=…` (staging URL, post-T3a env injection), popup flow mirroring `ChannelsSettings`. No Clerk-instance conflict (state-JWT + CORS `*`). Authz note: the connect endpoint trusts `tenant_id` from the caller + the signed state — the portal must pass the authenticated user's own tenant, not an arbitrary one.
+- **T3c** — add a `/settings/messenger` PATCH to `Analytics_Dashboard_API` (a new `handle_settings_messenger_patch` mirroring the notifications handler): authenticate with the portal's `divine-impala-48` Clerk (existing), read-modify-write `messenger_behavior` via the ETag/deep-merge path, send the whole section (always-send-whole). PII gate still applies (new tenant-scoped write into a previously CB-only section).
+
+## 12. Execution status (updated as subphases land)
+
+- **T1** ✅ merged (config-builder#84) — `MESSENGER_CHANNEL` toggle; later relocated to the product page in T2c.
+- **P0a** ✅ merged (lambda#456) — first Config Manager test suite + CI node:test job.
+- **P0b** ✅ merged (config-builder#85 + lambda#457) — two-tier section contract, both sides.
+- **T2a** ✅ merged (lambda#458) — `messenger_behavior` editable; **live on staging** (`Deploy Picasso_Config_Manager` ✓ on merge). Backend-first gate satisfied.
+- **T2b** ✅ merged (config-builder#86) — `getMergedConfig` emit + contract sync (20/18) + forward-compat.
+- **T2c** ✅ merged (config-builder#87) — Messenger product page + readiness checklist; named pattern-setting review passed (APPROVE WITH CHANGES, both fixes applied).
+- **P0c** ✅ this doc §11 — auth topology + write-path resolved; R10 downgraded.
+- **T3a / T3b / T3c / T3d** — pending.
+
+> Live browser round-trips (saving via the Clerk-authed staging CB/portal) are operator-verified — a CLI agent cannot mint a browser Clerk session. Each merged PR notes this; the underlying logic is proven by unit/integration tests + red/green checks.
