@@ -1818,6 +1818,11 @@ resource "aws_secretsmanager_secret_policy" "jwt_signing_key_staging" {
           # it made the disposition path AccessDenied on this key → signing_key_unavailable
           # (100% disposition-cycle failure). Added 2026-06-21.
           "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/Attendance_Disposition_Handler-exec-staging",
+          # Meta_OAuth_Handler VALIDATES the internal Picasso JWT on the
+          # /meta/channels/* management routes (caller-authz, lambda#463). Same
+          # symmetric HS256 key as the signers above; without this the resource
+          # Deny below blocks the read and the portal 401s on a valid token.
+          module.lambda_meta_staging[0].oauth_role_arn,
         ] }
         Action   = "secretsmanager:GetSecretValue"
         Resource = "*"
@@ -1846,6 +1851,9 @@ resource "aws_secretsmanager_secret_policy" "jwt_signing_key_staging" {
               # Attendance_Disposition_Handler — token minter (WS-E-ATTEND); literal ARN
               # (hand-deployed, no TF module). Mirrors the Allow above. Added 2026-06-21.
               "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/Attendance_Disposition_Handler-exec-staging",
+              # Meta_OAuth_Handler — internal-JWT validator on /meta/channels/*
+              # (lambda#463). Mirrors the Allow above.
+              module.lambda_meta_staging[0].oauth_role_arn,
             ]
           }
         }
