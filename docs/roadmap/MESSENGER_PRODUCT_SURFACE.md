@@ -1,6 +1,6 @@
 # Messenger Product Surface — Program Plan
 
-**Status:** 📋 PLAN APPROVED + tech-lead-reviewed 2026-07-13 (design-partner conversation, Chris-approved). **NOT yet executed** — no subphase below has started.
+**Status:** ✅ COMPLETE — all 11 subphases merged + staging-deployed 2026-07-13/14 (see §12). Prod untouched (gated). Plan was tech-lead-reviewed + Chris-approved 2026-07-13.
 **Owner:** Chris Miller
 **Vocabulary:** "Messenger" = **Facebook Messenger + Instagram DM together** (same standing vocabulary as the sibling program, Chris 2026-07-12).
 **Repos:** `picasso-config-builder` (CB — code PRs to its own staging/CI, per that repo's SOP); `Lambdas/lambda` for `Picasso_Config_Manager` (PRs to `main`, auto-deploys touched staging functions) and `Analytics_Dashboard_API` (same repo, same deploy path); `picasso-analytics-dashboard` (the tenant portal — own repo/CI); picasso repo (`docs/roadmap/`, this doc — pure-docs PRs to `main` per the branch-routing table in root `CLAUDE.md`).
@@ -254,15 +254,31 @@ Spike complete. Both P0c questions are answered against `origin/main` of both re
 - **T3b** — portal Meta connect card calls `Meta_OAuth_Handler`'s `/meta/oauth/url?tenant_id=…` (staging URL, post-T3a env injection), popup flow mirroring `ChannelsSettings`. No Clerk-instance conflict (state-JWT + CORS `*`). Authz note: the connect endpoint trusts `tenant_id` from the caller + the signed state — the portal must pass the authenticated user's own tenant, not an arbitrary one.
 - **T3c** — add a `/settings/messenger` PATCH to `Analytics_Dashboard_API` (a new `handle_settings_messenger_patch` mirroring the notifications handler): authenticate with the portal's `divine-impala-48` Clerk (existing), read-modify-write `messenger_behavior` via the ETag/deep-merge path, send the whole section (always-send-whole). PII gate still applies (new tenant-scoped write into a previously CB-only section).
 
-## 12. Execution status (updated as subphases land)
+## 12. Execution status — ✅ PROGRAM COMPLETE (all 11 subphases merged 2026-07-13/14)
 
-- **T1** ✅ merged (config-builder#84) — `MESSENGER_CHANNEL` toggle; later relocated to the product page in T2c.
-- **P0a** ✅ merged (lambda#456) — first Config Manager test suite + CI node:test job.
-- **P0b** ✅ merged (config-builder#85 + lambda#457) — two-tier section contract, both sides.
-- **T2a** ✅ merged (lambda#458) — `messenger_behavior` editable; **live on staging** (`Deploy Picasso_Config_Manager` ✓ on merge). Backend-first gate satisfied.
-- **T2b** ✅ merged (config-builder#86) — `getMergedConfig` emit + contract sync (20/18) + forward-compat.
-- **T2c** ✅ merged (config-builder#87) — Messenger product page + readiness checklist; named pattern-setting review passed (APPROVE WITH CHANGES, both fixes applied).
-- **P0c** ✅ this doc §11 — auth topology + write-path resolved; R10 downgraded.
-- **T3a / T3b / T3c / T3d** — pending.
+All subphases are merged to their repos' `main` and staging-deployed. Prod untouched (gated, out of scope).
 
-> Live browser round-trips (saving via the Clerk-authed staging CB/portal) are operator-verified — a CLI agent cannot mint a browser Clerk session. Each merged PR notes this; the underlying logic is proven by unit/integration tests + red/green checks.
+- **T1** ✅ config-builder#84 — `MESSENGER_CHANNEL` toggle (relocated to the product page in T2c).
+- **P0a** ✅ lambda#456 — first Config Manager test suite + CI node:test job.
+- **P0b** ✅ config-builder#85 + lambda#457 — two-tier section contract, both sides.
+- **T2a** ✅ lambda#458 — `messenger_behavior` editable; **live on staging** (`Deploy Picasso_Config_Manager` ✓). Backend-first gate satisfied.
+- **T2b** ✅ config-builder#86 — `getMergedConfig` emit + contract sync (20/18) + forward-compat.
+- **T2c** ✅ config-builder#89 (re-land — the original #87 merged a commit that captured only a file deletion; the real product-page files never committed and were re-landed) — Messenger product page + readiness checklist; named pattern-setting review passed (APPROVE WITH CHANGES, both fixes applied).
+- **P0c** ✅ §11 (picasso#777) — auth topology + write-path resolved; R10 downgraded.
+- **T3a** ✅ config-builder#88 — channels URL fail-loud (no hardcoded prod fallback) + prod URL injection in deploy-production.yml.
+- **T3b** ✅ picasso-analytics-dashboard#73 — portal Meta connect card (`MetaConnectionCard`, popup OAuth to `Meta_OAuth_Handler`, fail-loud on unset `VITE_META_OAUTH_URL`).
+- **T3c** ✅ lambda#459 (ADA `PATCH/GET /settings/messenger`, deep-merge, PII-reviewed) + picasso-analytics-dashboard#73 (`MessengerEscalationCard`). Portal edits the escalation recipient via `Analytics_Dashboard_API` (its own Clerk), preserving sibling `messenger_behavior` keys.
+- **T3d** ✅ config-builder#90 — welcome-surfaces editor (ice breakers ≤4 + persistent menu) with the M5 re-push honesty notice.
+
+**Net capability:** Config Builder (Settings → Messenger) fully manages the super-admin band (flag, escalation, disclosure, tone, welcome surfaces); the portal (Integrations) delegates the tenant band (connect FB/IG, edit escalation recipient). Backend accepts both write paths (CB→Config Manager wholesale; portal→ADA deep-merge), contract-guarded.
+
+> Live browser round-trips (saving via the Clerk-authed staging CB/portal, and a real Meta page connect) remain **operator-verified** — a CLI agent cannot mint a browser Clerk session. Every merged PR notes this; the underlying logic is proven by unit/integration tests + red/green checks + production builds.
+
+### Findings surfaced during T3b (pre-existing, out of this program's scope — routed to the operator)
+
+Ground-truthing `Meta_OAuth_Handler` during T3b turned up two pre-existing issues, both flagged for separate remediation (neither blocks this program; the portal only ever sends its own tenantId):
+
+1. **`GET /meta/channels/{tenant_id}` 500s on staging** — likely a `boto3.dynamodb.conditions.Key` reachability issue under a bare `import boto3`. The connect card degrades gracefully (retryable load error), but the status read is broken until fixed.
+2. **`Meta_OAuth_Handler` routes don't authorize the caller against `tenant_id`** — a public Function URL that will list/disconnect any tenant given only its ID. No *new* exposure from this program (portal sends its own tenantId), but it warrants its own security remediation item.
+
+A third minor correction was folded in during T3b: the connect endpoint returns `{"oauth_url": …}`, not `{"url": …}` — the client reads `oauth_url` with a `url` fallback.
