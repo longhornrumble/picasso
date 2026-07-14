@@ -732,6 +732,14 @@ data "aws_iam_policy_document" "oauth_exec" {
     actions   = ["secretsmanager:GetSecretValue"]
     resources = ["${var.meta_app_secret_arn}*"]
   }
+  # Caller-authz on /meta/channels/*: verify the dashboard's internal Picasso
+  # JWT (HS256) with the same signing secret Analytics_Dashboard_API uses. The
+  # trailing -* covers Secrets Manager's random 6-char suffix.
+  statement {
+    sid       = "JwtSigningKeyRead"
+    actions   = ["secretsmanager:GetSecretValue"]
+    resources = ["arn:aws:secretsmanager:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:secret:picasso/staging/jwt/signing-key-*"]
+  }
   statement {
     sid       = "DenyAllProdDynamoDB"
     effect    = "Deny"
@@ -788,6 +796,11 @@ resource "aws_lambda_function" "oauth" {
       TENANT_REGISTRY_TABLE  = var.tenant_registry_table_name
       # M5: welcome-surface push reads messenger_behavior.welcome at connect.
       CONFIG_BUCKET = var.config_bucket_name
+      # Caller-authz on /meta/channels/*: the internal Picasso JWT signing
+      # secret (Secrets Manager id, matches JwtSigningKeyRead above). The Clerk
+      # JWKS URL for the operator (Config Builder) token defaults in-handler to
+      # the config Clerk instance, so no CLERK_CONFIG_JWKS_URL var is needed here.
+      JWT_SECRET_KEY_NAME = "picasso/staging/jwt/signing-key"
     }
   }
 
