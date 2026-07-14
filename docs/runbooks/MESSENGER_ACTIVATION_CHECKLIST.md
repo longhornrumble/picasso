@@ -44,7 +44,7 @@
 
 ## Step 5 — Verify the portal (tenant band)
 
-- [ ] Portal → **Integrations → Meta connect card**: a role-holder can connect / see status / disconnect. ⚠️ **Known bug:** `GET /meta/channels/{id}` currently **500s on staging** (connection-status read broken; the card degrades to a retryable load error). Connect/disconnect still function; status display is affected until that Lambda bug is fixed.
+- [ ] Portal → **Integrations → Meta connect card**: a role-holder can connect / see status / disconnect. (The `GET /meta/channels/{id}` connection-status read 500'd on staging until 2026-07-14; **fixed in lambda#462** — DynamoDB `Decimal` (the `ttl`) wasn't JSON-serializable — deployed + live-verified. Status display now works.)
 - [ ] Portal → **escalation editing**: change the escalation recipient → confirm it round-trips into the config (writes via `Analytics_Dashboard_API`'s deep-merge, preserving sibling `messenger_behavior` keys).
 
 ## Step 6 — Quick UI sanity (jsdom couldn't verify these)
