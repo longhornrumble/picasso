@@ -1,0 +1,184 @@
+{
+  "_readme": "The six-month numeric narrative arc for persona BrightPath. Numbers adapted from the parked frontend mock (picasso-analytics-dashboard@bfcdc32, src/services/attributionMockData.ts), corrected where that fixture did not reconcile — see ../../README.md 'Departures'.",
+
+  "_anti_time_rot": "Months are RELATIVE offsets, never fixed dates. m0 = the seeder's run month; m-5 = five months prior. Roadmap §2 makes this load-bearing: a fixed-date demo silently rots. Reset before every demo re-anchors the clock.",
+
+  "_seeding_split": {
+    "note": "Roadmap §4.2. History and current month are produced differently on purpose.",
+    "m-5_to_m-1": "Write C5 aggregate rows DIRECTLY. Deterministic, no dependency on the aggregator's schedule or Dub credentials.",
+    "m0": "Seed raw CONVERSATION_STARTED events + registry rows and let the real Attribution_Aggregator compute — so live demo conversations flow through the genuine pipeline and land in the month the prospect is looking at.",
+    "demo_caveat": "Conversations/Forms/Leads update instantly during a live demo; Attribution updates on the aggregator's cadence. The runbook must say so out loud."
+  },
+
+  "_c5_row_shapes": {
+    "table": "picasso-attribution-aggregates",
+    "pk": "TENANT#{tenant_id}",
+    "sk_summary": "METRIC#attribution_summary#{YYYY-MM}",
+    "sk_channel": "METRIC#attribution_channel#{YYYY-MM}#{channel}",
+    "sk_entrypoint": "METRIC#attribution_entrypoint#{YYYY-MM}#{entry_point_id}",
+    "envelope": "Metrics nest under a `data` attribute — NOT at top level. Row = {pk, sk, data, updated_at, ttl}. ttl = now + 420 days. Floats convert to Decimal.",
+    "website_reach_quirk": "The channel row's `reach` object is OMITTED ENTIRELY when channel == 'website'; website reach lives in the summary row's `reach_page_views_sessions` instead."
+  },
+
+  "_unresolved_nullable_fields": {
+    "fields": ["self_booked_pct", "median_first_response_minutes"],
+    "problem": "The real Attribution_Aggregator emits these as None (nullable v1 — no scheduling source wired yet). If history months are seeded with real values but m0 is computed by the live aggregator, the time panel shows numbers for past months and null for the current one — visibly broken mid-demo.",
+    "options": ["Seed history as null too (consistent, but loses the staff-hours story for every month)", "Accept the m0 gap and let the runbook route around it", "Wire the scheduling source before P2"],
+    "status": "UNRESOLVED — decide at P2, before the first rehearsal."
+  },
+
+  "monthly_series": {
+    "_note": "The source of truth. Deltas are DERIVED from these, never asserted — the parked mock hardcoded deltas that contradicted its own series (asserted 143/28, implied 104/19).",
+    "_month_offsets": ["m-5", "m-4", "m-3", "m-2", "m-1", "m0"],
+    "conversations": {
+      "website":    [610, 655, 690, 742, 798, 842],
+      "messenger":  [150, 178, 196, 214, 242, 268],
+      "standalone": [40, 58, 72, 88, 101, 112],
+      "campaign":   [0, 0, 0, 0, 14, 37],
+      "total":      [800, 891, 958, 1044, 1155, 1259]
+    },
+    "leads": {
+      "website":    [98, 104, 112, 126, 138, 147],
+      "messenger":  [24, 30, 34, 39, 44, 49],
+      "standalone": [4, 6, 9, 11, 14, 16],
+      "campaign":   [0, 0, 0, 0, 2, 5],
+      "total":      [126, 140, 155, 176, 198, 217]
+    },
+    "_derived_deltas_m0_vs_m1": {
+      "conversations": { "abs": 104, "pct": 9.0 },
+      "leads": { "abs": 19, "pct": 9.6 },
+      "rate_pp": { "abs": 0.1, "pct": 0.6 }
+    }
+  },
+
+  "story": {
+    "shape": "Steady, believable growth — not a hockey stick. Website is the backbone at roughly two-thirds of volume. Messenger is the best converter despite a fifth of the traffic. QR/standalone climbs off a spring event push. The campaign channel launched last month and is still below the confidence floor.",
+    "beats": [
+      "Website grows ~6-8% a month and converts a steady ~17.5% — the dependable backbone.",
+      "Messenger converts highest (18.3%) on a fifth of the volume — the 'you're leaving money here' beat.",
+      "Standalone/QR nearly triples over six months off the spring event push — the prop-kit beat.",
+      "Campaign goes 0 -> 14 -> 37 across the last two months and stays under n=50 — deliberately exercises the C7 held-rate UI.",
+      "46% of everything happens after hours — the money-band beat, and the reason the product exists."
+    ]
+  },
+
+  "m0_summary_row": {
+    "_sk": "METRIC#attribution_summary#{YYYY-MM}",
+    "data": {
+      "conversations": 1259,
+      "engaged": 843,
+      "applications": 314,
+      "leads": 217,
+      "after_hours_conversations": 579,
+      "conversation_minutes": 4820,
+      "reach_page_views_sessions": 6240,
+      "self_booked_pct": null,
+      "median_first_response_minutes": null
+    },
+    "_reconciliation": "engaged (553+198+71+21=843) and applications (214+71+22+7=314) now SUM to the channel rows. The parked mock claimed 812/301 while its channels summed to 843/314 — a prospect adding the column would have caught it. Conversations (1259) and leads (217) already reconciled.",
+    "_derived": "rate = 217/1259 = 17.2%. after_hours = 46% of 1259 = 579."
+  },
+
+  "m0_channel_rows": {
+    "website": {
+      "data": {
+        "conversations": 842, "engaged": 553, "applications": 214, "leads": 147,
+        "after_hours_conversations": 387, "conversation_minutes": 3210,
+        "topic_counts": { "Volunteer": 312, "Donation": 188, "Events": 141, "Services": 121, "General": 80 },
+        "resource_clicks": { "/volunteer/apply": 214, "/giving": 176, "/events/gala": 98, "/programs/mentorship": 64 },
+        "self_booked_pct": null, "median_first_response_minutes": null
+      },
+      "_no_reach": "reach OMITTED for website by the aggregator — see _c5_row_shapes.website_reach_quirk.",
+      "_rate": "147/842 = 17.5%"
+    },
+    "messenger": {
+      "data": {
+        "conversations": 268, "engaged": 198, "applications": 71, "leads": 49,
+        "after_hours_conversations": 139, "conversation_minutes": 890,
+        "topic_counts": { "Volunteer": 88, "Services": 64, "Donation": 51, "Events": 40, "General": 25 },
+        "resource_clicks": { "/volunteer/apply": 61, "/programs": 33 },
+        "self_booked_pct": null, "median_first_response_minutes": null
+      },
+      "_rate": "49/268 = 18.3% — the strongest converter, the headline insight.",
+      "_seeded_history_only": "Messenger is seeded history until Meta App Review clears (roadmap §5). Channel is resolved from a `meta:` session-id prefix, NOT from a registry row."
+    },
+    "standalone": {
+      "data": {
+        "conversations": 112, "engaged": 71, "applications": 22, "leads": 16,
+        "after_hours_conversations": 41, "conversation_minutes": 480,
+        "topic_counts": { "Volunteer": 41, "Events": 33, "Donation": 22, "Services": 16 },
+        "resource_clicks": { "/events/register": 44, "/volunteer": 29 },
+        "reach": { "scans": 340, "clicks": 0 },
+        "self_booked_pct": null, "median_first_response_minutes": null
+      },
+      "_rate": "16/112 = 14.3%"
+    },
+    "campaign": {
+      "data": {
+        "conversations": 37, "engaged": 21, "applications": 7, "leads": 5,
+        "after_hours_conversations": 12, "conversation_minutes": 240,
+        "topic_counts": { "Donation": 18, "Events": 11, "Volunteer": 8 },
+        "resource_clicks": { "/giving/spring": 31 },
+        "reach": { "scans": 0, "clicks": 210 },
+        "self_booked_pct": null, "median_first_response_minutes": null
+      },
+      "_rate_held": "37 < 50 => C7 confidence floor => rate suppressed, rate_held:true. DELIBERATE — this is the only place the held-state UI gets exercised. Do not let this channel cross 50."
+    }
+  },
+
+  "entry_points": {
+    "_id_format": "Real ids are `ep_` + ULID matching /^ep_[0-9A-Za-z]{8,64}$/ (Attribution_Mint_Service/validation.mjs:163). The `ref` keys below are PLACEHOLDERS — real ids are minted ONCE in staging at P3, BEFORE the microsite spec handoff, and the seeder later writes those SAME ids verbatim into the prod registry (roadmap §5).",
+    "_mintable": {
+      "_constraint": "Registry channel enum is `standalone` | `campaign` ONLY (validation.mjs:12). These are the only entry points the product can actually mint.",
+      "standalone": [
+        { "ref": "qr_gala_flyer", "label": "Gala flyer QR", "placement": "print", "target_type": "standalone_chat", "scans": 210, "conversations": 74, "leads": 11, "_rate": "14.9%" },
+        { "ref": "qr_lobby", "label": "Lobby QR poster", "placement": "on-site", "target_type": "standalone_chat", "scans": 130, "conversations": 38, "leads": 5, "_rate": "13.2%" }
+      ],
+      "campaign": [
+        { "ref": "camp_spring", "label": "Spring appeal email", "campaign": "spring-appeal", "placement": "email", "target_type": "site_url", "clicks": 140, "conversations": 24, "leads": 3, "_rate_held": true, "_is_new": true },
+        { "ref": "camp_newsletter", "label": "Newsletter link", "campaign": "newsletter", "placement": "email", "target_type": "site_url", "clicks": 70, "conversations": 13, "leads": 2, "_rate_held": true, "_is_new": true }
+      ]
+    },
+    "_not_mintable": {
+      "_problem": "Roadmap §5 wants 3 website page entry points (home/programs/giving) as registry rows. The mint service REJECTS channel:website. The aggregator instead defaults no-ep AND unregistered-ep traffic to `website` (Attribution_Aggregator/lambda_function.py:346, :498), and denormalizes label/campaign/placement from the registry — so unregistered website eps would render with EMPTY labels.",
+      "_consequence": "Per-page website provenance ('Homepage widget' vs 'Giving page') is not achievable through the supported path. The parked mock showed labelled website entry points (`web_home` -> 'Homepage widget') that the product cannot produce.",
+      "_options": [
+        "Seeder writes website registry rows directly, bypassing mint — works, but the demo shows a shape the real product can never mint (weakens the dogfood claim in roadmap §1)",
+        "Website pages carry no ep; accept a single undifferentiated 'website' channel with no per-page breakdown",
+        "Extend the mint channel enum to accept website — a product decision with real blast radius"
+      ],
+      "_status": "UNRESOLVED — blocks the P3 microsite spec, which needs per-page ?ep= values. Decide before P3.",
+      "_intended_if_resolved": [
+        { "ref": "web_home", "label": "Homepage widget", "placement": "site-wide", "conversations": 520, "leads": 96, "_rate": "18.5%" },
+        { "ref": "web_programs", "label": "Programs page", "placement": "programs", "conversations": 214, "leads": 39, "_rate": "18.2%" },
+        { "ref": "web_giving", "label": "Giving page", "placement": "giving", "conversations": 108, "leads": 12, "_rate": "11.1%", "_story": "Deliberately the weak spot — gives the demo a 'here is what the product would tell you to fix' beat." }
+      ]
+    },
+    "_messenger": "FB Page DM + Instagram DM are NOT registry rows — messenger is resolved from a `meta:` session-id prefix. Seeded history only."
+  },
+
+  "lead_pipeline": {
+    "_note": "Leads are attributes on the picasso_form_submissions row (pipeline_status + tenant_pipeline_key='{tenant_id}#{status}'). Spread m0's 217 leads across every state so the Lead Workspace looks alive and a lead can be advanced live during the demo (roadmap §8 step 5).",
+    "_reserve": "Leave several leads in `new` so the demo always has one to advance, even on a re-run.",
+    "distribution": { "new": 34, "contacted": 61, "qualified": 48, "converted": 52, "archived": 22 },
+    "_sums_to": 217
+  },
+
+  "scheduling": {
+    "_v1_scope": "Seeded-view-only. Live booking needs a real connected calendar — deferred deliberately (roadmap §8 caveat).",
+    "_gotcha": "picasso-booking partitions on `tenantId` (camelCase). NEVER set is_synthetic — those rows are filtered out of the dashboard.",
+    "upcoming": 9,
+    "past": 24,
+    "_note": "Both relative to run date — the anti-time-rot rule's sharpest edge. This exact failure (fixed dates aging past the default 'Upcoming' scope) is currently red in the dashboard's own test suite."
+  },
+
+  "notifications": {
+    "_v1_scope": "Seeded history only. Nothing is ever sent to the roster's @example.org addresses.",
+    "_gotcha": "Lifecycle events (send -> delivery -> open -> click) MUST share a message_id or rates compute to zero.",
+    "_live_send_warning": "A live form completion during a demo triggers a REAL internal notification. The demo tenant's recipients must be a MyRecruiter-owned address — never @example.org (SES bounces damage sender reputation).",
+    "m0_sends": 268,
+    "delivery_rate": 0.98,
+    "open_rate": 0.52,
+    "click_rate": 0.19
+  }
+}

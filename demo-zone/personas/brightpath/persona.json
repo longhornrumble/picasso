@@ -1,0 +1,179 @@
+{
+  "_readme": "Persona 1 fixture pack — see ../../README.md for verified constraints and departures. All people, metrics, and the organization are invented.",
+  "persona_id": "brightpath",
+  "tenant_id": "DEMO-YS01",
+  "vertical": "youth_services",
+  "subscription_tier": "Enterprise",
+
+  "identity": {
+    "org_name": "BrightPath",
+    "tagline": "Every young person deserves someone in their corner.",
+    "mission": "BrightPath pairs young people in the Rivermont area with consistent, caring adults — and stays with them from the first match through the first apartment.",
+    "locale": "Rivermont (fictional metro; do not substitute a real city)",
+    "website": "https://demo.myrecruiter.ai",
+    "_name_collision": "BrightPath Youth Alliance (brightpathtennessee.com) is a REAL Tennessee youth nonprofit with near-identical programs. Accepted knowingly for demo-only use per docs/roadmap/DEMO_ZONE.md §3. Do NOT use the 'Youth Alliance' suffix, their copy, or their branding. Re-open if this persona ever appears in public collateral.",
+    "_fictional_notice": "The microsite footer and KB must carry a visible 'demonstration environment' notice. The site is noindex and unlinked."
+  },
+
+  "tone_prompt": "You are the front-desk voice of BrightPath, a youth mentoring nonprofit in Rivermont. You are warm, plainspoken, and unhurried — the kind of person who makes a nervous first-time volunteer feel like they belong. You care more about getting someone to the right next step than about sounding polished.",
+
+  "bedrock_instructions": {
+    "role_instructions": "You help visitors understand BrightPath's three programs, find the right way to get involved, and complete the step they came for. When someone is ready to act, offer the matching next step rather than more information.",
+    "formatting_preferences": {
+      "emoji_usage": "none",
+      "response_style": "conversational",
+      "detail_level": "concise"
+    },
+    "custom_constraints": [],
+    "fallback_message": "I don't have that one on hand — but the BrightPath team can help. You can reach them at hello@example.org or leave your details and someone will follow up."
+  },
+
+  "feature_flags": {
+    "V4_ACTION_SELECTOR": true,
+    "dashboard_conversations": true,
+    "dashboard_forms": true,
+    "dashboard_attribution": true,
+    "dashboard_notifications": true,
+    "dashboard_scheduling": true,
+    "dashboard_settings": true,
+    "_note": "Analytics_Dashboard_API:1521-1537 reads dashboard_* from BOTH `features` and `feature_flags` (OR'd). deploy_tenant_stack:702-719 derives them from subscription_tier, where Enterprise => premium => all on. Set them in whichever section the Config Builder writes; the reader tolerates either."
+  },
+
+  "programs": [
+    {
+      "program_id": "mentorship_matches",
+      "name": "Mentorship Matches",
+      "summary": "One-to-one matches between a young person and a screened adult mentor, supported for a minimum of twelve months.",
+      "audience": "Youth ages 9-17 in the Rivermont area, and adults who can commit a year."
+    },
+    {
+      "program_id": "bright_futures",
+      "name": "Bright Futures",
+      "summary": "After-school tutoring and life-skills sessions — homework, budgeting, cooking, interviewing — run four afternoons a week.",
+      "audience": "Middle and high school students; volunteers who can give one afternoon a week."
+    },
+    {
+      "program_id": "launchpad",
+      "name": "Launchpad",
+      "summary": "Transition support for youth aging out of foster care: housing navigation, first-job coaching, and a standing monthly check-in that does not expire.",
+      "audience": "Youth ages 17-21 leaving care; volunteers with lived or professional experience."
+    }
+  ],
+
+  "cta_definitions": {
+    "_note": "Shapes conform to picasso-config-builder/src/lib/schemas/cta.schema.ts. action->type mapping is enforced at :106-113; required field per action at :58-103. All ai_available:true => these form the V4 Action Selector vocabulary.",
+    "volunteer_apply": {
+      "label": "Apply to volunteer",
+      "action": "start_form",
+      "type": "form_trigger",
+      "formId": "volunteer_application",
+      "style": "primary",
+      "ai_available": true
+    },
+    "mentor_apply": {
+      "label": "Become a mentor",
+      "action": "start_form",
+      "type": "form_trigger",
+      "formId": "mentor_application",
+      "style": "primary",
+      "ai_available": true
+    },
+    "give_today": {
+      "label": "Give today",
+      "action": "external_link",
+      "type": "external_link",
+      "url": "https://demo.myrecruiter.ai/giving",
+      "style": "primary",
+      "ai_available": true
+    },
+    "giving_inquiry": {
+      "label": "Ask about giving",
+      "action": "start_form",
+      "type": "form_trigger",
+      "formId": "donation_inquiry",
+      "style": "secondary",
+      "ai_available": true,
+      "_added": "Beyond roadmap §3's 5-CTA list — without it donation_inquiry has no route into the AI vocabulary. See README 'Departures'. Veto if unwanted."
+    },
+    "gala_register": {
+      "label": "Register for the gala",
+      "action": "start_form",
+      "type": "form_trigger",
+      "formId": "event_registration",
+      "style": "secondary",
+      "ai_available": true
+    },
+    "explore_programs": {
+      "label": "Explore programs",
+      "action": "send_query",
+      "type": "bedrock_query",
+      "query": "Tell me about BrightPath's programs",
+      "style": "secondary",
+      "ai_available": true
+    }
+  },
+
+  "topic_mix": {
+    "_note": "The ONLY categories the product can emit — Analytics_Dashboard_API:6024-6036 keyword-matches first_question text. 'Supplies' is unused: BrightPath runs no supply drive. The seeder must author first_question strings whose keywords land in the intended category; these weights are the target distribution, not an assertable field.",
+    "_keyword_map": {
+      "Volunteer": "contains 'volunteer'",
+      "Donation": "contains 'donate' or 'donation'",
+      "Events": "contains 'event' or 'gathering'",
+      "Services": "contains 'service' or 'help'",
+      "Supplies": "contains 'supplies' or 'request'",
+      "General": "no keyword match (evaluated in the order above; first match wins)"
+    },
+    "weights": {
+      "Volunteer": 0.37,
+      "Donation": 0.22,
+      "Events": 0.18,
+      "Services": 0.17,
+      "General": 0.06
+    },
+    "sample_first_questions": {
+      "Volunteer": [
+        "How do I volunteer as a mentor?",
+        "Do you need volunteers on weekends?",
+        "What's the time commitment to volunteer?"
+      ],
+      "Donation": [
+        "Can I donate monthly instead of once?",
+        "Is my donation tax deductible?",
+        "Where does my donation actually go?"
+      ],
+      "Events": [
+        "When is the spring gala event?",
+        "Is the event family friendly?",
+        "Can I bring a guest to the event?"
+      ],
+      "Services": [
+        "Can BrightPath help my nephew with tutoring?",
+        "What services do you offer for kids aging out of care?",
+        "I need help finding a mentor for my son"
+      ],
+      "General": [
+        "What are your office hours?",
+        "Where are you located?"
+      ]
+    }
+  },
+
+  "roster": {
+    "_note": "Fictional people ONLY. Emails @example.org, phones 555-01xx (RFC 2606 / NANP reserved ranges). Used for STORED rows only — never as a live send destination (roadmap §7). Live notification recipients must be a MyRecruiter-owned address.",
+    "staff": [
+      { "name": "Dana Whitfield", "role": "Volunteer Coordinator", "email": "dana.whitfield@example.org", "phone": "555-0142" },
+      { "name": "Marcus Reyes", "role": "Program Director", "email": "marcus.reyes@example.org", "phone": "555-0177" },
+      { "name": "Priya Raman", "role": "Development Lead", "email": "priya.raman@example.org", "phone": "555-0119" }
+    ],
+    "contacts": [
+      { "name": "Alice Nkemdirim", "email": "a.nkemdirim@example.org", "phone": "555-0163", "intent": "mentor_application" },
+      { "name": "Ben Ostrowski", "email": "b.ostrowski@example.org", "phone": "555-0128", "intent": "volunteer_application" },
+      { "name": "Carla Jimenez", "email": "c.jimenez@example.org", "phone": "555-0154", "intent": "donation_inquiry" },
+      { "name": "Devon Achebe", "email": "d.achebe@example.org", "phone": "555-0136", "intent": "event_registration" },
+      { "name": "Erin Vasquez", "email": "e.vasquez@example.org", "phone": "555-0181", "intent": "volunteer_application" },
+      { "name": "Farid Haddad", "email": "f.haddad@example.org", "phone": "555-0195", "intent": "mentor_application" },
+      { "name": "Grace Lindqvist", "email": "g.lindqvist@example.org", "phone": "555-0107", "intent": "event_registration" },
+      { "name": "Hollis Beaumont", "email": "h.beaumont@example.org", "phone": "555-0172", "intent": "donation_inquiry" }
+    ]
+  }
+}
