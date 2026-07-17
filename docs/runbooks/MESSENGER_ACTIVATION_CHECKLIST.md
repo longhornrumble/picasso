@@ -44,7 +44,7 @@
 
 ## Step 5 — Verify the portal (tenant band)
 
-- [ ] Portal → **Integrations → Meta connect card**: a role-holder can connect / see status / disconnect. ⚠️ **Known bug:** `GET /meta/channels/{id}` currently **500s on staging** (connection-status read broken; the card degrades to a retryable load error). Connect/disconnect still function; status display is affected until that Lambda bug is fixed.
+- [ ] Portal → **Integrations → Meta connect card**: a role-holder can connect / see status / disconnect. (The `GET /meta/channels/{id}` connection-status read 500'd on staging until 2026-07-14; **fixed in lambda#462** — DynamoDB `Decimal` (the `ttl`) wasn't JSON-serializable — deployed + live-verified. Status display now works.)
 - [ ] Portal → **escalation editing**: change the escalation recipient → confirm it round-trips into the config (writes via `Analytics_Dashboard_API`'s deep-merge, preserving sibling `messenger_behavior` keys).
 
 ## Step 6 — Quick UI sanity (jsdom couldn't verify these)
@@ -54,5 +54,5 @@
 ## Known gates / caveats (not blockers, but know them)
 
 - **App Review / Advanced Access** gates *real-tenant self-serve* connect. Role-holders can test everything above now; non-role-holder tenants can't connect until Meta approves — see [`../roadmap/MESSENGER_APP_REVIEW_PACKAGE.md`](../roadmap/MESSENGER_APP_REVIEW_PACKAGE.md).
-- **`Meta_OAuth_Handler` caller-authz gap** (open security item): its routes trust `tenant_id` without verifying the caller owns it — a public Function URL. No new exposure from the portal (it sends its own tenantId), but worth its own remediation before broad rollout.
+- **`Meta_OAuth_Handler` caller-authz gap — CLOSED 2026-07-14** (lambda#463 + picasso#784/#785, deployed + live-verified on staging). The `/meta/channels/*` routes now authorize the caller: the portal's internal Picasso JWT with a matching `tenant_id` (a mismatch is a 403), or the Config Builder operator's Clerk JWT (any tenant). OAuth `url`/`callback` stay public (Meta's redirect); the server-side welcome-repush backstop (IAM invoke) is exempt. Unauthenticated disconnect/enumerate now returns 401 (verified live).
 - **Prod** promotion is out of scope here; the dashboard prod build additionally needs `VITE_META_OAUTH_URL` set (the prod `Meta_OAuth_Handler` URL) before a prod portal deploy.
