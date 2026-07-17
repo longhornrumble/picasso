@@ -243,6 +243,51 @@ describe('/go/ loader — postMessage targeting', () => {
   });
 });
 
+describe('/go/ loader — PICASSO_LOADED title listener (hardening)', () => {
+  const SAME_ORIGIN = 'https://chat.myrecruiter.ai';
+
+  function boot() {
+    // A tenant is required for the listener to be registered at all.
+    runLoader('?t=my87674d777bf9');
+    document.title = 'baseline';
+  }
+
+  function post(data, origin = SAME_ORIGIN) {
+    window.dispatchEvent(new MessageEvent('message', { data, origin }));
+  }
+
+  it('sets document.title from a same-origin PICASSO_LOADED', () => {
+    boot();
+    post({ type: 'PICASSO_LOADED', config: { chat_title: 'BrightPath Chat' } });
+    expect(document.title).toBe('BrightPath Chat');
+  });
+
+  it('falls back to branding.chat_title', () => {
+    boot();
+    post({ type: 'PICASSO_LOADED', config: { branding: { chat_title: 'Branded' } } });
+    expect(document.title).toBe('Branded');
+  });
+
+  it('ignores a PICASSO_LOADED from a foreign origin (no title spoofing)', () => {
+    boot();
+    post({ type: 'PICASSO_LOADED', config: { chat_title: 'evil.example' } }, 'https://evil.example');
+    expect(document.title).toBe('baseline');
+  });
+
+  it('does not throw on a null-data message and leaves the title intact', () => {
+    boot();
+    // A page can postMessage(null); reading .type on it would throw.
+    expect(() => post(null)).not.toThrow();
+    expect(document.title).toBe('baseline');
+  });
+
+  it('ignores unrelated same-origin message types', () => {
+    boot();
+    post({ type: 'SOMETHING_ELSE', config: { chat_title: 'nope' } });
+    expect(document.title).toBe('baseline');
+  });
+});
+
 describe('/go/ loader — unchanged behavior', () => {
   it('shows the error container and posts nothing when no tenant is given', () => {
     const { messages } = runLoader('');

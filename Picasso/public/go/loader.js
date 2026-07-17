@@ -149,13 +149,19 @@
   // Add iframe to page
   document.body.appendChild(iframe);
 
-  // Listen for messages from iframe to update page title
+  // Listen for messages from the iframe to update the page title.
   window.addEventListener('message', function(event) {
-    if (event.data.type === 'PICASSO_LOADED' && event.data.config) {
-      const title = event.data.config.chat_title || event.data.config.branding?.chat_title;
-      if (title) {
-        document.title = title;
-      }
+    // Only trust the same-origin iframe we created. Without this, any window
+    // holding a handle to this page could postMessage a fake PICASSO_LOADED
+    // and set document.title (a small phishing surface).
+    if (event.origin !== iframeOrigin) return;
+    // Guard event.data before reading .type — a page can postMessage(null),
+    // which would throw on `.type`. Same bug class as widget-host.js:311.
+    if (!event.data || event.data.type !== 'PICASSO_LOADED' || !event.data.config) return;
+
+    const title = event.data.config.chat_title || event.data.config.branding?.chat_title;
+    if (title) {
+      document.title = title;
     }
   });
 })();
