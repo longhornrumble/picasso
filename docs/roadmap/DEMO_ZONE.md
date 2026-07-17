@@ -50,11 +50,14 @@ Born in staging 525 first                   │ microsite  demo.myrecruiter.ai  
 
 ## 3. Persona 1 — youth services
 
-> **Fictional-org rule:** the org, its people, and its metrics are invented. The microsite footer and KB carry a small "demonstration environment" notice; the org name must not collide with a real nonprofit's branding (sanity-check the name before the microsite ships). Never imitate a real organization.
+> **Fictional-org rule:** the org, its people, and its metrics are invented. The microsite carries a "demonstration environment" notice, is `noindex`, and is unlinked. Never imitate a real organization's branding — no real logo, copy, or claim of identity.
+>
+> **Name collisions: unavoidable, accepted.** The nonprofit name space is saturated — a 2026-07-16 check found a real 501(c)(3) behind *every* candidate considered. A demo-only, unindexed prop that the operator narrates as fictional deceives no one, so a name coincidence alone is not a blocker. **The real risk is pipeline collision, not SEO:** never name a persona after an org that is — or could become — a MyRecruiter prospect. Check the pipeline, not just the web. Re-open the name if a persona leaks into public collateral (decks, marketing site, case-study material); that leak path is real, see the Seedling note below.
 
-**Proposed identity (Chris vetoes/edits):**
-- **Org:** *Brightwood Youth Alliance* — "Every young person deserves someone in their corner."
-  (Alternative: reuse **"Seedling"**, the fictional org already in sales collateral — `Website Redesign` sandbox demo + `Deal_prep_level-2/seedling-brief.json` — for cross-collateral continuity.)
+**Identity (decided by Chris, 2026-07-16):**
+- **Org:** *BrightPath* — "Every young person deserves someone in their corner."
+- **Known collision, accepted:** [BrightPath Youth Alliance](https://www.brightpathtennessee.com/) is a real Tennessee youth nonprofit whose programs (mentorship, academic support, career exposure) closely match the ones below. Mitigations: do **not** use the "Youth Alliance" suffix, their copy, or their branding; confirm they are not in the sales pipeline before the microsite ships.
+- **Rejected — "Seedling":** an earlier draft of this doc called Seedling "the fictional org already in sales collateral." **That was wrong.** [Seedling](https://www.seedlingmentors.org/) is a real Austin mentoring nonprofit and an actual MyRecruiter prospect — `Deal_prep_level-2/seedling-brief.json` is a live Deal Prep brief on them, and `picasso-webscraping/rag-scraper/scrape-seedling-mentors.js` scraped their real site into a KB. Never use it as a persona.
 - **Programs (3):** Mentorship Matches (1:1 adult mentors), Bright Futures (after-school tutoring & life skills), Launchpad (transition support for youth aging out of foster care).
 - **Conversational forms:** Volunteer Application, Mentor Application, Donation Inquiry, Event Registration.
 - **Topic mix:** Volunteering, Donations, Programs, Events, Contact & hours (weights per the fixture arc).
