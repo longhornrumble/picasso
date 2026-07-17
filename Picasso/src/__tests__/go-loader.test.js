@@ -12,14 +12,25 @@
  * default for "no ep").
  *
  * loader.js is not a module: it is an IIFE copied verbatim into dist/<env>/go/
- * (esbuild.config.mjs) and cannot be imported. So we evaluate the file against
- * a jsdom document and assert on what it posts to the iframe.
+ * (esbuild.config.mjs) and cannot be imported. So we read the real shipped
+ * file and evaluate it against a jsdom document, asserting on what it posts
+ * to the iframe.
+ *
+ * This test lives in src/__tests__/ rather than next to loader.js ON PURPOSE:
+ * esbuild copies public/go/ into dist/<env>/go/ RECURSIVELY and unfiltered
+ * (esbuild.config.mjs ~227), so anything under public/go/ ships to S3 and is
+ * publicly fetchable. A __tests__ directory there would have been deployed to
+ * chat.myrecruiter.ai/go/__tests__/. Do not move this back.
  */
 
 const fs = require('fs');
 const path = require('path');
 
-const LOADER_SRC = fs.readFileSync(path.join(__dirname, '..', 'loader.js'), 'utf8');
+// Reads the REAL shipped artifact, not a copy of it.
+const LOADER_SRC = fs.readFileSync(
+  path.join(__dirname, '..', '..', 'public', 'go', 'loader.js'),
+  'utf8'
+);
 
 // C2 contract — must match src/widget-host.js getEntryPointId()
 const VALID_EP = 'ep_01HQZX9KJ4MNPQRSTUVWXYZ234';
