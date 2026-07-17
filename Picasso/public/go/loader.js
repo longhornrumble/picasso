@@ -110,6 +110,14 @@
   const iframeSrc = window.location.origin + '/iframe.html?t=' + encodeURIComponent(tenantHash) + '&mode=fullpage';
   iframe.src = iframeSrc;
 
+  // The iframe is same-origin BY CONSTRUCTION (its src is built from
+  // window.location.origin above), so target it explicitly rather than '*'.
+  // Mirrors widget-host.js, which posts to a captured iframeOrigin. This
+  // matters more now that attribution (ep id, UTM, referrer) rides these
+  // messages: '*' delivers regardless of what the frame's origin turns out
+  // to be, so a future change to iframeSrc could silently widen the audience.
+  const iframeOrigin = window.location.origin;
+
   // Handle iframe load
   iframe.onload = function() {
     // Hide loading, show iframe
@@ -119,7 +127,7 @@
     iframe.contentWindow.postMessage({
       type: 'PICASSO_COMMAND',
       action: 'OPEN_CHAT'
-    }, '*');
+    }, iframeOrigin);
 
     // Also send init message with tenant info.
     // Shape mirrors sendInitMessage() in src/widget-host.js (~line 685).
@@ -129,7 +137,7 @@
       tenantHash: tenantHash,
       attribution: attribution,
       config: { mode: 'fullpage' }
-    }, '*');
+    }, iframeOrigin);
   };
 
   // Handle iframe load errors

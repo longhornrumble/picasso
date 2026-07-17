@@ -43,8 +43,12 @@ function runLoader(search, { cookie = '', referrer = '' } = {}) {
   Object.defineProperty(document, 'referrer', { value: referrer, configurable: true });
 
   const messages = [];
+  const targetOrigins = [];
   const fakeContentWindow = {
-    postMessage: (msg) => messages.push(msg),
+    postMessage: (msg, targetOrigin) => {
+      messages.push(msg);
+      targetOrigins.push(targetOrigin);
+    },
     // The iframe is appended to the document, so jsdom registers it as a frame
     // and calls contentWindow.close() during teardown. Without this, the whole
     // suite dies in Window.close rather than in any test.
@@ -76,7 +80,7 @@ function runLoader(search, { cookie = '', referrer = '' } = {}) {
     iframe.onload();
   }
 
-  return { iframe, messages };
+  return { iframe, messages, targetOrigins };
 }
 
 const initMessage = (messages) => messages.find((m) => m.type === 'PICASSO_INIT');
@@ -202,6 +206,29 @@ describe('/go/ loader — attribution shape parity with widget-host', () => {
 
     const direct = runLoader('?t=x', { referrer: '' });
     expect(initMessage(direct.messages).attribution.referrer).toBeNull();
+  });
+});
+
+describe('/go/ loader — postMessage targeting', () => {
+  it('targets the iframe origin explicitly, never a wildcard', () => {
+    const { targetOrigins } = runLoader(`?t=my87674d777bf9&ep=${VALID_EP}`);
+
+    // Attribution (ep id, UTM, referrer) rides these messages. '*' delivers
+    // regardless of the frame's actual origin; the iframe is same-origin by
+    // construction, so there is no reason to accept that.
+    expect(targetOrigins).not.toContain('*');
+    expect(targetOrigins).toEqual([
+      'https://chat.myrecruiter.ai',
+      'https://chat.myrecruiter.ai',
+    ]);
+  });
+
+  it('targets the same origin the iframe src was built from', () => {
+    const { iframe, targetOrigins } = runLoader('?t=my87674d777bf9');
+
+    // If these ever diverge, postMessage silently drops the message and the
+    // chat never initializes — so pin them to each other, not to a literal.
+    targetOrigins.forEach((origin) => expect(iframe.src.startsWith(origin)).toBe(true));
   });
 });
 
