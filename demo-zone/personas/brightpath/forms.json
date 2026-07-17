@@ -1,0 +1,154 @@
+{
+  "_readme": "The 4 conversational forms for persona BrightPath. Shape follows the real config convention (form_id/title/description/program/enabled/trigger_phrases/fields/introduction) and the field types the Config Builder supports. Field ids follow the live `field_{epoch_ms}` convention; the values here are fixed identifiers, not timestamps to interpret.",
+  "_field_types_available": ["address", "boolean", "currency", "date", "email", "name", "phone", "select", "tel", "text", "textarea"],
+  "_validation_note": "Real configs carry no per-field `validation` object — validation is implied by `type` + `required`.",
+  "_pii_note": "Every field below collects personal data. Per CLAUDE.md's Living-Inventory PR Rule, the demo tenant must be added to docs/roadmap/PII-Project/pii-inventory.md when it is created (P1/P4). Synthetic data lowers stakes but does not remove the surface.",
+
+  "conversational_forms": {
+    "volunteer_application": {
+      "form_id": "volunteer_application",
+      "title": "Volunteer Application",
+      "description": "General volunteer interest for Bright Futures and event support.",
+      "program": "bright_futures",
+      "enabled": true,
+      "trigger_phrases": [
+        "I want to volunteer",
+        "How do I sign up to volunteer",
+        "Volunteer application"
+      ],
+      "introduction": "Wonderful — takes about a minute, and Dana follows up personally within a day or two.",
+      "fields": [
+        { "id": "field_1763001000001", "type": "name", "label": "Your name", "prompt": "First off — what's your name?", "required": true },
+        { "id": "field_1763001000002", "type": "email", "label": "Email", "prompt": "What's the best email to reach you at?", "required": true },
+        { "id": "field_1763001000003", "type": "phone", "label": "Phone", "prompt": "And a phone number, in case email gets buried?", "required": false },
+        {
+          "id": "field_1763001000004",
+          "type": "select",
+          "label": "Where you'd like to help",
+          "prompt": "Which of these sounds most like you?",
+          "required": true,
+          "options": [
+            { "value": "tutoring", "label": "After-school tutoring" },
+            { "value": "life_skills", "label": "Life-skills sessions" },
+            { "value": "events", "label": "Events and fundraisers" },
+            { "value": "not_sure", "label": "Not sure yet — help me pick" }
+          ]
+        },
+        {
+          "id": "field_1763001000005",
+          "type": "select",
+          "label": "Availability",
+          "prompt": "When are you generally free?",
+          "required": true,
+          "options": [
+            { "value": "weekday_afternoons", "label": "Weekday afternoons" },
+            { "value": "weekday_evenings", "label": "Weekday evenings" },
+            { "value": "weekends", "label": "Weekends" },
+            { "value": "flexible", "label": "Flexible" }
+          ]
+        },
+        { "id": "field_1763001000006", "type": "textarea", "label": "Anything we should know", "prompt": "Anything you'd like the team to know before they reach out?", "required": false }
+      ]
+    },
+
+    "mentor_application": {
+      "form_id": "mentor_application",
+      "title": "Mentor Application",
+      "description": "Application for the Mentorship Matches program — a twelve-month commitment.",
+      "program": "mentorship_matches",
+      "enabled": true,
+      "trigger_phrases": [
+        "I want to be a mentor",
+        "How do I become a mentor",
+        "Mentor application"
+      ],
+      "introduction": "Mentoring is a year-long commitment, so this one asks a bit more. Marcus reviews every application himself.",
+      "fields": [
+        { "id": "field_1763002000001", "type": "name", "label": "Your name", "prompt": "What's your name?", "required": true },
+        { "id": "field_1763002000002", "type": "email", "label": "Email", "prompt": "Best email for you?", "required": true },
+        { "id": "field_1763002000003", "type": "phone", "label": "Phone", "prompt": "And a phone number?", "required": true },
+        { "id": "field_1763002000004", "type": "boolean", "label": "Twelve-month commitment", "prompt": "Mentorship Matches asks for a minimum of twelve months. Can you commit to that?", "required": true },
+        {
+          "id": "field_1763002000005",
+          "type": "select",
+          "label": "Age group preference",
+          "prompt": "Any age group you'd feel most at home with?",
+          "required": false,
+          "options": [
+            { "value": "9_12", "label": "9-12" },
+            { "value": "13_15", "label": "13-15" },
+            { "value": "16_17", "label": "16-17" },
+            { "value": "no_preference", "label": "No preference" }
+          ]
+        },
+        { "id": "field_1763002000006", "type": "textarea", "label": "Why mentoring", "prompt": "What's drawing you to mentoring right now?", "required": true },
+        { "id": "field_1763002000007", "type": "boolean", "label": "Background check consent", "prompt": "Every mentor completes a background check before being matched. Are you comfortable with that?", "required": true, "_note": "Consent capture only. Picasso must NEVER evaluate, summarize, or act on background-check RESULTS — see CLAUDE.md 'Background Check Caution'. Nothing downstream reads this beyond storing the yes/no." }
+      ]
+    },
+
+    "donation_inquiry": {
+      "form_id": "donation_inquiry",
+      "title": "Donation Inquiry",
+      "description": "For givers with a question — recurring gifts, employer matching, designating a program.",
+      "program": null,
+      "enabled": true,
+      "trigger_phrases": [
+        "I have a question about donating",
+        "Employer matching",
+        "Can I designate my gift"
+      ],
+      "introduction": "Happy to help — Priya handles giving questions and is quick to reply.",
+      "fields": [
+        { "id": "field_1763003000001", "type": "name", "label": "Your name", "prompt": "What's your name?", "required": true },
+        { "id": "field_1763003000002", "type": "email", "label": "Email", "prompt": "Where should Priya reply?", "required": true },
+        {
+          "id": "field_1763003000003",
+          "type": "select",
+          "label": "What it's about",
+          "prompt": "What's your question about?",
+          "required": true,
+          "options": [
+            { "value": "recurring", "label": "Setting up a recurring gift" },
+            { "value": "matching", "label": "Employer matching" },
+            { "value": "designate", "label": "Designating a gift to a program" },
+            { "value": "stock_or_daf", "label": "Stock or donor-advised fund" },
+            { "value": "other", "label": "Something else" }
+          ]
+        },
+        { "id": "field_1763003000004", "type": "textarea", "label": "Your question", "prompt": "What would you like to know?", "required": true }
+      ]
+    },
+
+    "event_registration": {
+      "form_id": "event_registration",
+      "title": "Gala Registration",
+      "description": "Registration for the annual Rivermont gala.",
+      "program": null,
+      "enabled": true,
+      "trigger_phrases": [
+        "Register for the gala",
+        "I want to attend the event",
+        "Gala tickets"
+      ],
+      "introduction": "The gala is BrightPath's one big night a year. Let's get you on the list.",
+      "fields": [
+        { "id": "field_1763004000001", "type": "name", "label": "Your name", "prompt": "What name should be on the list?", "required": true },
+        { "id": "field_1763004000002", "type": "email", "label": "Email", "prompt": "Where should we send your confirmation?", "required": true },
+        {
+          "id": "field_1763004000003",
+          "type": "select",
+          "label": "Number attending",
+          "prompt": "How many seats do you need?",
+          "required": true,
+          "options": [
+            { "value": "1", "label": "Just me" },
+            { "value": "2", "label": "Two" },
+            { "value": "table", "label": "A full table (8)" }
+          ]
+        },
+        { "id": "field_1763004000004", "type": "text", "label": "Dietary needs", "prompt": "Any dietary needs we should pass to the caterer?", "required": false },
+        { "id": "field_1763004000005", "type": "boolean", "label": "Sponsorship interest", "prompt": "Would you like Priya to send the sponsorship options?", "required": false }
+      ]
+    }
+  }
+}

@@ -109,14 +109,18 @@ The seeder writes directly into **shared prod tables that also hold real custome
 
 ## 5. Entry points & channels
 
-- Registry rows for all four channels: 3 website page entry points (home / programs / giving), 1 QR/standalone (gala flyer), 1–2 campaign (spring appeal email, newsletter), plus Messenger **history only**.
-- **Minting order:** entry-point IDs are minted **once, in staging, BEFORE the microsite spec handoff** (§6) so the spec carries real `?ep=` values; the seeder later writes the **same IDs verbatim** into the prod registry. The microsite HTML never changes across promotion (hash is deterministic; ep IDs preserved).
+- Entry points the demo actually exercises: **3 website page entry points** (home / programs / giving) and **1–2 campaign** links (spring appeal email, newsletter). Messenger and QR/standalone are **seeded history only** — see "QR is out of the demo" below.
+- **Minting order:** entry-point IDs are fixed **once, in staging, BEFORE the microsite spec handoff** (§6) so the spec carries real `?ep=` values; the seeder later writes the **same IDs verbatim** into the prod registry. The microsite HTML never changes across promotion (hash is deterministic; ep IDs preserved).
 - **Channel truth:** a conversation's channel is resolved by the `Attribution_Aggregator` from the `entry_point_id`'s registry row (`no ep → website`; `meta:` session prefix → messenger). The surfaces don't self-declare channels.
-- **QR v1 needs no Dub in prod:** a plain QR encoding `https://chat.myrecruiter.ai/go/?t={hash}&ep=ep_…` attributes correctly once the `/go/` fix ships (below). Dub-minted links (`myrctr.link`, repointable printed QRs, scan counts) come later, after attribution F2 prod enablement clears its compliance track — until then the entry-point "scans" column is simply empty.
+- **Website entry points are seeder-written, not minted.** `Attribution_Mint_Service` accepts `channel: standalone | campaign` only (`validation.mjs:12`) — it cannot mint `website`. This does **not** block anything: the seeder writes registry rows **directly to DynamoDB**, bypassing the app-layer write path (§4.3), so it writes `website` rows with real labels and generates the `ep_` ULIDs itself. Live campaign links work through the normal path (the widget host captures `?ep=` from the page URL — `src/widget-host.js:94–145`). **The one honest caveat:** the demo shows per-page website attribution that a customer cannot currently self-serve through the mint UI. A sales-integrity note for whoever is in the room, not a build gate.
 
-### Prerequisite (all-tenant blast radius — own SOP cycle, not a demo-zone phase)
+### QR is out of the demo (decided 2026-07-17)
 
-**`/go/` drops attribution today.** Verified 2026-07-16: `Picasso/public/go/loader.js` builds the iframe URL with only `t` + `mode=fullpage` and its init postMessage carries no attribution; the iframe only receives attribution via the widget-host postMessage (`iframe-main.jsx:457`, capture in `src/widget-host.js:94–145`). **A QR pointing at `/go/?…&ep=…` would NOT attribute.** Fix: forward `?ep=` + UTM from the `/go/` page into the iframe init (mirror `captureAttribution`). This changes shared widget-loading code affecting **every tenant's QR entry point**, so it ships as its own branch → tests → staging soak → gated prod dispatch, independent of demo-zone phasing. The prop kit (§8) depends on it.
+**The QR flyer is shown as a standalone artifact, outside the demo flow** — no prospect scans anything with their own device, and the runbook has no live-scan moment. Rationale: the demo should not drag an all-tenant code change onto its critical path.
+
+The seeded **standalone/QR channel history stays** in the arc (it demonstrates that the product tracks print/QR provenance, and it costs nothing — it is just data).
+
+**The `/go/` bug is being fixed on its own merits, now — not deferred (decided 2026-07-17).** `Picasso/public/go/loader.js` builds the iframe URL with only `t` + `mode=fullpage` and its init postMessage carries no attribution; the iframe receives attribution *only* via the widget-host postMessage (`iframe-main.jsx:457`). **So `/go/?…&ep=…` does not attribute — for any tenant.** This is a latent product defect, not a demo-specific one, and it is decoupled from demo-zone phasing in both directions: the demo no longer waits on it, and it no longer waits on the demo. It harms no customer *today* (live Dub/QR minting is gated behind the attribution F2 compliance track, §10, so no tenant can mint a QR link to hit the broken path) — but a known bug parked until its consumer ships is a bug rediscovered under deadline. Fix shape: forward `?ep=` + UTM from the `/go/` page into the iframe init (mirror `captureAttribution`); own branch → tests → staging soak → gated prod dispatch.
 
 ## 6. Microsite
 
@@ -125,12 +129,12 @@ The seeder writes directly into **shared prod tables that also hold real custome
 **Build-spec handoff must contain:**
 - Pages: Home, Programs, Giving. Widget on all three via the canonical embed — `<script src="https://chat.myrecruiter.ai/widget.js" data-tenant="{demo-hash}" async>` — with each page's URL carrying its **pre-minted** `?ep=` value (§5) so per-page provenance is real.
 - Fictional-org identity + copy constraints (§3), a visible "demonstration environment" footer notice, `noindex` everywhere.
-- An unlinked `/flyer` page rendering the QR flyer for screen-share demos (§8).
 - Static output only (no SSR), so S3+CloudFront serving works unmodified.
+- *(No `/flyer` page — QR is out of the demo flow as of 2026-07-17, §5.)*
 
 **Hosting:** S3+CloudFront at `demo.myrecruiter.ai`, cloning the OAC-hardened module pair (`infra/modules/s3-analytics-dashboard-staging` + `cloudfront-analytics-dashboard-staging` + ACM). Bucket bare-named `picasso-demo-site`. Staging module first (`demo-staging.…` or CloudFront domain), prod via gated `-target` dispatch.
 - **DNS reality check:** `myrecruiter.ai` is hosted at **GoDaddy, not Route53** — Terraform cannot write DNS. Two manual GoDaddy steps per environment (ACM validation CNAME, then the alias CNAME), same recipe as config-builder/scheduling domains.
-- **CORS/origin gate (P3 exit criterion):** widget serving + Master Function/analytics APIs must accept `demo.myrecruiter.ai` (and the `/go/` origin) before rehearsal — a silent CORS failure is a "looks broken in front of a prospect" class of bug.
+- **CORS/origin gate (P3 exit criterion):** widget serving + Master Function/analytics APIs must accept `demo.myrecruiter.ai` before rehearsal — a silent CORS failure is a "looks broken in front of a prospect" class of bug.
 - *(Interim fallback only: the `Website Redesign` repo's `sandbox/[slug].astro` system on Vercel already embeds the widget per-tenant and could host a quick page if a demo lands before P3 — not the target architecture.)*
 
 **KB:** authored directly from the persona pack as `.md` + `.md.metadata.json` (with `metadataAttributes.tenantId`) into `s3://kbragdocs/tenants/DEMO-YS01/`, synced via `StartIngestionJob` (pattern: `kb_proposal_applier/bedrockSync.mjs`). Once the microsite is live, optionally re-scrape it with rag-scraper — the full onboarding dogfood.
@@ -145,27 +149,25 @@ The seeder writes directly into **shared prod tables that also hold real custome
 ## 8. Prop kit & demo runbook
 
 **Props**
-- **QR flyer:** a print-quality PDF (gala/event themed) whose QR encodes the `/go/` standalone URL with the flyer's `?ep=`. Also rendered at the microsite's unlinked `/flyer` for screen-share demos — prospects scan it off the screen **with their own phone**, chat on their device, and watch it arrive in the dashboard. Plain QR v1; Dub-minted/repointable later (§5).
-- **Campaign email:** a static "spring appeal" mock email page (or a link kept in demo notes) whose button carries the campaign `?ep=` link.
+- **Campaign email:** a static "spring appeal" mock email page (or a link kept in demo notes) whose button carries the campaign `?ep=` link. Works through the normal widget-host capture path — no `/go/` dependency.
+- *(**QR flyer: out of the demo flow.** Shown as a standalone artifact outside the demo, on its own. No live scan moment, no `/flyer` page, no dependency on the `/go/` fix — §5.)*
 
 **Runbook skeleton (full script written in P2)**
-1. Pre-demo checklist: `demo-zone reset` (dry-run purge → execute → reseed), demo-user login check, widget smoke on all three pages, `/flyer` loads.
+1. Pre-demo checklist: `demo-zone reset` (dry-run purge → execute → reseed), demo-user login check, widget smoke on all three pages.
 2. Open on the microsite: "this is a nonprofit like yours." Chat on the giving page.
 3. Flip to Mission Intelligence as the demo user: the conversation is **already in Conversations/Leads** (instant surfaces).
-4. Prospect scans the flyer QR → conversation on their phone → appears in the dashboard.
-5. Walk the seeded backdrop: Attribution (six-month story, channel mix, money band), Forms funnel, Lead Workspace (advance a lead live), Scheduling (seeded view), Notifications.
-6. Honest-caveat card carried by the script: attribution updates on aggregator cadence (today's live chats appear in Conversations instantly, in Attribution on the next aggregation); **Messenger and Notifications are seeded history**; **Scheduling is seeded-view-only in v1** (live booking demo needs a real connected calendar — deferred deliberately).
+4. Walk the seeded backdrop: Attribution (six-month story, channel mix, money band), Forms funnel, Lead Workspace (advance a lead live), Scheduling (seeded view), Notifications.
+5. Honest-caveat card carried by the script: attribution updates on aggregator cadence (today's live chats appear in Conversations instantly, in Attribution on the next aggregation); **Messenger, QR/standalone, and Notifications are seeded history**; **Scheduling is seeded-view-only in v1** (live booking demo needs a real connected calendar — deferred deliberately).
 
 ## 9. Phasing
 
 | Phase | Scope | Exit criteria |
 |---|---|---|
-| **Prereq** (parallel, own SOP) | `/go/` ep+UTM forwarding fix in the widget repo | Attribution verified end-to-end from a `/go/?ep=` URL on staging; shipped to prod via normal gated dispatch |
 | **P0** | This roadmap approved; persona-1 fixture pack written (org, programs, forms, topics, CTAs, numeric arc, fictional roster); prod tenant-creation checklist drafted (manual, gated — see note) | Fixture pack reviewed by Chris (org identity approved); checklist in this doc's repo |
 | **P1** | Staging demo tenant: config (staging Config Builder), Clerk org **+ staging demo user**, registry row, mapping file, KB. Seeder v1: conversations/forms/leads | Logged in as demo user on `staging.app.myrecruiter.ai`: Conversations, Forms, Leads all render the seeded story; zero real-tenant rows touched (verify via key audit) |
 | **P2** | Seeder full coverage: attribution (6-month C5 history + current-month raw + registry), scheduling, notifications. Guarded reset wrapper | Full staging demo rehearsal end-to-end as demo user; reset run twice proves idempotency; date-shift test (seed, jump a "day", reseed) proves anti-time-rot |
-| **P3** | Mint entry points (staging) → microsite build-spec handoff → receive HTML → host: staging infra module, then gated prod module + GoDaddy DNS ×2 + CORS check. Prop kit (flyer PDF, campaign mock) | `demo.myrecruiter.ai` live serving the site; widget works on all 3 pages + `/go/` + QR scan from a phone; every entry point attributes on staging |
-| **P4** (gated) | Prod cutover: manual gated tenant creation (checklist), `picasso-demo-seeder` role (targeted prod apply), seeder prod run (purge dry-run first), prod demo Clerk user | Full prod rehearsal: live chat → dashboard; QR from phone → dashboard; reset works; demo-ready sign-off by Chris |
+| **P3** | Fix entry-point IDs (staging) → microsite build-spec handoff → receive HTML → host: staging infra module, then gated prod module + GoDaddy DNS ×2 + CORS check. Campaign-email prop | `demo.myrecruiter.ai` live serving the site; widget works on all 3 pages; every website + campaign entry point attributes on staging |
+| **P4** (gated) | Prod cutover: manual gated tenant creation (checklist), `picasso-demo-seeder` role (targeted prod apply), seeder prod run (purge dry-run first), prod demo Clerk user | Full prod rehearsal: live chat → dashboard; reset works; demo-ready sign-off by Chris |
 | **P5** (later) | Hospice persona (PII advisory pass first) + second microsite; Messenger live post-App-Review; Dub-minted QR after attribution F2 prod compliance | — |
 
 **New-tenant-promotion note (decided):** the existing `promote-tenant-config.yml` is existing-tenant-only (its prod write-role deliberately lacks `dynamodb:PutItem` for registry rows). For the ≤2 demo tenants this project needs, prod creation is a **one-time gated manual checklist** (config promote where usable + scripted mapping/registry/flags steps, dry-run first). Generalized new-tenant promotion automation is a separate backlog item that benefits all onboarding — it is **not** a demo-zone gate.
@@ -174,7 +176,7 @@ The seeder writes directly into **shared prod tables that also hold real custome
 
 | Item | Impact | Posture |
 |---|---|---|
-| `/go/` attribution fix | Blocks the QR prop; touches ALL tenants | Own SOP cycle; ship early, independent of demo phases |
+| `/go/` attribution fix | Touches ALL tenants' QR/standalone entry points. **Blocks nothing in the demo** — QR is out of the demo flow (§5) | Fixed on its own merits (decided 2026-07-17): own branch → tests → staging soak → gated prod dispatch. Fully decoupled from demo phasing in both directions |
 | Attribution F2 prod compliance track (Dub DPA, notice, GPC/CMP) | Blocks **live Dub minting only** — NOT seeded aggregates, NOT the plain-QR prop | Demo zone does not wait on it |
 | GoDaddy manual DNS | 2 manual steps per env; no Terraform DNS | Known recipe; budget operator time |
 | Meta App Review | Blocks live Messenger demo | Seeded-history-only until it clears |
