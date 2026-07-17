@@ -30,7 +30,7 @@ Sales demos today have no home. Staging is a soak environment — definitionally
 ```
 Persona (fixture pack, data files)          Prod account 614 (the demo zone)
 ┌──────────────────────────────┐            ┌────────────────────────────────────┐
-│ org identity, programs,      │   seeder   │ demo tenant (DEMO-YS01)            │
+│ org identity, programs,      │   seeder   │ demo tenant (BRI071351)            │
 │ forms, topics, CTA set,      │──────────▶ │  · S3 config + mapping + KB        │
 │ 6-month narrative arc        │            │  · rows in shared prod DDB tables  │
 └──────────────────────────────┘            │  · Clerk org + demo user           │
@@ -42,7 +42,7 @@ Born in staging 525 first                   │ microsite  demo.myrecruiter.ai  
 ```
 
 - **Persona model.** A persona is a fixture pack: org identity + program vocabulary + form definitions + CTA set + topic mix + the numeric narrative arc. **v1 is built concretely for persona 1** — fixtures live in data files, but no generalized persona framework until hospice's real shape is known (single-use abstraction is a known failure mode; the shared/specific boundary emerges when persona 2 is actually built).
-- **Demo tenant per persona.** New dedicated tenant IDs with a reserved `DEMO-` prefix (e.g. `DEMO-YS01`). The tenant hash is deterministic — `tenant_id[:2].lower()` + first 12 hex of `sha256(tenant_id + salt)` per `deploy_tenant_stack/lambda_function.py` `generate_tenant_hash()` — so the same ID yields the same hash in staging and prod, and **one microsite build works against both environments**.
+- **Demo tenant per persona.** Each persona gets its own tenant ID from the Config Builder's normal auto-ID format (persona 1 = `BRI071351`, from "BrightPath"; identified by the org, not a special prefix). The tenant hash is deterministic — the **live** `Picasso_Config_Manager` generator computes `sha256(tenant_id + salt)[0:14]` (NOT the retired `deploy_tenant_stack` shape `tenant_id[:2]+sha256[:12]`), so `BRI071351` → `8b464847ae0ede`. The same ID yields the same hash in staging and prod, so **one microsite build works against both environments**. (The two generators disagree in shape — see README "Resolved"; only the live one is used for new tenants.)
 - **Environment path.** Staging-first per the Deployment SOP: the demo tenant, seeder, and infra are stood up and rehearsed in 525, then promoted to 614 via gated steps (§9 P4). The account boundary is the environment; all resources bare-named (`picasso-demo-site`, no env token).
 - **Demo login.** A dedicated demo Clerk user, member ONLY of the demo tenant's Clerk org. Rationale: the super-admin tenant-switcher dropdown renders *real customer tenant names* — one misclick from being on a prospect's screen. The demo user sees exactly what a customer admin sees. (Clerk org ↔ tenant mapping via `picasso-tenant-registry-{env}` `clerkOrgId`, per `Analytics_Dashboard_API/tenant_registry_ops.py`.)
 - **Anti-time-rot rule (load-bearing).** ALL seeded data is generated **relative to the seeder's run date** — six months of history laid down behind "now", never fixed dates. A fixed-date demo silently rots into "no upcoming appointments" (this exact failure mode currently has a time-rotted scheduling test fixture blocking dashboard CI merges). Reset before every demo re-anchors the clock.
@@ -63,7 +63,7 @@ Born in staging 525 first                   │ microsite  demo.myrecruiter.ai  
 - **Topic mix:** Volunteering, Donations, Programs, Events, Contact & hours (weights per the fixture arc).
 - **CTA set:** Apply to volunteer (`start_form`), Become a mentor (`start_form`), Give today (`external_link` → giving page), Register for the gala (`start_form`), Explore programs (`send_query`) — all `ai_available: true` for the V4 action selector.
 - **Six-month narrative arc** (numbers adapted from the internally-consistent fixture in `picasso-analytics-dashboard` branch `feature/attribution-mock-data`, `src/services/attributionMockData.ts`): steady growth to ~1,250 conversations/month and ~215 leads/month "now"; website ≈2/3 of volume; Messenger the best converter (~18%); QR/standalone climbing from a spring event push; a campaign channel that just launched this month and sits below the n≥50 confidence floor (exercises the "held" UI states); ~46% after-hours share (the money-band story); leads spread across every pipeline state so the Lead Workspace looks alive; a plausible weekly heatmap and top-questions list.
-- **Tenant:** `DEMO-YS01` (hash derived: prefix `de` + sha256 — computed at creation). Subscription tier set so all dashboard flags are on (`dashboard_conversations/forms/attribution/notifications/scheduling/settings`), plus `V4_ACTION_SELECTOR: true`.
+- **Tenant:** `BRI071351`, hash `8b464847ae0ede` (created via Config Builder, 2026-07-17). Subscription tier set so all dashboard flags are on (`dashboard_conversations/forms/attribution/notifications/scheduling/settings`), plus `V4_ACTION_SELECTOR: true`.
 
 ## 4. Seeder design
 
@@ -95,7 +95,7 @@ Attribution is the one surface that reads **only** pre-computed aggregates + the
 
 The seeder writes directly into **shared prod tables that also hold real customer rows**, bypassing the app-layer write path. Safety is IAM-enforced, not merely app-level:
 
-- **Execution identity:** dedicated least-privilege role `picasso-demo-seeder` (per-account, Terraform module, assumed via operator SSO). Inline policy grants writes ONLY with partition-key conditions (`dynamodb:LeadingKeys`) **exact-matching the demo tenant keys** (`TENANT#DEMO-YS01`, `TENANT#<demo-hash>`, `tenantId=DEMO-YS01`, …). Exact-value lists, not broad wildcards.
+- **Execution identity:** dedicated least-privilege role `picasso-demo-seeder` (per-account, Terraform module, assumed via operator SSO). Inline policy grants writes ONLY with partition-key conditions (`dynamodb:LeadingKeys`) **exact-matching the demo tenant keys** (`TENANT#BRI071351`, `TENANT#8b464847ae0ede`, `tenantId=BRI071351`, …). Exact-value lists, not broad wildcards.
 - **The non-tenant-keyed table:** `picasso-session-events` is keyed `SESSION#{session_id}` — un-scopable by tenant. Therefore **all seeded session IDs carry a reserved prefix** (`session_demo_…`) and the policy scopes `SESSION#session_demo_*` via StringLike. The live widget never generates that prefix.
 - **Defense in depth:** hardcoded demo-tenant allowlist in the seeder code; `--dry-run` is the default (prints the write plan; `--execute` required to write); every batch summary printed before execute.
 - **Idempotent:** re-running replaces the seeded window cleanly (delete-by-demo-keys then write), so drift never accumulates.
@@ -137,7 +137,7 @@ The seeded **standalone/QR channel history stays** in the arc (it demonstrates t
 - **CORS/origin gate (P3 exit criterion):** widget serving + Master Function/analytics APIs must accept `demo.myrecruiter.ai` before rehearsal — a silent CORS failure is a "looks broken in front of a prospect" class of bug.
 - *(Interim fallback only: the `Website Redesign` repo's `sandbox/[slug].astro` system on Vercel already embeds the widget per-tenant and could host a quick page if a demo lands before P3 — not the target architecture.)*
 
-**KB:** authored directly from the persona pack as `.md` + `.md.metadata.json` (with `metadataAttributes.tenantId`) into `s3://kbragdocs/tenants/DEMO-YS01/`, synced via `StartIngestionJob` (pattern: `kb_proposal_applier/bedrockSync.mjs`). Once the microsite is live, optionally re-scrape it with rag-scraper — the full onboarding dogfood.
+**KB:** authored directly from the persona pack as `.md` + `.md.metadata.json` (with `metadataAttributes.tenantId`) into `s3://kbragdocs/tenants/BRI071351/`, synced via `StartIngestionJob` (pattern: `kb_proposal_applier/bedrockSync.mjs`). Once the microsite is live, optionally re-scrape it with rag-scraper — the full onboarding dogfood.
 
 ## 7. Synthetic-person governance
 
