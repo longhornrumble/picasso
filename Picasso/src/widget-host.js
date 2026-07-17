@@ -6,6 +6,12 @@
 
 import { config as environmentConfig } from './config/environment.js';
 import { getBindingSessionId } from './utils/bindingSession.js';
+import {
+  captureAttribution as captureAttributionShared,
+  getEntryPointId as getEntryPointIdShared,
+  getGAClientId as getGAClientIdShared,
+  getUrlParam as getUrlParamShared
+} from './utils/attribution.js';
 
 (function() {
   'use strict';
@@ -48,28 +54,24 @@ import { getBindingSessionId } from './utils/bindingSession.js';
     // See: /docs/User_Journey/USER_JOURNEY_ANALYTICS_PLAN.md
     // ========================================================================
 
+    // ------------------------------------------------------------------
+    // Attribution capture lives in ./utils/attribution.js — the single
+    // source of truth, shared with the /go/ fullpage launcher (which has no
+    // host page of its own to capture from) and directly unit-tested there.
+    //
+    // These stay as thin delegates rather than being deleted: init() returns
+    // globalWidgetInstance (an Object.create(PicassoWidget)), which inherits
+    // them via the prototype chain, so an embedder holding that return value
+    // can reach them. Undocumented and unused in-repo, but not provably
+    // unused in the wild — so the surface is preserved.
+    // ------------------------------------------------------------------
+
     /**
      * Capture GA4 client_id from the _ga cookie for session stitching.
-     * Enables connecting GA4 site visitors to Picasso sessions.
      * @returns {string|null} GA4 client_id or null if not found
      */
     getGAClientId() {
-      try {
-        const gaCookie = document.cookie
-          .split('; ')
-          .find(row => row.startsWith('_ga='));
-
-        if (gaCookie) {
-          // _ga=GA1.2.123456789.1702900000 → extract "123456789.1702900000"
-          const parts = gaCookie.split('.');
-          if (parts.length >= 4) {
-            return parts.slice(2).join('.');
-          }
-        }
-      } catch (e) {
-        console.warn('[Picasso] Failed to read GA cookie:', e);
-      }
-      return null;
+      return getGAClientIdShared();
     },
 
     /**
@@ -78,12 +80,15 @@ import { getBindingSessionId } from './utils/bindingSession.js';
      * @returns {string|null} Parameter value or null
      */
     getUrlParam(name) {
-      try {
-        const urlParams = new URLSearchParams(window.location.search);
-        return urlParams.get(name);
-      } catch (e) {
-        return null;
-      }
+      return getUrlParamShared(name);
+    },
+
+    /**
+     * C2: validate and capture the ?ep= entry-point id from the page URL.
+     * @returns {string|null}
+     */
+    getEntryPointId() {
+      return getEntryPointIdShared();
     },
 
     /**
@@ -91,58 +96,8 @@ import { getBindingSessionId } from './utils/bindingSession.js';
      * Called once during widget initialization.
      * @returns {Object} Attribution data object
      */
-    // C2: Validate and capture ?ep= entry-point id from the page URL.
-    // Regex locked by C2: ^ep_[0-9A-Za-z]{8,64}$
-    getEntryPointId() {
-      const raw = this.getUrlParam('ep');
-      if (raw && /^ep_[0-9A-Za-z]{8,64}$/.test(raw)) {
-        return raw;
-      }
-      return null;
-    },
-
     captureAttribution() {
-      const attribution = {
-        // GA4 session stitching key
-        ga_client_id: this.getGAClientId(),
-
-        // UTM parameters (works with any tracking system: Dub.co, Bitly, manual)
-        utm_source: this.getUrlParam('utm_source'),
-        utm_medium: this.getUrlParam('utm_medium'),
-        utm_campaign: this.getUrlParam('utm_campaign'),
-        utm_term: this.getUrlParam('utm_term'),
-        utm_content: this.getUrlParam('utm_content'),
-
-        // Ad platform click IDs
-        gclid: this.getUrlParam('gclid'),   // Google Ads
-        fbclid: this.getUrlParam('fbclid'), // Facebook Ads
-
-        // C2: Entry-point id (null when absent or malformed)
-        entry_point_id: this.getEntryPointId(),
-
-        // Referrer and landing page
-        referrer: document.referrer || null,
-        landing_page: window.location.pathname,
-
-        // Timestamp
-        captured_at: new Date().toISOString()
-      };
-
-      // Log attribution capture for debugging
-      const hasAttribution = attribution.ga_client_id ||
-                            attribution.utm_source ||
-                            attribution.referrer;
-      if (hasAttribution) {
-        console.log('[Picasso] Attribution captured:', {
-          ga_client_id: attribution.ga_client_id ? '✓' : '✗',
-          utm_source: attribution.utm_source || '(none)',
-          utm_medium: attribution.utm_medium || '(none)',
-          entry_point_id: attribution.entry_point_id || '(none)',
-          referrer: attribution.referrer ? new URL(attribution.referrer).hostname : '(direct)'
-        });
-      }
-
-      return attribution;
+      return captureAttributionShared();
     },
 
     // Initialize the widget
