@@ -385,6 +385,42 @@ const widgetBuildOptions = {
   platform: 'browser'
 };
 
+// /go/ fullpage launcher build options (IIFE — plain external script, no
+// globals exposed). Bundles src/go-loader-entry.js -> dist/<env>/go/loader.js
+// so it shares src/utils/attribution.js with the widget instead of hand-copying
+// it. IIFE + same-origin external file keeps the strict CSP (script-src 'self')
+// on the fullpage host surface intact.
+const goLoaderBuildOptions = {
+  entryPoints: {
+    'go/loader': './src/go-loader-entry.js'
+  },
+  bundle: true,
+  outdir: distDir,
+  format: 'iife',
+  sourcemap: isDevelopment,
+  minify: !isDevelopment,
+  metafile: shouldAnalyze || isDevelopment,
+  splitting: false,
+  outExtension: { '.js': '.js' },
+  loader: { '.js': 'js' },
+  define: defineVars,
+  logLevel: 'info',
+  plugins: [pathAliasPlugin],
+  ...(environment === 'production' && !isDevelopment ? {
+    drop: ['debugger'],
+    dropLabels: ['DEV'],
+    legalComments: 'none',
+    treeShaking: true,
+    minifyWhitespace: true,
+    minifyIdentifiers: true,
+    minifySyntax: true
+  } : {
+    keepNames: true
+  }),
+  target: ['es2018', 'chrome64', 'firefox62', 'safari12'],
+  platform: 'browser'
+};
+
 // Iframe build options (ESM format with code splitting)
 const iframeBuildOptions = {
   entryPoints: {
@@ -458,9 +494,12 @@ const iframeBuildOptions = {
 };
 
 if (isServe) {
-  // Development server mode - build both widget and iframe
+  // Development server mode - build widget, /go/ launcher, and iframe
   console.log('🔧 Building widget (IIFE)...');
   await esbuild.build(widgetBuildOptions);
+
+  console.log('🔧 Building /go/ launcher (IIFE)...');
+  await esbuild.build(goLoaderBuildOptions);
 
   console.log('🔧 Building iframe (ESM)...');
   const ctx = await esbuild.context(iframeBuildOptions);
@@ -499,6 +538,11 @@ if (isServe) {
   console.log('📦 Building widget.js (IIFE format)...');
   const widgetResult = await esbuild.build(widgetBuildOptions);
 
+  // Build /go/ launcher (IIFE) -> dist/<env>/go/loader.js. Runs AFTER the
+  // public/go copy step above so its output is not clobbered.
+  console.log('📦 Building go/loader.js (IIFE format)...');
+  const goLoaderResult = await esbuild.build(goLoaderBuildOptions);
+
   // Build iframe app (ESM format with code splitting)
   console.log('📦 Building iframe-main.js (ESM format with code splitting)...');
   const iframeResult = await esbuild.build(iframeBuildOptions);
@@ -510,6 +554,7 @@ if (isServe) {
     metafile: {
       outputs: {
         ...(widgetResult.metafile?.outputs || {}),
+        ...(goLoaderResult.metafile?.outputs || {}),
         ...(iframeResult.metafile?.outputs || {})
       }
     }

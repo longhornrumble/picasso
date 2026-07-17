@@ -3,36 +3,23 @@
  */
 
 /**
- * Tests for the /go/ fullpage launcher (public/go/loader.js).
+ * Tests for the /go/ fullpage launcher (src/go-loader.js).
  *
- * The bug these lock down: loader.js built the iframe URL and its PICASSO_INIT
- * postMessage WITHOUT attribution, so `/go/?t=…&ep=ep_…` — the URL every QR
- * code and social link points at — silently lost its entry-point id. Every
- * such conversation was miscredited to the `website` channel (the aggregator's
- * default for "no ep").
+ * The bug the attribution tests lock down: the launcher used to build the
+ * iframe URL and its PICASSO_INIT postMessage WITHOUT attribution, so
+ * `/go/?t=…&ep=ep_…` — the URL every QR code and social link points at —
+ * silently lost its entry-point id, and every such conversation was
+ * miscredited to the `website` channel (the aggregator's default for "no ep").
  *
- * loader.js is not a module: it is an IIFE copied verbatim into dist/<env>/go/
- * (esbuild.config.mjs) and cannot be imported. So we read the real shipped
- * file and evaluate it against a jsdom document, asserting on what it posts
- * to the iframe.
- *
- * This test lives in src/__tests__/ rather than next to loader.js ON PURPOSE:
- * esbuild copies public/go/ into dist/<env>/go/ RECURSIVELY and unfiltered
- * (esbuild.config.mjs ~227), so anything under public/go/ ships to S3 and is
- * publicly fetchable. A __tests__ directory there would have been deployed to
- * chat.myrecruiter.ai/go/__tests__/. Do not move this back.
+ * go-loader.js exports initFullpageLauncher() and imports captureAttribution
+ * from the shared attribution module — so this test imports and calls the real
+ * function directly (no source-eval), and drift from widget-host is impossible
+ * because both consume the same module.
  */
 
-const fs = require('fs');
-const path = require('path');
+import { initFullpageLauncher } from '../go-loader.js';
 
-// Reads the REAL shipped artifact, not a copy of it.
-const LOADER_SRC = fs.readFileSync(
-  path.join(__dirname, '..', '..', 'public', 'go', 'loader.js'),
-  'utf8'
-);
-
-// C2 contract — must match src/widget-host.js getEntryPointId()
+// C2 contract — must match src/utils/attribution.js getEntryPointId()
 const VALID_EP = 'ep_01HQZX9KJ4MNPQRSTUVWXYZ234';
 
 /**
@@ -79,8 +66,7 @@ function runLoader(search, { cookie = '', referrer = '' } = {}) {
     return el;
   });
 
-  // eslint-disable-next-line no-new-func
-  new Function(LOADER_SRC)();
+  initFullpageLauncher();
 
   document.createElement.mockRestore();
 
