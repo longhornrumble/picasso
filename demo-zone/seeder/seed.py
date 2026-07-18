@@ -116,6 +116,26 @@ def write_conversations(convs, dry_run, limit=None):
 _FORMS_DOC = None
 _ROSTER = None
 
+# Short, believable submission comments by topic (shown in the lead drawer + the
+# Form Submissions Comments column).
+_FORM_COMMENTS = {
+    "Volunteer": ["Excited to help — I have weekday afternoons free.",
+                  "My daughter and I would love to volunteer together.",
+                  "I coached little league for years; happy to mentor."],
+    "Services": ["Looking for a mentor for my 12-year-old nephew.",
+                 "My son is aging out of care next year — any help appreciated.",
+                 "Hoping to get him into after-school tutoring."],
+    "Donation": ["Would like to set up a monthly gift.",
+                 "Does my employer match? Happy to check.",
+                 "Prefer my gift go to the Launchpad program."],
+    "Events": ["Reserving a table of 8 for the gala.",
+               "Will there be a vegetarian option at dinner?",
+               "Interested in sponsoring this year."],
+    "General": ["Just learning about what you do — looks great.",
+                "Wanted to confirm your office hours.",
+                "A friend recommended I reach out."],
+}
+
 
 def _forms_doc():
     global _FORMS_DOC
@@ -136,6 +156,12 @@ def _contact_for(session_id):
     return r[int(hashlib.sha256(session_id.encode()).hexdigest(), 16) % len(r)]
 
 
+def _form_fields(fid):
+    """(field_id, field_label) pairs for a form, in order."""
+    f = _forms_doc().get(fid, {})
+    return [(x["id"], x.get("label", x["id"])) for x in f.get("fields", [])]
+
+
 def write_forms(convs, dry_run):
     _assert_tenant(tid=TENANT_ID)
     forms_doc = _forms_doc()
@@ -151,17 +177,25 @@ def write_forms(convs, dry_run):
         # completions happen at end-of-conversation
         submitted_at = c["ended_at"]
         submission_id = "sub-demo-" + hashlib.sha256(c["session_id"].encode()).hexdigest()[:24]
+        # deterministic zip (fictional Rivermont metro) + a topic-appropriate comment
+        h = int(hashlib.sha256(c["session_id"].encode()).hexdigest(), 16)
+        zip_code = f"47{h % 900 + 100:03d}"
+        comment = _FORM_COMMENTS[c["topic"]][h % len(_FORM_COMMENTS[c["topic"]])]
         # a compact labeled/display form_data from the persona contact
         display = {
             "Name": name,
             "Email": contact["email"],
             "Phone": contact.get("phone", ""),
+            "Zip Code": zip_code,
             "Program": fdef.get("program") or "general",
+            "Comments": comment,
         }
         labeled = {
             "Name": {"type": "name", "value": {"first": first, "last": last}},
             "Email": {"type": "email", "value": contact["email"]},
             "Phone": {"type": "phone", "value": contact.get("phone", "")},
+            "Zip Code": {"type": "text", "value": zip_code},
+            "Comments": {"type": "textarea", "value": comment},
         }
         item = {
             "tenant_id": TENANT_ID,
@@ -183,6 +217,7 @@ def write_forms(convs, dry_run):
             },
             "form_data_display": display,
             "form_data_labeled": labeled,
+            "comments": comment,                 # /forms/submissions Comments column
             "internal_notes": "",
             "ttl": now_epoch + TTL_LONG,
         }
@@ -318,7 +353,15 @@ def write_session_events(convs, dry_run):
                 h = int(hashlib.sha256(c["session_id"].encode()).hexdigest(), 16) % 100
                 if h < 10:
                     items.append(_event_row(c, step, at(step), "FORM_VIEWED", {"form_id": fid}, now_epoch)); step += 1
-                    items.append(_event_row(c, step, at(step), "FORM_STARTED", {"form_id": fid}, now_epoch))
+                    items.append(_event_row(c, step, at(step), "FORM_STARTED", {"form_id": fid}, now_epoch)); step += 1
+                    # abandoned: submit fields up to a drop-off point, then stop (no
+                    # FORM_COMPLETED). The bottleneck reader aggregates the LAST
+                    # FORM_FIELD_SUBMITTED per abandoned session -> the drop-off field.
+                    flds = _form_fields(fid)
+                    drop = 1 + (h % max(1, len(flds) - 1)) if flds else 0
+                    for fld in flds[:drop]:
+                        items.append(_event_row(c, step, at(step), "FORM_FIELD_SUBMITTED",
+                            {"form_id": fid, "field_id": fld[0], "field_label": fld[1]}, now_epoch)); step += 1
                 elif h < 18:
                     items.append(_event_row(c, step, at(step), "FORM_VIEWED", {"form_id": fid}, now_epoch))
     return ddb.batch_write(TABLES["events"], items, dry_run, f"session events x{len(items)}")
@@ -473,19 +516,30 @@ def _entry_points(now_epoch):
 # ===========================================================================
 # 4) SCHEDULING -> picasso-booking
 # ===========================================================================
-def write_scheduling(dry_run):
+def write_scheduling(convs, dry_run):
     _assert_tenant(tid=TENANT_ID)
     arc = _load("arc.json")["scheduling"]
-    contacts = _roster()
     now = _now()
     items = []
+    # Each booking ties to a real lead's session_id so the dashboard's
+    # include_lead join (tenant-session-index -> form submission) hydrates the
+    # drawer's Form Responses + Notes. Most-recent leads first.
+    leads = sorted((c for c in convs if c["is_lead"]), key=lambda c: c["session_id"], reverse=True)
+    _PREP = {
+        "Volunteer": "Wants to talk through volunteer options and time commitment.",
+        "Services": "Asking about a mentor for a young person in the family.",
+        "Donation": "Questions about recurring giving and program designation.",
+        "Events": "Following up about the gala — seats and sponsorship.",
+        "General": "General intro call about BrightPath.",
+    }
 
     def _booking(i, when, status):
-        contact = contacts[i % len(contacts)]
+        lead = leads[i % len(leads)] if leads else None
+        contact = _contact_for(lead["session_id"]) if lead else _roster()[i % len(_roster())]
         start = when
         end = start + timedelta(minutes=30)
         bid = "bk-demo-" + hashlib.sha256(f"{status}-{i}-{start.isoformat()}".encode()).hexdigest()[:20]
-        return {
+        row = {
             "tenantId": TENANT_ID,   # camelCase HASH key
             "booking_id": bid,
             "status": status,
@@ -497,9 +551,12 @@ def write_scheduling(dry_run):
             "attendee_email": contact["email"],
             "attendee_phone": contact.get("phone", ""),
             "created_at": (start - timedelta(days=3)).strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "prep_note": "Wants to learn about volunteering with BrightPath.",
+            "prep_note": _PREP.get(lead["topic"], _PREP["General"]) if lead else _PREP["General"],
             # NB: is_synthetic deliberately OMITTED (setting it hides the row).
         }
+        if lead:
+            row["session_id"] = lead["session_id"]   # join key -> form submission (Form Responses)
+        return row
 
     # upcoming: spread over the next ~40 days, business hours
     for i in range(arc["upcoming"]):
@@ -630,7 +687,7 @@ def main():
         return
 
     convs = None
-    if args.surface in ("all", "conversations", "events", "forms"):
+    if args.surface in ("all", "conversations", "events", "forms", "scheduling"):
         convs, meta = build_universe()
         print(f"universe: {meta['total_conversations']} conversations, {meta['total_leads']} leads, "
               f"after_hours={after_hours_fraction(convs):.3f}")
@@ -645,7 +702,7 @@ def main():
     if args.surface in ("all", "attribution"):
         total += write_attribution(dry)
     if args.surface in ("all", "scheduling"):
-        total += write_scheduling(dry)
+        total += write_scheduling(convs, dry)
     if args.surface in ("all", "notifications"):
         total += write_notifications(dry)
 

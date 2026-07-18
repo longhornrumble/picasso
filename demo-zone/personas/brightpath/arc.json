@@ -30,20 +30,20 @@
   "monthly_series": {
     "_note": "The source of truth. Deltas are DERIVED from these, never asserted — the parked mock hardcoded deltas that contradicted its own series (asserted 143/28, implied 104/19).",
     "_month_offsets": ["m-5", "m-4", "m-3", "m-2", "m-1", "m0"],
-    "_rescaled": "2026-07-18: rescaled ~11x down from the original enterprise-scale numbers to a believable small-to-mid local nonprofit. Originals preserved in git history.",
+    "_rescaled": "2026-07-18: medium local nonprofit. All active channel-months clear the 50-conversation confidence floor so rates show (no 'held'); campaign launches m-1 already above the floor. Well under the original enterprise scale.",
     "conversations": {
-      "website":    [55, 62, 70, 78, 86, 95],
-      "messenger":  [12, 14, 16, 18, 21, 24],
-      "standalone": [4, 5, 7, 8, 10, 12],
-      "campaign":   [0, 0, 0, 0, 2, 5],
-      "total":      [71, 81, 93, 104, 119, 136]
+      "website":    [120, 135, 150, 165, 180, 195],
+      "messenger":  [55, 62, 68, 75, 82, 90],
+      "standalone": [50, 54, 58, 63, 68, 74],
+      "campaign":   [0, 0, 0, 0, 52, 66],
+      "total":      [225, 251, 276, 303, 382, 425]
     },
     "leads": {
-      "website":    [9, 10, 12, 13, 15, 17],
-      "messenger":  [2, 3, 3, 4, 4, 5],
-      "standalone": [1, 1, 1, 1, 2, 2],
-      "campaign":   [0, 0, 0, 0, 0, 1],
-      "total":      [12, 14, 16, 18, 21, 25]
+      "website":    [20, 23, 26, 28, 31, 33],
+      "messenger":  [10, 11, 12, 13, 14, 16],
+      "standalone": [8, 9, 10, 11, 12, 13],
+      "campaign":   [0, 0, 0, 0, 9, 11],
+      "total":      [38, 43, 48, 52, 66, 73]
     },
     "_derived_deltas_m0_vs_m1": {
       "conversations": { "abs": 104, "pct": 9.0 },
@@ -132,12 +132,12 @@
     "_mintable": {
       "_constraint": "Registry channel enum is `standalone` | `campaign` ONLY (validation.mjs:12). These are the only entry points the product can actually mint.",
       "standalone": [
-        { "ref": "qr_gala_flyer", "label": "Gala flyer QR", "placement": "print", "target_type": "standalone_chat", "scans": 22, "conversations": 7, "leads": 1, "_rate_held": true },
-        { "ref": "qr_lobby", "label": "Lobby QR poster", "placement": "on-site", "target_type": "standalone_chat", "scans": 14, "conversations": 5, "leads": 1, "_rate_held": true }
+        { "ref": "qr_gala_flyer", "label": "Gala flyer QR", "placement": "print", "target_type": "standalone_chat", "scans": 120, "conversations": 40, "leads": 7 },
+        { "ref": "qr_lobby", "label": "Lobby QR poster", "placement": "on-site", "target_type": "standalone_chat", "scans": 100, "conversations": 34, "leads": 6 }
       ],
       "campaign": [
-        { "ref": "camp_spring", "label": "Spring appeal email", "campaign": "spring-appeal", "placement": "email", "target_type": "site_url", "clicks": 16, "conversations": 3, "leads": 1, "_rate_held": true, "_is_new": true },
-        { "ref": "camp_newsletter", "label": "Newsletter link", "campaign": "newsletter", "placement": "email", "target_type": "site_url", "clicks": 9, "conversations": 2, "leads": 0, "_rate_held": true, "_is_new": true }
+        { "ref": "camp_spring", "label": "Spring appeal email", "campaign": "spring-appeal", "placement": "email", "target_type": "site_url", "clicks": 130, "conversations": 40, "leads": 7, "_is_new": true },
+        { "ref": "camp_newsletter", "label": "Newsletter link", "campaign": "newsletter", "placement": "email", "target_type": "site_url", "clicks": 80, "conversations": 26, "leads": 4, "_is_new": true }
       ]
     },
     "_not_mintable": {
@@ -161,8 +161,8 @@
   "lead_pipeline": {
     "_note": "Leads are attributes on the picasso_form_submissions row (pipeline_status + tenant_pipeline_key='{tenant_id}#{status}'). Spread m0's 217 leads across every state so the Lead Workspace looks alive and a lead can be advanced live during the demo (roadmap §8 step 5).",
     "_reserve": "Leave several leads in `new` so the demo always has one to advance, even on a re-run.",
-    "distribution": { "new": 4, "contacted": 7, "qualified": 5, "converted": 6, "archived": 3 },
-    "_sums_to": 25
+    "distribution": { "new": 12, "contacted": 20, "qualified": 15, "converted": 18, "archived": 8 },
+    "_sums_to": 73
   },
 
   "scheduling": {
@@ -177,7 +177,7 @@
     "_v1_scope": "Seeded history only. Nothing is ever sent to the roster's @example.org addresses.",
     "_gotcha": "Lifecycle events (send -> delivery -> open -> click) MUST share a message_id or rates compute to zero.",
     "_live_send_warning": "A live form completion during a demo triggers a REAL internal notification. The demo tenant's recipients must be a MyRecruiter-owned address — never @example.org (SES bounces damage sender reputation).",
-    "m0_sends": 30,
+    "m0_sends": 80,
     "delivery_rate": 0.98,
     "open_rate": 0.52,
     "click_rate": 0.19
