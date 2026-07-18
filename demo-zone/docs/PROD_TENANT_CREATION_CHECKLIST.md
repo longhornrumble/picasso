@@ -12,8 +12,8 @@ Every step is staging-first. Nothing here runs against prod (614) until the same
 
 | # | Blocker | Why it blocks | Owner |
 |---|---|---|---|
-| B1 | **Tenant-hash fork.** `deploy_tenant_stack:884` (RETIRED per `picasso-config-builder/CLAUDE.md:517`) → `de8bef17d2096b`. Live `Picasso_Config_Manager/index.mjs:240` → `8bef17d2096bd2`. Every existing tenant matches the *retired* shape. | The hash is the mapping-file key, the widget embed value, and the seeder's DDB key scope. Getting it wrong means the config is authored against one hash and the seeder writes another — silent empty dashboards. | Chris |
-| B2 | **Website entry points can't be minted** (`validation.mjs:12` allows `standalone`/`campaign` only). | Determines whether the microsite carries per-page `?ep=` values. Entry-point ids must be minted BEFORE the microsite spec (roadmap §5). | Chris |
+| ~~B1~~ | ~~Tenant-hash fork~~ **RESOLVED 2026-07-17.** Staging tenant created: `BRI071351` → hash **`8b464847ae0ede`** (live `Picasso_Config_Manager` shape, `sha256[0:14]`). The prod tenant reuses the same id → same deterministic hash, so prod is `8b464847ae0ede` too. | — | — |
+| ~~B2~~ | ~~Website entry points can't be minted~~ **RESOLVED.** Seeder writes registry rows directly to DynamoDB (roadmap §4.3), bypassing mint's `standalone`/`campaign` enum. | — | — |
 | B3 | **`self_booked_pct` / `median_first_response_minutes` are aggregator-nulled.** | Seeded history would show values the live current month cannot. Cosmetic but visible mid-demo. | Decide at P2 |
 
 ---
@@ -22,15 +22,15 @@ Every step is staging-first. Nothing here runs against prod (614) until the same
 
 - [ ] P1–P3 complete: staging demo tenant renders the full story, seeder covers all surfaces, reset proven idempotent, microsite live on staging.
 - [ ] Full staging rehearsal passed end-to-end as the demo user.
-- [ ] B1 resolved — the demo tenant's real hash is known and written down here: `________________`
+- [x] B1 resolved — the demo tenant's real hash is `8b464847ae0ede` (id `BRI071351`).
 - [ ] Chris's explicit go for prod. This is a **HARD STOP** gate, not a formality.
 
 ## Step 1 — Tenant config
 
-- [ ] Author `DEMO-YS01` config in **staging** Config Builder from `demo-zone/personas/brightpath/` (persona.json + forms.json).
+- [ ] Author `BRI071351` config in **staging** Config Builder from `demo-zone/personas/brightpath/` (persona.json + forms.json).
 - [ ] Verify staging: all 6 CTAs `ai_available: true`, 4 forms enabled, `V4_ACTION_SELECTOR: true`, all `dashboard_*` flags on.
 - [ ] Promote to prod via the existing gated promote workflow (config only — this part IS supported for an existing tenant, so create the tenant first, then promote config).
-- [ ] Verify: `aws s3 cp s3://myrecruiter-picasso/tenants/DEMO-YS01/DEMO-YS01-config.json - | jq '.feature_flags'`
+- [ ] Verify: `aws s3 cp s3://myrecruiter-picasso/tenants/BRI071351/BRI071351-config.json - | jq '.feature_flags'`
 
 ## Step 2 — Mapping file (mandatory glue)
 
@@ -42,18 +42,18 @@ Every step is staging-first. Nothing here runs against prod (614) until the same
 
 - [ ] `picasso-tenant-registry` row mapping `tenantId` → `clerkOrgId`.
 - [ ] Requires `dynamodb:PutItem` — **the promote workflow's role deliberately lacks this**. Use operator SSO credentials, not the CI role.
-- [ ] Verify: `aws dynamodb get-item --table-name picasso-tenant-registry --key '{"tenantId":{"S":"DEMO-YS01"}}'`
+- [ ] Verify: `aws dynamodb get-item --table-name picasso-tenant-registry --key '{"tenantId":{"S":"BRI071351"}}'`
 
 ## Step 4 — Clerk org + demo user
 
-- [ ] Create the Clerk org for `DEMO-YS01`.
+- [ ] Create the Clerk org for `BRI071351`.
 - [ ] Create a **dedicated demo user**, member of ONLY this org.
 - [ ] **Do not demo as super-admin** — the tenant-switcher dropdown renders real customer names, one misclick from a prospect's screen (roadmap §2).
 - [ ] Verify: log in as the demo user; confirm no tenant switcher, correct org.
 
 ## Step 5 — KB
 
-- [ ] Author persona `.md` + `.md.metadata.json` (with `metadataAttributes.tenantId`) into `s3://kbragdocs/tenants/DEMO-YS01/`.
+- [ ] Author persona `.md` + `.md.metadata.json` (with `metadataAttributes.tenantId`) into `s3://kbragdocs/tenants/BRI071351/`.
 - [ ] `StartIngestionJob` (pattern: `kb_proposal_applier/bedrockSync.mjs`).
 - [ ] **Confirm the job reaches COMPLETE — not merely "started."** Sync latency is minutes.
 - [ ] Verify: ask the prod widget a question only the KB can answer.
@@ -98,4 +98,4 @@ Data plane: run the guarded reset's purge step (allowlisted to demo tenant IDs) 
 
 Identity/config plane: **reset never touches these by design** (roadmap §2/§4.4), so undoing Steps 1–5 is manual — delete the config, mapping, registry row, Clerk org/user, and KB docs by hand, in reverse order.
 
-**No customer data is at risk in any step here** — every write is scoped to `DEMO-YS01`. The risk being managed is the *scoping itself* failing, which is why Step 6's negative test is not optional.
+**No customer data is at risk in any step here** — every write is scoped to `BRI071351`. The risk being managed is the *scoping itself* failing, which is why Step 6's negative test is not optional.
