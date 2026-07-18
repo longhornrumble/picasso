@@ -16,41 +16,61 @@
         "How do I sign up to volunteer",
         "Volunteer application"
       ],
-      "introduction": "Wonderful — takes about a minute, and Dana follows up personally within a day or two.",
+      "introduction": "Wonderful — takes a few minutes, and Dana follows up personally within a day or two.",
       "fields": [
-        { "id": "field_1763001000001", "type": "name", "label": "Full name", "prompt": "First off — what's your full name?", "required": true },
+        {
+          "id": "field_1763001000010",
+          "type": "select",
+          "label": "How did you hear about us",
+          "prompt": "First — how did you hear about BrightPath?",
+          "required": true,
+          "options": [
+            { "value": "friend", "label": "Friend or word of mouth" },
+            { "value": "social", "label": "Social media" },
+            { "value": "google", "label": "Google search" },
+            { "value": "volunteer_platform", "label": "Volunteer recruitment platform" },
+            { "value": "employer", "label": "Employer" },
+            { "value": "other", "label": "Other" }
+          ]
+        },
+        { "id": "field_1763001000001", "type": "name", "label": "Full name", "prompt": "What's your full name?", "required": true },
+        { "id": "field_1763001000011", "type": "date", "label": "Date of birth", "prompt": "What's your date of birth?", "required": true },
         { "id": "field_1763001000002", "type": "email", "label": "Email address", "prompt": "What's the best email to reach you at?", "required": true },
-        { "id": "field_1763001000003", "type": "phone", "label": "Phone number", "prompt": "And a phone number, in case email gets buried?", "required": true },
-        { "id": "field_1763001000007", "type": "address", "label": "Home address", "prompt": "What's your home address? (helps us match you to a nearby site)", "required": true },
+        { "id": "field_1763001000003", "type": "phone", "label": "Primary phone", "prompt": "And a phone number, in case email gets buried?", "required": true },
+        { "id": "field_1763001000012", "type": "boolean", "label": "Text message consent", "prompt": "Is it okay if we text you about next steps?", "required": true },
+        { "id": "field_1763001000007", "type": "address", "label": "Home address", "prompt": "What's your home address? (helps us match you to a nearby family)", "required": true },
+        { "id": "field_1763001000013", "type": "boolean", "label": "Reliable transportation", "prompt": "Do you have reliable transportation?", "required": true },
+        {
+          "id": "field_1763001000014",
+          "type": "select",
+          "label": "Preferred language",
+          "prompt": "What language are you most comfortable in?",
+          "required": true,
+          "options": [
+            { "value": "english", "label": "English" },
+            { "value": "spanish", "label": "Spanish" },
+            { "value": "other", "label": "Other" }
+          ]
+        },
         {
           "id": "field_1763001000004",
           "type": "select",
-          "label": "Areas of interest",
-          "prompt": "Which of these sounds most like you?",
+          "label": "Ways you'd like to serve",
+          "prompt": "Which way would you feel most comfortable serving a family?",
           "required": true,
           "options": [
-            { "value": "tutoring", "label": "After-school tutoring" },
-            { "value": "life_skills", "label": "Life-skills sessions" },
-            { "value": "events", "label": "Events and fundraisers" },
-            { "value": "not_sure", "label": "Not sure yet — help me pick" }
+            { "value": "mentorship", "label": "Mentorship" },
+            { "value": "meals", "label": "Meals and grocery deliveries" },
+            { "value": "transportation", "label": "Transportation and pickups" },
+            { "value": "tutoring", "label": "Tutoring and educational support" },
+            { "value": "care_packages", "label": "Care packages and essentials" },
+            { "value": "babysitting", "label": "Babysitting and date-night support" }
           ]
         },
-        {
-          "id": "field_1763001000005",
-          "type": "select",
-          "label": "Weekly availability",
-          "prompt": "When are you generally free?",
-          "required": true,
-          "options": [
-            { "value": "weekday_afternoons", "label": "Weekday afternoons" },
-            { "value": "weekday_evenings", "label": "Weekday evenings" },
-            { "value": "weekends", "label": "Weekends" },
-            { "value": "flexible", "label": "Flexible" }
-          ]
-        },
+        { "id": "field_1763001000016", "type": "textarea", "label": "What motivates you to volunteer", "prompt": "What's drawing you to support a family in foster care?", "required": true },
         { "id": "field_1763001000008", "type": "textarea", "label": "References", "prompt": "Please share two references (name and how we can reach them).", "required": true },
-        { "id": "field_1763001000009", "type": "boolean", "label": "Background check consent", "prompt": "Everyone who works with youth completes a background check. Are you comfortable with that?", "required": true },
-        { "id": "field_1763001000006", "type": "textarea", "label": "Anything we should know", "prompt": "Anything you'd like the team to know before they reach out?", "required": false }
+        { "id": "field_1763001000009", "type": "boolean", "label": "Background check consent", "prompt": "Everyone who works with youth completes a background check and fingerprinting. Are you comfortable with that?", "required": true },
+        { "id": "field_1763001000006", "type": "textarea", "label": "Anything else we should know", "prompt": "Anything you'd like the team to know before they reach out?", "required": false }
       ]
     },
 
@@ -70,6 +90,7 @@
         { "id": "field_1763002000001", "type": "name", "label": "Applicant name", "prompt": "What's your full name?", "required": true },
         { "id": "field_1763002000002", "type": "email", "label": "Email", "prompt": "Best email for you?", "required": true },
         { "id": "field_1763002000003", "type": "phone", "label": "Phone", "prompt": "And a phone number?", "required": true },
+        { "id": "field_1763002000008", "type": "address", "label": "Home address", "prompt": "What's your home address? (helps us match you nearby)", "required": true },
         { "id": "field_1763002000004", "type": "boolean", "label": "Twelve-month commitment", "prompt": "Mentorship Matches asks for a minimum of twelve months. Can you commit to that?", "required": true },
         {
           "id": "field_1763002000005",
@@ -85,6 +106,7 @@
           ]
         },
         { "id": "field_1763002000006", "type": "textarea", "label": "Why mentoring", "prompt": "What's drawing you to mentoring right now?", "required": true },
+        { "id": "field_1763002000009", "type": "textarea", "label": "References", "prompt": "Please share two references (name and how we can reach them).", "required": true },
         { "id": "field_1763002000007", "type": "boolean", "label": "Background check consent", "prompt": "Every mentor completes a background check before being matched. Are you comfortable with that?", "required": true, "_note": "Consent capture only. Picasso must NEVER evaluate, summarize, or act on background-check RESULTS — see CLAUDE.md 'Background Check Caution'. Nothing downstream reads this beyond storing the yes/no." }
       ]
     },
