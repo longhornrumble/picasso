@@ -8,7 +8,7 @@ Fixture packs and tooling for the sales demo zone. See [`docs/roadmap/DEMO_ZONE.
 
 ```
 demo-zone/
-├── personas/brightpath/     Persona 1 — youth services (tenant DEMO-YS01)
+├── personas/brightpath/     Persona 1 — youth services (tenant BRI071351)
 │   ├── persona.json         Identity, programs, CTAs, topic mix, fictional roster
 │   ├── forms.json           The 4 conversational forms
 │   └── arc.json             The six-month numeric narrative arc
@@ -45,10 +45,10 @@ Every one of these was verified against live code on 2026-07-16. They are not st
 
 ## Open questions
 
-1. **Tenant hash fork — BLOCKS P1.** `deploy_tenant_stack:884` (documented RETIRED at `picasso-config-builder/CLAUDE.md:517`) computes `tenant_id[:2] + sha256[:12]` → `DEMO-YS01` = `de8bef17d2096b`. The **live** creation path `Picasso_Config_Manager/index.mjs:240` computes `sha256[0:14]` → `8bef17d2096bd2`. Every existing tenant matches the *retired* shape (`MYR384719` → `my87674d777bf9`, `AUS123957` → `auc5b0ecb0adcb`). Roadmap §2/§3 cite the retired algorithm. **The demo tenant's real hash cannot be fixed until this is resolved** — it feeds the seeder's key scoping (§4.3) and the microsite embed (§6). Bigger than the demo: any tenant onboarded through the config builder today gets a hash shaped unlike every existing tenant.
-2. **`self_booked_pct` / `median_first_response_minutes` are aggregator-nulled — decide at P2.** See `arc.json._unresolved_nullable_fields`. Seeded history would show values the live current month cannot.
+1. **`self_booked_pct` / `median_first_response_minutes` are aggregator-nulled — decide at P2.** See `arc.json._unresolved_nullable_fields`. Seeded history would show values the live current month cannot.
 
 ## Resolved
 
+- **Tenant hash fork (was: "BLOCKS P1")** — resolved empirically 2026-07-17 by creating the tenant. `BRI071351` → **`8b464847ae0ede`**, which is the LIVE `Picasso_Config_Manager` shape (`sha256(id+salt)[0:14]`), NOT the retired `deploy_tenant_stack` shape (`br8b464847ae0e`). Confirmed the config builder mints the `sha…`-prefixed shape, so the demo tenant's hash differs in shape from older tenants (`my…`, `au…`) — but that is cosmetic: the hash is opaque and every reader resolves it through `mappings/{hash}.json`, so a single self-consistent tenant works regardless of shape. **The only rule this imposes on the seeder: use `8b464847ae0ede` verbatim; never recompute the hash from the id** (that would yield the wrong `br…` shape). Roadmap §2/§3's citation of the retired algorithm is corrected there.
 - **Website entry points (was: "can't be minted")** — resolved 2026-07-17, not a blocker. Mint rejects `channel: website`, but the seeder writes registry rows **directly to DynamoDB** (roadmap §4.3), so it writes `website` rows with real labels and mints the `ep_` ULIDs itself. Residual is a sales-integrity note, not an engineering gate: the demo shows per-page website attribution a customer can't currently self-serve through the mint UI.
 - **QR is out of the demo** — decided 2026-07-17 (roadmap §5). No live scan moment; the flyer is a standalone artifact shown outside the demo. Seeded standalone/QR channel history **stays** in `arc.json` (it shows the product tracks print provenance and costs nothing). The `/go/` ep-forwarding bug is consequently **not** a demo dependency — it is being fixed separately on its own merits.
