@@ -1,7 +1,9 @@
 {
   "_readme": "Persona 1 fixture pack — see ../../README.md for verified constraints and departures. All people, metrics, and the organization are invented.",
   "persona_id": "brightpath",
-  "tenant_id": "DEMO-YS01",
+  "tenant_id": "BRI071351",
+  "tenant_hash": "8b464847ae0ede",
+  "_tenant_hash_note": "REAL hash, created via the Config Builder 2026-07-17. It is the LIVE Picasso_Config_Manager shape (sha256(tenant_id+salt)[0:14]), NOT the retired deploy_tenant_stack shape (which would be 'br8b464847ae0e'). The seeder MUST use this literal hash for every keyed write (TENANT#{hash}, mappings/{hash}.json, session tenant_hash) — never recompute it from the id, or it gets the wrong shape.",
   "vertical": "youth_services",
   "subscription_tier": "Enterprise",
 
