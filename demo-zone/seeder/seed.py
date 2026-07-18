@@ -357,8 +357,13 @@ def write_session_events(convs, dry_run):
                     # abandoned: submit fields up to a drop-off point, then stop (no
                     # FORM_COMPLETED). The bottleneck reader aggregates the LAST
                     # FORM_FIELD_SUBMITTED per abandoned session -> the drop-off field.
+                    # Independent hash + a back-weighted curve so drop-offs cluster on
+                    # the harder late fields (background check, references) the way a
+                    # real application does -- not just the first few. (h<10 above only
+                    # spans 0..9, which would cap the drop point at the first ~10 fields.)
                     flds = _form_fields(fid)
-                    drop = 1 + (h % max(1, len(flds) - 1)) if flds else 0
+                    h2 = int(hashlib.sha256((c["session_id"] + "drop").encode()).hexdigest(), 16) % 100
+                    drop = 1 + int((len(flds) - 1) * (h2 / 100.0) ** 0.7) if len(flds) > 1 else len(flds)
                     for fld in flds[:drop]:
                         items.append(_event_row(c, step, at(step), "FORM_FIELD_SUBMITTED",
                             {"form_id": fid, "field_id": fld[0], "field_label": fld[1]}, now_epoch)); step += 1
