@@ -209,9 +209,39 @@ _TOPIC_PRIMARY_FORM = {
     "Events": "event_registration",
 }
 
+# Entry-point ref per channel — CONVERSATION_STARTED carries entry_point_id so the
+# Attribution_Aggregator resolves the session's channel via the registry (website
+# and messenger carry none → default 'website' in the aggregator's current-month
+# recompute; the full 4-channel split lives in the direct-seeded history rows).
+_CHANNEL_EP_REFS = {
+    "standalone": ["qr_gala_flyer", "qr_lobby"],
+    "campaign": ["camp_spring", "camp_newsletter"],
+}
 
-def _event_row(c, step, when_iso, event_type, payload, now_epoch):
-    return {
+# Short, topic-appropriate message pools for believable transcripts.
+_BOT_REPLIES = {
+    "Volunteer": ["We'd love your help — most volunteers start with one afternoon a week. Want me to walk you through the options?",
+                  "Thanks for asking! Dana follows up with every volunteer personally. What kind of help interests you most?"],
+    "Donation": ["Every gift goes straight to matching youth with mentors. You can give once or monthly — which works better for you?",
+                 "Donations are tax-deductible and you'll get a receipt by email. Want the giving link?"],
+    "Events": ["The spring gala is our big night of the year — family-friendly, and Priya can send details. Want me to save you a seat?",
+               "Happy to help with the gala! Would you like to register, or ask a question first?"],
+    "Services": ["We'd love to help — BrightPath supports young people from the first match through their first apartment. Who is this for?",
+                 "Marcus reviews every request personally. Is this for tutoring, mentoring, or transition support?"],
+    "General": ["Happy to help! We're in Rivermont, open weekdays 9-5. What can I point you to?",
+                "I can help with volunteering, giving, or our programs — where would you like to start?"],
+}
+_USER_FOLLOWUPS = {
+    "Volunteer": ["What's the time commitment?", "Do I need experience?", "Can I volunteer on weekends?"],
+    "Donation": ["Is it tax deductible?", "Can I give monthly?", "Where does the money go?"],
+    "Events": ["Can I bring a guest?", "Is it family friendly?", "How much are tickets?"],
+    "Services": ["What ages do you serve?", "How does matching work?", "How long is the program?"],
+    "General": ["What are your hours?", "Where are you located?", "How do I get started?"],
+}
+
+
+def _event_row(c, step, when_iso, event_type, payload, now_epoch, extra=None):
+    row = {
         "pk": f"SESSION#{c['session_id']}",
         "sk": f"STEP#{step:03d}",
         "session_id": c["session_id"],
@@ -223,34 +253,75 @@ def _event_row(c, step, when_iso, event_type, payload, now_epoch):
         "step_number": step,
         "ttl": now_epoch + TTL_LONG,
     }
+    if extra:
+        row.update(extra)                     # top-level attrs (e.g. entry_point_id for the aggregator)
+    return row
+
+
+def _ep_ref_for(c):
+    refs = _CHANNEL_EP_REFS.get(c["channel"])
+    if not refs:
+        return None
+    idx = int(hashlib.sha256(c["session_id"].encode()).hexdigest(), 16) % len(refs)
+    return _ep_id(refs[idx])
 
 
 def write_session_events(convs, dry_run):
+    """Full per-session event stream: CONVERSATION_STARTED (aggregator input +
+    channel) -> message transcript (drill-down) -> form funnel (Forms /summary)."""
     _assert_tenant(hsh=TENANT_HASH)
     now_epoch = _epoch(_now())
     items = []
     for c in convs:
-        started, ended = c["started_at"], c["ended_at"]
-        # a "+30s after start" view/start timestamp, clamped before end
-        started_dt = datetime.fromisoformat(started.replace("Z", "+00:00"))
-        start_iso = (started_dt + timedelta(seconds=20)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+        started_dt = datetime.fromisoformat(c["started_at"].replace("Z", "+00:00"))
+        ended_dt = datetime.fromisoformat(c["ended_at"].replace("Z", "+00:00"))
+        span = max(30, int((ended_dt - started_dt).total_seconds()))
+        msg_count = c["message_count"]
+        # total event slots = 1 (started) + msg_count (transcript) + up to 3 (form)
+        slots = 1 + msg_count + 3
+        def at(i):
+            return (started_dt + timedelta(seconds=int(span * i / slots))).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
+        step = 1
+        epid = _ep_ref_for(c)
+        cs_extra = {"entry_point_id": epid} if epid else None
+        cs_payload = {
+            "entry_point_id": epid,
+            "attribution": {"entry_point_id": epid, "landing_page": "/", "referrer": None},
+        }
+        items.append(_event_row(c, step, c["started_at"], "CONVERSATION_STARTED", cs_payload, now_epoch, cs_extra))
+        step += 1
+
+        # transcript: first user message = first_question, then alternate bot/user
+        replies = _BOT_REPLIES[c["topic"]]
+        followups = _USER_FOLLOWUPS[c["topic"]]
+        for m in range(msg_count):
+            if m % 2 == 0:  # user turn
+                text = c["first_question"] if m == 0 else followups[(m // 2) % len(followups)]
+                items.append(_event_row(c, step, at(step), "MESSAGE_SENT",
+                                        {"content_preview": text[:100], "content": text, "text": text, "message": text}, now_epoch))
+            else:            # bot turn
+                text = replies[(m // 2) % len(replies)]
+                items.append(_event_row(c, step, at(step), "MESSAGE_RECEIVED",
+                                        {"content_preview": text[:100], "content": text, "text": text}, now_epoch))
+            step += 1
+
+        # form funnel
         if c["is_lead"]:
             fid = c["form_id"]
-            dur = max(20, (datetime.fromisoformat(ended.replace("Z", "+00:00")) - started_dt).seconds)
-            items.append(_event_row(c, 1, started, "FORM_VIEWED", {"form_id": fid}, now_epoch))
-            items.append(_event_row(c, 2, start_iso, "FORM_STARTED", {"form_id": fid}, now_epoch))
-            items.append(_event_row(c, 3, ended, "FORM_COMPLETED", {"form_id": fid, "duration_seconds": dur}, now_epoch))
-            continue
-        fid = _TOPIC_PRIMARY_FORM.get(c["topic"])
-        if not fid:
-            continue
-        h = int(hashlib.sha256(c["session_id"].encode()).hexdigest(), 16) % 100
-        if h < 10:      # abandoned: viewed + started, no complete
-            items.append(_event_row(c, 1, started, "FORM_VIEWED", {"form_id": fid}, now_epoch))
-            items.append(_event_row(c, 2, start_iso, "FORM_STARTED", {"form_id": fid}, now_epoch))
-        elif h < 18:    # viewed only
-            items.append(_event_row(c, 1, started, "FORM_VIEWED", {"form_id": fid}, now_epoch))
-    return ddb.batch_write(TABLES["events"], items, dry_run, f"form-funnel events x{len(items)}")
+            items.append(_event_row(c, step, at(step), "FORM_VIEWED", {"form_id": fid}, now_epoch)); step += 1
+            items.append(_event_row(c, step, at(step), "FORM_STARTED", {"form_id": fid}, now_epoch)); step += 1
+            items.append(_event_row(c, step, c["ended_at"], "FORM_COMPLETED", {"form_id": fid, "duration_seconds": span}, now_epoch))
+        else:
+            fid = _TOPIC_PRIMARY_FORM.get(c["topic"])
+            if fid:
+                h = int(hashlib.sha256(c["session_id"].encode()).hexdigest(), 16) % 100
+                if h < 10:
+                    items.append(_event_row(c, step, at(step), "FORM_VIEWED", {"form_id": fid}, now_epoch)); step += 1
+                    items.append(_event_row(c, step, at(step), "FORM_STARTED", {"form_id": fid}, now_epoch))
+                elif h < 18:
+                    items.append(_event_row(c, step, at(step), "FORM_VIEWED", {"form_id": fid}, now_epoch))
+    return ddb.batch_write(TABLES["events"], items, dry_run, f"session events x{len(items)}")
 
 
 # ===========================================================================
@@ -307,21 +378,22 @@ def write_attribution(dry_run):
         tot_conv = conv_s["total"][idx]
         tot_lead = lead_s["total"][idx]
 
-        # ---- summary row ----
-        if j == 0:
-            summ = dict(m0)   # exact hand-authored m0
-        else:
-            summ = {
-                "conversations": tot_conv,
-                "engaged": round(tot_conv * R_ENGAGED),
-                "applications": round(tot_conv * R_APPS),
-                "leads": tot_lead,
-                "after_hours_conversations": round(tot_conv * R_AH),
-                "conversation_minutes": round(tot_conv * R_MIN),
-                "reach_page_views_sessions": round(tot_conv * R_REACH),
-                "self_booked_pct": None,
-                "median_first_response_minutes": None,
-            }
+        # ---- summary row (all months derived from series + scale-invariant
+        # ratios). The current month is authoritatively owned by the live
+        # Attribution_Aggregator, which recomputes it from CONVERSATION_STARTED
+        # events (see write_conversation_started); this direct row is the
+        # pre-aggregator placeholder. ----
+        summ = {
+            "conversations": tot_conv,
+            "engaged": round(tot_conv * R_ENGAGED),
+            "applications": round(tot_conv * R_APPS),
+            "leads": tot_lead,
+            "after_hours_conversations": round(tot_conv * R_AH),
+            "conversation_minutes": round(tot_conv * R_MIN),
+            "reach_page_views_sessions": round(tot_conv * R_REACH),
+            "self_booked_pct": None,
+            "median_first_response_minutes": None,
+        }
         rows.append(_attrib_row(month, f"METRIC#attribution_summary#{month}", summ, now_epoch))
 
         # ---- channel rows ----
@@ -330,25 +402,21 @@ def write_attribution(dry_run):
             c_lead = lead_s[channel][idx]
             if c_conv == 0:
                 continue
-            if j == 0:
-                cdata = dict(arc["m0_channel_rows"][channel]["data"])
-                cdata["channel"] = channel
-            else:
-                cdata = {
-                    "channel": channel,
-                    "conversations": c_conv,
-                    "leads": c_lead,
-                    "engaged": round(c_conv * R_ENGAGED),
-                    "applications": round(c_conv * R_APPS),
-                    "topic_counts": {t: round(c_conv * w) for t, w in weights.items()},
-                    "resource_clicks": {},
-                    "self_booked_pct": None,
-                    "median_first_response_minutes": None,
-                }
-                if channel == "standalone":
-                    cdata["reach"] = {"scans": round(c_conv * 3.0), "clicks": 0}
-                elif channel == "campaign":
-                    cdata["reach"] = {"scans": 0, "clicks": round(c_conv * 5.6)}
+            cdata = {
+                "channel": channel,
+                "conversations": c_conv,
+                "leads": c_lead,
+                "engaged": round(c_conv * R_ENGAGED),
+                "applications": round(c_conv * R_APPS),
+                "topic_counts": {t: round(c_conv * w) for t, w in weights.items()},
+                "resource_clicks": {},
+                "self_booked_pct": None,
+                "median_first_response_minutes": None,
+            }
+            if channel == "standalone":
+                cdata["reach"] = {"scans": round(c_conv * 3.0), "clicks": 0}
+            elif channel == "campaign":
+                cdata["reach"] = {"scans": 0, "clicks": round(c_conv * 5.6)}
             rows.append(_attrib_row(month, f"METRIC#attribution_channel#{month}#{channel}", cdata, now_epoch))
 
     # ---- entry-point aggregate rows (current month only) + registry ----
