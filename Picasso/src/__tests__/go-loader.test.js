@@ -3,36 +3,23 @@
  */
 
 /**
- * Tests for the /go/ fullpage launcher (public/go/loader.js).
+ * Tests for the /go/ fullpage launcher (src/go-loader.js).
  *
- * The bug these lock down: loader.js built the iframe URL and its PICASSO_INIT
- * postMessage WITHOUT attribution, so `/go/?t=…&ep=ep_…` — the URL every QR
- * code and social link points at — silently lost its entry-point id. Every
- * such conversation was miscredited to the `website` channel (the aggregator's
- * default for "no ep").
+ * The bug the attribution tests lock down: the launcher used to build the
+ * iframe URL and its PICASSO_INIT postMessage WITHOUT attribution, so
+ * `/go/?t=…&ep=ep_…` — the URL every QR code and social link points at —
+ * silently lost its entry-point id, and every such conversation was
+ * miscredited to the `website` channel (the aggregator's default for "no ep").
  *
- * loader.js is not a module: it is an IIFE copied verbatim into dist/<env>/go/
- * (esbuild.config.mjs) and cannot be imported. So we read the real shipped
- * file and evaluate it against a jsdom document, asserting on what it posts
- * to the iframe.
- *
- * This test lives in src/__tests__/ rather than next to loader.js ON PURPOSE:
- * esbuild copies public/go/ into dist/<env>/go/ RECURSIVELY and unfiltered
- * (esbuild.config.mjs ~227), so anything under public/go/ ships to S3 and is
- * publicly fetchable. A __tests__ directory there would have been deployed to
- * chat.myrecruiter.ai/go/__tests__/. Do not move this back.
+ * go-loader.js exports initFullpageLauncher() and imports captureAttribution
+ * from the shared attribution module — so this test imports and calls the real
+ * function directly (no source-eval), and drift from widget-host is impossible
+ * because both consume the same module.
  */
 
-const fs = require('fs');
-const path = require('path');
+import { initFullpageLauncher } from '../go-loader.js';
 
-// Reads the REAL shipped artifact, not a copy of it.
-const LOADER_SRC = fs.readFileSync(
-  path.join(__dirname, '..', '..', 'public', 'go', 'loader.js'),
-  'utf8'
-);
-
-// C2 contract — must match src/widget-host.js getEntryPointId()
+// C2 contract — must match src/utils/attribution.js getEntryPointId()
 const VALID_EP = 'ep_01HQZX9KJ4MNPQRSTUVWXYZ234';
 
 /**
@@ -79,8 +66,7 @@ function runLoader(search, { cookie = '', referrer = '' } = {}) {
     return el;
   });
 
-  // eslint-disable-next-line no-new-func
-  new Function(LOADER_SRC)();
+  initFullpageLauncher();
 
   document.createElement.mockRestore();
 
@@ -240,6 +226,51 @@ describe('/go/ loader — postMessage targeting', () => {
     // If these ever diverge, postMessage silently drops the message and the
     // chat never initializes — so pin them to each other, not to a literal.
     targetOrigins.forEach((origin) => expect(iframe.src.startsWith(origin)).toBe(true));
+  });
+});
+
+describe('/go/ loader — PICASSO_LOADED title listener (hardening)', () => {
+  const SAME_ORIGIN = 'https://chat.myrecruiter.ai';
+
+  function boot() {
+    // A tenant is required for the listener to be registered at all.
+    runLoader('?t=my87674d777bf9');
+    document.title = 'baseline';
+  }
+
+  function post(data, origin = SAME_ORIGIN) {
+    window.dispatchEvent(new MessageEvent('message', { data, origin }));
+  }
+
+  it('sets document.title from a same-origin PICASSO_LOADED', () => {
+    boot();
+    post({ type: 'PICASSO_LOADED', config: { chat_title: 'BrightPath Chat' } });
+    expect(document.title).toBe('BrightPath Chat');
+  });
+
+  it('falls back to branding.chat_title', () => {
+    boot();
+    post({ type: 'PICASSO_LOADED', config: { branding: { chat_title: 'Branded' } } });
+    expect(document.title).toBe('Branded');
+  });
+
+  it('ignores a PICASSO_LOADED from a foreign origin (no title spoofing)', () => {
+    boot();
+    post({ type: 'PICASSO_LOADED', config: { chat_title: 'evil.example' } }, 'https://evil.example');
+    expect(document.title).toBe('baseline');
+  });
+
+  it('does not throw on a null-data message and leaves the title intact', () => {
+    boot();
+    // A page can postMessage(null); reading .type on it would throw.
+    expect(() => post(null)).not.toThrow();
+    expect(document.title).toBe('baseline');
+  });
+
+  it('ignores unrelated same-origin message types', () => {
+    boot();
+    post({ type: 'SOMETHING_ELSE', config: { chat_title: 'nope' } });
+    expect(document.title).toBe('baseline');
   });
 });
 
