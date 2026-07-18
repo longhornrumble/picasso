@@ -46,19 +46,19 @@
       "total":      [38, 43, 48, 52, 66, 73]
     },
     "_derived_deltas_m0_vs_m1": {
-      "conversations": { "abs": 104, "pct": 9.0 },
-      "leads": { "abs": 19, "pct": 9.6 },
-      "rate_pp": { "abs": 0.1, "pct": 0.6 }
+      "conversations": { "abs": 43, "pct": 11.3 },
+      "leads": { "abs": 7, "pct": 10.6 },
+      "rate_pp": { "abs": -0.1, "pct": -0.6 }
     }
   },
 
   "story": {
-    "shape": "Steady, believable growth — not a hockey stick. Website is the backbone at roughly two-thirds of volume. Messenger is the best converter despite a fifth of the traffic. QR/standalone climbs off a spring event push. The campaign channel launched last month and is still below the confidence floor.",
+    "shape": "Steady, believable growth — not a hockey stick. Website is the backbone at roughly half of volume. Messenger is the best converter despite a fraction of the traffic. QR/standalone climbs off a spring event push. The campaign channel launched two months ago and already clears the confidence floor.",
     "beats": [
-      "Website grows ~6-8% a month and converts a steady ~17.5% — the dependable backbone.",
-      "Messenger converts highest (18.3%) on a fifth of the volume — the 'you're leaving money here' beat.",
-      "Standalone/QR nearly triples over six months off the spring event push — the prop-kit beat.",
-      "Campaign goes 0 -> 14 -> 37 across the last two months and stays under n=50 — deliberately exercises the C7 held-rate UI.",
+      "Website grows ~7-8% a month and converts a steady ~17% — the dependable backbone.",
+      "Messenger converts highest (17.8%) on under a quarter of the volume — the 'you're leaving money here' beat.",
+      "Standalone/QR climbs ~50% over six months off the spring event push — the prop-kit beat.",
+      "Campaign goes 0 -> 52 -> 66 across the last two months and clears n=50 — every active channel shows rates (the held-rate UI is no longer exercised; see monthly_series._rescaled).",
       "46% of everything happens after hours — the money-band beat, and the reason the product exists."
     ]
   },
@@ -66,64 +66,64 @@
   "m0_summary_row": {
     "_sk": "METRIC#attribution_summary#{YYYY-MM}",
     "data": {
-      "conversations": 1259,
-      "engaged": 843,
-      "applications": 314,
-      "leads": 217,
-      "after_hours_conversations": 579,
-      "conversation_minutes": 4820,
-      "reach_page_views_sessions": 6240,
+      "conversations": 425,
+      "engaged": 285,
+      "applications": 105,
+      "leads": 73,
+      "after_hours_conversations": 195,
+      "conversation_minutes": 1628,
+      "reach_page_views_sessions": 2106,
       "self_booked_pct": null,
       "median_first_response_minutes": null
     },
-    "_reconciliation": "engaged (553+198+71+21=843) and applications (214+71+22+7=314) now SUM to the channel rows. The parked mock claimed 812/301 while its channels summed to 843/314 — a prospect adding the column would have caught it. Conversations (1259) and leads (217) already reconciled.",
-    "_derived": "rate = 217/1259 = 17.2%. after_hours = 46% of 1259 = 579."
+    "_reconciliation": "Rescaled 2026-07-18 to the monthly_series scale (see _rescaled) preserving the original engagement ratios. engaged (131+60+50+44=285) and applications (49+22+18+16=105) SUM to the channel rows; conversations (195+90+74+66=425) and leads (33+16+13+11=73) equal the series' m0 column.",
+    "_derived": "rate = 73/425 = 17.2%. after_hours = 195 ≈ 46% of 425."
   },
 
   "m0_channel_rows": {
     "website": {
       "data": {
-        "conversations": 842, "engaged": 553, "applications": 214, "leads": 147,
-        "after_hours_conversations": 387, "conversation_minutes": 3210,
-        "topic_counts": { "Volunteer": 312, "Donation": 188, "Events": 141, "Services": 121, "General": 80 },
-        "resource_clicks": { "/volunteer/apply": 214, "/giving": 176, "/events/gala": 98, "/programs/mentorship": 64 },
+        "conversations": 195, "engaged": 131, "applications": 49, "leads": 33,
+        "after_hours_conversations": 90, "conversation_minutes": 747,
+        "topic_counts": { "Volunteer": 72, "Donation": 44, "Events": 33, "Services": 28, "General": 18 },
+        "resource_clicks": { "/volunteer/apply": 50, "/giving": 41, "/events/gala": 23, "/programs/mentorship": 15 },
         "self_booked_pct": null, "median_first_response_minutes": null
       },
       "_no_reach": "reach OMITTED for website by the aggregator — see _c5_row_shapes.website_reach_quirk.",
-      "_rate": "147/842 = 17.5%"
+      "_rate": "33/195 = 16.9%"
     },
     "messenger": {
       "data": {
-        "conversations": 268, "engaged": 198, "applications": 71, "leads": 49,
-        "after_hours_conversations": 139, "conversation_minutes": 890,
-        "topic_counts": { "Volunteer": 88, "Services": 64, "Donation": 51, "Events": 40, "General": 25 },
-        "resource_clicks": { "/volunteer/apply": 61, "/programs": 33 },
+        "conversations": 90, "engaged": 60, "applications": 22, "leads": 16,
+        "after_hours_conversations": 41, "conversation_minutes": 345,
+        "topic_counts": { "Volunteer": 30, "Services": 22, "Donation": 17, "Events": 13, "General": 8 },
+        "resource_clicks": { "/volunteer/apply": 20, "/programs": 11 },
         "self_booked_pct": null, "median_first_response_minutes": null
       },
-      "_rate": "49/268 = 18.3% — the strongest converter, the headline insight.",
+      "_rate": "16/90 = 17.8% — the strongest converter, the headline insight.",
       "_seeded_history_only": "Messenger is seeded history until Meta App Review clears (roadmap §5). Channel is resolved from a `meta:` session-id prefix, NOT from a registry row."
     },
     "standalone": {
       "data": {
-        "conversations": 112, "engaged": 71, "applications": 22, "leads": 16,
-        "after_hours_conversations": 41, "conversation_minutes": 480,
-        "topic_counts": { "Volunteer": 41, "Events": 33, "Donation": 22, "Services": 16 },
-        "resource_clicks": { "/events/register": 44, "/volunteer": 29 },
-        "reach": { "scans": 340, "clicks": 0 },
+        "conversations": 74, "engaged": 50, "applications": 18, "leads": 13,
+        "after_hours_conversations": 34, "conversation_minutes": 283,
+        "topic_counts": { "Volunteer": 27, "Events": 22, "Donation": 14, "Services": 11 },
+        "resource_clicks": { "/events/register": 29, "/volunteer": 19 },
+        "reach": { "scans": 222, "clicks": 0 },
         "self_booked_pct": null, "median_first_response_minutes": null
       },
-      "_rate": "16/112 = 14.3%"
+      "_rate": "13/74 = 17.6%"
     },
     "campaign": {
       "data": {
-        "conversations": 37, "engaged": 21, "applications": 7, "leads": 5,
-        "after_hours_conversations": 12, "conversation_minutes": 240,
-        "topic_counts": { "Donation": 18, "Events": 11, "Volunteer": 8 },
-        "resource_clicks": { "/giving/spring": 31 },
-        "reach": { "scans": 0, "clicks": 210 },
+        "conversations": 66, "engaged": 44, "applications": 16, "leads": 11,
+        "after_hours_conversations": 30, "conversation_minutes": 253,
+        "topic_counts": { "Donation": 32, "Events": 20, "Volunteer": 14 },
+        "resource_clicks": { "/giving/spring": 55 },
+        "reach": { "scans": 0, "clicks": 370 },
         "self_booked_pct": null, "median_first_response_minutes": null
       },
-      "_rate_held": "37 < 50 => C7 confidence floor => rate suppressed, rate_held:true. DELIBERATE — this is the only place the held-state UI gets exercised. Do not let this channel cross 50."
+      "_rate": "11/66 = 16.7%. Clears the 50-conversation confidence floor since the 2026-07-18 rescale (see monthly_series._rescaled) — the C7 held-rate UI is no longer exercised by this pack."
     }
   },
 
@@ -159,7 +159,7 @@
   },
 
   "lead_pipeline": {
-    "_note": "Leads are attributes on the picasso_form_submissions row (pipeline_status + tenant_pipeline_key='{tenant_id}#{status}'). Spread m0's 217 leads across every state so the Lead Workspace looks alive and a lead can be advanced live during the demo (roadmap §8 step 5).",
+    "_note": "Leads are attributes on the picasso_form_submissions row (pipeline_status + tenant_pipeline_key='{tenant_id}#{status}'). Spread m0's 73 leads across every state so the Lead Workspace looks alive and a lead can be advanced live during the demo (roadmap §8 step 5).",
     "_reserve": "Leave several leads in `new` so the demo always has one to advance, even on a re-run.",
     "distribution": { "new": 12, "contacted": 20, "qualified": 15, "converted": 18, "archived": 8 },
     "_sums_to": 73
