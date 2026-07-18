@@ -37,10 +37,13 @@ q query --table-name picasso-session-events --index-name tenant-date-index \
   --expression-attribute-values "{\":th\":{\"S\":\"$HASH\"},\":s\":{\"S\":\"$S90\"},\":f\":{\"S\":\"FORM_\"}}" \
   --select COUNT --query Count --output text | awk '{for(i=1;i<=NF;i++)x+=$i} END{print x}' | sed 's/^/  FORM_* events (90d): /'
 
-echo "== 4. Attribution summary#$MONTH (must be non-zero top-level) =="
+echo "== 4. Attribution summary#$MONTH (current month is aggregator-owned -> data-nested) =="
+# The Attribution_Aggregator recomputes the current month from CONVERSATION_STARTED
+# events and writes metrics nested under `data` (the dashboard hoists them via
+# attribution_api._hoist_data). History months stay direct-seeded top-level.
 q get-item --table-name picasso-attribution-aggregates \
   --key "{\"pk\":{\"S\":\"TENANT#$TID\"},\"sk\":{\"S\":\"METRIC#attribution_summary#$MONTH\"}}" --output json \
-  | python3 -c 'import sys,json;i=json.load(sys.stdin).get("Item",{});print("  conversations=",i.get("conversations",{}).get("N"),"leads=",i.get("leads",{}).get("N"))'
+  | python3 -c 'import sys,json;i=json.load(sys.stdin).get("Item",{});d=i.get("data",{}).get("M",{});print("  (current, data-nested) conversations=",d.get("conversations",{}).get("N"),"leads=",d.get("leads",{}).get("N"),"| top-level(history-style)=",i.get("conversations",{}).get("N"))'
 
 echo "== 5. Scheduling (now +/- 90d) =="
 q query --table-name picasso-booking --index-name tenantId-start_at-index --select COUNT \
