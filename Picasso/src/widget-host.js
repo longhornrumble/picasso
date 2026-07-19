@@ -6,6 +6,7 @@
 
 import { config as environmentConfig } from './config/environment.js';
 import { getBindingSessionId } from './utils/bindingSession.js';
+import { isFramedEmbed, reportMisEmbed } from './utils/embedContext.js';
 
 (function() {
   'use strict';
@@ -159,6 +160,19 @@ import { getBindingSessionId } from './utils/bindingSession.js';
       this.attribution = this.captureAttribution();
 
       console.log('🚀 Initializing Picasso Widget:', tenantHash);
+
+      // The snippet must run in the top-level page: the fixed container below
+      // anchors to whatever document.body it lands in, so inside a builder's
+      // sandboxed "HTML embed" iframe (e.g. Wix/filesusr.com) the widget pins
+      // to that element's box instead of the viewport. Warn + report once;
+      // never block boot — the fix is on the embedding site.
+      if (isFramedEmbed()) {
+        console.warn(
+          '[Picasso] Embed snippet is inside a sandboxed iframe, so the widget pins to that box, ' +
+          'not the page. Move it to site-wide custom code (Wix: Settings → Custom Code → Body-End).'
+        );
+        reportMisEmbed(environmentConfig.ERROR_REPORTING_ENDPOINT, tenantHash);
+      }
 
       this.createContainer();
       this.createIframe();
