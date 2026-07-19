@@ -397,6 +397,13 @@ function setupCommandListener() {
           // Could trigger config reload if needed
           break;
           
+        case 'POSITION_CHANGE':
+          // Host resolved branding.chat_position from the tenant config —
+          // mirror the closed-state internals (launcher anchor + callout
+          // direction; see the `body.widget-left` block in ChatWidget.css).
+          document.body.classList.toggle('widget-left', payload?.position === 'bottom-left');
+          break;
+
         case 'SIZE_CHANGE':
           console.log('📡 Received SIZE_CHANGE command:', payload);
           // Apply size class to body for responsive styling
@@ -451,6 +458,13 @@ function setupCommandListener() {
       // Store host viewport width for mobile/desktop behavior resolution
       if (event.data.hostViewportWidth != null) {
         setHostViewportWidth(event.data.hostViewportWidth);
+      }
+
+      // Mirror closed-state internals when the host is left-anchored
+      // (embed-snippet position; the tenant-config path arrives later via
+      // the POSITION_CHANGE command).
+      if (event.data.config?.position === 'bottom-left') {
+        document.body.classList.add('widget-left');
       }
 
       // Store attribution data for analytics (GA4 client_id, UTM params, etc.)
