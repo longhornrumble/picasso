@@ -16,7 +16,7 @@
 // 2026-07-18. The server re-validates with the same shape.
 const HOSTNAME_RE = /^[a-z0-9.-]{1,253}$/;
 
-const REPORTED_FLAG = 'picasso_misembed_reported';
+const REPORTED_FLAG = 'picasso_misembed';
 
 export function isFramedEmbed(win = window) {
   try {

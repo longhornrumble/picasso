@@ -168,10 +168,8 @@ import { isFramedEmbed, reportMisEmbed } from './utils/embedContext.js';
       // never block boot — the fix is on the embedding site.
       if (isFramedEmbed()) {
         console.warn(
-          '[Picasso] This embed script is running inside an embedded frame, not the page itself. ' +
-          'The chat widget will be pinned to that frame instead of floating at the bottom-right of the page. ' +
-          "Fix: add the snippet via your site builder's site-wide custom code feature " +
-          '(Wix: Settings → Custom Code → Body - End) instead of an HTML-embed element.'
+          '[Picasso] Embed snippet is inside a sandboxed iframe, so the widget pins to that box, ' +
+          'not the page. Move it to site-wide custom code (Wix: Settings → Custom Code → Body-End).'
         );
         reportMisEmbed(environmentConfig.ERROR_REPORTING_ENDPOINT, tenantHash);
       }
