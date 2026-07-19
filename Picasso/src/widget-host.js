@@ -6,6 +6,7 @@
 
 import { config as environmentConfig } from './config/environment.js';
 import { getBindingSessionId } from './utils/bindingSession.js';
+import { isFramedEmbed, reportMisEmbed } from './utils/embedContext.js';
 
 (function() {
   'use strict';
@@ -159,6 +160,21 @@ import { getBindingSessionId } from './utils/bindingSession.js';
       this.attribution = this.captureAttribution();
 
       console.log('🚀 Initializing Picasso Widget:', tenantHash);
+
+      // The snippet must run in the top-level page: the fixed container below
+      // anchors to whatever document.body it lands in, so inside a builder's
+      // sandboxed "HTML embed" iframe (e.g. Wix/filesusr.com) the widget pins
+      // to that element's box instead of the viewport. Warn + report once;
+      // never block boot — the fix is on the embedding site.
+      if (isFramedEmbed()) {
+        console.warn(
+          '[Picasso] This embed script is running inside an embedded frame, not the page itself. ' +
+          'The chat widget will be pinned to that frame instead of floating at the bottom-right of the page. ' +
+          "Fix: add the snippet via your site builder's site-wide custom code feature " +
+          '(Wix: Settings → Custom Code → Body - End) instead of an HTML-embed element.'
+        );
+        reportMisEmbed(environmentConfig.ERROR_REPORTING_ENDPOINT, tenantHash);
+      }
 
       this.createContainer();
       this.createIframe();
