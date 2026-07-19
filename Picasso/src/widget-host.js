@@ -108,6 +108,9 @@ import {
       }
 
       this.tenantHash = tenantHash;
+      // Remember whether the embed snippet explicitly set a position — the
+      // site owner's snippet wins over the tenant config's chat_position.
+      this._embedSetPosition = Object.prototype.hasOwnProperty.call(customConfig, 'position');
       this.config = { ...this.config, ...customConfig };
 
       // Capture attribution data from parent page (GA4 client_id, UTM params, referrer)
@@ -124,8 +127,68 @@ import {
       // the operator-side REACH_PING kill switch (C8.9 / F3) is honoured
       // without requiring changes to the embedding tenant site.
       this.emitReachPing();
+      // Honour branding.chat_position from the tenant config (bottom-left /
+      // bottom-right). Async and unawaited, same pattern as emitReachPing():
+      // the widget boots anchored at the default and re-anchors when the
+      // (CDN-cached) config resolves.
+      this.applyTenantPosition();
     },
-    
+
+    /**
+     * Anchor styles for the corner the widget lives in. Every closed/desktop
+     * state spreads this instead of hardcoding a corner, so
+     * config.position ('bottom-right' | 'bottom-left') is honoured
+     * everywhere. The ≤480px full-screen sheet is side-agnostic.
+     */
+    anchorStyles() {
+      const left = this.config.position === 'bottom-left';
+      return {
+        top: 'auto',
+        bottom: '20px',
+        [left ? 'left' : 'right']: '20px',
+        [left ? 'right' : 'left']: 'auto'
+      };
+    },
+
+    /**
+     * Resolve branding.chat_position from the S3 tenant config and re-anchor.
+     * Embed-snippet position wins (site owner's explicit choice); invalid or
+     * missing values leave the default. Fail-open: config fetch failure keeps
+     * the widget at its current corner. Also notifies the iframe so the
+     * closed-state internals (launcher / callout) mirror to the same side.
+     */
+    async applyTenantPosition() {
+      if (this._embedSetPosition) return;
+
+      const tenantConfig = await this._fetchTenantConfig();
+      const chatPosition =
+        tenantConfig?.branding?.chat_position ??
+        tenantConfig?.config?.branding?.chat_position;
+
+      if (chatPosition !== 'bottom-left' && chatPosition !== 'bottom-right') return;
+      if (chatPosition === this.config.position) return;
+
+      this.config.position = chatPosition;
+
+      // Re-anchor the container unless the full-screen sheet is up (side
+      // props are 0/0 there; the next expand()/minimize() uses anchorStyles).
+      const sheetIsUp = this.isOpen && window.innerWidth <= 480;
+      if (this.container && !sheetIsUp) {
+        Object.assign(this.container.style, this.anchorStyles());
+      }
+
+      // Mirror the iframe-internal closed-state layout (launcher + callout).
+      if (this.iframe && this.iframe.contentWindow) {
+        this.iframe.contentWindow.postMessage({
+          type: 'PICASSO_COMMAND',
+          action: 'POSITION_CHANGE',
+          payload: { position: chatPosition }
+        }, this.iframeOrigin || '*');
+      }
+
+      console.log(`📍 Widget anchored ${chatPosition} (tenant config)`);
+    },
+
     // Create the widget container with positioning
     createContainer() {
       this.container = document.createElement('div');
@@ -134,8 +197,7 @@ import {
       // Apply positioning styles - NO theme styles, just functional positioning
       Object.assign(this.container.style, {
         position: 'fixed',
-        bottom: '20px',
-        right: '20px',
+        ...this.anchorStyles(),
         zIndex: this.config.zIndex,
         width: this.config.minimizedSize,
         height: this.config.minimizedSize,
@@ -680,10 +742,7 @@ import {
         Object.assign(this.container.style, {
           width: this.config.expandedWidth,
           height: this.config.expandedHeight,
-          top: 'auto',
-          bottom: '20px',
-          right: '20px',
-          left: 'auto'
+          ...this.anchorStyles()
         });
       }
 
@@ -725,10 +784,7 @@ import {
         position: 'fixed',
         width: this.config.minimizedSize,
         height: this.config.minimizedSize,
-        bottom: '20px',
-        right: '20px',
-        top: 'auto',
-        left: 'auto'
+        ...this.anchorStyles()
       });
 
       Object.assign(this.iframe.style, {
@@ -762,16 +818,13 @@ import {
     applyDimensions(dimensions) {
       console.log('📐 Applying custom dimensions:', dimensions);
 
-      // Container always stays at bottom-right corner (20px from edges)
+      // Container anchors to the configured corner (20px from edges)
       // The iframe content (ChatWidget) handles internal positioning of toggle and callout
       Object.assign(this.container.style, {
         position: 'fixed',
         width: dimensions.width + 'px',
         height: dimensions.height + 'px',
-        bottom: '20px',
-        right: '20px',
-        top: 'auto',
-        left: 'auto'
+        ...this.anchorStyles()
       });
 
       // Keep circular border radius only if dimensions are square
@@ -782,7 +835,7 @@ import {
         boxShadow: 'none'
       });
 
-      console.log(`📏 Applied dimensions: ${dimensions.width}x${dimensions.height}px at bottom-right corner`);
+      console.log(`📏 Applied dimensions: ${dimensions.width}x${dimensions.height}px at ${this.config.position || 'bottom-right'}`);
     },
     
     // Setup resize observer for responsive behavior
@@ -805,10 +858,7 @@ import {
               Object.assign(this.container.style, {
                 width: this.config.expandedWidth,
                 height: this.config.expandedHeight,
-                bottom: '20px',
-                right: '20px',
-                top: 'auto',
-                left: 'auto'
+                ...this.anchorStyles()
               });
             }
             this.iframe.style.borderRadius = isMobile ? '0' : '12px';

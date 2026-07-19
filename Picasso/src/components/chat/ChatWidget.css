@@ -191,3 +191,27 @@ body[data-iframe="true"] .chat-widget-root {
    newly invisible in its normal state, so it's intentionally NOT
    reproduced here — this preserves actual (not textually-apparent) frozen
    behavior. */
+/* =============================================================================
+   LEFT-ANCHOR MIRROR (branding.chat_position: 'bottom-left')
+   The host (widget-host.js applyTenantPosition) anchors the container to the
+   left corner and tells the iframe via the POSITION_CHANGE command /
+   PICASSO_INIT config, which sets `widget-left` on <body>. These overrides
+   mirror the closed-state internals to match: the launcher hugs the left
+   edge of the iframe box and the callout extends rightward from it.
+   The !important + specificity here must beat theme.css's
+   `body[data-iframe="true"]:not(.chat-open) .chat-toggle-wrapper` rule.
+   ============================================================================= */
+body.widget-left .chat-toggle-wrapper {
+  right: auto !important;
+  left: var(--widget-right, 20px) !important;
+}
+
+body[data-iframe="true"].widget-left:not(.chat-open) .chat-toggle-wrapper {
+  right: auto !important;
+  left: 20px !important;
+}
+
+body.widget-left .hairline-callout {
+  right: auto;
+  left: 70px;
+}
