@@ -4,7 +4,9 @@
  * Uses your existing React app, theme.css, and useCSSVariables system
  */
 
-import { config as environmentConfig } from './config/environment.js';
+// Lean loader config — do NOT import the full environment.js here: it drags
+// ~half the 25KB widget.js budget in as runtime-dead weight (see loaderConfig.js).
+import { loaderConfig as environmentConfig } from './config/loaderConfig.js';
 import { getBindingSessionId } from './utils/bindingSession.js';
 import { isFramedEmbed, reportMisEmbed } from './utils/embedContext.js';
 
