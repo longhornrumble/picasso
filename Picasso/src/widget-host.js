@@ -8,6 +8,12 @@
 // ~half the 25KB widget.js budget in as runtime-dead weight (see loaderConfig.js).
 import { loaderConfig as environmentConfig } from './config/loaderConfig.js';
 import { getBindingSessionId } from './utils/bindingSession.js';
+import {
+  captureAttribution as captureAttributionShared,
+  getEntryPointId as getEntryPointIdShared,
+  getGAClientId as getGAClientIdShared,
+  getUrlParam as getUrlParamShared
+} from './utils/attribution.js';
 import { isFramedEmbed, reportMisEmbed } from './utils/embedContext.js';
 
 (function() {
@@ -51,28 +57,24 @@ import { isFramedEmbed, reportMisEmbed } from './utils/embedContext.js';
     // See: /docs/User_Journey/USER_JOURNEY_ANALYTICS_PLAN.md
     // ========================================================================
 
+    // ------------------------------------------------------------------
+    // Attribution capture lives in ./utils/attribution.js — the single
+    // source of truth, shared with the /go/ fullpage launcher (which has no
+    // host page of its own to capture from) and directly unit-tested there.
+    //
+    // These stay as thin delegates rather than being deleted: init() returns
+    // globalWidgetInstance (an Object.create(PicassoWidget)), which inherits
+    // them via the prototype chain, so an embedder holding that return value
+    // can reach them. Undocumented and unused in-repo, but not provably
+    // unused in the wild — so the surface is preserved.
+    // ------------------------------------------------------------------
+
     /**
      * Capture GA4 client_id from the _ga cookie for session stitching.
-     * Enables connecting GA4 site visitors to Picasso sessions.
      * @returns {string|null} GA4 client_id or null if not found
      */
     getGAClientId() {
-      try {
-        const gaCookie = document.cookie
-          .split('; ')
-          .find(row => row.startsWith('_ga='));
-
-        if (gaCookie) {
-          // _ga=GA1.2.123456789.1702900000 → extract "123456789.1702900000"
-          const parts = gaCookie.split('.');
-          if (parts.length >= 4) {
-            return parts.slice(2).join('.');
-          }
-        }
-      } catch (e) {
-        console.warn('[Picasso] Failed to read GA cookie:', e);
-      }
-      return null;
+      return getGAClientIdShared();
     },
 
     /**
@@ -81,12 +83,15 @@ import { isFramedEmbed, reportMisEmbed } from './utils/embedContext.js';
      * @returns {string|null} Parameter value or null
      */
     getUrlParam(name) {
-      try {
-        const urlParams = new URLSearchParams(window.location.search);
-        return urlParams.get(name);
-      } catch (e) {
-        return null;
-      }
+      return getUrlParamShared(name);
+    },
+
+    /**
+     * C2: validate and capture the ?ep= entry-point id from the page URL.
+     * @returns {string|null}
+     */
+    getEntryPointId() {
+      return getEntryPointIdShared();
     },
 
     /**
@@ -94,58 +99,8 @@ import { isFramedEmbed, reportMisEmbed } from './utils/embedContext.js';
      * Called once during widget initialization.
      * @returns {Object} Attribution data object
      */
-    // C2: Validate and capture ?ep= entry-point id from the page URL.
-    // Regex locked by C2: ^ep_[0-9A-Za-z]{8,64}$
-    getEntryPointId() {
-      const raw = this.getUrlParam('ep');
-      if (raw && /^ep_[0-9A-Za-z]{8,64}$/.test(raw)) {
-        return raw;
-      }
-      return null;
-    },
-
     captureAttribution() {
-      const attribution = {
-        // GA4 session stitching key
-        ga_client_id: this.getGAClientId(),
-
-        // UTM parameters (works with any tracking system: Dub.co, Bitly, manual)
-        utm_source: this.getUrlParam('utm_source'),
-        utm_medium: this.getUrlParam('utm_medium'),
-        utm_campaign: this.getUrlParam('utm_campaign'),
-        utm_term: this.getUrlParam('utm_term'),
-        utm_content: this.getUrlParam('utm_content'),
-
-        // Ad platform click IDs
-        gclid: this.getUrlParam('gclid'),   // Google Ads
-        fbclid: this.getUrlParam('fbclid'), // Facebook Ads
-
-        // C2: Entry-point id (null when absent or malformed)
-        entry_point_id: this.getEntryPointId(),
-
-        // Referrer and landing page
-        referrer: document.referrer || null,
-        landing_page: window.location.pathname,
-
-        // Timestamp
-        captured_at: new Date().toISOString()
-      };
-
-      // Log attribution capture for debugging
-      const hasAttribution = attribution.ga_client_id ||
-                            attribution.utm_source ||
-                            attribution.referrer;
-      if (hasAttribution) {
-        console.log('[Picasso] Attribution captured:', {
-          ga_client_id: attribution.ga_client_id ? '✓' : '✗',
-          utm_source: attribution.utm_source || '(none)',
-          utm_medium: attribution.utm_medium || '(none)',
-          entry_point_id: attribution.entry_point_id || '(none)',
-          referrer: attribution.referrer ? new URL(attribution.referrer).hostname : '(direct)'
-        });
-      }
-
-      return attribution;
+      return captureAttributionShared();
     },
 
     // Initialize the widget
@@ -156,6 +111,9 @@ import { isFramedEmbed, reportMisEmbed } from './utils/embedContext.js';
       }
 
       this.tenantHash = tenantHash;
+      // Remember whether the embed snippet explicitly set a position — the
+      // site owner's snippet wins over the tenant config's chat_position.
+      this._embedSetPosition = Object.prototype.hasOwnProperty.call(customConfig, 'position');
       this.config = { ...this.config, ...customConfig };
 
       // Capture attribution data from parent page (GA4 client_id, UTM params, referrer)
@@ -185,8 +143,68 @@ import { isFramedEmbed, reportMisEmbed } from './utils/embedContext.js';
       // the operator-side REACH_PING kill switch (C8.9 / F3) is honoured
       // without requiring changes to the embedding tenant site.
       this.emitReachPing();
+      // Honour branding.chat_position from the tenant config (bottom-left /
+      // bottom-right). Async and unawaited, same pattern as emitReachPing():
+      // the widget boots anchored at the default and re-anchors when the
+      // (CDN-cached) config resolves.
+      this.applyTenantPosition();
     },
-    
+
+    /**
+     * Anchor styles for the corner the widget lives in. Every closed/desktop
+     * state spreads this instead of hardcoding a corner, so
+     * config.position ('bottom-right' | 'bottom-left') is honoured
+     * everywhere. The ≤480px full-screen sheet is side-agnostic.
+     */
+    anchorStyles() {
+      const left = this.config.position === 'bottom-left';
+      return {
+        top: 'auto',
+        bottom: '20px',
+        [left ? 'left' : 'right']: '20px',
+        [left ? 'right' : 'left']: 'auto'
+      };
+    },
+
+    /**
+     * Resolve branding.chat_position from the S3 tenant config and re-anchor.
+     * Embed-snippet position wins (site owner's explicit choice); invalid or
+     * missing values leave the default. Fail-open: config fetch failure keeps
+     * the widget at its current corner. Also notifies the iframe so the
+     * closed-state internals (launcher / callout) mirror to the same side.
+     */
+    async applyTenantPosition() {
+      if (this._embedSetPosition) return;
+
+      const tenantConfig = await this._fetchTenantConfig();
+      const chatPosition =
+        tenantConfig?.branding?.chat_position ??
+        tenantConfig?.config?.branding?.chat_position;
+
+      if (chatPosition !== 'bottom-left' && chatPosition !== 'bottom-right') return;
+      if (chatPosition === this.config.position) return;
+
+      this.config.position = chatPosition;
+
+      // Re-anchor the container unless the full-screen sheet is up (side
+      // props are 0/0 there; the next expand()/minimize() uses anchorStyles).
+      const sheetIsUp = this.isOpen && window.innerWidth <= 480;
+      if (this.container && !sheetIsUp) {
+        Object.assign(this.container.style, this.anchorStyles());
+      }
+
+      // Mirror the iframe-internal closed-state layout (launcher + callout).
+      if (this.iframe && this.iframe.contentWindow) {
+        this.iframe.contentWindow.postMessage({
+          type: 'PICASSO_COMMAND',
+          action: 'POSITION_CHANGE',
+          payload: { position: chatPosition }
+        }, this.iframeOrigin || '*');
+      }
+
+      console.log(`📍 Widget anchored ${chatPosition} (tenant config)`);
+    },
+
     // Create the widget container with positioning
     createContainer() {
       this.container = document.createElement('div');
@@ -195,8 +213,7 @@ import { isFramedEmbed, reportMisEmbed } from './utils/embedContext.js';
       // Apply positioning styles - NO theme styles, just functional positioning
       Object.assign(this.container.style, {
         position: 'fixed',
-        bottom: '20px',
-        right: '20px',
+        ...this.anchorStyles(),
         zIndex: this.config.zIndex,
         width: this.config.minimizedSize,
         height: this.config.minimizedSize,
@@ -741,10 +758,7 @@ import { isFramedEmbed, reportMisEmbed } from './utils/embedContext.js';
         Object.assign(this.container.style, {
           width: this.config.expandedWidth,
           height: this.config.expandedHeight,
-          top: 'auto',
-          bottom: '20px',
-          right: '20px',
-          left: 'auto'
+          ...this.anchorStyles()
         });
       }
 
@@ -786,10 +800,7 @@ import { isFramedEmbed, reportMisEmbed } from './utils/embedContext.js';
         position: 'fixed',
         width: this.config.minimizedSize,
         height: this.config.minimizedSize,
-        bottom: '20px',
-        right: '20px',
-        top: 'auto',
-        left: 'auto'
+        ...this.anchorStyles()
       });
 
       Object.assign(this.iframe.style, {
@@ -823,16 +834,13 @@ import { isFramedEmbed, reportMisEmbed } from './utils/embedContext.js';
     applyDimensions(dimensions) {
       console.log('📐 Applying custom dimensions:', dimensions);
 
-      // Container always stays at bottom-right corner (20px from edges)
+      // Container anchors to the configured corner (20px from edges)
       // The iframe content (ChatWidget) handles internal positioning of toggle and callout
       Object.assign(this.container.style, {
         position: 'fixed',
         width: dimensions.width + 'px',
         height: dimensions.height + 'px',
-        bottom: '20px',
-        right: '20px',
-        top: 'auto',
-        left: 'auto'
+        ...this.anchorStyles()
       });
 
       // Keep circular border radius only if dimensions are square
@@ -843,7 +851,7 @@ import { isFramedEmbed, reportMisEmbed } from './utils/embedContext.js';
         boxShadow: 'none'
       });
 
-      console.log(`📏 Applied dimensions: ${dimensions.width}x${dimensions.height}px at bottom-right corner`);
+      console.log(`📏 Applied dimensions: ${dimensions.width}x${dimensions.height}px at ${this.config.position || 'bottom-right'}`);
     },
     
     // Setup resize observer for responsive behavior
@@ -866,10 +874,7 @@ import { isFramedEmbed, reportMisEmbed } from './utils/embedContext.js';
               Object.assign(this.container.style, {
                 width: this.config.expandedWidth,
                 height: this.config.expandedHeight,
-                bottom: '20px',
-                right: '20px',
-                top: 'auto',
-                left: 'auto'
+                ...this.anchorStyles()
               });
             }
             this.iframe.style.borderRadius = isMobile ? '0' : '12px';

@@ -47,14 +47,54 @@ function makeWidget() {
     container: { style: {} },
     iframe: { style: {} },
     config: {
+      position: 'bottom-right',
       expandedWidth: '380px',
       expandedHeight: `min(640px, calc(${VIEWPORT_H} - 48px))`,
       zIndex: 10000
     },
     _sentCommands: sentCommands,
+    _embedSetPosition: false,
+    _tenantConfig: null, // harness stand-in for _fetchTenantConfig()
 
     sendCommand(action, payload = {}) {
       sentCommands.push({ action, payload });
+    },
+
+    // Mirrors widget-host.js anchorStyles()
+    anchorStyles() {
+      const left = this.config.position === 'bottom-left';
+      return {
+        top: 'auto',
+        bottom: '20px',
+        [left ? 'left' : 'right']: '20px',
+        [left ? 'right' : 'left']: 'auto'
+      };
+    },
+
+    // Mirrors widget-host.js applyTenantPosition() with the config fetch
+    // replaced by the injectable _tenantConfig field.
+    async applyTenantPosition() {
+      if (this._embedSetPosition) return;
+
+      const tenantConfig = this._tenantConfig;
+      const chatPosition =
+        tenantConfig?.branding?.chat_position ??
+        tenantConfig?.config?.branding?.chat_position;
+
+      if (chatPosition !== 'bottom-left' && chatPosition !== 'bottom-right') return;
+      if (chatPosition === this.config.position) return;
+
+      this.config.position = chatPosition;
+
+      const sheetIsUp = this.isOpen && window.innerWidth <= 480;
+      if (this.container && !sheetIsUp) {
+        Object.assign(this.container.style, this.anchorStyles());
+      }
+
+      sentCommands.push({
+        action: 'POSITION_CHANGE',
+        payload: { position: chatPosition }
+      });
     },
 
     // Mirrors widget-host.js expand()
@@ -79,10 +119,7 @@ function makeWidget() {
         Object.assign(this.container.style, {
           width: this.config.expandedWidth,
           height: this.config.expandedHeight,
-          top: 'auto',
-          bottom: '20px',
-          right: '20px',
-          left: 'auto'
+          ...this.anchorStyles()
         });
       }
 
@@ -109,10 +146,7 @@ function makeWidget() {
         position: 'fixed',
         width: '56px',
         height: '56px',
-        bottom: '20px',
-        right: '20px',
-        top: 'auto',
-        left: 'auto'
+        ...this.anchorStyles()
       });
       this.iframe.style.borderRadius = '50%';
       this.iframe.style.boxShadow = 'none';
@@ -136,10 +170,7 @@ function makeWidget() {
         Object.assign(this.container.style, {
           width: this.config.expandedWidth,
           height: this.config.expandedHeight,
-          bottom: '20px',
-          right: '20px',
-          top: 'auto',
-          left: 'auto'
+          ...this.anchorStyles()
         });
       }
       this.iframe.style.borderRadius = isMobile ? '0' : '12px';
@@ -363,6 +394,91 @@ describe('widget-host shell dims + breakpoint (W6.1)', () => {
       expect(source).not.toMatch(/isActive/);
       expect(source).not.toMatch(/activateSession/);
       expect(source).not.toMatch(/deactivateSession/);
+    });
+  });
+
+  describe('chat_position honoring (branding.chat_position)', () => {
+    test('default anchors bottom-right', () => {
+      setInnerWidth(1024);
+      const w = makeWidget();
+      w.expand();
+
+      expect(w.container.style.right).toBe('20px');
+      expect(w.container.style.left).toBe('auto');
+    });
+
+    test('tenant config bottom-left re-anchors the container and notifies the iframe', async () => {
+      setInnerWidth(1024);
+      const w = makeWidget();
+      w._tenantConfig = { branding: { chat_position: 'bottom-left' } };
+
+      await w.applyTenantPosition();
+
+      expect(w.config.position).toBe('bottom-left');
+      expect(w.container.style.left).toBe('20px');
+      expect(w.container.style.right).toBe('auto');
+      expect(w._sentCommands).toContainEqual({
+        action: 'POSITION_CHANGE',
+        payload: { position: 'bottom-left' }
+      });
+
+      // Subsequent expand/minimize keep the left anchor.
+      w.expand();
+      expect(w.container.style.left).toBe('20px');
+      expect(w.container.style.right).toBe('auto');
+      w.minimize();
+      expect(w.container.style.left).toBe('20px');
+      expect(w.container.style.right).toBe('auto');
+    });
+
+    test('embed-snippet position wins over tenant config', async () => {
+      setInnerWidth(1024);
+      const w = makeWidget();
+      w._embedSetPosition = true;
+      w._tenantConfig = { branding: { chat_position: 'bottom-left' } };
+
+      await w.applyTenantPosition();
+
+      expect(w.config.position).toBe('bottom-right');
+      expect(w._sentCommands.some((c) => c.action === 'POSITION_CHANGE')).toBe(false);
+    });
+
+    test('invalid or missing chat_position leaves the default anchor', async () => {
+      setInnerWidth(1024);
+      const w = makeWidget();
+
+      w._tenantConfig = { branding: { chat_position: 'top-left' } };
+      await w.applyTenantPosition();
+      expect(w.config.position).toBe('bottom-right');
+
+      w._tenantConfig = null; // config fetch failed — fail open
+      await w.applyTenantPosition();
+      expect(w.config.position).toBe('bottom-right');
+    });
+
+    test('mobile full-screen sheet stays edge-to-edge regardless of position', async () => {
+      setInnerWidth(390);
+      const w = makeWidget();
+      w._tenantConfig = { branding: { chat_position: 'bottom-left' } };
+      await w.applyTenantPosition();
+
+      w.expand();
+      expect(w.container.style.top).toBe('0');
+      expect(w.container.style.left).toBe('0');
+      expect(w.container.style.right).toBe('0');
+      expect(w.container.style.width).toBe('100vw');
+    });
+
+    test('widget-host.js source uses anchorStyles() at every desktop anchor site (mirror lockstep guard)', () => {
+      const source = fs.readFileSync(path.join(__dirname, '../widget-host.js'), 'utf8');
+
+      expect(source).toMatch(/anchorStyles\(\)\s*{/);
+      expect(source).toMatch(/applyTenantPosition/);
+      expect(source).toMatch(/branding\?\.chat_position/);
+      // createContainer + expand + minimize + applyDimensions + resize = 5 spreads
+      expect((source.match(/\.\.\.this\.anchorStyles\(\)/g) || []).length).toBeGreaterThanOrEqual(5);
+      // No hardcoded right-corner literals may creep back in.
+      expect(source).not.toMatch(/right: '20px'/);
     });
   });
 });

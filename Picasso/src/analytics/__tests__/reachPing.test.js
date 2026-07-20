@@ -14,10 +14,19 @@
  */
 
 // ============================================================================
-// Harness: replicate emitReachPing, _getDeviceClass, getGAClientId from
-// widget-host.js so we can exercise the logic in isolation.
-// If widget-host.js changes the implementation, update this harness to match.
+// Harness: replicate emitReachPing and _getDeviceClass from widget-host.js so
+// we can exercise the logic in isolation. If widget-host.js changes those
+// implementations, update this harness to match.
+//
+// getGAClientId is NOT replicated — it imports the real implementation from
+// src/utils/attribution.js (which widget-host.js also delegates to), so a
+// change there is caught here instead of silently diverging. The remaining
+// replicas above are the same known weakness: they assert the harness is
+// self-consistent, not that widget-host.js is correct. They stay replicated
+// only because that logic has no export path yet.
 // ============================================================================
+
+import { getGAClientId as realGetGAClientId } from '../../utils/attribution.js';
 
 const PV_SESSION_KEY = '_pv_sid';
 const PV_SEEN_KEY = '_pv_seen';
@@ -45,17 +54,10 @@ function makeWidget(overrides = {}, fetchedTenantConfig = {}) {
       this.analyticsQueue.push(evt);
     },
 
+    // Delegates to the REAL implementation, exactly as widget-host.js does —
+    // this was previously a hand-copy that the harness tested against itself.
     getGAClientId() {
-      try {
-        const gaCookie = document.cookie
-          .split('; ')
-          .find(row => row.startsWith('_ga='));
-        if (gaCookie) {
-          const parts = gaCookie.split('.');
-          if (parts.length >= 4) return parts.slice(2).join('.');
-        }
-      } catch { /* ignore */ }
-      return null;
+      return realGetGAClientId();
     },
 
     _getDeviceClass() {

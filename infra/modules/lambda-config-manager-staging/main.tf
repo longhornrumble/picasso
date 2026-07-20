@@ -157,6 +157,16 @@ data "aws_iam_policy_document" "config_manager_exec" {
       "${local.config_bucket_arn}/mappings/*",
     ]
   }
+
+  # After a config write that touches messenger_behavior.welcome, the handler
+  # fire-and-forget invokes Meta_OAuth_Handler's repush-welcome route so the
+  # live FB/IG profile syncs server-side (browser-independent backstop for the
+  # Config Builder's own post-deploy call). Single function, async Event.
+  statement {
+    sid       = "InvokeMetaOAuthForWelcomeRepush"
+    actions   = ["lambda:InvokeFunction"]
+    resources = ["arn:${data.aws_partition.current.partition}:lambda:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:function:Meta_OAuth_Handler"]
+  }
 }
 
 resource "aws_iam_role_policy" "config_manager_exec" {
@@ -194,6 +204,9 @@ resource "aws_lambda_function" "config_manager" {
       S3_BUCKET            = var.config_bucket_name
       CLERK_JWKS_URL       = var.clerk_jwks_url
       GITHUB_PROMOTE_TOKEN = var.github_promote_token
+      # Meta_OAuth_Handler function invoked to re-push Messenger welcome surfaces
+      # after a config write. Empty/unset = the handler skips the repush (inert).
+      META_OAUTH_FUNCTION = "Meta_OAuth_Handler"
     }
   }
 
