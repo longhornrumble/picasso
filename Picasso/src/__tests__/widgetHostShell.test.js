@@ -481,4 +481,45 @@ describe('widget-host shell dims + breakpoint (W6.1)', () => {
       expect(source).not.toMatch(/right: '20px'/);
     });
   });
+
+  describe('config-fetch envelope unwrap (_fetchTenantConfig)', () => {
+    // Mirrors the unwrap in widget-host.js _fetchTenantConfig(): the
+    // Master_Function endpoint returns a Lambda proxy envelope
+    // ({statusCode, headers, body}) with the config JSON as a STRING in
+    // `body`. Without unwrapping, branding.chat_position and the
+    // tenant-side REACH_PING kill switch are invisible (the live-check
+    // regression this fix came from, 2026-07-19).
+    function unwrapConfigResponse(raw) {
+      if (raw && raw.statusCode && raw.body) {
+        return typeof raw.body === 'string' ? JSON.parse(raw.body) : raw.body;
+      }
+      return raw;
+    }
+
+    test('unwraps a string-body Lambda envelope to the config object', () => {
+      const cfg = unwrapConfigResponse({
+        statusCode: 200,
+        headers: {},
+        body: JSON.stringify({ branding: { chat_position: 'bottom-left' } }),
+      });
+      expect(cfg.branding.chat_position).toBe('bottom-left');
+    });
+
+    test('unwraps an object-body envelope and passes plain configs through', () => {
+      const objBody = unwrapConfigResponse({
+        statusCode: 200,
+        body: { branding: { chat_position: 'bottom-left' } },
+      });
+      expect(objBody.branding.chat_position).toBe('bottom-left');
+
+      const plain = { branding: { chat_position: 'bottom-right' } };
+      expect(unwrapConfigResponse(plain)).toBe(plain);
+    });
+
+    test('widget-host.js source contains the envelope unwrap (mirror lockstep guard)', () => {
+      const source = fs.readFileSync(path.join(__dirname, '../widget-host.js'), 'utf8');
+      expect(source).toMatch(/raw\.statusCode && raw\.body/);
+      expect(source).toMatch(/typeof raw\.body === 'string' \? JSON\.parse\(raw\.body\) : raw\.body/);
+    });
+  });
 });
