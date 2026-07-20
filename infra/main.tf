@@ -1661,6 +1661,42 @@ module "acm_app_staging" {
   source = "./modules/acm-app-staging"
 }
 
+# ACM cert for the Demo Zone microsite (demo.myrecruiter.ai). Staging-account
+# home because the embedded BrightPath widget's tenant + data live only in 525.
+# Created PENDING_VALIDATION; operator adds the GoDaddy CNAME (validation_record
+# output), then the demo-site CloudFront attaches it at enable_custom_domain.
+module "acm_demo_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/acm-demo-staging"
+}
+
+# Demo Zone microsite edge (demo.myrecruiter.ai) — private S3 + CloudFront, gated
+# by a Basic Auth CloudFront Function. enable_custom_domain stays false until the
+# acm-demo-staging cert is ISSUED; the site previews on its raw *.cloudfront.net
+# domain (behind Basic Auth) meanwhile. Circular-dep broken the dashboard way:
+# CF references the bucket by fixed regional domain; the bucket policy takes the
+# CF ARN (s3 <- cloudfront).
+module "cloudfront_demo_site_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/cloudfront-demo-site-staging"
+
+  # false for the re-create apply (2026-07-20 restore): the fresh cert starts
+  # PENDING_VALIDATION and CloudFront rejects attaching a non-ISSUED cert. The
+  # GoDaddy validation CNAME already exists (deterministic per domain), so the
+  # cert should validate within minutes — flip true in a follow-up PR once
+  # `aws acm describe-certificate` shows ISSUED.
+  acm_certificate_arn  = module.acm_demo_staging[0].certificate_arn
+  enable_custom_domain = false
+  basic_auth_b64       = var.demo_basic_auth_b64
+}
+
+module "s3_demo_site_staging" {
+  count  = var.env == "staging" ? 1 : 0
+  source = "./modules/s3-demo-site-staging"
+
+  cloudfront_distribution_arn = module.cloudfront_demo_site_staging[0].distribution_arn
+}
+
 module "cloudfront_analytics_dashboard_staging" {
   count  = var.env == "staging" ? 1 : 0
   source = "./modules/cloudfront-analytics-dashboard-staging"
