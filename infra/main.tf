@@ -1680,14 +1680,16 @@ module "cloudfront_demo_site_staging" {
   count  = var.env == "staging" ? 1 : 0
   source = "./modules/cloudfront-demo-site-staging"
 
-  # false for the re-create apply (2026-07-20 restore): the fresh cert starts
-  # PENDING_VALIDATION and CloudFront rejects attaching a non-ISSUED cert. The
-  # GoDaddy validation CNAME already exists (deterministic per domain), so the
-  # cert should validate within minutes — flip true in a follow-up PR once
-  # `aws acm describe-certificate` shows ISSUED.
   acm_certificate_arn  = module.acm_demo_staging[0].certificate_arn
-  enable_custom_domain = false
+  enable_custom_domain = true
   basic_auth_b64       = var.demo_basic_auth_b64
+}
+
+# Surfaced as a root output so the d###.cloudfront.net domain (the GoDaddy CNAME
+# target for demo.myrecruiter.ai) is printed in the CI apply log — the operator
+# has no other creds-free way to read it after an auto-apply.
+output "demo_site_distribution_domain" {
+  value = one(module.cloudfront_demo_site_staging[*].distribution_domain_name)
 }
 
 module "s3_demo_site_staging" {
