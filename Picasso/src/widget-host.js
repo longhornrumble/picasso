@@ -4,7 +4,9 @@
  * Uses your existing React app, theme.css, and useCSSVariables system
  */
 
-import { config as environmentConfig } from './config/environment.js';
+// Lean loader config — do NOT import the full environment.js here: it drags
+// ~half the 25KB widget.js budget in as runtime-dead weight (see loaderConfig.js).
+import { loaderConfig as environmentConfig } from './config/loaderConfig.js';
 import { getBindingSessionId } from './utils/bindingSession.js';
 import {
   captureAttribution as captureAttributionShared,
@@ -12,6 +14,7 @@ import {
   getGAClientId as getGAClientIdShared,
   getUrlParam as getUrlParamShared
 } from './utils/attribution.js';
+import { isFramedEmbed, reportMisEmbed } from './utils/embedContext.js';
 
 (function() {
   'use strict';
@@ -117,6 +120,19 @@ import {
       this.attribution = this.captureAttribution();
 
       console.log('🚀 Initializing Picasso Widget:', tenantHash);
+
+      // The snippet must run in the top-level page: the fixed container below
+      // anchors to whatever document.body it lands in, so inside a builder's
+      // sandboxed "HTML embed" iframe (e.g. Wix/filesusr.com) the widget pins
+      // to that element's box instead of the viewport. Warn + report once;
+      // never block boot — the fix is on the embedding site.
+      if (isFramedEmbed()) {
+        console.warn(
+          '[Picasso] Embed snippet is inside a sandboxed iframe, so the widget pins to that box, ' +
+          'not the page. Move it to site-wide custom code (Wix: Settings → Custom Code → Body-End).'
+        );
+        reportMisEmbed(environmentConfig.ERROR_REPORTING_ENDPOINT, tenantHash);
+      }
 
       this.createContainer();
       this.createIframe();

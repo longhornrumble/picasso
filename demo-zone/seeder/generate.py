@@ -141,8 +141,15 @@ def build_universe(now=None, seed="BRI071351"):
                 resp_times = [rng.randint(700, 2600) for _ in range(bot_msgs)]
                 duration_s = (user_msgs + bot_msgs) * rng.randint(18, 70)
                 ended = started + timedelta(seconds=duration_s)
+                # Lead the session_id with the started-at epoch so the id sorts
+                # chronologically. handle_sessions_list scans session-summaries by
+                # SK (=SESSION#{session_id}) descending and applies the date filter
+                # per-page; a non-chronological id front-loads old sessions that
+                # fail the filter, so the first page comes back empty even though
+                # recent sessions exist. Epoch-led ids put recent first.
+                epoch = int(started.timestamp())
                 conv = {
-                    "session_id": f"sess-demo-{month_tag}-{channel[:4]}-{seq:04d}",
+                    "session_id": f"sess-demo-{epoch}-{channel[:4]}-{seq:04d}",
                     "channel": channel,
                     "month_ago": j,
                     "started_at": started.strftime("%Y-%m-%dT%H:%M:%S.000Z"),

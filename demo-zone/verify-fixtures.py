@@ -104,9 +104,11 @@ def main():
           abs(summary["after_hours_conversations"] / summary["conversations"] - 0.46) < 0.005)
 
     # --- product-enforced constraints ---------------------------------------
-    check(f"campaign stays under the C7 floor (n<{C7_FLOOR}) to exercise held-rate UI",
-          rows["campaign"]["data"]["conversations"] < C7_FLOOR)
-    for c in ("website", "messenger", "standalone"):
+    # 2026-07-18 rescale (arc monthly_series._rescaled): every active channel
+    # clears the confidence floor so rates show — the C7 held-rate UI is no
+    # longer exercised by this pack. Restoring that showcase is a deliberate
+    # series change + reseed, not a verifier tweak.
+    for c in CHANNELS:
         check(f"{c} clears the C7 floor (n>={C7_FLOOR})",
               rows[c]["data"]["conversations"] >= C7_FLOOR)
     check("website channel row omits `reach` (aggregator omits it for website)",

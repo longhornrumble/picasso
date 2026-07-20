@@ -59,6 +59,12 @@
       "name": "Launchpad",
       "summary": "Transition support for youth aging out of foster care: housing navigation, first-job coaching, and a standing monthly check-in that does not expire.",
       "audience": "Youth ages 17-21 leaving care; volunteers with lived or professional experience."
+    },
+    {
+      "program_id": "general_support",
+      "name": "General Support",
+      "summary": "Organization-wide giving, events, and general inquiries not tied to a specific youth program.",
+      "audience": "Donors, event guests, and general supporters."
     }
   ],
 
