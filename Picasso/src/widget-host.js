@@ -569,7 +569,16 @@ import { isFramedEmbed, reportMisEmbed } from './utils/embedContext.js';
           })()
         });
         if (!resp.ok) return null;
-        return await resp.json();
+        const raw = await resp.json();
+        // The Master_Function config endpoint returns a Lambda proxy envelope
+        // ({statusCode, headers, body}) with the config JSON in `body` as a
+        // string. Unwrap it (as ConfigProvider.jsx does) so callers read the
+        // config object directly — without this, branding.chat_position and
+        // the tenant-side REACH_PING kill switch are invisible to the host.
+        if (raw && raw.statusCode && raw.body) {
+          return typeof raw.body === 'string' ? JSON.parse(raw.body) : raw.body;
+        }
+        return raw;
       } catch {
         return null;
       }
