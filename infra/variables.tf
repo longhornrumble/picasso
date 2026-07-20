@@ -100,3 +100,15 @@ variable "meta_oauth_callback_url" {
   type        = string
   default     = ""
 }
+
+# Demo Zone microsite Basic Auth gate — base64(user:pass) baked into the
+# picasso-demo-site-basic-auth CloudFront Function. Passed at apply via -var
+# (NOT committed). Empty default denies ALL requests (401), so the site is never
+# accidentally open if the var is forgotten. A shared demo gate, not per-user
+# secrets — the value lives in the CF Function code (readable) by design.
+variable "demo_basic_auth_b64" {
+  description = "base64(user:pass) for the demo.myrecruiter.ai Basic Auth gate. Supplied at apply via -var demo_basic_auth_b64=\"$(printf 'user:pass' | base64)\". Empty = deny all."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
