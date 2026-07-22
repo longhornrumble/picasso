@@ -19,6 +19,7 @@ import {
   PAGE_VIEW,
   ALL_EVENT_TYPES
 } from '../eventConstants.js';
+import { getEntryPointId as realGetEntryPointId } from '../../utils/attribution.js';
 
 // ============================================================================
 // C1.1 CONVERSATION_STARTED — once-per-session guard
@@ -370,16 +371,17 @@ describe('LINK_CLICKED payload (C1.2 amended — additive)', () => {
 // ============================================================================
 
 describe('entry_point_id capture (C2)', () => {
-  // Replicate getEntryPointId from widget-host.js
+  // Exercises the REAL implementation (src/utils/attribution.js), which
+  // widget-host.js delegates to.
+  //
+  // This block used to re-implement getEntryPointId inline and assert that
+  // copy against itself — so it passed whether or not widget-host.js was
+  // correct, and would have kept passing if the real regex were deleted. On a
+  // locked security contract (C2), that is worth nothing. The real function
+  // reads window.location, so drive it by setting the page URL.
   function getEntryPointId(search) {
-    try {
-      const urlParams = new URLSearchParams(search);
-      const raw = urlParams.get('ep');
-      if (raw && /^ep_[0-9A-Za-z]{8,64}$/.test(raw)) {
-        return raw;
-      }
-    } catch { /* ignore */ }
-    return null;
+    window.history.replaceState({}, '', '/' + search);
+    return realGetEntryPointId();
   }
 
   test('valid ep= accepted', () => {

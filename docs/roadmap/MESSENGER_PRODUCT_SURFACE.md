@@ -254,9 +254,9 @@ Spike complete. Both P0c questions are answered against `origin/main` of both re
 - **T3b** — portal Meta connect card calls `Meta_OAuth_Handler`'s `/meta/oauth/url?tenant_id=…` (staging URL, post-T3a env injection), popup flow mirroring `ChannelsSettings`. No Clerk-instance conflict (state-JWT + CORS `*`). Authz note: the connect endpoint trusts `tenant_id` from the caller + the signed state — the portal must pass the authenticated user's own tenant, not an arbitrary one.
 - **T3c** — add a `/settings/messenger` PATCH to `Analytics_Dashboard_API` (a new `handle_settings_messenger_patch` mirroring the notifications handler): authenticate with the portal's `divine-impala-48` Clerk (existing), read-modify-write `messenger_behavior` via the ETag/deep-merge path, send the whole section (always-send-whole). PII gate still applies (new tenant-scoped write into a previously CB-only section).
 
-## 12. Execution status — ✅ PROGRAM COMPLETE (all 11 subphases merged 2026-07-13/14)
+## 12. Execution status — ✅ PROGRAM COMPLETE + 🎉 FIRST ACTIVATION PROVEN LIVE (2026-07-21)
 
-All subphases are merged to their repos' `main` and staging-deployed. Prod untouched (gated, out of scope).
+All subphases are merged to their repos' `main` and staging-deployed. Prod untouched (gated, out of scope). The two `Meta_OAuth_Handler` findings surfaced during T3b are now **closed** (see the follow-ups block below), and the reason-for-existing is **proven end-to-end on staging**.
 
 - **T1** ✅ config-builder#84 — `MESSENGER_CHANNEL` toggle (relocated to the product page in T2c).
 - **P0a** ✅ lambda#456 — first Config Manager test suite + CI node:test job.
@@ -274,11 +274,30 @@ All subphases are merged to their repos' `main` and staging-deployed. Prod untou
 
 > Live browser round-trips (saving via the Clerk-authed staging CB/portal, and a real Meta page connect) remain **operator-verified** — a CLI agent cannot mint a browser Clerk session. Every merged PR notes this; the underlying logic is proven by unit/integration tests + red/green checks + production builds.
 
-### Findings surfaced during T3b (pre-existing, out of this program's scope — routed to the operator)
+### Findings surfaced during T3b — both now CLOSED (2026-07-21)
 
-Ground-truthing `Meta_OAuth_Handler` during T3b turned up two pre-existing issues, both flagged for separate remediation (neither blocks this program; the portal only ever sends its own tenantId):
+Ground-truthing `Meta_OAuth_Handler` during T3b turned up two pre-existing issues. Both were remediated in a follow-up pass (below); neither ever blocked the program.
 
-1. **`GET /meta/channels/{tenant_id}` 500s on staging** — likely a `boto3.dynamodb.conditions.Key` reachability issue under a bare `import boto3`. The connect card degrades gracefully (retryable load error), but the status read is broken until fixed.
-2. **`Meta_OAuth_Handler` routes don't authorize the caller against `tenant_id`** — a public Function URL that will list/disconnect any tenant given only its ID. No *new* exposure from this program (portal sends its own tenantId), but it warrants its own security remediation item.
+1. ✅ **`GET /meta/channels/{tenant_id}` 500 — FIXED (lambda#462).** Root cause was *not* the `import boto3` guess: the table + `TenantIndex` GSI are healthy. DynamoDB's resource API returns numbers as `decimal.Decimal`, and `_handle_list_channels` echoed the stored `ttl` straight into `json.dumps` → `TypeError: Decimal not JSON serializable` → generic 500. Fixed with a Decimal-aware `default=` in `_json_response`; live-verified 500→200.
+2. ✅ **Caller-authz gap — CLOSED (lambda#463 + picasso#784/#785 + dashboard#74 + cb#93).** The public Function URL let anyone enumerate/disconnect/toggle any tenant's channel unauthenticated. `/meta/channels/*` now authorizes the caller: internal Picasso JWT with `tenant_id == path` (403 on mismatch) **or** the CB operator Clerk JWT (any tenant); direct IAM invokes (the welcome-repush backstop) are exempt. **Landmine caught in live verification:** the JWT-secret *resource policy* explicit-Deny overrode the identity grant — picasso#785 added `Meta_OAuth_Handler-role` to the secret policy's allow/deny-exception lists. Live-verified: unauth disconnect→401, backstop→200, secret-read works.
 
-A third minor correction was folded in during T3b: the connect endpoint returns `{"oauth_url": …}`, not `{"url": …}` — the client reads `oauth_url` with a `url` fallback.
+A minor correction folded in during T3b: the connect endpoint returns `{"oauth_url": …}`, not `{"url": …}` — the client reads `oauth_url` with a `url` fallback.
+
+### Post-merge follow-ups (2026-07-21)
+
+- **Channels-tab consolidation (cb#94).** Removed the Config Builder Channels tab (connect/disconnect/toggle). Connecting FB/IG is a tenant Page-admin OAuth action → it lives only in the portal (T3b card). CB keeps connection *status* in the Messenger readiness checklist; the enable/disable toggle was dropped (disconnect is the off-switch). CB is a super-admin config utility, so a tenant-credential-bound action didn't belong there.
+- **Wrap-up docs (picasso#781):** `docs/runbooks/MESSENGER_ACTIVATION_CHECKLIST.md` + `docs/audits/messenger_scheduling_parity_2026-07-14.md`.
+
+### 🎉 First activation — proven end-to-end, operator-verified (2026-07-21, MYR384719)
+
+The reason-for-existing is closed in live behavior: the operator turned `MESSENGER_CHANNEL` ON via the new CB Messenger product page (first real CB→Config Manager write; `MESSENGER_CHANNEL=True` confirmed in S3) → sent "speak with staff" in a real DM to the connected "MyRecruiter" page → `Meta_Response_Processor` logged `Escalation email sent (emailSent:true)` + `MESSENGER_ESCALATED` → the operator received the email and its link opened the Messenger inbox. The original dead end (IG "speak with staff" → no email) is resolved.
+
+Known state after this first activation (both benign, tracked for polish):
+- Activation was **flag-only** — `messenger_behavior` is still absent on MYR384719, so escalation used the ENV default `notify@myrecruiter.ai`, not a tenant-specific address. Setting `escalation_email` on the CB Messenger page exercises that write path.
+- The `channels.messenger` config **mirror is empty** for MYR384719 though the DDB connection exists, so the CB readiness checklist shows "not connected" while the portal (reads DDB) shows connected — cosmetic, D1-consistent (mirror = display-only). A re-connect through the portal repopulates the mirror.
+
+### Remaining (gated / external — no build blockers)
+
+- **Operator polish:** tenant-specific `escalation_email` for MYR; optionally make the CB readiness checklist read DDB so it agrees with the portal.
+- **Meta App Review / Advanced Access** (external) gates real-tenant self-serve connect; role-holders can test now.
+- **Prod promotion** (its own gated program): the JWT-secret grant/policy (picasso#784/#785) and the meta module are **staging-only**; the dashboard prod build additionally needs `VITE_META_OAUTH_URL`.
