@@ -4,6 +4,8 @@
 >
 > **Status:** PLANNED — decisions D1–D4 approved by Chris 2026-07-24. Committed scope = **P0→P2**; P3/P4 specified below but gated on a reassessment after P2 ships.
 >
+> **Tech-lead review 2026-07-24: GO-WITH-CHANGES** — sequencing/scope/blast-radius confirmed sound (verified: P0–P2 structurally cannot degrade the widget's working pipeline); 3 REQUIRED changes folded into this revision: (1) `step_number` mechanism pinned to an atomic-ADD C4 counter (the derive-from-history option was refuted at the `MESSAGE_SENT` emit site), (2) DLQ depth alarm added to P0, (3) the prod-queue fallback fix promoted to a hard P0 exit criterion.
+>
 > **Everything else on hold** behind this program: the V5 CTA repeat-loop dedup fix, `messenger_label` truncation fix, ice breakers, vertical CTA layout (see §8).
 
 All code citations are `@58adc31` (lambda repo `origin/main`, includes lambda#477) unless marked otherwise. Fact base was produced by three mapping passes **plus an adversarial re-audit (2026-07-24) that refuted five claims from the first passes** — only audit-surviving facts appear below. Live-state claims were verified against staging (525) on 2026-07-24 and MUST be re-verified before implementation (snapshot, not guarantee).
@@ -88,9 +90,10 @@ A conversation that isn't tracked can't prove ROI. This program makes Messenger/
 - **OWN:** `infra/` module for the `Analytics_Event_Processor` role grant; DLQ runbook note.
 - **Work items:**
   1. Grant `Analytics_Event_Processor-role` `s3:GetObject` on `arn:aws:s3:::myrecruiter-picasso-staging/mappings/*` + `s3:ListBucket` on the bucket (ListBucket is what turns 403→404 so the code's NoSuchKey branch works as designed). Terraform, staging belt, plan→apply per SOP.
-  2. **Purge the staging DLQ** (dry-run first: receive+inspect a sample, document counts; the messages are unreplayable pre-B1/B2 by design — record that rationale in the PR).
-  3. Fix MRP's queue-URL fallback: default to **unset ⇒ skip emission with a WARN**, never the prod queue (`index.js:144-146`). (Small MRP code change, rides with P1's PR if convenient.)
-- **DONE:** a synthetic canonical event hand-sent to the staging queue (with `tenant_hash: my87674d777bf9`) lands as a `picasso-session-events` row; DLQ = 0 and stays 0 during a Messenger test turn.
+  2. **Purge the staging DLQ** — mechanism, explicitly: (a) receive+inspect a sample, document counts; (b) export the full backlog to an S3 scratch prefix (belt-and-suspenders retention); (c) THEN `sqs purge-queue` (instant, all-or-nothing, rate-limited 1/60s). The messages are unreplayable pre-B1/B2 by design — record that rationale in the PR. Dry-run-before-destroy rule applies.
+  3. **[HARD EXIT CRITERION]** Fix MRP's queue-URL fallback: default to **unset ⇒ skip emission with a WARN**, never the prod queue (`index.js:144-146`). This is a cross-account-leak safety fix, not a convenience — P0 does not close without it (own test: unset env ⇒ no SQS send + WARN logged).
+  4. **DLQ depth alarm** (tech-lead REQUIRED): `aws_cloudwatch_metric_alarm` on `picasso-analytics-events-staging-dlq` `ApproximateNumberOfMessagesVisible > 0` → `picasso-ops-alerts` SNS (reuse the `ops-alarms-meta-staging` module pattern). The original 91-message backlog accumulated silently for an unknown period — P0 without this alarm repeats the failure mode it fixes.
+- **DONE:** a synthetic canonical event hand-sent to the staging queue (with `tenant_hash: my87674d777bf9`) lands as a `picasso-session-events` row; DLQ = 0 and stays 0 during a Messenger test turn; the fallback test passes; the DLQ alarm exists and fires on a test message.
 
 ### P1 — Correct ingestion + CONVERSATION_STARTED (MRP)
 
@@ -99,9 +102,10 @@ A conversation that isn't tracked can't prove ROI. This program makes Messenger/
 - **CONSUME (frozen):** processor server-side format (`:230-233`); SK scheme `STEP#{n:03d}`; aggregator channel branch (`:511-513`).
 - **Work items:**
   1. **Envelope**: emit BOTH `tenant_hash` (raw hash, for GSI keying) and `tenant_id` (resolved) on every event; thread `tenantHash` into `handleEscalation` (4 call sites).
-  2. **`step_number`**: per-session monotonic counter. Implementation choice (decided at build): atomic `ADD` counter on the C4 conversation-state row, or derive from the recent-messages row count already loaded per turn. Must be strictly increasing per session; collisions are B1.
+  2. **`step_number`**: per-session monotonic counter — **PINNED (tech-lead REQUIRED): atomic `ADD` on a new C4 `step_counter` stateType** (same pattern as the existing M-Hb `counters` stateType, `docs/messenger/CONTRACTS.md:186`), incremented via `UpdateItem ADD` at each emit site. The alternative ("derive from the recent-messages count loaded per turn") is **refuted**: the `MESSAGE_SENT` emit (`:1595`) fires pre-lock and pre-history-load — there is no per-turn count in scope there — and within a turn both emits would read the same pre-turn count and collide (exactly B1). Note: atomicity comes from DynamoDB `ADD`, NOT from the C7 lock — the lock does not cover the `:1595` site.
   3. **Canonical renames**: `MESSENGER_MESSAGE_RECEIVED` → `MESSAGE_SENT` (user turn; note the widget's naming is user-centric: SENT = user sent), `MESSENGER_RESPONSE_SENT` → `MESSAGE_RECEIVED` (bot reply, carry `response_time_ms` if cheaply available). Payloads keep `channel_type`, `page_id`, `psid`; keep lengths-only discipline (no content).
-  4. **`CONVERSATION_STARTED`**: emit at BOTH first-contact hooks — the GET_STARTED handler (after successful welcome send, `~:2967`) and the session-first-turn path (`sessionWindow.isSessionFirstTurn`, `~:3108`, covers IG/typed-first). Payload: `{channel_type, entry_source: 'get_started'|'ice_breaker'|'typed'|'chip', entry_id?: chipRoute.key|resolved.ctaId, attribution: null}` (attribution object reserved for P4 ref-links). Guard against double-fire (GET_STARTED stores history → the typed-path gate stays false afterwards — verify with a test).
+  4. **`CONVERSATION_STARTED`**: emit at BOTH first-contact hooks — the GET_STARTED handler (after successful welcome send, `~:2967`) and the session-first-turn path (`sessionWindow.isSessionFirstTurn`, `~:3108`, covers IG/typed-first). Both hooks are required — the GET_STARTED branch early-returns and never reaches the session-window code (tech-lead verified). Payload: `{channel_type, entry_source: 'get_started'|'ice_breaker'|'typed'|'chip', entry_id?: chipRoute.key|resolved.ctaId, attribution: null}` (attribution object reserved for P4 ref-links). Guard against double-fire (GET_STARTED stores history → the typed-path gate stays false afterwards — verify with a test).
+  5. **Double-fire race hardening** (tech-lead SUGGESTED, adopted): `loadConversationContext`'s Query (`:338-346`) is eventually consistent — a message coalescing/draining in the consistency window right after the GET_STARTED write could see empty history and re-fire `CONVERSATION_STARTED` (same pre-existing race as the disclosure line, but now it corrupts an attribution metric). Fix: `ConsistentRead: true` on that one Query (single extra RCU) + a coalesced-drain-race test.
 - **Tests:** jest — envelope shape (both tenant fields), step monotonicity across a multi-turn session, both CONVERSATION_STARTED hooks + no-double-fire, escalation event carries tenant_hash.
 - **DONE (falsifiable):** one live staging Messenger conversation (MYR384719) produces ≥3 distinct-SK rows in `picasso-session-events` with `tenant_hash=my87674d777bf9`; after the next hourly aggregate, `attribution_channel#{month}#messenger` for MYR384719 shows conversations ≥ 1 **from pipeline data** (distinguish from seeder rows: MYR tenant, not BRI).
 
@@ -129,6 +133,7 @@ A conversation that isn't tracked can't prove ROI. This program makes Messenger/
 
 - **Scope:** conversation volume / heatmap / trend + Recent Conversations list + session detail for Messenger sessions.
 - **The colon decision (single decision, three consumers):** keep `meta:{pageId}:{psid}` and relax the two regexes (summary writers `SESSION_ID_RE`; ADA session-detail `:6346`), OR adopt a colon-free analytics session id. **Leaning: relax the regexes** — the `meta:` prefix is load-bearing for the aggregator's channel branch and changing the id scheme risks divergence with the C4/C7 state tables that key on it. Decide at P3 kickoff with fresh eyes on P1/P2 data.
+- **Regex scoping (tech-lead, pre-committed):** if the regexes are relaxed, the relaxation is NARROW — e.g. `^meta:[^:]+:[^:]+$` OR the existing `^[a-zA-Z0-9_-]{1,128}$` — never a generic loosening. This code is shared with the widget's own summary writers; contract fixtures MUST include both an old-shape widget id and the new Messenger colon-shape.
 - **Work items:** extend the **contract** (`analytics_writer_contract.json`) + both writers for the relaxed session-id rule; add a Messenger summary path — either MRP calls a summary-writer equivalent directly (preferred: a small JS port of the contract shape, own PR + contract fixtures) or extend `SUPPORTED_EVENT_TYPES`; unblock the MFS `FORM_COMPLETED` summary write for `meta:` ids (currently regex-dropped, `form_handler.py:465-476`).
 - **Contract discipline:** any writer change lands with fixture tests in BOTH repos' copies (analytics_writer_contract pattern; forward-compatible reads per CLAUDE.md schema discipline).
 - **DONE:** Messenger conversation appears in Recent Conversations and `/conversations/summary` counts it; session-detail renders for a `meta:` session.
@@ -144,7 +149,7 @@ A conversation that isn't tracked can't prove ROI. This program makes Messenger/
 - **Queue resource policy:** MRP is already allowlisted (send). If ANY new emitter is added (e.g., a P3 summary writer path via SQS — not currently planned), it must be added to the Allow AND the explicit Deny's `StringNotEquals` exception, or sends fail silently (2026-07-13 incident class).
 - **PII:** all payloads carry ids/lengths/labels only — never message content, never form field VALUES. This matches the widget's discipline. New event emission to the existing analytics stores adds no new PII surface, but P3's contract change and P4's ref-link capture get a `pii-data-lifecycle-advisor` pass before merge (analytics + identifier flows trigger review per CLAUDE.md).
 - **Schema discipline:** all readers already tolerate missing fields; new payload fields are additive; contract/fixture tests accompany any stored-shape change.
-- **Staging-first, prod untouched.** The entire program lands in staging (525). Prod promotion is a separate gated decision (prod processor/aggregator/dashboards have their own state — un-audited here).
+- **Staging-first, prod untouched.** The entire program lands in staging (525). Prod promotion is a separate gated decision — and note: prod's IAM/regex/DLQ state is **unverified**, not merely un-audited; do not assume prod shares (or lacks) any of the staging defects named here.
 
 ## 6. Staging verification realities (so E2E checks don't lie)
 
@@ -157,9 +162,9 @@ A conversation that isn't tracked can't prove ROI. This program makes Messenger/
 
 | # | Risk | Mitigation |
 |---|---|---|
-| R1 | Canonical `MESSAGE_SENT/RECEIVED` semantics inverted (widget: SENT=user, RECEIVED=bot) | Naming table in P1 + tests assert direction; code comment at emit sites |
-| R2 | step-counter races under C7 message coalescing | Counter increments inside the per-session conversation lock (C7 already serializes turns) |
-| R3 | CONVERSATION_STARTED double-fire (GET_STARTED + first typed turn) | Explicit test; the GET_STARTED-stored history makes `isSessionFirstTurn` false afterwards |
+| R1 | Canonical `MESSAGE_SENT/RECEIVED` semantics inverted (widget: SENT=user, RECEIVED=bot) | **RESOLVED (tech-lead verified 2026-07-24):** the direction in P1.3 is CORRECT — aggregator treats `MESSAGE_SENT` as the user-message proxy (`:404-416`, comment says so verbatim), ADA counts SENT=user/RECEIVED=bot (`:6405-6410`), widget emits `MESSAGE_SENT` when the USER's message posts (`StreamingChatProvider.jsx:668`). The vocabulary is user-centric. Do NOT "fix" this into an actual inversion — tests + emit-site comments assert it |
+| R2 | step-counter races under C7 message coalescing | Atomicity comes from DynamoDB `UpdateItem ADD` on the C4 `step_counter` row — NOT from the C7 lock (the `MESSAGE_SENT` emit at `:1595` runs pre-lock; the original "lock serializes it" mitigation was wrong) |
+| R3 | CONVERSATION_STARTED double-fire (GET_STARTED + first typed turn) | Explicit test; GET_STARTED-stored history makes `isSessionFirstTurn` false afterwards; residual eventual-consistency window closed by P1.5 (`ConsistentRead: true`) |
 | R4 | P3 contract change breaks widget writers | Two-repo fixture tests (contract pattern); wholesale-replace discipline unchanged |
 | R5 | Registry-channel shadowing makes P4 ep-attribution steal sessions from the `messenger` channel row | Resolve in P4 design (see §4-P4); acceptable pre-P4 because no Messenger eps exist |
 | R6 | DLQ purge loses data someone wanted | Purge PR documents counts + a sampled export to S3 scratch first |
